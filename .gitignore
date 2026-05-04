@@ -1,9 +1,8 @@
 target/
 target-codex*/
-dist/
+/dist/
 node_modules/
 extension/node_modules/
-extension/dist/
 web-ext-artifacts/
 
 # Generated test/build artifacts

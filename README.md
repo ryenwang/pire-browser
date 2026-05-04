@@ -27,26 +27,56 @@ pire-browser tabs close t1
 
 ## Install on Windows 11 x64
 
-The private GitHub release includes a Windows x64 package with:
+Assumptions:
+
+- Pi is already installed.
+- Firefox is already installed.
+- Your Windows PC can access the private `ryenwang/pire-browser` GitHub repository.
+
+Install the private Pi package with one command:
+
+```powershell
+pi install git:git@github.com:ryenwang/pire-browser@v0.1.2
+```
+
+The package installs the `pire-browser` Pi tool and runs the Windows setup step automatically. That setup registers the Firefox Native Messaging host for the current Windows user.
+
+If Firefox is installed somewhere unusual:
+
+```powershell
+$env:PIRE_BROWSER_FIREFOX_PATH = "D:\Apps\Mozilla Firefox\firefox.exe"
+pi install git:git@github.com:ryenwang/pire-browser@v0.1.2
+```
+
+Start Pi:
+
+```powershell
+pi
+```
+
+Inside Pi, ask it to use the `pire-browser` tool:
+
+```text
+Use pire-browser to launch Firefox, open https://example.com, and snapshot the page.
+```
+
+For a local model, configure Pi for your local or OpenAI-compatible provider, then select that model with Pi's `/model` command or CLI flags. The `pire-browser` tool is model-agnostic; it shells out to the packaged local `pire-browser.exe`.
+
+### Manual Zip Install
+
+The GitHub release also includes a Windows x64 package with:
 
 - `pire-browser.exe`
 - `pire-browser-host.exe`
 - the prebuilt Firefox extension files
 - `install-windows.ps1`
 
-Prerequisites on the target PC:
-
-- Windows 11 x64
-- Firefox
-- Node.js LTS, which provides `npx` for launching Firefox through `web-ext`
-- Access to the private `ryenwang/pire-browser` GitHub repository
-
 From PowerShell on the target PC:
 
 ```powershell
 gh auth login
 New-Item -ItemType Directory -Force "$env:TEMP\pire-browser-install" | Out-Null
-gh release download v0.1.1 --repo ryenwang/pire-browser --pattern pire-browser-windows-x64.zip --dir "$env:TEMP\pire-browser-install"
+gh release download v0.1.2 --repo ryenwang/pire-browser --pattern pire-browser-windows-x64.zip --dir "$env:TEMP\pire-browser-install"
 Expand-Archive -Force "$env:TEMP\pire-browser-install\pire-browser-windows-x64.zip" "$env:TEMP\pire-browser-install\pire-browser-windows-x64"
 Set-Location "$env:TEMP\pire-browser-install\pire-browser-windows-x64"
 .\install-windows.ps1
@@ -72,35 +102,6 @@ If Firefox is installed somewhere unusual:
 ```powershell
 .\install-windows.ps1 -FirefoxPath "D:\Apps\Mozilla Firefox\firefox.exe"
 ```
-
-### Use from Pi
-
-To use Pi as the underlying agent and expose `pire-browser` as a Pi tool, run this after the Windows install:
-
-```powershell
-.\install-pi-windows.ps1
-```
-
-That script:
-
-- installs Pi globally with `npm install -g @mariozechner/pi-coding-agent`
-- installs the runtime dependencies for the `pire-browser` Pi extension
-- sets the user-level `PIRE_BROWSER_EXE` environment variable
-- writes a global Pi extension shim to `%USERPROFILE%\.pi\agent\extensions\pire-browser.ts`
-
-Open a new PowerShell window, then start Pi:
-
-```powershell
-pi
-```
-
-Inside Pi, ask it to use the `pire-browser` tool:
-
-```text
-Use pire-browser to launch Firefox, open https://example.com, and snapshot the page.
-```
-
-For a local model, configure Pi for your local or OpenAI-compatible provider, then select that model with Pi's `/model` command or CLI flags. The `pire-browser` tool is model-agnostic; it shells out to the local `pire-browser.exe`.
 
 ## Development
 

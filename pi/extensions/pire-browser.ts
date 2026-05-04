@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type, type Static } from "typebox";
@@ -66,7 +67,9 @@ function resolveExecutable(): string {
   if (envPath && existsSync(envPath)) return envPath;
 
   const suffix = process.platform === "win32" ? ".exe" : "";
+  const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const candidates = [
+    join(packageRoot, "bin", "win32-x64", `pire-browser${suffix}`),
     join(process.cwd(), "target", "debug", `pire-browser${suffix}`),
     join(process.cwd(), "target", "release", `pire-browser${suffix}`),
     `pire-browser${suffix}`,
