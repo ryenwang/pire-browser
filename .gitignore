@@ -1,0 +1,30 @@
+target/
+target-codex*/
+node_modules/
+extension/node_modules/
+extension/dist/
+web-ext-artifacts/
+
+# Generated test/build artifacts
+coverage/
+*.tsbuildinfo
+*.log
+
+# Local browser/capture artifacts
+/out.png
+/discord-*.json
+/discord-*.png
+/discord-*.csv
+/discord-capture-B/
+/discord-capture-B-down/
+/gofile-*.json
+/gofile-*.png
+/rbxlx-*.csv
+/rbxlx-*.json
+/file-location-*.csv
+/download-list-*.csv
+
+# Downloaded/reference snapshots of external sites
+/agent-browser.dev/
+/agent-browser.dev-pages/
+/agent-browser-snapshot/

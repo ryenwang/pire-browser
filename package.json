@@ -1,0 +1,30 @@
+{
+  "name": "pire-browser",
+  "version": "0.1.0",
+  "description": "Pi tool and Firefox extension bridge for local Firefox automation",
+  "keywords": ["pi-package", "firefox", "browser-automation"],
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "pi/",
+    "extension/",
+    "docs/",
+    "fixtures/",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "build:extension": "npm --prefix extension run build"
+  },
+  "pi": {
+    "extensions": ["pi/extensions/pire-browser.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.18"
+  }
+}

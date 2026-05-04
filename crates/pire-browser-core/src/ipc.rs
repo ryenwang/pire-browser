@@ -1,0 +1,361 @@
+#[cfg(windows)]
+mod windows_ipc {
+    use std::ffi::OsStr;
+    use std::io::{Error, ErrorKind};
+    use std::os::windows::ffi::OsStrExt;
+    use std::ptr::null_mut;
+    use std::time::Duration;
+
+    use anyhow::{bail, Context, Result};
+    use sha2::{Digest, Sha256};
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, LocalFree, ERROR_BROKEN_PIPE, ERROR_PIPE_CONNECTED,
+        GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE,
+    };
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+        SDDL_REVISION_1,
+    };
+    use windows_sys::Win32::Security::{
+        GetTokenInformation, TokenUser, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, TOKEN_QUERY,
+    };
+    use windows_sys::Win32::Storage::FileSystem::{
+        CreateFileW, FlushFileBuffers, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, OPEN_EXISTING,
+        PIPE_ACCESS_DUPLEX,
+    };
+    use windows_sys::Win32::System::Pipes::{
+        ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_READMODE_BYTE,
+        PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
+    };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken, Sleep};
+
+    struct Handle(HANDLE);
+
+    unsafe impl Send for Handle {}
+
+    impl Handle {
+        fn new(handle: HANDLE) -> Result<Self> {
+            if handle == INVALID_HANDLE_VALUE || handle.is_null() {
+                bail!("invalid Windows handle: {}", Error::last_os_error());
+            }
+            Ok(Self(handle))
+        }
+    }
+
+    impl Drop for Handle {
+        fn drop(&mut self) {
+            unsafe {
+                CloseHandle(self.0);
+            }
+        }
+    }
+
+    struct LocalPtr(*mut core::ffi::c_void);
+
+    impl Drop for LocalPtr {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                unsafe {
+                    LocalFree(self.0);
+                }
+            }
+        }
+    }
+
+    fn wide(value: impl AsRef<OsStr>) -> Vec<u16> {
+        value.as_ref().encode_wide().chain(Some(0)).collect()
+    }
+
+    pub fn current_user_sid_string() -> Result<String> {
+        let mut token: HANDLE = null_mut();
+        unsafe {
+            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+                bail!("OpenProcessToken failed: {}", Error::last_os_error());
+            }
+        }
+        let token = Handle::new(token)?;
+
+        let mut needed = 0u32;
+        unsafe {
+            GetTokenInformation(token.0, TokenUser, null_mut(), 0, &mut needed);
+        }
+        if needed == 0 {
+            bail!("GetTokenInformation did not report TokenUser size");
+        }
+
+        let mut buffer = vec![0u8; needed as usize];
+        unsafe {
+            if GetTokenInformation(
+                token.0,
+                TokenUser,
+                buffer.as_mut_ptr() as *mut _,
+                needed,
+                &mut needed,
+            ) == 0
+            {
+                bail!("GetTokenInformation failed: {}", Error::last_os_error());
+            }
+        }
+
+        #[repr(C)]
+        struct TokenUserLocal {
+            user: windows_sys::Win32::Security::SID_AND_ATTRIBUTES,
+        }
+        let token_user = unsafe { &*(buffer.as_ptr() as *const TokenUserLocal) };
+        let mut sid_ptr = null_mut();
+        unsafe {
+            if ConvertSidToStringSidW(token_user.user.Sid, &mut sid_ptr) == 0 {
+                bail!("ConvertSidToStringSidW failed: {}", Error::last_os_error());
+            }
+        }
+        let _guard = LocalPtr(sid_ptr as *mut _);
+        let mut len = 0usize;
+        unsafe {
+            while *sid_ptr.add(len) != 0 {
+                len += 1;
+            }
+            Ok(String::from_utf16_lossy(std::slice::from_raw_parts(
+                sid_ptr, len,
+            )))
+        }
+    }
+
+    pub fn pipe_name_for_session(session_id: &str) -> Result<String> {
+        let sid = current_user_sid_string()?;
+        let hash = Sha256::digest(sid.as_bytes());
+        let user_hash = hex::encode(&hash[..6]);
+        Ok(format!(r"\\.\pipe\pire-browser-{user_hash}-{session_id}"))
+    }
+
+    struct SecurityDescriptor {
+        ptr: PSECURITY_DESCRIPTOR,
+    }
+
+    impl SecurityDescriptor {
+        fn for_current_user() -> Result<Self> {
+            let sid = current_user_sid_string()?;
+            let sddl = format!("D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;{sid})");
+            let mut ptr: PSECURITY_DESCRIPTOR = null_mut();
+            unsafe {
+                if ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    wide(sddl).as_ptr(),
+                    SDDL_REVISION_1,
+                    &mut ptr,
+                    null_mut(),
+                ) == 0
+                {
+                    bail!(
+                        "ConvertStringSecurityDescriptorToSecurityDescriptorW failed: {}",
+                        Error::last_os_error()
+                    );
+                }
+            }
+            Ok(Self { ptr })
+        }
+    }
+
+    impl Drop for SecurityDescriptor {
+        fn drop(&mut self) {
+            if !self.ptr.is_null() {
+                unsafe {
+                    LocalFree(self.ptr as *mut _);
+                }
+            }
+        }
+    }
+
+    pub fn run_pipe_server(
+        pipe_name: String,
+        stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        handler: impl Fn(String) -> String + Send + Sync + 'static,
+    ) -> Result<()> {
+        let handler = std::sync::Arc::new(handler);
+        let name = wide(&pipe_name);
+        let security = SecurityDescriptor::for_current_user()?;
+
+        while !stop.load(std::sync::atomic::Ordering::SeqCst) {
+            let mut attrs = SECURITY_ATTRIBUTES {
+                nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+                lpSecurityDescriptor: security.ptr,
+                bInheritHandle: 0,
+            };
+            let raw = unsafe {
+                CreateNamedPipeW(
+                    name.as_ptr(),
+                    PIPE_ACCESS_DUPLEX,
+                    PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                    PIPE_UNLIMITED_INSTANCES,
+                    1024 * 1024,
+                    1024 * 1024,
+                    0,
+                    &mut attrs,
+                )
+            };
+            let handle = Handle::new(raw).context("failed to create named pipe")?;
+            let connected = unsafe { ConnectNamedPipe(handle.0, null_mut()) };
+            if connected == 0 {
+                let err = unsafe { GetLastError() };
+                if err != ERROR_PIPE_CONNECTED {
+                    // Some clients can connect in the small window before ConnectNamedPipe.
+                    // Attempting the read gives us a chance to serve them instead of
+                    // immediately dropping the pipe.
+                }
+            }
+
+            if let Ok(request) = read_line(handle.0) {
+                let response = handler(request);
+                let _ = write_all(handle.0, response.as_bytes());
+                let _ = write_all(handle.0, b"\n");
+                unsafe {
+                    FlushFileBuffers(handle.0);
+                }
+            }
+            unsafe {
+                DisconnectNamedPipe(handle.0);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn send_pipe_request(pipe_name: &str, request: &str) -> Result<String> {
+        let name = wide(pipe_name);
+        let mut last_error = None;
+        for _ in 0..20 {
+            let raw = unsafe {
+                CreateFileW(
+                    name.as_ptr(),
+                    GENERIC_READ | GENERIC_WRITE,
+                    0,
+                    null_mut(),
+                    OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL,
+                    null_mut(),
+                )
+            };
+            if raw != INVALID_HANDLE_VALUE {
+                let handle = Handle::new(raw)?;
+                write_all(handle.0, request.as_bytes())?;
+                write_all(handle.0, b"\n")?;
+                return read_line(handle.0);
+            }
+            last_error = Some(Error::last_os_error());
+            unsafe {
+                Sleep(50);
+            }
+        }
+        bail!(
+            "failed to connect to pire-browser pipe {pipe_name}: {}",
+            last_error.unwrap_or_else(|| Error::new(ErrorKind::TimedOut, "timed out"))
+        )
+    }
+
+    fn read_line(handle: HANDLE) -> Result<String> {
+        let mut out = Vec::new();
+        let mut byte = [0u8; 1];
+        loop {
+            let mut read = 0u32;
+            let ok = unsafe {
+                ReadFile(
+                    handle,
+                    byte.as_mut_ptr() as *mut _,
+                    1,
+                    &mut read,
+                    null_mut(),
+                )
+            };
+            if ok == 0 {
+                let err = unsafe { GetLastError() };
+                if err == ERROR_BROKEN_PIPE && !out.is_empty() {
+                    break;
+                }
+                bail!("ReadFile failed: {}", Error::last_os_error());
+            }
+            if read == 0 {
+                std::thread::sleep(Duration::from_millis(5));
+                continue;
+            }
+            if byte[0] == b'\n' {
+                break;
+            }
+            out.push(byte[0]);
+        }
+        Ok(String::from_utf8(out)?)
+    }
+
+    fn write_all(handle: HANDLE, mut data: &[u8]) -> Result<()> {
+        while !data.is_empty() {
+            let mut written = 0u32;
+            let ok = unsafe {
+                WriteFile(
+                    handle,
+                    data.as_ptr() as *const _,
+                    data.len() as u32,
+                    &mut written,
+                    null_mut(),
+                )
+            };
+            if ok == 0 {
+                bail!("WriteFile failed: {}", Error::last_os_error());
+            }
+            data = &data[written as usize..];
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        #[test]
+        fn pipe_name_contains_session() {
+            let name = pipe_name_for_session("abc").unwrap();
+            assert!(name.contains("abc"));
+            assert!(name.starts_with(r"\\.\pipe\pire-browser-"));
+        }
+
+        #[test]
+        fn named_pipe_round_trips_response_before_disconnect() {
+            let pipe_name = pipe_name_for_session(&format!("test-{}", std::process::id())).unwrap();
+            let stop = Arc::new(AtomicBool::new(false));
+            let server_stop = stop.clone();
+            let server_pipe = pipe_name.clone();
+            let server = std::thread::spawn(move || {
+                run_pipe_server(server_pipe, server_stop, |line| format!("echo:{line}")).unwrap();
+            });
+
+            std::thread::sleep(Duration::from_millis(100));
+            let response = send_pipe_request(&pipe_name, "ping").unwrap();
+            assert_eq!(response, "echo:ping");
+
+            stop.store(true, Ordering::SeqCst);
+            let _ = send_pipe_request(&pipe_name, "stop");
+            server.join().unwrap();
+        }
+    }
+}
+
+#[cfg(windows)]
+pub use windows_ipc::{
+    current_user_sid_string, pipe_name_for_session, run_pipe_server, send_pipe_request,
+};
+
+#[cfg(not(windows))]
+pub fn pipe_name_for_session(_session_id: &str) -> anyhow::Result<String> {
+    anyhow::bail!("pire-browser MVP IPC supports Windows only")
+}
+
+#[cfg(not(windows))]
+pub fn run_pipe_server(
+    _pipe_name: String,
+    _stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    _handler: impl Fn(String) -> String + Send + Sync + 'static,
+) -> anyhow::Result<()> {
+    anyhow::bail!("pire-browser MVP IPC supports Windows only")
+}
+
+#[cfg(not(windows))]
+pub fn send_pipe_request(_pipe_name: &str, _request: &str) -> anyhow::Result<String> {
+    anyhow::bail!("pire-browser MVP IPC supports Windows only")
+}

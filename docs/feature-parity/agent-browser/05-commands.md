@@ -1,0 +1,1274 @@
+# Commands
+
+Source: https://agent-browser.dev/commands
+
+Use this checklist to track `pire-browser` feature parity with the documented `agent-browser` behavior.
+
+## Core
+
+- [P] `agent-browser open` - Launch browser (no nav); stays on about:blank
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Use a local HTTP fixture, run pire-browser open/launch, then assert status/snapshot/get url output against the expected fixture URL.
+  - Claude feedback: Agree [P]. `pire-browser launch` (no `--url`) starts Firefox + extension and stays on about:blank/newtab. Different command name. Add an `open` (no-arg) alias that calls `launch` if no session exists, otherwise no-ops.
+- [P] `agent-browser open <url>` - Launch + navigate (aliases: goto, navigate)
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Use a local HTTP fixture, run pire-browser open/launch, then assert status/snapshot/get url output against the expected fixture URL.
+  - Claude feedback: Agree [P]. `open <url>` works after `launch`. With auto-launch on missing session: [F]. Add `goto`/`navigate` aliases (one line each in the switch).
+- [ ] `agent-browser click <sel>` - Click element (--new-tab to open in new tab)
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Add a fixture element that records click events in the DOM; run the command through the smoke harness and assert the recorded marker.
+  - Claude feedback: Suggest [P]. Click works for `@ref` only; no CSS selector support. Add a `css` locator kind to enable `click "#submit"` and `click ".btn"`. Also missing `--new-tab`: implement by hooking into the click handler with `event.preventDefault()` then `browser.tabs.create({url: targetHref})`.
+- [ ] `agent-browser dblclick <sel>` - Double-click
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Add a fixture element that records click events in the DOM; run the command through the smoke harness and assert the recorded marker.
+  - Claude feedback: Suggest [N] currently. Trivial to add: extend content.ts handler to dispatch two `click` events with `detail: 1` then `detail: 2`, plus a `dblclick` event. ~15 LOC.
+- [ ] `agent-browser fill <sel> <text>` - Clear and fill
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use a form fixture that logs input/change/keyboard/focus events; assert field value and event order after the command.
+  - Claude feedback: Suggest [P]. `fill @ref` works; `fill <css>` doesn't. Adding CSS locator unlocks this.
+- [ ] `agent-browser type <sel> <text>` - Type into element
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use a form fixture that logs input/change/keyboard/focus events; assert field value and event order after the command.
+  - Claude feedback: Suggest [N] currently. Distinct from `fill`: should focus the element and dispatch keydown/keypress/input/keyup for *each* character so React onChange fires for every keystroke. ~30 LOC in content.ts using insertText() loop.
+- [P] `agent-browser press <key>` - Press key (Enter, Tab, Control+a) (alias: key)
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use a form fixture that logs input/change/keyboard/focus events; assert field value and event order after the command.
+  - Claude feedback: Agree [P]. `pressKey` handles single-char and named keys (Enter/Tab/Escape/Backspace/Arrow*). Missing: modifier combos like `Control+a`, `Shift+Tab`. Parse `Modifier+Key` into the KeyboardEvent's `ctrlKey`/`shiftKey`/etc. and dispatch. ~20 LOC. Also no `key` alias yet.
+- [ ] `agent-browser keyboard type <text>` - Type at current focus (no selector needed)
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use a form fixture that logs input/change/keyboard/focus events; assert field value and event order after the command.
+  - Claude feedback: Suggest [N] currently. Add `keyboard` subcommand that calls insertText/keydown loop on `document.activeElement`. Reuses the `type` work above.
+- [ ] `agent-browser keyboard inserttext <text>` - Insert text without key events
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a form fixture that logs input/change/keyboard/focus events; assert field value and event order after the command.
+  - Claude feedback: Suggest [N] currently. content.ts already has `insertText()`; expose it as a command. ~10 LOC.
+- [ ] `agent-browser keydown <key>` - Hold key down
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a form fixture that logs input/change/keyboard/focus events; assert field value and event order after the command.
+  - Claude feedback: Suggest [N] currently. WebExtensions can dispatch a `keydown` only (no `keyup`), but the OS won't actually treat the key as held — only the page's JS sees the event. For keyboard shortcut testing this is enough. ~10 LOC.
+- [ ] `agent-browser keyup <key>` - Release key
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a form fixture that logs input/change/keyboard/focus events; assert field value and event order after the command.
+  - Claude feedback: Same as keydown — dispatch `keyup` only. ~10 LOC.
+- [ ] `agent-browser hover <sel>` - Hover element
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a pointer-event fixture that records mouse/pointer/wheel events and coordinates; assert the expected event log.
+  - Claude feedback: Suggest [N] currently. Implement by dispatching `mouseover`/`mouseenter`/`pointerover`/`pointerenter` synthetic events on the resolved element, with `clientX/Y` from `getBoundingClientRect`. Caveat: native :hover styles only trigger from real pointer movement; we get the JS handlers and `:hover` matched via attribute hack (`element.matches(":hover")` won't lie unless we set a `data-hover` and a CSS rule, but we can't inject that without `set` styles). Document this limitation.
+- [ ] `agent-browser focus <sel>` - Focus element
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a form fixture that logs input/change/keyboard/focus events; assert field value and event order after the command.
+  - Claude feedback: Suggest [N] currently — actually trivial. Add a `focus` command that calls `element.focus()`. ~5 LOC.
+- [P] `agent-browser select <sel> <val>` - Select dropdown option
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a fixture with select, checkbox, and radio controls; assert value/checked state and change events after command execution.
+  - Claude feedback: Disagree, mark [N]. There's no dedicated `select` command — `fill @ref <value>` happens to work for HTMLSelectElement (content.ts:fillLocator branches on Select and sets `.value`). Add a real `select <ref> <value>` command that prefers matching by visible label, falling back to value, with multi-select support.
+- [P] `agent-browser check <sel>` - Check checkbox
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a fixture with select, checkbox, and radio controls; assert value/checked state and change events after command execution.
+  - Claude feedback: Disagree, mark [N] for the *named* command. Today `fill @ref true` checks a checkbox (string-matches "true"/"1"/"yes"/"on"/"checked"). That works but isn't a `check` command. Add explicit `check`/`uncheck` that toggles `.checked` and fires `change`. ~15 LOC.
+- [P] `agent-browser uncheck <sel>` - Uncheck checkbox
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a fixture with select, checkbox, and radio controls; assert value/checked state and change events after command execution.
+  - Claude feedback: Same as check — works via `fill <ref> false` but no explicit command. Add it.
+- [P] `agent-browser scroll <dir> [px]` - Scroll (up/down/left/right, --selector <sel>)
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use a tall fixture and scrollable container; assert scrollTop/window.scrollY before and after command execution.
+  - Claude feedback: Agree [P]. `scrollCommand` handles up/down only. Missing: left/right (rejected explicitly), `--selector` flag (background.ts ignores it though it's parsed by waitCommand). Add left/right handling and pass `--selector` through to content.ts:scrollPage as a target element. ~20 LOC.
+- [ ] `agent-browser scrollintoview <sel>` - Scroll element into view
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a tall fixture and scrollable container; assert scrollTop/window.scrollY before and after command execution.
+  - Claude feedback: Suggest [P]. Effectively works as a side-effect of every click (clickLocator does `scrollIntoView` first). Add an explicit `scrollintoview <ref>` that just calls `element.scrollIntoView({block:"center"})`. ~10 LOC.
+- [ ] `agent-browser drag <src> <dst>` - Drag and drop
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a drag-and-drop fixture with dragstart/dragover/drop counters and payload capture; assert the target receives a drop event.
+  - Claude feedback: Suggest [N] currently. Implementable but tricky: dispatch `dragstart`/`dragover`/`drop` synthetic events with a fabricated `DataTransfer`. HTML5 drag-and-drop in synthetic events does NOT work for many real apps (e.g., file-drop) because browsers gate file DataTransfer to user gestures. Document the limitation. ~80 LOC for the JS-only case.
+- [ ] `agent-browser upload <sel> <files>` - Upload files
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Create a temporary file, drive a file-input fixture, and assert the page receives the expected file name/size/content hash.
+  - Claude feedback: Suggest [N] currently. WebExtensions cannot programmatically set `<input type=file>` files (browser security barrier). Workaround: ship a small companion script using `nsIFilePicker` via privileged code or push a bytes payload through the Native Host that fakes the file via clipboard + paste. Real path: open the file picker with `element.click()` and have the native host drive the OS-level file dialog (fragile cross-platform). High complexity, recommend [N] with a documented workaround using `state load` for stored auth scenarios.
+- [P] `agent-browser screenshot [path]` - Screenshot (--full for full page)
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: High
+  - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Claude feedback: Agree [P]. Visible-tab capture works (`captureVisibleTab` + chunked transfer + SHA-256 verify). Missing: `--full` (full-page) — implement by scrolling-and-stitching: scroll to top, capture, scroll one viewport down, capture, repeat, then composite in the native host using the `image` crate. ~150 LOC. Also: `[path]` is required today — make optional (write to data_dir/screenshots/<ts>.png).
+- [ ] `agent-browser screenshot --annotate` - Annotated screenshot with numbered element labels
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: High
+  - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Claude feedback: Suggest [N] currently. Implementable: take snapshot to get refs+bounds, capture screenshot, then in the native host overlay numbered boxes using the `image`+`imageproc` crates. ~200 LOC. Worth it for AI agent screenshots.
+- [ ] `agent-browser screenshot --screenshot-dir ./shots` - Save to custom directory
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Claude feedback: Suggest [P]. Today the user specifies the full path. Add a default-dir resolution in the CLI: if `--screenshot-dir` is set and the positional arg is just a filename, resolve. ~5 LOC in CLI parsing.
+- [ ] `agent-browser screenshot --screenshot-format jpeg --screenshot-quality 80`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Claude feedback: Suggest [P]. `captureVisibleTab` accepts `{format: "jpeg", quality: 0..100}`. Plumb the flags through the command pipeline. ~10 LOC.
+- [ ] `agent-browser pdf <path>` - Save page as PDF
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Render a deterministic fixture to PDF, assert the file starts with %PDF and verify page count/text with a PDF parser.
+  - Claude feedback: Suggest [N] currently. WebExtensions don't expose a "save as PDF" API directly. Workaround 1: open `about:print` and dispatch a Ctrl+P keyboard event to trigger Firefox's print-to-PDF, but this requires a user gesture. Workaround 2: use `browser.tabs.saveAsPDF()` — actually exists on Android only. Workaround 3: use Firefox's RDP to call `Page.printToPDF`-equivalent. Best bet: ship a separate native-host command that drives `firefox --headless --print-to-pdf=...` against the current URL (loses session state). Document trade-offs.
+- [P] `agent-browser snapshot` - Accessibility tree with refs
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Claude feedback: Agree [P]. Default `snapshot` (no `-i`) returns refs but emits empty `text` line. Should print full element list with refs by default for parity.
+- [ ] `agent-browser eval <js>` - Run JavaScript
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run deterministic JavaScript against a fixture and assert returned JSON, thrown-error handling, and page-side side effects.
+  - Claude feedback: Suggest [N] currently. Add `eval` command via `browser.tabs.executeScript({code: js})` (MV2) or `chrome.scripting.executeScript({func, args})` (MV3). Returns the last expression's value. Caveat: MV2 sandbox is the content-script world, not the page world — to access `window.X` you need an injected `<script>` tag. ~30 LOC. Major caveat: this is a "run arbitrary code" hole, gate behind a `--allow-eval` flag or confirm-actions policy.
+- [N] `agent-browser connect <port|url>` - Connect to browser via CDP
+  - Extension Compatibility: False
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+  - Claude feedback: Agree [N]. CDP is Chrome-only. Firefox's RDP (Remote Debugging Protocol) is the analog but has different semantics. Out of scope.
+- [ ] `agent-browser stream enable [--port <port>]` - Start runtime WebSocket streaming
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Claude feedback: Suggest [N] currently. Implementable: have the native host bind a localhost WebSocket on `--port`, and have background.ts call `captureVisibleTab` on a timer or `browser.webRequest`/`tabs.onUpdated` events, push frames over native messaging to the host, which fans out to WebSocket clients. ~300 LOC. Use `tokio-tungstenite` in Rust. Major value for the dashboard.
+- [ ] `agent-browser stream status` - Show runtime streaming state and bound port
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Claude feedback: Pairs with `stream enable`. Once impl exists, state is just a struct in the native host.
+- [ ] `agent-browser stream disable` - Stop runtime WebSocket streaming
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Claude feedback: Pairs with `stream enable`. Drop WS server + tell extension to stop.
+- [P] `agent-browser close` - Close browser (aliases: quit, exit)
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+  - Claude feedback: Agree [P]. Today `window.close()` from background often fails. Better: in CLI Remote handler, after sending the close request, also kill `launcher.json#launcher_pid`. Then add `quit`/`exit` aliases.
+- [ ] `agent-browser close --all` - Close all active sessions
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Claude feedback: Suggest [P]-able. Iterate `list_sessions()` and kill each launcher PID + send close to each session pipe. ~30 LOC in cli.rs.
+
+## Get info
+
+- [ ] `agent-browser get text <sel>` - Get text content
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser get html <sel>` - Get innerHTML
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser get value <sel>` - Get input value
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a form fixture that logs input/change/keyboard/focus events; assert field value and event order after the command.
+- [ ] `agent-browser get attr <sel> <attr>` - Get attribute
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser get title` - Get page title
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Low
+  - Testing: Use a local HTTP fixture, run pire-browser open/launch, then assert status/snapshot/get url output against the expected fixture URL.
+- [ ] `agent-browser get url` - Get current URL
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Low
+  - Testing: Use a local HTTP fixture, run pire-browser open/launch, then assert status/snapshot/get url output against the expected fixture URL.
+- [N] `agent-browser get cdp-url` - Get CDP WebSocket URL
+  - Extension Compatibility: False
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+- [ ] `agent-browser get count <sel>` - Count matching elements
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Low
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser get box <sel>` - Get bounding box
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser get styles <sel>` - Get computed styles
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+
+## Check state
+
+- [ ] `agent-browser is visible <sel>` - Check if visible
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Low
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser is enabled <sel>` - Check if enabled
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Low
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser is checked <sel>` - Check if checked
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Low
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+
+## Find elements
+
+- [P] `agent-browser find role <role> <action> [value]`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [P] `agent-browser find text <text> <action>`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [P] `agent-browser find label <label> <action> [value]`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [P] `agent-browser find placeholder <ph> <action> [value]`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser find alt <text> <action>`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser find title <text> <action>`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [P] `agent-browser find testid <id> <action> [value]`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser find first <sel> <action> [value]`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser find last <sel> <action> [value]`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser find nth <n> <sel> <action> [value]`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [F] `agent-browser find role button click --name "Submit"`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [F] `agent-browser find label "Email" fill "test@test.com"`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser find alt "Logo" click`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser find first ".item" click`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser find last ".item" text`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser find nth 2 ".card" hover`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [F] --name <name> -- filter role by accessible name
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] --exact -- require exact text match
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+
+## Wait
+
+- [ ] `agent-browser wait <selector>` - Wait for element
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [P] `agent-browser wait <ms>` - Wait for time
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Use fixtures with delayed DOM insertion, delayed text, URL changes, load events, hidden states, and downloads; assert timeout and success cases.
+- [ ] `agent-browser wait --text "Welcome"` - Wait for text (substring match)
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use fixtures with delayed DOM insertion, delayed text, URL changes, load events, hidden states, and downloads; assert timeout and success cases.
+- [ ] `agent-browser wait --url "**/dash"` - Wait for URL pattern
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Use fixtures with delayed DOM insertion, delayed text, URL changes, load events, hidden states, and downloads; assert timeout and success cases.
+- [P] `agent-browser wait --load networkidle` - Wait for load state
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: High
+  - Testing: Use fixtures with delayed DOM insertion, delayed text, URL changes, load events, hidden states, and downloads; assert timeout and success cases.
+- [ ] `agent-browser wait --fn "condition"` - Wait for JS condition
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use fixtures with delayed DOM insertion, delayed text, URL changes, load events, hidden states, and downloads; assert timeout and success cases.
+- [ ] `agent-browser wait --download [path]` - Wait for download
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
+- [ ] `agent-browser wait --fn "!document.body.innerText.includes('Loading...')"` - Wait for text to disappear
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use fixtures with delayed DOM insertion, delayed text, URL changes, load events, hidden states, and downloads; assert timeout and success cases.
+- [ ] `agent-browser wait "#spinner" --state hidden` - Wait for element to disappear
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use fixtures with delayed DOM insertion, delayed text, URL changes, load events, hidden states, and downloads; assert timeout and success cases.
+
+## Downloads
+
+- [ ] `agent-browser download <sel> <path>` - Click element to trigger download
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
+- [ ] `agent-browser wait --download [path]` - Wait for any download to complete
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
+
+## Mouse
+
+- [ ] `agent-browser mouse move <x> <y>` - Move mouse
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a pointer-event fixture that records mouse/pointer/wheel events and coordinates; assert the expected event log.
+- [ ] `agent-browser mouse down [button]` - Press button
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a pointer-event fixture that records mouse/pointer/wheel events and coordinates; assert the expected event log.
+- [ ] `agent-browser mouse up [button]` - Release button
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a pointer-event fixture that records mouse/pointer/wheel events and coordinates; assert the expected event log.
+- [ ] `agent-browser mouse wheel <dy> [dx]` - Scroll wheel
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a pointer-event fixture that records mouse/pointer/wheel events and coordinates; assert the expected event log.
+
+## Clipboard
+
+- [ ] `agent-browser clipboard read` - Read text from clipboard
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use native-host clipboard helpers plus a paste-target fixture; assert read/write/copy/paste round trips without leaking stale clipboard data.
+- [ ] `agent-browser clipboard write "Hello, World!"` - Write text to clipboard
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use native-host clipboard helpers plus a paste-target fixture; assert read/write/copy/paste round trips without leaking stale clipboard data.
+- [ ] `agent-browser clipboard copy` - Copy current selection (Ctrl+C)
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use native-host clipboard helpers plus a paste-target fixture; assert read/write/copy/paste round trips without leaking stale clipboard data.
+- [ ] `agent-browser clipboard paste` - Paste from clipboard (Ctrl+V)
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use native-host clipboard helpers plus a paste-target fixture; assert read/write/copy/paste round trips without leaking stale clipboard data.
+
+## Settings
+
+- [ ] `agent-browser set viewport <w> <h> [scale]` - Set viewport size (scale for retina, e.g. 2)
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a fixture that reports viewport, device hints, geolocation, media queries, locale, and timezone; assert values before and after settings commands.
+- [ ] `agent-browser set device <name>` - Emulate device ("iPhone 14")
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a fixture that reports viewport, device hints, geolocation, media queries, locale, and timezone; assert values before and after settings commands.
+- [ ] `agent-browser set geo <lat> <lng>` - Set geolocation
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a fixture that reports viewport, device hints, geolocation, media queries, locale, and timezone; assert values before and after settings commands.
+- [ ] `agent-browser set offline [on|off]` - Toggle offline mode
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser set headers <json>` - Extra HTTP headers
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser set credentials <u> <p>` - HTTP basic auth
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] `agent-browser set media [dark|light]` - Emulate color scheme (persists for session)
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser --color-scheme dark open https://example.com`
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use a fixture that reports viewport, device hints, geolocation, media queries, locale, and timezone; assert values before and after settings commands.
+
+## Cookies & storage
+
+- [ ] `agent-browser cookies` - Get all cookies
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser cookies set <name> <val>` - Set cookie
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser cookies clear` - Clear cookies
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser storage local` - Get all localStorage
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser storage local <key>` - Get specific key
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a fixture that sets cookies, localStorage, sessionStorage, and IndexedDB; assert CLI export/import/clear behavior through JSON output.
+- [ ] `agent-browser storage local set <k> <v>` - Set value
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a fixture that sets cookies, localStorage, sessionStorage, and IndexedDB; assert CLI export/import/clear behavior through JSON output.
+- [ ] `agent-browser storage local clear` - Clear all
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a fixture that sets cookies, localStorage, sessionStorage, and IndexedDB; assert CLI export/import/clear behavior through JSON output.
+- [ ] `agent-browser storage session` - Same for sessionStorage
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+
+## Network
+
+- [ ] `agent-browser network route <url>` - Intercept requests
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network route <url> --abort` - Block requests
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network route <url> --body <json>` - Mock response
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network route '*' --abort --resource-type script` - Block scripts only
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network unroute [url]` - Remove routes
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network requests` - View tracked requests
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network requests --clear` - Clear request log
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network requests --filter <pat>` - Filter by URL pattern
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network requests --type xhr,fetch` - Filter by resource type
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network requests --method POST` - Filter by HTTP method
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network requests --status 2xx` - Filter by status (200, 2xx, 400-499)
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network request <requestId>` - View full request/response detail
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network har start` - Start HAR recording
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser network har stop [output.har]` - Stop and save HAR (temp path if omitted)
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+
+## Tabs & frames
+
+- [P] `agent-browser tab` - List tabs (each row shows tabId and label)
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [P] `agent-browser tab new [url]` - New tab
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Low
+  - Testing: Open multiple fixture tabs with labels, select/close/reorder them, then assert stable tN ids, active tab preservation, and list output.
+- [P] `agent-browser tab new --label docs [url]` - New tab with a user-assigned label
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Low
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [P] `agent-browser tab <t<N>|label>` - Switch to a tab by id or label
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [P] `agent-browser tab close [t<N>|label]` - Close a tab (defaults to active)
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser window new` - Open new browser window
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser frame <sel>` - Switch to iframe by CSS selector
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: High
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser frame @e3` - Switch to iframe by element ref
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: High
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser frame main` - Back to main frame
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Serve same-origin and cross-origin iframe fixtures; assert snapshot inclusion, frame targeting, and graceful opaque-frame errors.
+
+## Stable tab ids and labels
+
+- [P] `agent-browser tab new --label docs https://docs.example.com`
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [P] `agent-browser tab docs` - switch to the docs tab
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Open multiple fixture tabs with labels, select/close/reorder them, then assert stable tN ids, active tab preservation, and list output.
+- [ ] `agent-browser snapshot` - populate refs for docs
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [F] `agent-browser click @e3` - click uses docs's refs
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Add a fixture element that records click events in the DOM; run the command through the smoke harness and assert the recorded marker.
+- [P] `agent-browser tab close docs` - close by label
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [P] `agent-browser tab docs` - switch first
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser snapshot` - refs for docs
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [F] `agent-browser click @e3` - uses docs's refs
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Add a fixture element that records click events in the DOM; run the command through the smoke harness and assert the recorded marker.
+
+## Iframe support
+
+- [F] `agent-browser snapshot -i`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [F] `agent-browser fill @e4 "4111111111111111"`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use a form fixture that logs input/change/keyboard/focus events; assert field value and event order after the command.
+- [F] `agent-browser click @e5`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Add a fixture element that records click events in the DOM; run the command through the smoke harness and assert the recorded marker.
+- [ ] `agent-browser frame @e3`
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Serve same-origin and cross-origin iframe fixtures; assert snapshot inclusion, frame targeting, and graceful opaque-frame errors.
+- [ ] `agent-browser snapshot -i` - Only elements inside that iframe
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: High
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser frame main` - Return to main frame
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Serve same-origin and cross-origin iframe fixtures; assert snapshot inclusion, frame targeting, and graceful opaque-frame errors.
+
+## Dialogs
+
+- [P] `agent-browser dialog accept [text]` - Accept dialog (with optional prompt text)
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a fixture that opens alert/confirm/prompt/beforeunload dialogs; assert captured dialog metadata and configured accept/dismiss behavior.
+- [P] `agent-browser dialog dismiss` - Dismiss dialog
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a fixture that opens alert/confirm/prompt/beforeunload dialogs; assert captured dialog metadata and configured accept/dismiss behavior.
+- [P] `agent-browser dialog status` - Check if a dialog is currently open
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Use a fixture that opens alert/confirm/prompt/beforeunload dialogs; assert captured dialog metadata and configured accept/dismiss behavior.
+
+## Streaming
+
+- [ ] `agent-browser stream enable` - Start runtime WebSocket streaming on an auto-selected port
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+- [ ] `agent-browser stream enable --port 9223` - Bind a specific localhost port
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+- [ ] `agent-browser stream status` - Show enabled state, port, browser connection, screencasting
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+- [ ] `agent-browser stream disable` - Stop runtime streaming and remove the .stream metadata file
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+
+## Debug
+
+- [N] `agent-browser trace start [path]` - Start trace
+  - Extension Compatibility: False
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add a negative Firefox-backend test for unsupported profiling/tracing; cover any future profiler backend with a deterministic slow-page trace fixture.
+- [N] `agent-browser trace stop [path]` - Stop and save trace
+  - Extension Compatibility: False
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add a negative Firefox-backend test for unsupported profiling/tracing; cover any future profiler backend with a deterministic slow-page trace fixture.
+- [N] `agent-browser profiler start` - Start Chrome DevTools profiling
+  - Extension Compatibility: False
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add a negative Firefox-backend test for unsupported profiling/tracing; cover any future profiler backend with a deterministic slow-page trace fixture.
+- [N] `agent-browser profiler stop [path]` - Stop and save profile (.json)
+  - Extension Compatibility: False
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add a negative Firefox-backend test for unsupported profiling/tracing; cover any future profiler backend with a deterministic slow-page trace fixture.
+- [ ] `agent-browser record start <path>` - Start video recording (WebM)
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser record stop` - Stop and save video
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser record restart <path>` - Stop current and start new recording
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser console` - View console messages
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [N] `agent-browser console --json` - JSON output with raw CDP args
+  - Extension Compatibility: False
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+- [ ] `agent-browser console --clear` - Clear console log
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser errors` - View page errors
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser errors --clear` - Clear error log
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser highlight <sel>` - Highlight element
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [N] `agent-browser inspect` - Open Chrome DevTools for the active page
+  - Extension Compatibility: False
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+
+## Auth vault
+
+- [ ] `agent-browser auth save <name> [opts]` - Save auth profile
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] `agent-browser auth login <name>` - Login using saved credentials
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] `agent-browser auth list` - List saved profiles (names and URLs only)
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Low
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] `agent-browser auth show <name>` - Show profile metadata (no passwords)
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] `agent-browser auth delete <name>` - Delete a saved profile
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] `agent-browser auth login github`
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] `agent-browser auth list`
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] --url <url> -- login page URL (required)
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Low
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] --username <user> -- username (required)
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] --password <pass> -- password (required unless --password-stdin)
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] --password-stdin -- read password from stdin (recommended to avoid shell history exposure)
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] --username-selector <sel> -- custom CSS selector for username field
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] --password-selector <sel> -- custom CSS selector for password field
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] --submit-selector <sel> -- custom CSS selector for submit button
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Add a fixture element that records click events in the DOM; run the command through the smoke harness and assert the recorded marker.
+
+## Confirmation
+
+- [ ] `agent-browser confirm <confirmation-id>` - Approve a pending action
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: High
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] `agent-browser deny <confirmation-id>` - Deny a pending action
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: High
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+- [ ] `agent-browser --confirm-actions eval,download eval "document.title"`
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Low
+  - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
+- [ ] `agent-browser confirm c_8f3a1234`
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+
+## State management
+
+- [ ] `agent-browser state save <path>` - Save auth state to file
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser state load <path>` - Load auth state from file
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser state list` - List saved state files
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser state show <file>` - Show state summary
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser state rename <old> <new>` - Rename state file
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser state clear [name]` - Clear states for session name
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser state clear --all` - Clear all saved states
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser state clean --older-than <days>` - Delete old states
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+
+## Sessions
+
+- [ ] `agent-browser session` - Show current session name
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser session list` - List active sessions
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+
+## Chrome profiles
+
+- [N] `agent-browser profiles` - List available Chrome profiles
+  - Extension Compatibility: False
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add backend-selection tests that this is unavailable for Firefox extension sessions; validate only under the matching engine backend.
+- [ ] `agent-browser profiles --json` - List profiles as JSON
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [P] `agent-browser --profile Default open https://gmail.com` - Reuse a profile's login state
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+
+## Dashboard
+
+- [ ] `agent-browser dashboard [start]` - Start the dashboard server (default port: 4848)
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: High
+  - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+- [ ] `agent-browser dashboard start --port <n>` - Start on a specific port
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: High
+  - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+- [ ] `agent-browser dashboard stop` - Stop the dashboard server
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: High
+  - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+
+## Doctor
+
+- [P] `agent-browser doctor` - Full diagnosis (env, Chrome, daemons, config, providers, network, launch test)
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [P] `agent-browser doctor --offline --quick` - Local-only, fastest
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [P] `agent-browser doctor --fix` - Also run destructive repairs (reinstall Chrome, purge old state, ...)
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [P] `agent-browser doctor --json` - Structured JSON output for agents
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+
+## Chat
+
+- [ ] `agent-browser chat "open google.com and search for cats"` - Single-shot instruction
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser chat` - Interactive REPL (type quit to exit)
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser -q chat "summarize this page"` - Quiet: text only, no tool calls shown
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser -v chat "fill in the login form"` - Verbose: show commands and their output
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser --model openai/gpt-4o chat "take a screenshot"` - Override the default AI model
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+- [ ] `agent-browser --json chat "open example.com"` - Structured JSON output
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+
+## Navigation
+
+- [ ] `agent-browser back` - Go back
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser forward` - Go forward
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser reload` - Reload page
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser pushstate <url>` - SPA client-side nav; auto-detects window.next.router.push,
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+
+## Pre-navigation setup
+
+- [ ] `agent-browser batch \`
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+
+## React / Web Vitals
+
+- [ ] `agent-browser open --enable react-devtools <url>` - Launch with React hook installed
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Use a local HTTP fixture, run pire-browser open/launch, then assert status/snapshot/get url output against the expected fixture URL.
+- [ ] `agent-browser react tree` - Full component tree
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser react inspect <fiberId>` - Inspect one component
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser react renders start` - Begin fiber render recording
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser react renders stop [--json]` - Stop + print profile
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+- [ ] `agent-browser react suspense [--only-dynamic] [--json]` - Suspense boundaries + classifier
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+- [ ] `agent-browser vitals [url] [--json]` - LCP/CLS/TTFB/FCP/INP + hydration
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Low
+  - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+
+## Init scripts
+
+- [ ] `agent-browser open --init-script <path>` - Register before first navigation (repeatable)
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Low
+  - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+- [ ] `agent-browser addinitscript <js>` - Register at runtime (returns identifier)
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser removeinitscript <identifier>` - Remove a previously registered init script
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+
+## Batch execution
+
+- [ ] `agent-browser batch "open https://example.com" "snapshot -i" "screenshot"`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+- [ ] `agent-browser batch --bail "open https://example.com" "click @e1" "screenshot"`
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
+  - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+- [ ] Support documented usage: `["open", "https://example.com"],`
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] Support documented usage: `["snapshot", "-i"],`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] Support documented usage: `["click", "@e1"],`
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] Support documented usage: `["screenshot", "result.png"]`
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+
+## Command chaining
+
+- [ ] `agent-browser open example.com && agent-browser wait --load networkidle && agent-browser snapshot -i`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: High
+  - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+- [ ] `agent-browser fill @e1 "user@example.com" && agent-browser fill @e2 "pass" && agent-browser click @e3`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Use a form fixture that logs input/change/keyboard/focus events; assert field value and event order after the command.
+- [ ] `agent-browser open example.com && agent-browser wait --load networkidle && agent-browser screenshot page.png`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: High
+  - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+
+## Local files
+
+- [ ] `agent-browser --allow-file-access open file:///path/to/document.pdf`
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: High
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [ ] `agent-browser --allow-file-access open file:///path/to/page.html`
+  - Extension Compatibility: True
+  - Priority: Low
+  - Complexity: Medium
+  - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+- [F] `agent-browser screenshot output.png`
+  - Extension Compatibility: True
+  - Priority: High
+  - Complexity: Medium
+  - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.

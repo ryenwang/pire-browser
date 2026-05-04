@@ -1,0 +1,39 @@
+{
+  "manifest_version": 2,
+  "name": "pire-browser",
+  "version": "0.1.0",
+  "description": "Local Firefox automation bridge for Pi through Native Messaging.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "pire-browser@pi.local",
+      "strict_min_version": "115.0"
+    }
+  },
+  "applications": {
+    "gecko": {
+      "id": "pire-browser@pi.local",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": [
+    "<all_urls>",
+    "nativeMessaging",
+    "storage",
+    "tabs",
+    "windows",
+    "webNavigation"
+  ],
+  "background": {
+    "scripts": ["dist/background.js"],
+    "persistent": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/content.js"],
+      "all_frames": true,
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": ["dist/dialog-shim.js"]
+}

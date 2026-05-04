@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pire-browser fixture</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 32px;
+        max-width: 720px;
+      }
+      label,
+      input,
+      button,
+      textarea,
+      select {
+        display: block;
+        margin: 8px 0;
+      }
+      #done {
+        margin-top: 16px;
+        color: #146c2e;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>pire-browser fixture</h1>
+    <label for="email">Email</label>
+    <input id="email" type="email" placeholder="hello@example.com" />
+
+    <label for="notes">Notes</label>
+    <textarea id="notes"></textarea>
+
+    <button type="button" aria-label="Submit" data-testid="submit-button">Submit</button>
+    <div id="done" hidden>Submitted</div>
+
+    <script>
+      document.querySelector("button").addEventListener("click", () => {
+        document.querySelector("#done").hidden = false;
+      });
+    </script>
+  </body>
+</html>
