@@ -37,7 +37,10 @@ try {
     Copy-Item -LiteralPath "target\release\pire-browser.exe" -Destination $packageRoot
     Copy-Item -LiteralPath "target\release\pire-browser-host.exe" -Destination $packageRoot
     Copy-Item -LiteralPath "README.md" -Destination $packageRoot
+    Copy-Item -LiteralPath "package.json" -Destination $packageRoot
     Copy-Item -LiteralPath "scripts\install-windows.ps1" -Destination (Join-Path $packageRoot "install-windows.ps1")
+    Copy-Item -LiteralPath "scripts\install-pi-windows.ps1" -Destination (Join-Path $packageRoot "install-pi-windows.ps1")
+    Copy-Item -LiteralPath "pi" -Destination (Join-Path $packageRoot "pi") -Recurse
 
     $extensionDest = Join-Path $packageRoot "extension"
     New-Item -ItemType Directory -Force -Path (Join-Path $extensionDest "dist") | Out-Null
@@ -61,6 +64,10 @@ After install, open a new PowerShell window and run:
 
   pire-browser status
   pire-browser launch
+
+Install Pi integration after installing pire-browser:
+
+  .\install-pi-windows.ps1
 "@ | Set-Content -LiteralPath (Join-Path $packageRoot "PACKAGE-README.txt") -Encoding UTF8
 
     Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $zipPath -Force

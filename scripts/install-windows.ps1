@@ -60,7 +60,10 @@ New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 $items = @(
     "pire-browser.exe",
     "pire-browser-host.exe",
-    "extension"
+    "extension",
+    "pi",
+    "package.json",
+    "install-pi-windows.ps1"
 )
 
 foreach ($item in $items) {
@@ -102,3 +105,4 @@ if ($NoPath) {
 } else {
     Write-Host "Open a new PowerShell window, then run: pire-browser status"
 }
+Write-Host "To use this from Pi, run: $installDir\install-pi-windows.ps1"
