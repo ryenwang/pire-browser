@@ -9,6 +9,28 @@ $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $distDir = Join-Path $repoRoot "dist"
 $packageRoot = Join-Path $distDir $PackageName
 $zipPath = Join-Path $distDir "$PackageName.zip"
+$targetTriple = "x86_64-pc-windows-msvc"
+$targetReleaseDir = Join-Path $repoRoot "target\$targetTriple\release"
+
+function Assert-PeMachineX64 {
+    param([string]$Path)
+
+    $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $Path))
+    if ($bytes.Length -lt 0x40 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
+        throw "$Path is not a PE executable"
+    }
+    $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+    if ($peOffset + 6 -gt $bytes.Length) {
+        throw "$Path has an invalid PE header"
+    }
+    if ($bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset + 1] -ne 0x45) {
+        throw "$Path has an invalid PE signature"
+    }
+    $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+    if ($machine -ne 0x8664) {
+        throw "$Path is not x86_64/AMD64. PE machine type: 0x$($machine.ToString('x4'))"
+    }
+}
 
 function Remove-WithinDist {
     param([string]$Path)
@@ -27,15 +49,20 @@ Push-Location $repoRoot
 try {
     npm --prefix extension install
     npm --prefix extension run build
-    cargo build --release
+    rustup target add $targetTriple
+    cargo build --release --target $targetTriple
 
     New-Item -ItemType Directory -Force -Path $distDir | Out-Null
     Remove-WithinDist -Path $packageRoot
     Remove-WithinDist -Path $zipPath
 
     New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
-    Copy-Item -LiteralPath "target\release\pire-browser.exe" -Destination $packageRoot
-    Copy-Item -LiteralPath "target\release\pire-browser-host.exe" -Destination $packageRoot
+    $cliExe = Join-Path $targetReleaseDir "pire-browser.exe"
+    $hostExe = Join-Path $targetReleaseDir "pire-browser-host.exe"
+    Assert-PeMachineX64 -Path $cliExe
+    Assert-PeMachineX64 -Path $hostExe
+    Copy-Item -LiteralPath $cliExe -Destination $packageRoot
+    Copy-Item -LiteralPath $hostExe -Destination $packageRoot
     Copy-Item -LiteralPath "README.md" -Destination $packageRoot
     Copy-Item -LiteralPath "package.json" -Destination $packageRoot
     Copy-Item -LiteralPath "scripts\install-windows.ps1" -Destination (Join-Path $packageRoot "install-windows.ps1")

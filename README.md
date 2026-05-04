@@ -36,7 +36,7 @@ Assumptions:
 Install the private Pi package with one command:
 
 ```powershell
-pi install git:git@github.com:ryenwang/pire-browser@v0.1.2
+pi install git:git@github.com:ryenwang/pire-browser@v0.1.3
 ```
 
 The package installs the `pire-browser` Pi tool and runs the Windows setup step automatically. That setup registers the Firefox Native Messaging host for the current Windows user.
@@ -45,7 +45,7 @@ If Firefox is installed somewhere unusual:
 
 ```powershell
 $env:PIRE_BROWSER_FIREFOX_PATH = "D:\Apps\Mozilla Firefox\firefox.exe"
-pi install git:git@github.com:ryenwang/pire-browser@v0.1.2
+pi install git:git@github.com:ryenwang/pire-browser@v0.1.3
 ```
 
 Start Pi:
@@ -76,7 +76,7 @@ From PowerShell on the target PC:
 ```powershell
 gh auth login
 New-Item -ItemType Directory -Force "$env:TEMP\pire-browser-install" | Out-Null
-gh release download v0.1.2 --repo ryenwang/pire-browser --pattern pire-browser-windows-x64.zip --dir "$env:TEMP\pire-browser-install"
+gh release download v0.1.3 --repo ryenwang/pire-browser --pattern pire-browser-windows-x64.zip --dir "$env:TEMP\pire-browser-install"
 Expand-Archive -Force "$env:TEMP\pire-browser-install\pire-browser-windows-x64.zip" "$env:TEMP\pire-browser-install\pire-browser-windows-x64"
 Set-Location "$env:TEMP\pire-browser-install\pire-browser-windows-x64"
 .\install-windows.ps1
