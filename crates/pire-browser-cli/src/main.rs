@@ -65,8 +65,24 @@ fn run() -> Result<()> {
             json,
             args,
         } => {
-            let request = build_command_request(args);
-            let response = send_to_session(session.as_deref(), &request)?;
+            let request = build_command_request(args.clone());
+            let response = match send_to_session(session.as_deref(), &request) {
+                Ok(response) => response,
+                Err(err)
+                    if session.is_none()
+                        && can_auto_launch_for_remote_args(&args)
+                        && is_no_live_session_error(&err) =>
+                {
+                    let result = launch_firefox(LaunchOptions {
+                        profile: "Default".to_string(),
+                        url: launch_url_for_remote_args(&args),
+                        firefox_path: None,
+                    })?;
+                    eprintln!("{}", launch_result_text(&result));
+                    send_to_session(None, &request)?
+                }
+                Err(err) => return Err(err),
+            };
             if !response.ok {
                 let err = response
                     .error
@@ -89,11 +105,75 @@ fn send_to_session(session_id: Option<&str>, request: &RpcRequest) -> Result<Rpc
     Ok(serde_json::from_str(&response)?)
 }
 
+fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
+    matches!(
+        args.first().map(String::as_str),
+        Some(
+            "open"
+                | "snapshot"
+                | "find"
+                | "click"
+                | "fill"
+                | "press"
+                | "scroll"
+                | "wait"
+                | "screenshot"
+                | "tabs"
+        )
+    )
+}
+
+fn launch_url_for_remote_args(args: &[String]) -> Option<String> {
+    match args.first().map(String::as_str) {
+        Some("open") => args
+            .get(1)
+            .filter(|value| !value.starts_with("--"))
+            .cloned(),
+        _ => None,
+    }
+}
+
+fn is_no_live_session_error(err: &anyhow::Error) -> bool {
+    err.to_string()
+        .contains("extension_disconnected: no live Firefox extension session found")
+}
+
 #[allow(dead_code)]
 fn host_status_request() -> RpcRequest {
     RpcRequest {
         id: Uuid::new_v4().to_string(),
         method: "host_status".into(),
         params: json!({}),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(values: &[&str]) -> Vec<String> {
+        values.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn auto_launches_for_browser_control_commands() {
+        assert!(can_auto_launch_for_remote_args(&s(&[
+            "open",
+            "https://example.com"
+        ])));
+        assert!(can_auto_launch_for_remote_args(&s(&["snapshot", "-i"])));
+        assert!(can_auto_launch_for_remote_args(&s(&["tabs", "list"])));
+        assert!(!can_auto_launch_for_remote_args(&s(&["close"])));
+        assert!(!can_auto_launch_for_remote_args(&s(&["unknown"])));
+    }
+
+    #[test]
+    fn derives_launch_url_from_open_command() {
+        assert_eq!(
+            launch_url_for_remote_args(&s(&["open", "https://example.com", "--label", "docs"])),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(launch_url_for_remote_args(&s(&["snapshot"])), None);
+        assert_eq!(launch_url_for_remote_args(&s(&["open", "--new"])), None);
     }
 }

@@ -1,6 +1,6 @@
 {
   "name": "pire-browser",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Pi tool and Firefox extension bridge for local Firefox automation",
   "keywords": ["pi-package", "firefox", "browser-automation"],
   "license": "MIT",

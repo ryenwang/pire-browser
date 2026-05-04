@@ -9,7 +9,7 @@ import { Type, type Static } from "typebox";
 const PireBrowserParams = Type.Object({
   command: Type.String({
     description:
-      "pire-browser command string, for example: open https://example.com, snapshot -i, find label Email fill hello@example.com",
+      "pire-browser command string, for example: open https://example.com, snapshot -i, find label Email fill hello@example.com. The CLI auto-launches Firefox for browser commands when no live session exists.",
   }),
 });
 
@@ -22,6 +22,13 @@ export default function (pi: ExtensionAPI) {
     label: "pire-browser",
     description:
       "Control the user's Firefox browser through the pire-browser Firefox extension and native host.",
+    promptSnippet:
+      "pire-browser: control the user's Firefox browser with commands such as open <url>, snapshot -i, find, click, fill, press, scroll, wait, screenshot, and tabs list/select/close.",
+    promptGuidelines: [
+      "Use pire-browser when the user asks to open, inspect, or interact with web pages in Firefox.",
+      "Do not claim a pire-browser action succeeded until the pire-browser tool result confirms success.",
+      "If pire-browser returns an error, report the error and the next corrective step instead of saying the page was opened or changed.",
+    ],
     parameters: PireBrowserParams,
 
     async execute(_toolCallId, params: PireBrowserInput, signal) {
