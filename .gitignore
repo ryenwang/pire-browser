@@ -1,5 +1,6 @@
 target/
 target-codex*/
+dist/
 node_modules/
 extension/node_modules/
 extension/dist/

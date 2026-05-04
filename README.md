@@ -25,6 +25,54 @@ pire-browser tabs select t1
 pire-browser tabs close t1
 ```
 
+## Install on Windows 11 x64
+
+The private GitHub release includes a Windows x64 package with:
+
+- `pire-browser.exe`
+- `pire-browser-host.exe`
+- the prebuilt Firefox extension files
+- `install-windows.ps1`
+
+Prerequisites on the target PC:
+
+- Windows 11 x64
+- Firefox
+- Node.js LTS, which provides `npx` for launching Firefox through `web-ext`
+- Access to the private `ryenwang/pire-browser` GitHub repository
+
+From PowerShell on the target PC:
+
+```powershell
+gh auth login
+New-Item -ItemType Directory -Force "$env:TEMP\pire-browser-install" | Out-Null
+gh release download v0.1.0 --repo ryenwang/pire-browser --pattern pire-browser-windows-x64.zip --dir "$env:TEMP\pire-browser-install"
+Expand-Archive -Force "$env:TEMP\pire-browser-install\pire-browser-windows-x64.zip" "$env:TEMP\pire-browser-install\pire-browser-windows-x64"
+Set-Location "$env:TEMP\pire-browser-install\pire-browser-windows-x64"
+.\install-windows.ps1
+```
+
+The installer copies the app to:
+
+```text
+%LOCALAPPDATA%\Programs\pire-browser
+```
+
+It also registers the Firefox Native Messaging host for the current Windows user and adds the install directory to the current user's `Path`. Open a new PowerShell window after install:
+
+```powershell
+pire-browser status
+pire-browser launch
+pire-browser open https://example.com
+pire-browser snapshot -i
+```
+
+If Firefox is installed somewhere unusual:
+
+```powershell
+.\install-windows.ps1 -FirefoxPath "D:\Apps\Mozilla Firefox\firefox.exe"
+```
+
 ## Development
 
 ```bash
@@ -74,6 +122,18 @@ Use a custom Firefox path or fixture port:
 
 ```powershell
 .\scripts\smoke.ps1 -Port 8765 -FirefoxPath "C:\Program Files\Mozilla Firefox\firefox.exe"
+```
+
+Create the Windows release package locally:
+
+```powershell
+.\scripts\package-windows.ps1
+```
+
+The zip is written to:
+
+```text
+dist\pire-browser-windows-x64.zip
 ```
 
 Check setup health without launching a browser:
