@@ -1,10 +1,10 @@
-import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type, type Static } from "typebox";
+import { run, splitCommand, type FinishReason } from "./pire-browser-runner";
 
 const PireBrowserParams = Type.Object({
   command: Type.String({
@@ -19,47 +19,63 @@ export default function (pi: ExtensionAPI) {
   const register = (name: "pire-browser" | "pire_browser") =>
     pi.registerTool({
       name,
-    label: "pire-browser",
-    description:
-      "Control the user's Firefox browser through the pire-browser Firefox extension and native host.",
-    promptSnippet:
-      "pire-browser: control the user's Firefox browser with commands such as open <url>, snapshot -i, find, click, fill, press, scroll, wait, screenshot, and tabs list/select/close.",
-    promptGuidelines: [
-      "Use pire-browser when the user asks to open, inspect, or interact with web pages in Firefox.",
-      "Do not claim a pire-browser action succeeded until the pire-browser tool result confirms success.",
-      "If pire-browser returns an error, report the error and the next corrective step instead of saying the page was opened or changed.",
-    ],
-    parameters: PireBrowserParams,
+      label: "pire-browser",
+      description:
+        "Control the user's Firefox browser through the pire-browser Firefox extension and native host.",
+      promptSnippet:
+        "pire-browser: control the user's Firefox browser with commands such as open <url>, snapshot -i, find, click, fill, press, scroll, wait, screenshot, and tabs list/select/close.",
+      promptGuidelines: [
+        "Use pire-browser when the user asks to open, inspect, or interact with web pages in Firefox.",
+        "It is valid for the first browser action to be `pire-browser open <url>`; the CLI auto-launches Firefox when no live session exists.",
+        "After a successful or recovered open/goto/navigate result, use `pire-browser snapshot -i` to inspect the page before interacting with it.",
+        "Prefer agent-browser-compatible command shapes: `tab`, `get`, `is`, `type`, `find role ...`, CSS selectors, and fresh `@eN` refs from `snapshot -i`.",
+        "For textboxes that have no visible label/name/placeholder, use either the fresh snapshot ref or `find role textbox fill <text>`; do not invent old refs after a new snapshot.",
+        "Do not claim a pire-browser action succeeded until the pire-browser tool result confirms success.",
+        "If pire-browser returns an error, report the error and the next corrective step instead of saying the page was opened or changed.",
+      ],
+      parameters: PireBrowserParams,
 
-    async execute(_toolCallId, params: PireBrowserInput, signal) {
-      const executable = resolveExecutable();
-      const args = splitCommand(params.command);
-      const result = await run(executable, args, signal);
-      return {
-        content: [{ type: "text", text: result.stdout || result.stderr }],
-        details: {
-          command: params.command,
-          exitCode: result.exitCode,
-          stderr: result.stderr,
-        },
-      };
-    },
+      async execute(_toolCallId, params: PireBrowserInput, signal) {
+        const executable = resolveExecutable();
+        const args = splitCommand(params.command);
+        const result = await run(executable, args, signal);
+        return {
+          content: [
+            {
+              type: "text",
+              text: result.stdout || result.stderr || "pire-browser command completed with no output",
+            },
+          ],
+          details: {
+            command: params.command,
+            exitCode: result.exitCode,
+            finishReason: result.finishReason,
+            timedOut: result.timedOut,
+            recovered: result.recovered,
+            stderr: result.stderr,
+            probe: result.probe,
+          },
+        };
+      },
 
-    renderCall(args: PireBrowserInput, theme) {
-      return new Text(
-        `${theme.fg("toolTitle", theme.bold("pire-browser "))}${theme.fg("muted", args.command)}`,
-        0,
-        0
-      );
-    },
+      renderCall(args: PireBrowserInput, theme) {
+        return new Text(
+          `${theme.fg("toolTitle", theme.bold("pire-browser "))}${theme.fg("muted", args.command)}`,
+          0,
+          0
+        );
+      },
 
-    renderResult(result, _options, theme) {
-      const text = result.content[0];
-      const value = text?.type === "text" ? text.text : "";
-      const details = result.details as { exitCode?: number } | undefined;
-      const color = details?.exitCode && details.exitCode !== 0 ? "error" : "muted";
-      return new Text(theme.fg(color, value), 0, 0);
-    },
+      renderResult(result, _options, theme) {
+        const text = result.content[0];
+        const value = text?.type === "text" ? text.text : "";
+        const details = result.details as { exitCode?: number; finishReason?: FinishReason } | undefined;
+        const color =
+          (details?.exitCode && details.exitCode !== 0) || details?.finishReason === "timeout"
+            ? "error"
+            : "muted";
+        return new Text(theme.fg(color, value), 0, 0);
+      },
     });
 
   try {
@@ -81,65 +97,7 @@ function resolveExecutable(): string {
     join(process.cwd(), "target", "release", `pire-browser${suffix}`),
     `pire-browser${suffix}`,
   ];
-  return candidates.find((candidate) => candidate === `pire-browser${suffix}` || existsSync(candidate)) ?? candidates[0];
-}
-
-function splitCommand(command: string): string[] {
-  const args: string[] = [];
-  let current = "";
-  let quote: "'" | '"' | undefined;
-  let escaping = false;
-  for (const char of command) {
-    if (escaping) {
-      current += char;
-      escaping = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaping = true;
-      continue;
-    }
-    if (quote) {
-      if (char === quote) quote = undefined;
-      else current += char;
-      continue;
-    }
-    if (char === "'" || char === '"') {
-      quote = char;
-      continue;
-    }
-    if (/\s/.test(char)) {
-      if (current) {
-        args.push(current);
-        current = "";
-      }
-      continue;
-    }
-    current += char;
-  }
-  if (current) args.push(current);
-  return args;
-}
-
-function run(
-  executable: string,
-  args: string[],
-  signal: AbortSignal
-): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
-  return new Promise((resolvePromise) => {
-    const child = spawn(executable, args, { windowsHide: true });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr?.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    signal.addEventListener("abort", () => child.kill(), { once: true });
-    child.on("close", (exitCode) => resolvePromise({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode }));
-    child.on("error", (error) =>
-      resolvePromise({ stdout, stderr: `${stderr}\n${error.message}`.trim(), exitCode: 1 })
-    );
-  });
+  return (
+    candidates.find((candidate) => candidate === `pire-browser${suffix}` || existsSync(candidate)) ?? candidates[0]
+  );
 }

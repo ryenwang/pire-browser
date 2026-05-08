@@ -121,6 +121,7 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
         .arg("--keep-profile-changes")
         .arg("--no-input")
         .current_dir(extension_source.parent().unwrap_or_else(|| Path::new(".")))
+        .stdin(Stdio::null())
         .stdout(Stdio::from(log))
         .stderr(Stdio::from(log_err));
 
