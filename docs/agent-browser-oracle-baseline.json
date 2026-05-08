@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "agentBrowser": {
+    "package": "agent-browser",
+    "version": "0.26.0",
+    "sourceRepo": "https://github.com/vercel-labs/agent-browser",
+    "sourceCommit": "7ada3384e2afb5f3c43d9106389da86d8f807dca",
+    "docsBasis": "agent-browser-snapshot/website and docs/feature-parity/agent-browser",
+    "installTarget": "target/agent-browser-oracle/npm",
+    "installCommand": "npm install --prefix target/agent-browser-oracle/npm agent-browser@0.26.0 --no-save"
+  },
+  "pireBrowser": {
+    "package": "pire-browser",
+    "version": "0.1.4",
+    "preferredExecutableOrder": [
+      "PIRE_BROWSER_EXE",
+      "target/debug/pire-browser.exe",
+      "target/release/pire-browser.exe",
+      "bin/win32-x64/pire-browser.exe"
+    ]
+  },
+  "platformAssumptions": [
+    "Windows 11 x64 is the primary development platform.",
+    "Vanilla agent-browser requires Chrome or Chromium.",
+    "pire-browser requires Firefox plus its native messaging setup.",
+    "Runtime outputs are written below target/agent-browser-oracle/runs and are not tracked."
+  ]
+}

@@ -11,6 +11,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Streaming
 
@@ -19,21 +20,25 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] `agent-browser stream status` - Show streaming state and bound port
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] `agent-browser stream enable --port 9223` - Re-enable on a specific port
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] `agent-browser stream disable` - Stop streaming for the session
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Runtime status response
 
@@ -42,11 +47,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] connected reports whether the daemon currently has a browser attached. screencasting reports whether frames are actively being produced for the stream server.
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Relationship to screencast commands
 
@@ -55,11 +62,14 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [N] The lower-level screencast_start and screencast_stop commands still control explicit CDP screencasts directly. Use them when you want a screencast without the WebSocket runtime server.
-  - Extension Compatibility: True
-  - Priority: Medium
-  - Complexity: Medium
+  - Extension Compatibility: False
+  - Priority: Low
+  - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 review: Mark N. CDP screencast commands are backend-specific; Firefox-compatible streaming should use extension screenshots/video capture instead.
 
 ## WebSocket protocol
 
@@ -68,6 +78,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Frame messages
 
@@ -76,6 +87,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Status messages
 
@@ -84,6 +96,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Input injection
 
@@ -92,6 +105,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Touch events
 
@@ -100,11 +114,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Support documented usage: `{ "x": 200, "y": 200, "id": 1 }`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Programmatic API
 
@@ -113,46 +129,55 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Support documented usage: `const browser = new BrowserManager();`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Support documented usage: `await browser.launch({ headless: true });`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Support documented usage: `await browser.navigate('https://example.com');`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Support documented usage: `await browser.startScreencast((frame) => {`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Support documented usage: `await browser.injectMouseEvent({`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Support documented usage: `await browser.injectKeyboardEvent({`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Support documented usage: `await browser.injectTouchEvent({`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Support documented usage: `await browser.stopScreencast();`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Use cases
 
@@ -161,23 +186,28 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Remote preview - View browser output in a separate UI
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Recording - Capture frames for video generation
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Mobile testing - Inject touch events for mobile emulation
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Accessibility testing - Manual interaction during automated tests
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.

@@ -11,6 +11,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Requirements
 
@@ -19,16 +20,19 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] iOS Simulator runtimes (download via Xcode)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Appium with XCUITest driver
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Setup
 
@@ -37,6 +41,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## List available devices
 
@@ -45,6 +50,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Basic usage
 
@@ -53,31 +59,39 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser -p ios snapshot -i`
+  - Oracle Coverage: covered (snapshot-interactive)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser -p ios tap @e1`
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser -p ios fill @e2 "text"`
+  - Oracle Coverage: covered (fill-ref)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser -p ios screenshot mobile.png`
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser -p ios close`
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Mobile-specific commands
 
@@ -86,26 +100,31 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser -p ios swipe down`
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser -p ios swipe left`
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser -p ios swipe right`
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser -p ios swipe up 500`
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Environment variables
 
@@ -114,26 +133,33 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Support documented usage: `export AGENT_BROWSER_IOS_DEVICE="iPhone 16 Pro"`
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser open https://example.com`
+  - Oracle Coverage: covered (open-fixture)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser snapshot -i`
+  - Oracle Coverage: covered (snapshot-interactive)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser tap @e1`
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Supported devices
 
@@ -142,16 +168,19 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] All iPad models (iPad Pro, iPad Air, iPad mini, etc.)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Multiple iOS versions (17.x, 18.x, etc.)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Real device support
 
@@ -160,6 +189,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## 2. Sign WebDriverAgent (one-time)
 
@@ -168,26 +198,31 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Select the WebDriverAgentRunner target
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Go to Signing & Capabilities
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Select your Team (requires Apple Developer account, free tier works)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Let Xcode manage signing automatically
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## 3. Use with agent-browser
 
@@ -196,11 +231,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser -p ios --device "John's iPhone" open https://example.com`
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Real device notes
 
@@ -209,26 +246,31 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Device must be unlocked and connected via USB
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Slightly slower initial connection than simulator
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Tests against real Safari performance and behavior
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] On first install, go to Settings -> General -> VPN & Device Management to trust the developer certificate
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Performance notes
 
@@ -237,16 +279,19 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Subsequent commands: Fast (simulator stays running)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Close command: Shuts down simulator and Appium server
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## No simulators available
 
@@ -255,6 +300,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Simulator won't boot
 
@@ -263,3 +309,4 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.

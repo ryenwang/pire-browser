@@ -1,0 +1,507 @@
+{
+  "schemaVersion": 2,
+  "cases": [
+    {
+      "id": "open-fixture",
+      "description": "Open the local fixture and verify both tools land on the same URL/title.",
+      "status": "exact",
+      "visibleSafe": true,
+      "compatibilityItems": [{ "id": "open", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/form.html",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "urlContains", "value": "/form.html" },
+            { "type": "titleContains", "value": "pire-browser oracle fixture" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "snapshot-interactive",
+      "description": "Interactive snapshot emits refs and key fixture controls.",
+      "status": "exact",
+      "visibleSafe": true,
+      "compatibilityItems": [{ "id": "snapshot -i", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "snapshot",
+          "command": "snapshot -i",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "stdoutContains", "value": "Submit" },
+            { "type": "stdoutContains", "value": "Email" }
+          ],
+          "captures": [
+            { "name": "email", "source": "stdout", "lineIncludes": ["Email"] },
+            { "name": "submit", "source": "stdout", "lineIncludes": ["Submit"] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fill-ref",
+      "description": "Capture an input ref from snapshot and fill it.",
+      "status": "exact",
+      "visibleSafe": true,
+      "compatibilityItems": [{ "id": "fill @ref", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "snapshot",
+          "command": "snapshot -i",
+          "captures": [{ "name": "email", "source": "stdout", "lineIncludes": ["Email"] }]
+        },
+        {
+          "id": "fill",
+          "command": "fill {{refs.email}} \"ref@example.com\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domValue", "selector": "#email", "value": "ref@example.com" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "click-ref",
+      "description": "Capture a button ref from snapshot and click it.",
+      "status": "exact",
+      "visibleSafe": true,
+      "compatibilityItems": [{ "id": "click @ref", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "snapshot",
+          "command": "snapshot -i",
+          "captures": [{ "name": "submit", "source": "stdout", "lineIncludes": ["Submit"] }]
+        },
+        {
+          "id": "click",
+          "command": "click {{refs.submit}}",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domText", "selector": "#done", "value": "Submitted" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fill-css",
+      "description": "Fill the fixture input using a raw CSS selector.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "fill css selector", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "fill",
+          "command": "fill \"#email\" \"css@example.com\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domValue", "selector": "#email", "value": "css@example.com" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "click-css",
+      "description": "Click the fixture button using a raw CSS selector.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "click css selector", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "click",
+          "command": "click \"[data-testid='submit-button']\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domText", "selector": "#done", "value": "Submitted" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wait-selector",
+      "description": "Wait for a selector to become visible after a click.",
+      "status": "exact",
+      "visibleSafe": true,
+      "compatibilityItems": [{ "id": "wait <selector>", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        { "id": "click", "command": "click \"[data-testid='submit-button']\"" },
+        {
+          "id": "wait",
+          "command": "wait \"#done:not([hidden])\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domText", "selector": "#done", "value": "Submitted" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "get-title",
+      "description": "Read page title.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "get title/url", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "get-title",
+          "command": "get title",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "stdoutContains", "value": "pire-browser oracle fixture" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "is-visible",
+      "description": "Check visible state for a button selector.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "is visible/enabled/checked", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "is-visible",
+          "command": "is visible \"button\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "stdoutContains", "value": "true" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tabs-list",
+      "description": "List the current tab.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "tab/tabs list/new/select/close/label", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "tab",
+          "command": "tab",
+          "assertions": [{ "type": "exitCodeEquals", "value": 0 }]
+        }
+      ]
+    },
+    {
+      "id": "type-selector",
+      "description": "Type into a selector with keyboard-style events.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "type selector", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "type",
+          "command": "type \"#notes\" \"typed text\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domValue", "selector": "#notes", "value": "typed text" },
+            { "type": "eventLogContains", "selector": "#events", "value": "input:notes" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "press-key-alias",
+      "description": "Press and key aliases type into the currently focused control.",
+      "status": "exact",
+      "compatibilityItems": [
+        { "id": "press", "status": "exact", "tapeCovered": true },
+        { "id": "key", "status": "exact", "tapeCovered": true }
+      ],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        { "id": "focus", "command": "click \"#notes\"" },
+        {
+          "id": "press",
+          "command": "press A",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domValue", "selector": "#notes", "value": "A" }
+          ]
+        },
+        {
+          "id": "key",
+          "command": "key B",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domValue", "selector": "#notes", "value": "AB" },
+            { "type": "eventLogContains", "selector": "#events", "value": "keydown:notes:B" },
+            { "type": "eventLogContains", "selector": "#events", "value": "keyup:notes:B" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "press-enter-submit",
+      "description": "Enter on a focused text input submits the containing form.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "press", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        { "id": "fill", "command": "fill \"#email\" \"enter@example.com\"" },
+        {
+          "id": "submit",
+          "command": "press Enter",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domText", "selector": "#done", "value": "Submitted" },
+            { "type": "eventLogContains", "selector": "#events", "value": "submit:fixture-form" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "keyboard-type",
+      "description": "Keyboard type writes into the current focused element.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "keyboard type", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        { "id": "focus", "command": "click \"#notes\"" },
+        {
+          "id": "keyboard-type",
+          "command": "keyboard type \"focus typing\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domValue", "selector": "#notes", "value": "focus typing" },
+            { "type": "eventLogContains", "selector": "#events", "value": "input:notes" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "keyboard-inserttext",
+      "description": "Keyboard inserttext inserts text into the current focused element.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "keyboard inserttext", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        { "id": "focus", "command": "click \"#notes\"" },
+        {
+          "id": "keyboard-inserttext",
+          "command": "keyboard inserttext \"inserted text\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domValue", "selector": "#notes", "value": "inserted text" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "find-label-fill",
+      "description": "Find an input by label and fill it.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "find label", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "find-label-fill",
+          "command": "find label \"Email\" fill \"label@example.com\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domValue", "selector": "#email", "value": "label@example.com" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "find-role-click",
+      "description": "Find a button by role and accessible name, then click it.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "find role", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "find-role-click",
+          "command": "find role button click --name \"Submit\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "domText", "selector": "#done", "value": "Submitted" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "get-text-value-attr-url",
+      "description": "Read text, value, attribute, and URL from the fixture.",
+      "status": "exact",
+      "compatibilityItems": [
+        { "id": "get text/html/value/attr", "status": "exact", "tapeCovered": true },
+        { "id": "get title/url", "status": "exact", "tapeCovered": true }
+      ],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        { "id": "fill", "command": "fill \"#email\" \"value@example.com\"" },
+        {
+          "id": "get-text",
+          "command": "get text \"#fixture-heading\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "stdoutContains", "value": "Oracle Fixture" }
+          ]
+        },
+        {
+          "id": "get-value",
+          "command": "get value \"#email\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "stdoutContains", "value": "value@example.com" }
+          ]
+        },
+        {
+          "id": "get-attr",
+          "command": "get attr \"#email\" placeholder",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "stdoutContains", "value": "hello@example.com" }
+          ]
+        },
+        {
+          "id": "get-url",
+          "command": "get url",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "stdoutContains", "value": "/form.html" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "is-enabled-checked",
+      "description": "Check enabled and checked state helpers.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "is visible/enabled/checked", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "is-enabled",
+          "command": "is enabled \"#email\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "stdoutContains", "value": "true" }
+          ]
+        },
+        { "id": "check", "command": "check \"#agree\"" },
+        {
+          "id": "is-checked",
+          "command": "is checked \"#agree\"",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "stdoutContains", "value": "true" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tabs-new-select-close",
+      "description": "Create, select, list, and close tabs.",
+      "status": "exact",
+      "compatibilityItems": [{ "id": "tab/tabs list/new/select/close/label", "status": "exact", "tapeCovered": true }],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "tab-new",
+          "command": "tab new {{fixtureUrl}}/form.html#second --label second",
+          "assertions": [{ "type": "exitCodeEquals", "value": 0 }]
+        },
+        {
+          "id": "tab-list",
+          "command": "tab list",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "stdoutContains", "value": "second" }
+          ],
+          "captures": [
+            { "name": "secondTab", "source": "stdout", "regex": "(t\\d+).*second", "kind": "text" }
+          ]
+        },
+        {
+          "id": "tab-select",
+          "command": "tab t1",
+          "assertions": [
+            { "type": "exitCodeEquals", "value": 0 },
+            { "type": "urlContains", "value": "/form.html" }
+          ]
+        },
+        {
+          "id": "tab-close",
+          "command": "tab close {{captures.secondTab}}",
+          "assertions": [{ "type": "exitCodeEquals", "value": 0 }]
+        }
+      ]
+    },
+    {
+      "id": "negative-stale-ref",
+      "description": "A stale or unknown ref fails with a stable error shape.",
+      "status": "error",
+      "compatibilityItems": [],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "click-stale-ref",
+          "command": "click @e404",
+          "assertions": [
+            { "type": "exitCodeNonZero" },
+            { "type": "outputContains", "tool": "pire-browser", "value": "ref_stale" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "negative-ambiguous-selector",
+      "description": "A non-unique raw selector fails rather than clicking an arbitrary element.",
+      "status": "error",
+      "compatibilityItems": [],
+      "steps": [
+        { "id": "open", "command": "open {{fixtureUrl}}/form.html" },
+        {
+          "id": "click-ambiguous",
+          "command": "click \"button\"",
+          "assertions": [
+            { "type": "exitCodeNonZero", "tool": "pire-browser" },
+            { "type": "outputContains", "tool": "pire-browser", "value": "ambiguous_locator" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "negative-pire-not-available",
+      "description": "Unsupported feature returns a stable not-available style failure in pire-browser.",
+      "status": "not_available",
+      "compatibilityItems": [{ "id": "stream", "status": "not_available", "tapeCovered": true }],
+      "steps": [
+        {
+          "id": "stream-status",
+          "command": "stream status",
+          "assertions": [{ "type": "notAvailableError", "tool": "pire-browser" }]
+        }
+      ]
+    },
+    {
+      "id": "bing-open-search-url-visible",
+      "description": "External visible smoke only: open Bing and then open a Bing results URL.",
+      "status": "smoke",
+      "visibleSafe": true,
+      "compatibilityItems": [{ "id": "visible Bing external smoke", "status": "smoke", "tapeCovered": false }],
+      "steps": [
+        {
+          "id": "open-home",
+          "command": "open https://www.bing.com",
+          "assertions": [{ "type": "urlContains", "value": "bing.com" }]
+        },
+        {
+          "id": "open-results",
+          "command": "open https://www.bing.com/search?q=harry+potter",
+          "assertions": [{ "type": "urlContains", "value": "bing.com/search" }]
+        }
+      ]
+    }
+  ]
+}

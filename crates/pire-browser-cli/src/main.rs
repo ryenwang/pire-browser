@@ -55,7 +55,9 @@ fn run() -> Result<()> {
         LocalCommand::InstallStatus { json } => {
             let report = collect_install_status()?;
             if json {
-                println!("{}", install_status_json(&report)?);
+                let value: serde_json::Value =
+                    serde_json::from_str(&install_status_json(&report)?)?;
+                println!("{}", format_cli_result(&value, true)?);
             } else {
                 println!("{}", install_status_text(&report));
             }
@@ -71,8 +73,9 @@ fn run() -> Result<()> {
                 Err(err)
                     if session.is_none()
                         && can_auto_launch_for_remote_args(&args)
-                        && is_no_live_session_error(&err) =>
+                        && is_auto_launchable_session_error(&err) =>
                 {
+                    cleanup_stale_sessions(now_ms())?;
                     let result = launch_firefox(LaunchOptions {
                         profile: "Default".to_string(),
                         url: launch_url_for_remote_args(&args),
@@ -84,10 +87,30 @@ fn run() -> Result<()> {
                 Err(err) => return Err(err),
             };
             if !response.ok {
-                let err = response
+                let error = response
                     .error
-                    .map(|err| format!("{}: {}", err.code, err.message))
-                    .unwrap_or_else(|| "unknown extension error".into());
+                    .unwrap_or(pire_browser_core::protocol::RpcError {
+                        code: "unknown_error".into(),
+                        message: "unknown extension error".into(),
+                        data: None,
+                    });
+                if json {
+                    let exit_code = exit_code_for_error(&error.code);
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&json!({
+                            "success": false,
+                            "error": {
+                                "code": error.code,
+                                "message": error.message,
+                                "data": error.data
+                            },
+                            "warnings": []
+                        }))?
+                    );
+                    std::process::exit(exit_code);
+                }
+                let err = format!("{}: {}", error.code, error.message);
                 bail!("{err}");
             }
             let result = response.result.unwrap_or_else(|| json!({ "text": "ok" }));
@@ -95,6 +118,16 @@ fn run() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn exit_code_for_error(code: &str) -> i32 {
+    match code {
+        "TimeoutError" | "timeout" => 124,
+        "ElementNotFound" | "not_found" | "ref_stale" => 44,
+        "InvalidArgumentError" | "invalid_args" => 2,
+        "NotAvailableError" => 78,
+        _ => 1,
+    }
 }
 
 fn send_to_session(session_id: Option<&str>, request: &RpcRequest) -> Result<RpcResponse> {
@@ -110,32 +143,81 @@ fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
         args.first().map(String::as_str),
         Some(
             "open"
+                | "goto"
+                | "navigate"
                 | "snapshot"
                 | "find"
                 | "click"
+                | "dblclick"
                 | "fill"
+                | "type"
                 | "press"
+                | "key"
+                | "keyboard"
+                | "keydown"
+                | "keyup"
+                | "hover"
+                | "focus"
+                | "select"
+                | "check"
+                | "uncheck"
                 | "scroll"
+                | "scrollintoview"
                 | "wait"
                 | "screenshot"
+                | "get"
+                | "is"
+                | "eval"
+                | "tab"
                 | "tabs"
+                | "back"
+                | "forward"
+                | "reload"
+                | "window"
+                | "frame"
+                | "dialog"
+                | "batch"
+                | "cookies"
+                | "storage"
         )
     )
 }
 
 fn launch_url_for_remote_args(args: &[String]) -> Option<String> {
+    if args.iter().any(|arg| arg == "--new") {
+        return None;
+    }
     match args.first().map(String::as_str) {
-        Some("open") => args
-            .get(1)
-            .filter(|value| !value.starts_with("--"))
-            .cloned(),
+        Some("open" | "goto" | "navigate") => first_positional_arg(&args[1..], &["--label"]),
         _ => None,
     }
 }
 
-fn is_no_live_session_error(err: &anyhow::Error) -> bool {
-    err.to_string()
-        .contains("extension_disconnected: no live Firefox extension session found")
+fn first_positional_arg(args: &[String], value_flags: &[&str]) -> Option<String> {
+    let mut skip_next = false;
+    for arg in args {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if value_flags.contains(&arg.as_str()) {
+            skip_next = true;
+            continue;
+        }
+        if arg.starts_with("--") {
+            continue;
+        }
+        return Some(arg.clone());
+    }
+    None
+}
+
+fn is_auto_launchable_session_error(err: &anyhow::Error) -> bool {
+    let details = format!("{err:#}");
+    details.contains("extension_disconnected: no live Firefox extension session found")
+        || (details.contains("failed talking to session")
+            && (details.contains("The system cannot find the file specified")
+                || details.contains("os error 2")))
 }
 
 #[allow(dead_code)]
@@ -161,6 +243,14 @@ mod tests {
             "open",
             "https://example.com"
         ])));
+        assert!(can_auto_launch_for_remote_args(&s(&[
+            "goto",
+            "https://example.com"
+        ])));
+        assert!(can_auto_launch_for_remote_args(&s(&[
+            "navigate",
+            "https://example.com"
+        ])));
         assert!(can_auto_launch_for_remote_args(&s(&["snapshot", "-i"])));
         assert!(can_auto_launch_for_remote_args(&s(&["tabs", "list"])));
         assert!(!can_auto_launch_for_remote_args(&s(&["close"])));
@@ -173,7 +263,28 @@ mod tests {
             launch_url_for_remote_args(&s(&["open", "https://example.com", "--label", "docs"])),
             Some("https://example.com".to_string())
         );
+        assert_eq!(
+            launch_url_for_remote_args(&s(&["goto", "https://example.com"])),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            launch_url_for_remote_args(&s(&["navigate", "--label", "docs", "https://example.com"])),
+            Some("https://example.com".to_string())
+        );
         assert_eq!(launch_url_for_remote_args(&s(&["snapshot"])), None);
+        assert_eq!(launch_url_for_remote_args(&s(&["open"])), None);
         assert_eq!(launch_url_for_remote_args(&s(&["open", "--new"])), None);
+        assert_eq!(
+            launch_url_for_remote_args(&s(&["open", "--new", "https://example.com"])),
+            None
+        );
+    }
+
+    #[test]
+    fn treats_missing_session_pipe_as_auto_launchable() {
+        let err = anyhow::anyhow!(
+            "failed talking to session abc: failed to connect to pire-browser pipe \\\\.\\pipe\\abc: The system cannot find the file specified. (os error 2)"
+        );
+        assert!(is_auto_launchable_session_error(&err));
     }
 }

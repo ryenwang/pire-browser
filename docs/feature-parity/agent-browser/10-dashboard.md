@@ -11,6 +11,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Usage
 
@@ -19,11 +20,14 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [F] `agent-browser open example.com`
+  - Oracle Coverage: covered (open-fixture)
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Low
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Confirmed this feature is fully implemented in /pire-browser or is highly compatible. The specified testing strategy is appropriate and should ensure stability.
 
 ## Custom stream port
 
@@ -32,21 +36,25 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] `agent-browser stream enable --port 9223`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] `agent-browser stream status`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] `agent-browser stream disable`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Dashboard features
 
@@ -55,6 +63,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## WebSocket protocol
 
@@ -63,6 +72,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Command events
 
@@ -71,6 +81,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Result events
 
@@ -79,6 +90,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Console events
 
@@ -87,16 +99,20 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [N] The args array contains the raw CDP Runtime.consoleAPICalled arguments for programmatic access. Object arguments include preview data (e.g. {userId: "abc", count: 42} instead of "Object").
-  - Extension Compatibility: True
-  - Priority: Medium
-  - Complexity: Low
+  - Extension Compatibility: False
+  - Priority: Low
+  - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 review: Mark N for raw CDP payload parity. A Firefox console log view is compatible, but exposing CDP Runtime.consoleAPICalled args is not.
 - [ ] These are in addition to the existing frame, status, and error message types documented on the Streaming page.
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Architecture
 
@@ -105,6 +121,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## AI Chat
 
@@ -113,6 +130,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## How it works
 
@@ -121,3 +139,4 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.

@@ -1,0 +1,632 @@
+{
+  "source": {
+    "repo": "https://github.com/vercel-labs/agent-browser",
+    "capturedAt": "2026-05-06",
+    "basis": "README and mirrored docs under docs/feature-parity/agent-browser"
+  },
+  "statuses": {
+    "exact": [
+      "open",
+      "goto",
+      "navigate",
+      "snapshot -i",
+      "click @ref",
+      "click css selector",
+      "fill @ref",
+      "fill css selector",
+      "type selector",
+      "keyboard type",
+      "keyboard inserttext",
+      "press",
+      "key",
+      "find role",
+      "find label",
+      "find text",
+      "find placeholder",
+      "find testid",
+      "find alt",
+      "find title",
+      "find first/last/nth",
+      "wait <ms>",
+      "wait <selector>",
+      "wait --text",
+      "wait --url",
+      "wait --fn",
+      "wait <selector> --state hidden",
+      "get text/html/value/attr",
+      "get title/url",
+      "get box/styles",
+      "is visible/enabled/checked",
+      "select",
+      "check",
+      "uncheck",
+      "scroll up/down/left/right",
+      "scroll --selector",
+      "scrollintoview",
+      "tab/tabs list/new/select/close/label",
+      "back",
+      "forward",
+      "reload",
+      "window new",
+      "batch inline arguments",
+      "cookies list/set/clear",
+      "storage local/session get/set/clear",
+      "screenshot visible viewport",
+      "screenshot --screenshot-format jpeg --screenshot-quality"
+    ],
+    "best_effort": [
+      "dblclick",
+      "keydown",
+      "keyup",
+      "hover",
+      "frame",
+      "dialog",
+      "eval",
+      "screenshot --full",
+      "screenshot --annotate",
+      "screenshot --screenshot-dir without filename",
+      "close/quit/exit",
+      "doctor/install-status",
+      "profile launch"
+    ],
+    "not_available": [
+      "connect",
+      "download",
+      "drag",
+      "upload",
+      "mouse",
+      "clipboard",
+      "set viewport/device/geo/offline/headers/credentials/media",
+      "network",
+      "stream",
+      "dashboard",
+      "trace",
+      "profiler",
+      "record",
+      "auth",
+      "state",
+      "session command",
+      "profiles",
+      "react",
+      "vitals",
+      "pdf",
+      "pushstate",
+      "init scripts",
+      "skills command"
+    ]
+  },
+  "warningSchema": {
+    "code": "BEST_EFFORT_FIREFOX_GAP",
+    "feature": "agent-browser feature id",
+    "message": "human readable limitation"
+  },
+  "coveragePolicy": {
+    "source": "fixtures/oracle/cases.json",
+    "rule": "New or upgraded exact and best-effort claims require tapeCovered=true in a passing oracle case. Existing exact and best-effort claims may remain uncovered only when listed in existingClaimBaseline.",
+    "existingClaimBaseline": {
+      "exact": [
+        "open",
+        "goto",
+        "navigate",
+        "snapshot -i",
+        "click @ref",
+        "click css selector",
+        "fill @ref",
+        "fill css selector",
+        "type selector",
+        "keyboard type",
+        "keyboard inserttext",
+        "press",
+        "key",
+        "find role",
+        "find label",
+        "find text",
+        "find placeholder",
+        "find testid",
+        "find alt",
+        "find title",
+        "find first/last/nth",
+        "wait <ms>",
+        "wait <selector>",
+        "wait --text",
+        "wait --url",
+        "wait --fn",
+        "wait <selector> --state hidden",
+        "get text/html/value/attr",
+        "get title/url",
+        "get box/styles",
+        "is visible/enabled/checked",
+        "select",
+        "check",
+        "uncheck",
+        "scroll up/down/left/right",
+        "scroll --selector",
+        "scrollintoview",
+        "tab/tabs list/new/select/close/label",
+        "back",
+        "forward",
+        "reload",
+        "window new",
+        "batch inline arguments",
+        "cookies list/set/clear",
+        "storage local/session get/set/clear",
+        "screenshot visible viewport",
+        "screenshot --screenshot-format jpeg --screenshot-quality"
+      ],
+      "best_effort": [
+        "dblclick",
+        "keydown",
+        "keyup",
+        "hover",
+        "frame",
+        "dialog",
+        "eval",
+        "screenshot --full",
+        "screenshot --annotate",
+        "screenshot --screenshot-dir without filename",
+        "close/quit/exit",
+        "doctor/install-status",
+        "profile launch"
+      ]
+    }
+  },
+  "oracleCoverage": {
+    "open": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "open-fixture"
+      ]
+    },
+    "goto": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "navigate": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "snapshot -i": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "snapshot-interactive"
+      ]
+    },
+    "click @ref": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "click-ref"
+      ]
+    },
+    "click css selector": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "click-css"
+      ]
+    },
+    "fill @ref": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "fill-ref"
+      ]
+    },
+    "fill css selector": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "fill-css"
+      ]
+    },
+    "type selector": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "type-selector"
+      ]
+    },
+    "keyboard type": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "keyboard-type"
+      ]
+    },
+    "keyboard inserttext": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "keyboard-inserttext"
+      ]
+    },
+    "press": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "press-key-alias"
+      ]
+    },
+    "key": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "press-key-alias"
+      ]
+    },
+    "find role": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "find-role-click"
+      ]
+    },
+    "find label": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "find-label-fill"
+      ]
+    },
+    "find text": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "find placeholder": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "find testid": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "find alt": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "find title": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "find first/last/nth": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "wait <ms>": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "wait <selector>": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "wait-selector"
+      ]
+    },
+    "wait --text": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "wait --url": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "wait --fn": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "wait <selector> --state hidden": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "get text/html/value/attr": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "get-text-value-attr-url"
+      ]
+    },
+    "get title/url": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "get-title",
+        "get-text-value-attr-url"
+      ]
+    },
+    "get box/styles": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "is visible/enabled/checked": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "is-visible",
+        "is-enabled-checked"
+      ]
+    },
+    "select": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "check": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "uncheck": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "scroll up/down/left/right": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "scroll --selector": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "scrollintoview": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "tab/tabs list/new/select/close/label": {
+      "state": "covered",
+      "tapeCovered": true,
+      "cases": [
+        "tabs-list",
+        "tabs-new-select-close"
+      ]
+    },
+    "back": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "forward": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "reload": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "window new": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "batch inline arguments": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "cookies list/set/clear": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "storage local/session get/set/clear": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "screenshot visible viewport": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "screenshot --screenshot-format jpeg --screenshot-quality": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "dblclick": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "keydown": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "keyup": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "hover": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "frame": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "dialog": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "eval": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "screenshot --full": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "screenshot --annotate": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "screenshot --screenshot-dir without filename": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "close/quit/exit": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "doctor/install-status": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "profile launch": {
+      "state": "uncovered",
+      "tapeCovered": false,
+      "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+    },
+    "connect": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "download": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "drag": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "upload": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "mouse": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "clipboard": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "set viewport/device/geo/offline/headers/credentials/media": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "network": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "stream": {
+      "state": "not-comparable",
+      "tapeCovered": true,
+      "cases": [
+        "negative-pire-not-available"
+      ],
+      "reason": "Command is intentionally unavailable in pire-browser; oracle coverage asserts stable not-available metadata instead of parity."
+    },
+    "dashboard": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "trace": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "profiler": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "record": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "auth": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "state": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "session command": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "profiles": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "react": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "vitals": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "pdf": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "pushstate": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "init scripts": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    },
+    "skills command": {
+      "state": "not-comparable",
+      "tapeCovered": false,
+      "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+    }
+  }
+}

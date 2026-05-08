@@ -19,7 +19,7 @@ use crate::protocol::{
     NativeInbound, NativeOutbound, RpcError, RpcRequest, RpcResponse, EXTENSION_ID,
 };
 use crate::session::{now_ms, remove_session, write_session_atomic, SessionInfo};
-use crate::transfer::{ScreenshotTransferMeta, TransferStore};
+use crate::transfer::{ResultTransferMeta, ScreenshotTransferMeta, TransferStore};
 
 #[derive(Clone)]
 struct SharedSession {
@@ -87,6 +87,17 @@ impl NativeBridge {
                     response.id, response.ok
                 ));
                 if let Some(result) = response.result.as_mut() {
+                    if let Err(err) = self.maybe_reassemble_large_result(result) {
+                        response.ok = false;
+                        response.error = Some(RpcError {
+                            code: "large_result_reassembly_failed".into(),
+                            message: err.to_string(),
+                            data: None,
+                        });
+                        response.result = None;
+                    }
+                }
+                if let Some(result) = response.result.as_mut() {
                     if let Err(err) = self.maybe_write_screenshot(result) {
                         response.ok = false;
                         response.error = Some(RpcError {
@@ -109,6 +120,19 @@ impl NativeBridge {
                 )
             }
         }
+    }
+
+    fn maybe_reassemble_large_result(&self, result: &mut Value) -> Result<()> {
+        let Some(large_result) = result.get("largeResult").cloned() else {
+            return Ok(());
+        };
+        let meta: ResultTransferMeta = serde_json::from_value(large_result)
+            .context("invalid large result transfer metadata from extension")?;
+        let bytes = self.transfers.lock().unwrap().complete(&meta)?;
+        let value: Value =
+            serde_json::from_slice(&bytes).context("large result was not valid JSON")?;
+        *result = value;
+        Ok(())
     }
 
     fn maybe_write_screenshot(&self, result: &mut Value) -> Result<()> {
@@ -179,6 +203,23 @@ impl NativeBridge {
                 }
             }
             NativeInbound::ScreenshotChunk {
+                transfer_id,
+                index,
+                total,
+                byte_length,
+                sha256,
+                data,
+            } => {
+                let _ = self.transfers.lock().unwrap().add_chunk(
+                    transfer_id,
+                    index,
+                    total,
+                    byte_length,
+                    sha256,
+                    data,
+                );
+            }
+            NativeInbound::ResultChunk {
                 transfer_id,
                 index,
                 total,

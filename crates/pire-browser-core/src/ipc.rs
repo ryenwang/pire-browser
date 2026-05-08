@@ -4,7 +4,7 @@ mod windows_ipc {
     use std::io::{Error, ErrorKind};
     use std::os::windows::ffi::OsStrExt;
     use std::ptr::null_mut;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use anyhow::{bail, Context, Result};
     use sha2::{Digest, Sha256};
@@ -24,7 +24,7 @@ mod windows_ipc {
         PIPE_ACCESS_DUPLEX,
     };
     use windows_sys::Win32::System::Pipes::{
-        ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_READMODE_BYTE,
+        ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PeekNamedPipe, PIPE_READMODE_BYTE,
         PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
     };
     use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken, Sleep};
@@ -51,6 +51,8 @@ mod windows_ipc {
     }
 
     struct LocalPtr(*mut core::ffi::c_void);
+
+    const DEFAULT_PIPE_RESPONSE_TIMEOUT: Duration = Duration::from_secs(35);
 
     impl Drop for LocalPtr {
         fn drop(&mut self) {
@@ -218,6 +220,14 @@ mod windows_ipc {
     }
 
     pub fn send_pipe_request(pipe_name: &str, request: &str) -> Result<String> {
+        send_pipe_request_with_timeout(pipe_name, request, DEFAULT_PIPE_RESPONSE_TIMEOUT)
+    }
+
+    fn send_pipe_request_with_timeout(
+        pipe_name: &str,
+        request: &str,
+        response_timeout: Duration,
+    ) -> Result<String> {
         let name = wide(pipe_name);
         let mut last_error = None;
         for _ in 0..20 {
@@ -236,7 +246,8 @@ mod windows_ipc {
                 let handle = Handle::new(raw)?;
                 write_all(handle.0, request.as_bytes())?;
                 write_all(handle.0, b"\n")?;
-                return read_line(handle.0);
+                return read_line_with_timeout(handle.0, response_timeout)
+                    .with_context(|| format!("timed out waiting for response from {pipe_name}"));
             }
             last_error = Some(Error::last_os_error());
             unsafe {
@@ -250,9 +261,43 @@ mod windows_ipc {
     }
 
     fn read_line(handle: HANDLE) -> Result<String> {
+        read_line_with_timeout(handle, Duration::MAX)
+    }
+
+    fn read_line_with_timeout(handle: HANDLE, timeout: Duration) -> Result<String> {
         let mut out = Vec::new();
         let mut byte = [0u8; 1];
+        let deadline = Instant::now().checked_add(timeout);
         loop {
+            let mut available = 0u32;
+            let peek_ok = unsafe {
+                PeekNamedPipe(
+                    handle,
+                    null_mut(),
+                    0,
+                    null_mut(),
+                    &mut available,
+                    null_mut(),
+                )
+            };
+            if peek_ok == 0 {
+                let err = unsafe { GetLastError() };
+                if err == ERROR_BROKEN_PIPE && !out.is_empty() {
+                    break;
+                }
+                bail!("PeekNamedPipe failed: {}", Error::last_os_error());
+            }
+            if available == 0 {
+                if deadline
+                    .map(|deadline| Instant::now() >= deadline)
+                    .unwrap_or(false)
+                {
+                    bail!("timed out waiting for pire-browser pipe response");
+                }
+                std::thread::sleep(Duration::from_millis(5));
+                continue;
+            }
+
             let mut read = 0u32;
             let ok = unsafe {
                 ReadFile(
@@ -330,6 +375,31 @@ mod windows_ipc {
             assert_eq!(response, "echo:ping");
 
             stop.store(true, Ordering::SeqCst);
+            let _ = send_pipe_request(&pipe_name, "stop");
+            server.join().unwrap();
+        }
+
+        #[test]
+        fn named_pipe_response_read_is_bounded() {
+            let pipe_name = pipe_name_for_session(&format!("slow-{}", std::process::id())).unwrap();
+            let stop = Arc::new(AtomicBool::new(false));
+            let server_stop = stop.clone();
+            let server_pipe = pipe_name.clone();
+            let server = std::thread::spawn(move || {
+                run_pipe_server(server_pipe, server_stop, |_line| {
+                    std::thread::sleep(Duration::from_millis(500));
+                    "too late".to_string()
+                })
+                .unwrap();
+            });
+
+            std::thread::sleep(Duration::from_millis(100));
+            let err = send_pipe_request_with_timeout(&pipe_name, "ping", Duration::from_millis(25))
+                .unwrap_err();
+            assert!(format!("{err:#}").contains("timed out waiting for response"));
+
+            stop.store(true, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(600));
             let _ = send_pipe_request(&pipe_name, "stop");
             server.join().unwrap();
         }

@@ -11,6 +11,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Setup
 
@@ -19,26 +20,32 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Support documented usage: `export AGENT_BROWSER_PROVIDER=agentcore`
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser open https://example.com`
+  - Oracle Coverage: covered (open-fixture)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] AWS CLI (aws configure export-credentials) which supports SSO, profiles, IAM roles, etc.
   - Extension Compatibility: False
   - Priority: Medium
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Browser Profiles
 
@@ -47,11 +54,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] When a profile is set, AgentCore stores and restores browser state automatically between sessions.
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Live View
 
@@ -60,11 +69,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Open this URL in your browser to watch the agent session in real time from the AWS Console.
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Credential Resolution
 
@@ -73,8 +84,10 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] AWS CLI (aws configure export-credentials --format env), which supports SSO, IAM roles, credential files, and profiles
   - Extension Compatibility: False
   - Priority: Medium
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.

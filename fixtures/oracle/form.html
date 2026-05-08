@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pire-browser oracle fixture</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 32px;
+        max-width: 760px;
+      }
+      label,
+      input,
+      button,
+      textarea,
+      select {
+        display: block;
+        margin: 8px 0;
+      }
+      #done {
+        margin-top: 16px;
+        color: #146c2e;
+        font-weight: 700;
+      }
+      #events {
+        min-height: 80px;
+        padding: 8px;
+        border: 1px solid #ccc;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="fixture-heading">Oracle Fixture</h1>
+      <form id="fixture-form">
+        <label for="email">Email</label>
+        <input id="email" type="email" placeholder="hello@example.com" data-testid="email-input" />
+
+        <label for="notes">Notes</label>
+        <textarea id="notes" placeholder="Write notes" data-testid="notes-input"></textarea>
+
+        <label for="agree">
+          <input id="agree" type="checkbox" data-testid="agree-checkbox" />
+          Agree to terms
+        </label>
+
+        <button type="button" aria-label="Submit" data-testid="submit-button">Submit</button>
+        <button type="button" data-testid="secondary-button">Secondary</button>
+        <button id="disabled-action" type="button" disabled>Disabled action</button>
+      </form>
+      <div id="done" hidden>Submitted</div>
+      <pre id="events" aria-label="Event log"></pre>
+    </main>
+
+    <script>
+      const events = document.querySelector("#events");
+      function logEvent(event) {
+        const target = event.target.id || event.target.dataset?.testid || event.target.tagName.toLowerCase();
+        const key = event.key ? `:${event.key}` : "";
+        events.textContent += `${event.type}:${target}${key}\n`;
+      }
+
+      for (const selector of ["#email", "#notes", "#agree", "[data-testid='submit-button']"]) {
+        const element = document.querySelector(selector);
+        for (const eventName of ["focus", "click", "keydown", "keypress", "input", "change", "keyup"]) {
+          element.addEventListener(eventName, logEvent);
+        }
+      }
+
+      document.querySelector("[data-testid='submit-button']").addEventListener("click", () => {
+        document.querySelector("#done").hidden = false;
+      });
+      document.querySelector("#fixture-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        logEvent(event);
+        document.querySelector("#done").hidden = false;
+      });
+    </script>
+  </body>
+</html>

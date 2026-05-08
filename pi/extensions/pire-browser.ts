@@ -14,6 +14,7 @@ const PireBrowserParams = Type.Object({
 });
 
 type PireBrowserInput = Static<typeof PireBrowserParams>;
+let oraclePiToolCallCount = 0;
 
 export default function (pi: ExtensionAPI) {
   const register = (name: "pire-browser" | "pire_browser") =>
@@ -36,6 +37,8 @@ export default function (pi: ExtensionAPI) {
       parameters: PireBrowserParams,
 
       async execute(_toolCallId, params: PireBrowserInput, signal) {
+        const limited = enforceOraclePiToolCallLimit(params.command);
+        if (limited) return limited;
         const executable = resolveExecutable();
         const args = splitCommand(params.command);
         const result = await run(executable, args, signal);
@@ -69,7 +72,7 @@ export default function (pi: ExtensionAPI) {
       renderResult(result, _options, theme) {
         const text = result.content[0];
         const value = text?.type === "text" ? text.text : "";
-        const details = result.details as { exitCode?: number; finishReason?: FinishReason } | undefined;
+        const details = result.details as { exitCode?: number; finishReason?: FinishReason | "tool-call-limit" } | undefined;
         const color =
           (details?.exitCode && details.exitCode !== 0) || details?.finishReason === "timeout"
             ? "error"
@@ -83,6 +86,25 @@ export default function (pi: ExtensionAPI) {
   } catch {
     register("pire_browser");
   }
+}
+
+function enforceOraclePiToolCallLimit(command: string) {
+  const max = Number.parseInt(process.env.ORACLE_PI_MAX_TOOL_CALLS ?? "", 10);
+  if (!Number.isFinite(max) || max <= 0) return null;
+  oraclePiToolCallCount += 1;
+  if (oraclePiToolCallCount <= max) return null;
+  const text = `pire-browser oracle smoke stopped after ${max} tool call(s); command was not executed: ${command}`;
+  return {
+    content: [{ type: "text" as const, text }],
+    details: {
+      command,
+      exitCode: 1,
+      finishReason: "tool-call-limit",
+      timedOut: false,
+      recovered: false,
+      stderr: text,
+    },
+  };
 }
 
 function resolveExecutable(): string {

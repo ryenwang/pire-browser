@@ -23,12 +23,18 @@ export type NativeEvent = {
   data?: Record<string, unknown>;
 };
 
-export type Locator =
+export type NonHandleLocator =
   | { kind: "role"; role: string; name?: string; index: number }
   | { kind: "label"; text: string; index: number }
   | { kind: "text"; text: string; index: number }
   | { kind: "placeholder"; text: string; index: number }
-  | { kind: "testid"; value: string; index: number };
+  | { kind: "testid"; value: string; index: number }
+  | { kind: "css"; selector: string; index: number }
+  | { kind: "xpath"; expression: string; index: number }
+  | { kind: "alt"; text: string; index: number }
+  | { kind: "title"; text: string; index: number };
+
+export type Locator = NonHandleLocator | { kind: "handle"; handle: string; fallback: NonHandleLocator };
 
 export type ElementSnapshot = {
   ref?: string;

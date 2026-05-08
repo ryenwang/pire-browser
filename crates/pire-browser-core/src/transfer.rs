@@ -10,12 +10,15 @@ const TRANSFER_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ScreenshotTransferMeta {
+pub struct TransferMeta {
     pub transfer_id: String,
     pub mime_type: String,
     pub byte_length: usize,
     pub sha256: String,
 }
+
+pub type ScreenshotTransferMeta = TransferMeta;
+pub type ResultTransferMeta = TransferMeta;
 
 #[derive(Debug)]
 struct Transfer {

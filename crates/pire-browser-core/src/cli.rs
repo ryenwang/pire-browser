@@ -30,13 +30,59 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     let mut args = raw.to_vec();
     let mut session = None;
     let mut json_output = false;
+    const GLOBAL_VALUE_FLAGS: &[&str] = &[
+        "--session",
+        "--session-name",
+        "--profile",
+        "--state",
+        "--color-scheme",
+        "--max-output",
+        "--content-boundaries",
+        "--allowed-domains",
+        "--confirm-actions",
+        "--action-policy",
+        "--config",
+        "--executable-path",
+        "--engine",
+        "--provider",
+        "-p",
+        "--model",
+    ];
+    const GLOBAL_BOOL_FLAGS: &[&str] = &[
+        "--json",
+        "--headed",
+        "--headless",
+        "--allow-file-access",
+        "--auto-connect",
+        "--confirm-interactive",
+        "-q",
+        "-v",
+    ];
 
     while let Some(first) = args.first().cloned() {
+        if GLOBAL_VALUE_FLAGS.contains(&first.as_str()) {
+            let flag = args.remove(0);
+            let Some(value) = args.first().cloned() else {
+                bail!("{flag} requires a value");
+            };
+            args.remove(0);
+            if flag == "--session" || flag == "--session-name" {
+                session = Some(value);
+            }
+            continue;
+        }
+        if GLOBAL_BOOL_FLAGS.contains(&first.as_str()) {
+            args.remove(0);
+            if first == "--json" {
+                json_output = true;
+            }
+            continue;
+        }
         match first.as_str() {
-            "--session" => {
+            "--session" | "--session-name" => {
                 args.remove(0);
                 let Some(value) = args.first().cloned() else {
-                    bail!("--session requires a value");
+                    bail!("{first} requires a value");
                 };
                 args.remove(0);
                 session = Some(value);
@@ -118,7 +164,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         });
     }
 
-    if command == "install-status" {
+    if command == "install-status" || command == "doctor" {
         args.remove(0);
         while let Some(arg) = args.first() {
             match arg.as_str() {
@@ -158,7 +204,15 @@ pub fn build_command_request(args: Vec<String>) -> RpcRequest {
 
 pub fn format_cli_result(value: &Value, json_output: bool) -> Result<String> {
     if json_output {
-        return Ok(serde_json::to_string_pretty(value)?);
+        let warnings = value
+            .get("warnings")
+            .cloned()
+            .unwrap_or_else(|| Value::Array(Vec::new()));
+        return Ok(serde_json::to_string_pretty(&json!({
+            "success": true,
+            "data": value,
+            "warnings": warnings
+        }))?);
     }
 
     if let Some(text) = value.get("text").and_then(|v| v.as_str()) {
@@ -230,8 +284,46 @@ mod tests {
     }
 
     #[test]
+    fn accepts_agent_browser_global_flags_before_command() {
+        let parsed = parse_cli_args(&s(&[
+            "--session-name",
+            "lemonade",
+            "--headed",
+            "--color-scheme",
+            "dark",
+            "snapshot",
+            "-i",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Remote {
+                session: Some("lemonade".to_string()),
+                json: true,
+                args: s(&["snapshot", "-i"])
+            }
+        );
+    }
+
+    #[test]
+    fn formats_json_success_envelope() {
+        let value = json!({ "text": "ok", "warnings": [{"code": "BEST_EFFORT_FIREFOX_GAP"}] });
+        let formatted = format_cli_result(&value, true).unwrap();
+        assert!(formatted.contains("\"success\": true"));
+        assert!(formatted.contains("\"data\""));
+        assert!(formatted.contains("\"warnings\""));
+    }
+
+    #[test]
     fn parses_install_status_json() {
         let parsed = parse_cli_args(&s(&["install-status", "--json"])).unwrap();
+        assert_eq!(parsed, LocalCommand::InstallStatus { json: true });
+    }
+
+    #[test]
+    fn parses_doctor_as_install_status() {
+        let parsed = parse_cli_args(&s(&["doctor", "--json"])).unwrap();
         assert_eq!(parsed, LocalCommand::InstallStatus { json: true });
     }
 

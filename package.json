@@ -18,7 +18,19 @@
   "scripts": {
     "postinstall": "node scripts/pi-postinstall.mjs",
     "test": "vitest run",
-    "build:extension": "npm --prefix extension run build"
+    "build:extension": "npm --prefix extension run build",
+    "oracle:install": "node scripts/oracle/install-agent-browser.mjs",
+    "oracle:compare": "node scripts/oracle/compare.mjs",
+    "oracle:wrapper": "npx --yes vitest@4.0.18 run pi/extensions/pire-browser.test.ts pi/extensions/pire-browser-wrapper.test.ts pi/extensions/agent-browser-oracle.test.ts",
+    "oracle:pi": "node scripts/oracle/pi-smoke.mjs",
+    "oracle:doctor": "node scripts/oracle/doctor.mjs",
+    "oracle:report": "node scripts/oracle/report.mjs",
+    "oracle:refresh-baseline": "node scripts/oracle/refresh-baseline.mjs",
+    "oracle:test": "node --test scripts/oracle/*.node-test.mjs",
+    "oracle:ci": "npm run oracle:test && npm run oracle:wrapper && npm run oracle:doctor && npm run oracle:compare && npm run oracle:report",
+    "oracle:visible": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/oracle/visible-compare.ps1",
+    "oracle:visible:pi": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/oracle/visible-bing-side-by-side.ps1",
+    "oracle:visible:compare": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/oracle/visible-compare.ps1"
   },
   "pi": {
     "extensions": ["pi/extensions/pire-browser.ts"]

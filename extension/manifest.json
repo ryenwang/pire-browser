@@ -21,7 +21,10 @@
     "storage",
     "tabs",
     "windows",
-    "webNavigation"
+    "webNavigation",
+    "cookies",
+    "webRequest",
+    "webRequestBlocking"
   ],
   "background": {
     "scripts": ["dist/background.js"],

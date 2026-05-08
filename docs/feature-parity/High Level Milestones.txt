@@ -1,0 +1,87 @@
+The clean high-level roadmap I’d use is:
+**Epic 0: Reference Baseline And Test Oracle**
+
+**Epic 1: Compatibility Contract**
+Goal: make `agent-browser` docs the product spec, not an inspiration source.
+
+Includes: compatibility matrix, command aliases, output envelopes, exit codes, error names, text/JSON parity, fixture-driven tests.
+
+Why: this keeps us from building “similar” behavior that still breaks drop-in replacement use.
+
+Success: every documented command is classified as `exact`, `best_effort`, `not_available`, and status cannot improve without tests.
+
+**Epic 2: Core Agent Loop Reliability**
+Goal: make the basic loop boringly dependable: open, inspect, decide, act, wait, inspect again.
+
+Includes: `open/goto/navigate`, `snapshot -i`, refs, selectors, frames, click/fill/type/press, waits, forms, large payload chunking.
+
+Why: this is where Pi and other agents spend most of their time. If this is brittle, advanced features do not matter.
+
+Success: Lemonade-style flows work repeatedly from a cold Firefox start without prompt hacks.
+
+**Epic 3: Selector And Ref Parity**
+Goal: make `pire-browser` understand the same target language as `agent-browser`.
+
+Includes: CSS, text, XPath, role/name, label, placeholder, testid, alt/title, first/last/nth, exact matching, frame-scoped refs, stale ref recovery.
+
+Why: most automation failures are not “can’t click”; they are “clicked or filled the wrong thing.”
+
+Success: agent-browser selector examples run unchanged against `pire-browser`.
+
+**Epic 4: Sessions, Profiles, And State**
+Goal: make repeatable, isolated browser work possible.
+
+Includes: `--session`, `--session-name`, Firefox profile management, state save/load, cookies, local/session storage, auth vault, profile cleanup.
+
+Why: real automation needs logged-in state, isolation between tasks, and reproducibility.
+
+Success: two named sessions can run separately without leaking auth, tabs, cookies, or local storage.
+
+**Epic 5: Browser Data Plane**
+Goal: support automation beyond visible UI actions.
+
+Includes: downloads, uploads, clipboard, headers, network logging, abort/routing, HAR, response mocking best-effort, viewport/device/geolocation/offline/media permissions.
+
+Why: this unlocks testing, scraping, replay, debugging, and workflows where the browser is both UI and data source.
+
+Success: common test-agent scripts using storage/network/download APIs can be swapped over with documented Firefox caveats.
+
+**Epic 6: Observability And Debugging**
+Goal: make agent behavior inspectable by humans and machines.
+
+Includes: screenshots, full-page/annotated screenshots, console/errors, highlight, diffing, recording, dashboard, trace/profiler best-effort, streaming.
+
+Why: when automation fails, we need evidence, not vibes.
+
+Success: every failed action can produce enough context to answer “what did it see, what did it try, and why did it fail?”
+
+**Epic 7: Safety And Policy**
+Goal: make powerful browser automation safe to run unattended.
+
+Includes: domain allowlists, credential handling, action confirmations, eval/network/download policy, redaction, output limits, restricted-page behavior.
+
+Why: once `eval`, downloads, auth, and network control exist, safety has to be explicit.
+
+Success: dangerous operations are either blocked, confirmed, or auditable with stable error metadata.
+
+**Epic 8: Advanced Backends And Ecosystem**
+Goal: support the checklist items that do not naturally fit Firefox WebExtension architecture.
+
+Includes: Chrome/CDP backend, Browserbase/Browserless/Kernel, Lightpanda, iOS/Appium, Next.js/Vercel helpers, React/vitals, skills integration.
+
+Why: some `agent-browser` features are backend-shaped, not command-shaped. We should not distort the Firefox implementation to fake them poorly.
+
+Success: backend-specific features become explicit capabilities, while the default Firefox path stays reliable.
+
+I’d build in this order:
+
+1. Compatibility Contract
+2. Core Agent Loop Reliability
+3. Selector And Ref Parity
+4. Sessions, Profiles, And State
+5. Browser Data Plane
+6. Observability And Debugging
+7. Safety And Policy
+8. Advanced Backends And Ecosystem
+
+The main strategic move: do not chase the 228-command checklist linearly. Build the platform layers first, then mark commands compatible only when they sit on a solid layer underneath.

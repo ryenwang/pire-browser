@@ -11,6 +11,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Config File Locations
 
@@ -19,11 +20,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Support documented usage: `AGENT_BROWSER_CONFIG=./ci-config.json agent-browser open example.com`
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Example Config
 
@@ -32,6 +35,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## All Options
 
@@ -40,6 +44,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Overriding Boolean Options
 
@@ -48,16 +53,19 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] `agent-browser --headed open example.com` - same as --headed true
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] `agent-browser --headed true open example.com` - explicit
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Extensions Merging
 
@@ -66,11 +74,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] The AGENT_BROWSER_EXTENSIONS environment variable and CLI --extension flags follow the standard priority rules (env replaces config, CLI appends).
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Low
   - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Environment Variables
 
@@ -79,6 +89,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Low
   - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## Error Handling
 
@@ -87,18 +98,22 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] --config <path> with a missing or malformed file exits with an error.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Malformed JSON in auto-discovered files prints a warning to stderr and continues without that file.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Unknown keys are silently ignored for forward compatibility.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Add an automated fixture or unit test that exercises the documented behavior through the CLI and asserts text plus --json output.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.

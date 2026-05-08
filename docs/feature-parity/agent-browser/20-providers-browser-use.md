@@ -11,6 +11,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## Setup
 
@@ -19,13 +20,17 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Support documented usage: `export AGENT_BROWSER_PROVIDER=browseruse`
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] `agent-browser open https://example.com`
+  - Oracle Coverage: covered (open-fixture)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add CLI/config unit tests that the Firefox backend reports a clear unsupported provider path, plus provider-contract tests when a separate backend is introduced.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.

@@ -28,3 +28,6 @@ coverage/
 /agent-browser.dev/
 /agent-browser.dev-pages/
 /agent-browser-snapshot/
+
+# Local AI tool worktrees
+.claude/worktrees/

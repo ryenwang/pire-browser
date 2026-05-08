@@ -84,6 +84,14 @@ pub enum NativeInbound {
         sha256: String,
         data: String,
     },
+    ResultChunk {
+        transfer_id: String,
+        index: u32,
+        total: u32,
+        byte_length: usize,
+        sha256: String,
+        data: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

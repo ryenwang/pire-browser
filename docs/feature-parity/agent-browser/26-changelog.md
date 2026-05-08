@@ -11,21 +11,25 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [ ] Fixed recording context viewport not inheriting the active viewport dimensions, causing recordings to use default resolution instead of the configured viewport (#1208)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Use a fixture that reports viewport, device hints, geolocation, media queries, locale, and timezone; assert values before and after settings commands.
-- [ ] Fixed get box and get styles printing no data in text mode (#1231, #1233)
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [F] Fixed get box and get styles printing no data in text mode (#1231, #1233)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [P] Fixed active page changing when closing or removing earlier tabs. The previously focused page is now preserved correctly (#1220)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 
 ## v0.25.4 - New Features
 
@@ -34,6 +38,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.25.4 - Bug Fixes
 
@@ -42,24 +47,29 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Use a fixture that reports viewport, device hints, geolocation, media queries, locale, and timezone; assert values before and after settings commands.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed --ignore-https-errors not being re-applied to recording contexts, causing TLS errors during screen recordings (#1178)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed duplicate option numbering in the auth skill documentation (#1161)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.25.2 - Bug Fixes
 
 - [ ] Fixed Chrome being killed after ~10s idle on Linux caused by PR_SET_PDEATHSIG tracking the blocking thread that spawned Chrome rather than the daemon process. When Tokio reaped the idle thread, the kernel sent SIGKILL to Chrome even though the daemon was still alive (#1157, #1173)
-  - Extension Compatibility: False
-  - Priority: Low
-  - Complexity: High
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
   - Testing: Add backend-selection tests that this is unavailable for Firefox extension sessions; validate only under the matching engine backend.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
+  - GPT-5.5 review: Leave blank. The Linux Chrome process-group bug is not ours, but equivalent Firefox launcher lifecycle hardening is compatible future work.
 
 ## v0.25.1 - Improvements
 
@@ -68,6 +78,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.25.0 - New Features
 
@@ -76,21 +87,25 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Dashboard AI chat - The observability dashboard now includes a built-in AI chat interface for conversational browser control alongside live session views (#1160, #1163)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] snapshot --urls - New -u/--urls flag to include href URLs for link elements in snapshot output, giving agents direct access to link targets without additional queries (#1160)
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Low
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
-- [ ] Batch argument mode - The batch command now accepts commands as inline arguments in addition to reading from stdin, simplifying single-invocation multi-command workflows (#1160)
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [F] Batch argument mode - The batch command now accepts commands as inline arguments in addition to reading from stdin, simplifying single-invocation multi-command workflows (#1160)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.25.0 - Bug Fixes
 
@@ -99,85 +114,104 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: High
   - Complexity: Medium
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [ ] Fixed upload command not supporting accessibility tree refs (@eN) for file upload element selection (#1156)
   - Extension Compatibility: True
   - Priority: High
   - Complexity: High
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed AGENT_BROWSER_DEFAULT_TIMEOUT not being applied to wait commands. The environment variable now propagates to all wait variants (wait, wait --url, wait --text, wait --load, wait --fn, wait --download) (#1153)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Low
   - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed dashboard download error handling with improved retry logic for more reliable dashboard installation (#1154)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.24.1 - New Features
 
-- [N] Chrome profile login state reuse - --profile <name> now resolves Chrome profile names (e.g. Default, Profile 1) and copies the profile to a temp directory to reuse login state, cookies, and extensions without modifying the original. Added profiles command to list available Chrome profiles with --json support (#1131)
-  - Extension Compatibility: False
-  - Priority: Low
-  - Complexity: High
+- [P] Chrome profile login state reuse - --profile <name> now resolves Chrome profile names (e.g. Default, Profile 1) and copies the profile to a temp directory to reuse login state, cookies, and extensions without modifying the original. Added profiles command to list available Chrome profiles with --json support (#1131)
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
   - Testing: Add backend-selection tests that this is unavailable for Firefox extension sessions; validate only under the matching engine backend.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
+  - GPT-5.5 review: Partially covered by managed Firefox profile persistence. Importing/listing existing Chrome profiles is not compatible, but the reusable-login-state goal maps to Firefox profiles.
 
 ## v0.24.1 - Bug Fixes
 
-- [N] Fixed --ignore-https-errors not passing --ignore-certificate-errors as a Chrome launch flag, causing TLS errors like ERR_SSL_PROTOCOL_ERROR to be rejected at the network layer before CDP could intervene (#1132)
+- [ ] Fixed --ignore-https-errors not passing --ignore-certificate-errors as a Chrome launch flag, causing TLS errors like ERR_SSL_PROTOCOL_ERROR to be rejected at the network layer before CDP could intervene (#1132)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
-- [N] Fixed orphaned Chrome processes on daemon exit by spawning Chrome in its own process group and killing the entire group on shutdown. On Linux, PR_SET_PDEATHSIG ensures Chrome is killed even if the daemon is OOM-killed (#1137)
-  - Extension Compatibility: False
-  - Priority: Low
-  - Complexity: High
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [ ] Fixed orphaned Chrome processes on daemon exit by spawning Chrome in its own process group and killing the entire group on shutdown. On Linux, PR_SET_PDEATHSIG ensures Chrome is killed even if the daemon is OOM-killed (#1137)
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
   - Testing: Add backend-selection tests that this is unavailable for Firefox extension sessions; validate only under the matching engine backend.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
+  - GPT-5.5 review: Leave blank, not N. The Chrome-specific mechanism is irrelevant, but equivalent Firefox/web-ext launcher cleanup is compatible and not implemented fully.
 - [N] Fixed CDP attach hang on Chrome 144+ when connecting to real browser sessions. Targets paused waiting for the debugger after attach are now resumed with Runtime.runIfWaitingForDebugger (#1133)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [ ] Fixed stale daemon after upgrade silently reusing the old daemon process with broken CDP behavior. The daemon now writes a .version sidecar file and auto-restarts on version mismatch (#1134)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [P] Fixed stale daemon/socket recovery where close --all failed to clean up zombie daemons and stale files. Unreachable daemons are now force-killed and orphaned socket/pid files are removed (#1136)
-  - Extension Compatibility: False
+  - Extension Compatibility: True
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative backend-capability test that documents the Firefox extension limitation and asserts a clear unsupported response.
-- [P] Fixed idle timeout not being respected because the sleep future was recreated on every select loop iteration, preventing the deadline from being reached (#1110)
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
+- [ ] Fixed idle timeout not being respected because the sleep future was recreated on every select loop iteration, preventing the deadline from being reached (#1110)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
+  - GPT-5.5 review: Leave blank. There is no idle-timeout feature in `pire-browser` yet, so P would overstate current coverage.
 - [ ] Fixed browser not relaunching when launch options change (e.g. adding extensions to config.json) between consecutive launch commands (#996)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed auto_launch() not honouring AGENT_BROWSER_PROVIDER for cloud providers, causing non-launch commands to fall back to local Chrome instead of connecting via the provider API (#1126)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed HAR capture missing API requests under heavy traffic by increasing the CDP broadcast buffer from 256 to 4096 events, reducing the drain interval from 500ms to 100ms, and enabling network tracking in cross-origin iframes (#1135)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.23.4 - Bug Fixes
 
 - [ ] Fixed daemon hang on Linux caused by a waitpid(-1) race condition in the SIGCHLD handler that stole exit statuses from Rust's Child handles, leaving the daemon in a broken state. Replaced the global signal handler with targeted crash detection via the existing drain interval (#1098)
-  - Extension Compatibility: False
-  - Priority: Low
-  - Complexity: High
+  - Extension Compatibility: True
+  - Priority: Medium
+  - Complexity: Medium
   - Testing: Add a negative backend-capability test that documents the Firefox extension limitation and asserts a clear unsupported response.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
+  - GPT-5.5 review: Leave blank. The exact SIGCHLD/CDP daemon bug is not ours, but robust Unix launcher crash detection will matter after macOS/Linux ports.
 
 ## v0.23.3 - Bug Fixes
 
@@ -186,60 +220,72 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Use a drag-and-drop fixture with dragstart/dragover/drop counters and payload capture; assert the target receives a drop event.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.23.2 - New Features
 
-- [N] Dashboard session creation - Sessions can now be created directly from the dashboard UI. A new session dialog provides a unified selector grid for local engines (Chrome, Lightpanda) and cloud providers (Browserbase, Browserless, Browser Use, Kernel) with async creation, loading state, and error display (#1092)
-  - Extension Compatibility: False
+- [ ] Dashboard session creation - Sessions can now be created directly from the dashboard UI. A new session dialog provides a unified selector grid for local engines (Chrome, Lightpanda) and cloud providers (Browserbase, Browserless, Browser Use, Kernel) with async creation, loading state, and error display (#1092)
+  - Extension Compatibility: True
   - Priority: Low
   - Complexity: High
   - Testing: Add backend-selection tests that this is unavailable for Firefox extension sessions; validate only under the matching engine backend.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
+  - GPT-5.5 review: Leave blank, not N. The cloud-provider grid is out of scope, but dashboard-driven local Firefox session creation is compatible and not implemented.
 - [ ] Dashboard provider icons - The session sidebar now shows the provider or engine icon for each session, making it easy to identify which backend a session is using (#1092)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.23.2 - Bug Fixes
 
-- [ ] Fixed Browser Use provider using an intermediate API call instead of connecting directly via WSS, which caused connection failures (#1092)
+- [N] Fixed Browser Use provider using an intermediate API call instead of connecting directly via WSS, which caused connection failures (#1092)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative backend-capability test that documents the Firefox extension limitation and asserts a clear unsupported response.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Fixed Browserbase provider not sending an explicit JSON body and Content-Type header, causing session creation to fail (#1092)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative backend-capability test that documents the Firefox extension limitation and asserts a clear unsupported response.
-- [ ] Fixed provider navigation hanging because wait_for_lifecycle waited for page load events that remote providers may not emit. Navigation with --provider now automatically sets waitUntil=none (#1092)
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
+- [N] Fixed provider navigation hanging because wait_for_lifecycle waited for page load events that remote providers may not emit. Navigation with --provider now automatically sets waitUntil=none (#1092)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative backend-capability test that documents the Firefox extension limitation and asserts a clear unsupported response.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Fixed remote CDP connections timing out by increasing the CDP connect timeout from 10s to 25s for cloud providers (#1092)
-  - Extension Compatibility: True
-  - Priority: Medium
-  - Complexity: Medium
+  - Extension Compatibility: False
+  - Priority: Low
+  - Complexity: High
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 review: Mark N. Remote CDP/cloud-provider connection management is not part of the Firefox WebExtension backend.
 - [ ] Fixed zombie daemon processes not being cleaned up when a provider connection fails during session creation from the dashboard (#1092)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.23.1 - New Features
 
-- [N] Puppeteer browser cache fallback - Chrome discovery now searches ~/.cache/puppeteer/chrome/ (or PUPPETEER_CACHE_DIR) for Chrome binaries, so users with an existing Puppeteer installation can use agent-browser without a separate install step (#1088)
+- [ ] Puppeteer browser cache fallback - Chrome discovery now searches ~/.cache/puppeteer/chrome/ (or PUPPETEER_CACHE_DIR) for Chrome binaries, so users with an existing Puppeteer installation can use agent-browser without a separate install step (#1088)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Console output improvements - console.log of objects now shows the actual object preview (e.g. {userId: "abc", count: 42}) instead of "Object". JSON output includes a raw args array for programmatic access (#1040)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Low
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.23.1 - Bug Fixes
 
@@ -248,26 +294,33 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
-- [P] Fixed save_state only capturing cookies and localStorage for the current origin, silently dropping cross-domain data (e.g. SSO/CAS auth cookies). Now uses Network.getAllCookies and collects localStorage from all visited origins (#1064)
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [ ] Fixed save_state only capturing cookies and localStorage for the current origin, silently dropping cross-domain data (e.g. SSO/CAS auth cookies). Now uses Network.getAllCookies and collects localStorage from all visited origins (#1064)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
+  - GPT-5.5 review: Leave blank. Persistent Firefox profiles cover the common auth need, but exportable cross-origin state save/load is not implemented.
 - [N] Fixed externally opened tabs not appearing in tab list when using --cdp mode. Tabs opened by the user or another CDP client are now detected and tracked (#1042)
+  - Oracle Coverage: covered (tabs-new-select-close)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [ ] Fixed dashboard server not picking up installed files without a restart. dashboard install now takes effect immediately on a running server (#1066)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed Windows Chrome extraction failing because zip path normalization used forward slashes while the extraction code expected backslashes (#1088)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.23.0 - New Features
 
@@ -276,11 +329,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Close all sessions - Added close --all flag to close every active browser session at once
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.23.0 - Bug Fixes
 
@@ -289,44 +344,53 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add backend-selection tests that this is unavailable for Firefox extension sessions; validate only under the matching engine backend.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [ ] Fixed Windows daemon TCP bind failing when Hyper-V reserves the port by falling back to an OS-assigned port and writing it to a .port file (#1041)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed Windows dashboard relay using Unix socket instead of TCP (#1038)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [F] Fixed radio/checkbox elements being dropped from compact snapshot tree because the ref= check required a leading [ that those elements lack (#1008)
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use a fixture with select, checkbox, and radio controls; assert value/checked state and change events after command execution.
+  - Gemini feedback: Confirmed this feature is fully implemented in /pire-browser or is highly compatible. The specified testing strategy is appropriate and should ensure stability.
 
 ## v0.22.3 - Bug Fixes
 
-- [N] Re-apply download behavior on recording context - Fixed an issue where downloads were silently dropped in recording contexts because Browser.setDownloadBehavior set at launch only applied to the default context. The download behavior is now re-applied when a new recording context is created (#1019)
+- [ ] Re-apply download behavior on recording context - Fixed an issue where downloads were silently dropped in recording contexts because Browser.setDownloadBehavior set at launch only applied to the default context. The download behavior is now re-applied when a new recording context is created (#1019)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
-- [N] Reap zombie Chrome process and fast-detect crash for auto-restart - Added a non-blocking process-exit check before attempting CDP connection checks. This prevents a 3-second CDP timeout when Chrome has already crashed or exited, enabling faster detection and auto-restart of the browser (#1023)
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [ ] Reap zombie Chrome process and fast-detect crash for auto-restart - Added a non-blocking process-exit check before attempting CDP connection checks. This prevents a 3-second CDP timeout when Chrome has already crashed or exited, enabling faster detection and auto-restart of the browser (#1023)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
-- [ ] Route keyboard type through text input - Fixed keyboard type subaction to correctly route through the text input handler, and added support for an insertText subaction using Input.insertText (#1014)
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [F] Route keyboard type through text input - Fixed keyboard type subaction to correctly route through the text input handler, and added support for an insertText subaction using Input.insertText (#1014)
+  - Oracle Coverage: covered (keyboard-type)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Handle --clear flag in console command - Fixed the console command to accept and process a clear parameter, allowing console event history to be cleared (#1015)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.22.2 - New Features
 
@@ -335,11 +399,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Use a fixture that opens alert/confirm/prompt/beforeunload dialogs; assert captured dialog metadata and configured accept/dismiss behavior.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [P] Dialog warning field - Command responses now include a warning field when a JavaScript dialog is pending, indicating the dialog type and message (#999)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Use a fixture that opens alert/confirm/prompt/beforeunload dialogs; assert captured dialog metadata and configured accept/dismiss behavior.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 
 ## v0.22.2 - Improvements
 
@@ -348,11 +414,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Low
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Font packages for --with-deps - Installing with --with-deps now includes CJK and emoji font packages on Linux (Debian, RPM, and yum-based distros) to prevent missing glyphs when rendering international content (#1002)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.22.2 - Bug Fixes
 
@@ -361,21 +429,25 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed console command returning only Done due to a JSON field name mismatch in the response (#986)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
-- [N] Fixed browser-domain CDP events being dropped during downloads due to a sessionId mismatch (#998)
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [ ] Fixed browser-domain CDP events being dropped during downloads due to a sessionId mismatch (#998)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
-- [N] Fixed proxy authentication by handling credentials via the CDP Fetch.authRequired event rather than passing them inline (#1000)
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [ ] Fixed proxy authentication by handling credentials via the CDP Fetch.authRequired event rather than passing them inline (#1000)
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.22.1 - Bug Fixes
 
@@ -384,24 +456,29 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [N] Fixed query parameters being dropped from --cdp HTTP URLs (e.g. http://host:9222?mode=Hello). Query strings are now preserved and forwarded to the remote CDP endpoint (#982)
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## v0.22.0 - New Features
 
-- [P] Cross-origin iframe support - Added support for snapshots and interactions within cross-origin iframes via Target.setAutoAttach (#949)
+- [F] Cross-origin iframe support - Added support for snapshots and interactions within cross-origin iframes via Target.setAutoAttach (#949)
   - Extension Compatibility: True
   - Priority: High
   - Complexity: High
   - Testing: Serve same-origin and cross-origin iframe fixtures; assert snapshot inclusion, frame targeting, and graceful opaque-frame errors.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
+  - GPT-5.5 review: Fully covered in the Firefox-extension architecture: content scripts run in all frames with `<all_urls>`, and commands target frame IDs from `webNavigation.getAllFrames`.
 - [ ] Network request detail and filtering - Added network request <requestId> command to view full request/response detail, and new filtering options for network requests including --type (e.g. xhr,fetch), --method (e.g. POST), and --status (e.g. 2xx, 400-499) (#935)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.22.0 - Improvements
 
@@ -410,16 +487,19 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: High
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [ ] Upgrade command - Improved robustness of installation method detection in the upgrade command (#960)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Target tracking - Enhanced target tracking and page information handling for more reliable browser session management (#969)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.22.0 - Bug Fixes
 
@@ -428,31 +508,38 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed find command flags such as --exact and --name leaking into fill values when used with fill actions (#955)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed state commands incorrectly starting the daemon when no session_name is provided (#677, #964)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed auto-connect triggering when the daemon is already running, preventing duplicate connections (#971)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
-- [P] Fixed Enter key press not working by adding a text field to keyDown events (#972)
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [F] Fixed Enter key press not working by adding a text field to keyDown events (#972)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
+  - GPT-5.5 review: Fully covered for the bug-level behavior: `press Enter` dispatches keydown/keyup for Enter in the focused frame. Broader modifier-key parity remains tracked elsewhere as P.
 - [ ] Fixed download command to properly handle absolute paths and correctly click target elements (#970)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.22.0 - Breaking Changes
 
@@ -461,19 +548,22 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: High
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 
 ## v0.21.3 - Bug Fixes
 
-- [N] WebSocket keepalive for remote browsers - Added WebSocket Ping frames and TCP SO_KEEPALIVE to prevent CDP connections from being silently dropped by intermediate proxies during idle periods (#936)
+- [ ] WebSocket keepalive for remote browsers - Added WebSocket Ping frames and TCP SO_KEEPALIVE to prevent CDP connections from being silently dropped by intermediate proxies during idle periods (#936)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Serve same-origin and cross-origin iframe fixtures; assert snapshot inclusion, frame targeting, and graceful opaque-frame errors.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] XPath selector support - Fixed element resolution to correctly handle the xpath= selector prefix (#908)
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.21.2 - Bug Fixes
 
@@ -482,39 +572,47 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: High
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [ ] Native mouse drag state - Fixed incorrect raw native mouse drag state not being properly tracked across down, move, and up events (#872)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
-- [N] Chrome headless launch failures - Fixed browser launch failures caused by the --enable-unsafe-swiftshader flag in Chrome headless mode (#915)
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [ ] Chrome headless launch failures - Fixed browser launch failures caused by the --enable-unsafe-swiftshader flag in Chrome headless mode (#915)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Origin-scoped --headers persistence - Restored correct persistence of origin-scoped headers set via --headers across navigation commands (#894)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Relative URLs in WebSocket domain filter - Fixed handling of relative URLs in the WebSocket domain filter script (#624)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Low
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.21.1 - New Features
 
 - [ ] HAR 1.2 network capture - Added commands to capture and export network traffic in HAR 1.2 format, including accurate request/response timing, headers, body sizes, and resource types sourced from Chrome DevTools Protocol events (#864)
-  - Extension Compatibility: False
-  - Priority: Low
+  - Extension Compatibility: True
+  - Priority: Medium
   - Complexity: High
   - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
+  - GPT-5.5 review: Leave blank, not N. CDP event sourcing is not compatible, but HAR-like network capture can be built with WebExtension webRequest APIs.
 - [ ] Built-in upgrade command - Added agent-browser upgrade to self-update the CLI; automatically detects your installation method (npm, Homebrew, or Cargo) and runs the appropriate update command (#898)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.21.0 - New Features
 
@@ -523,31 +621,37 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: High
   - Complexity: High
   - Testing: Serve same-origin and cross-origin iframe fixtures; assert snapshot inclusion, frame targeting, and graceful opaque-frame errors.
+  - Gemini feedback: Confirmed this feature is fully implemented in /pire-browser or is highly compatible. The specified testing strategy is appropriate and should ensure stability.
 - [ ] --idle-timeout flag -- Automatically shut down the daemon after a period of inactivity. Accepts human-friendly formats such as 10s, 3m, 1h, or raw milliseconds. Also available as AGENT_BROWSER_IDLE_TIMEOUT_MS.
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [P] Cursor-interactive elements in snapshots -- Cursor-interactive elements are now embedded directly into the snapshot tree for richer context.
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [N] Brave Browser auto-connect -- Auto-discovery of Brave Browser for CDP connections on macOS, Linux, and Windows.
-  - Extension Compatibility: True
+  - Extension Compatibility: False
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] linux-musl (Alpine) builds -- Pre-built binaries for linux-musl targeting both x64 and arm64, enabling native support for Alpine Linux and other musl-based distributions.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [N] WebSocket fallback for CDP discovery -- When HTTP-based CDP endpoint discovery fails, the CLI now falls back to a WebSocket connection automatically.
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## v0.21.0 - Improvements
 
@@ -556,79 +660,94 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: High
   - Complexity: Medium
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
-- [N] Enhanced Chrome launch -- Added --user-data-dir support and configurable launch timeout for more reliable browser startup. Chrome now retries launching up to 3 times on transient startup failures.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [ ] Enhanced Chrome launch -- Added --user-data-dir support and configurable launch timeout for more reliable browser startup. Chrome now retries launching up to 3 times on transient startup failures.
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Consecutive --auto-connect commands -- Multiple consecutive auto-connect commands no longer require a full browser relaunch; external connections are correctly identified and reused.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
-- [N] Batched CDP calls -- snapshot -C and screenshot --annotate now batch CDP calls instead of issuing sequential round-trips per element, preventing timeouts on high-latency WSS connections.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [ ] Batched CDP calls -- snapshot -C and screenshot --annotate now batch CDP calls instead of issuing sequential round-trips per element, preventing timeouts on high-latency WSS connections.
   - Extension Compatibility: True
   - Priority: High
   - Complexity: High
   - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.21.0 - Bug Fixes
 
 - [N] Fixed remote CDP (WSS) snapshot and screenshot hangs by removing WebSocket message/frame size limits
-  - Extension Compatibility: True
+  - Extension Compatibility: False
   - Priority: High
   - Complexity: Medium
   - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed Material Design check/uncheck falling back to JS .click() for overlay-based controls
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed punctuation characters being dropped in the type command
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed WebSocket streaming by keeping the StreamServer instance alive
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Enable streaming, connect a WebSocket test client, perform page mutations, and assert frame metadata, cadence, and cleanup on disable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [N] Filtered internal Chrome targets (chrome://, devtools://) from auto-connect discovery
-  - Extension Compatibility: True
+  - Extension Compatibility: False
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed snapshot --selector scoping to the matched element's subtree
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed network idle detection returning prematurely for cached pages
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
-- [N] Fixed daemon panic on broken stderr pipe during Chrome launch
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [ ] Fixed daemon panic on broken stderr pipe during Chrome launch
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed broadcast channel lag being treated as stream closure
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed daemon liveness detection for PID namespace isolation (e.g. unshare)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed Ubuntu dependency install accidentally removing system packages
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.20.0 - Improvements
 
@@ -637,11 +756,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
-- [N] Chromium installer hardened -- Fixed zip path traversal vulnerability in Chrome for Testing installer.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [ ] Chromium installer hardened -- Fixed zip path traversal vulnerability in Chrome for Testing installer.
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.20.0 - Bug Fixes
 
@@ -650,26 +771,31 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed "not found" error pattern in to_ai_friendly_error incorrectly catching non-element errors
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed storage local key lookup parsing and text output
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Use a fixture that sets cookies, localStorage, sessionStorage, and IndexedDB; assert CLI export/import/clear behavior through JSON output.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [N] Fixed Lightpanda engine launch with release binaries
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add backend-selection tests that this is unavailable for Firefox extension sessions; validate only under the matching engine backend.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Hardened Lightpanda startup timeouts
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add backend-selection tests that this is unavailable for Firefox extension sessions; validate only under the matching engine backend.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## v0.19.0 - New Features
 
@@ -678,16 +804,19 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative backend-capability test that documents the Firefox extension limitation and asserts a clear unsupported response.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [ ] clipboard command -- Read from and write to the browser clipboard. Supports read, write, copy (simulates Ctrl+C), and paste (simulates Ctrl+V) operations.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Use native-host clipboard helpers plus a paste-target fixture; assert read/write/copy/paste round trips without leaking stale clipboard data.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Screenshot output configuration -- New global flags for persistent screenshot settings: --screenshot-dir, --screenshot-quality, and --screenshot-format. Also available as environment variables AGENT_BROWSER_SCREENSHOT_DIR, AGENT_BROWSER_SCREENSHOT_QUALITY, and AGENT_BROWSER_SCREENSHOT_FORMAT.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Low
   - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.19.0 - Bug Fixes
 
@@ -696,26 +825,31 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed BrowserManager.navigate() and package entry point
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Use a local HTTP fixture, run pire-browser open/launch, then assert status/snapshot/get url output against the expected fixture URL.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed extensions not being loaded from config.json
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed scroll on page load
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed HTML retrieval by using browser.getLocator() for selector operations
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.18.0 - New Features
 
@@ -724,16 +858,19 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] get cdp-url subcommand -- Retrieve the Chrome DevTools Protocol WebSocket URL for the active page, useful for connecting external debugging tools.
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [ ] Screenshot annotate -- The --annotate flag overlays numbered labels on interactive elements in screenshots.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: High
   - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.18.0 - Improvements
 
@@ -742,11 +879,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: High
   - Complexity: Medium
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [N] Browserbase simplified -- Removed the BROWSERBASE_PROJECT_ID requirement, reducing setup friction for Browserbase users.
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative backend-capability test that documents the Firefox extension limitation and asserts a clear unsupported response.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## v0.18.0 - Bug Fixes
 
@@ -755,26 +894,31 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative backend-capability test that documents the Firefox extension limitation and asserts a clear unsupported response.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [N] Fixed CDP connect paths using hardcoded 10s timeout instead of the configurable default timeout
-  - Extension Compatibility: True
+  - Extension Compatibility: False
   - Priority: Medium
   - Complexity: High
   - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed lone Unicode surrogates causing errors by sanitizing with toWellFormed()
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [N] Fixed CDP connection failure on IPv6-first systems
-  - Extension Compatibility: True
+  - Extension Compatibility: False
   - Priority: Medium
   - Complexity: Medium
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed recordings not inheriting the current viewport settings
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Use a fixture that reports viewport, device hints, geolocation, media queries, locale, and timezone; assert values before and after settings commands.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.17.1 - Improvements
 
@@ -783,11 +927,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Use a fixture that reports viewport, device hints, geolocation, media queries, locale, and timezone; assert values before and after settings commands.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Webview target support -- Added webview target type support for better Electron application compatibility. The pages list now includes target type information.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.17.0 - New Features
 
@@ -796,11 +942,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add backend-selection tests that this is unavailable for Firefox extension sessions; validate only under the matching engine backend.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [P] Dialog dismiss command -- Added support for dismiss subcommand in dialog command parsing.
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Use a fixture that opens alert/confirm/prompt/beforeunload dialogs; assert captured dialog metadata and configured accept/dismiss behavior.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 
 ## v0.17.0 - Improvements
 
@@ -809,26 +957,33 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [N] CDP port discovery -- Replaced hand-rolled HTTP client with reqwest for more reliable CDP port discovery.
-  - Extension Compatibility: True
+  - Extension Compatibility: False
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
-- [N] Chrome extensions -- Extensions now load correctly by forcing headed mode when extensions are present.
-  - Extension Compatibility: False
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [F] Chrome extensions -- Extensions now load correctly by forcing headed mode when extensions are present.
+  - Extension Compatibility: True
   - Priority: Low
-  - Complexity: High
+  - Complexity: Low
   - Testing: Add backend-selection tests that this is unavailable for Firefox extension sessions; validate only under the matching engine backend.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
+  - GPT-5.5 review: Fully covered in the Firefox equivalent: `pire-browser` is extension-first and launches headed Firefox by default.
 - [ ] Google Translate bar suppression -- Suppressed the Google Translate bar in native headless mode to avoid interference.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
-- [P] Auth cookie persistence -- Auth cookies are now persisted on browser close in native mode.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [F] Auth cookie persistence -- Auth cookies are now persisted on browser close in native mode.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
+  - GPT-5.5 review: Fully covered by the persistent managed Firefox profile: cookies and login sessions survive browser restarts.
 
 ## v0.17.0 - Bug Fixes
 
@@ -837,6 +992,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: High
   - Complexity: High
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.15.0 - New Features
 
@@ -845,54 +1001,65 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: High
   - Complexity: Medium
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Content boundary markers -- --content-boundaries wraps page-sourced output in structural delimiters with a per-process CSPRNG nonce, so LLMs can distinguish trusted tool output from untrusted page content. In --json mode, a _boundary object is injected with nonce and origin fields.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Domain allowlist -- --allowed-domains restricts navigation, sub-resource requests, WebSocket connections, and EventSource streams to trusted domains. Supports exact match and wildcard prefix patterns (e.g., *.example.com).
   - Extension Compatibility: True
   - Priority: High
   - Complexity: High
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Action policy -- --action-policy gates actions using a static JSON policy file with allow/deny lists across 13 action categories. Auth vault operations bypass policy enforcement.
   - Extension Compatibility: True
   - Priority: High
   - Complexity: High
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Action confirmation -- --confirm-actions requires explicit approval for sensitive action categories. New confirm and deny commands for orchestrator use. --confirm-interactive enables human-in-the-loop terminal prompts (auto-denies if stdin is not a TTY). Pending confirmations auto-deny after 60 seconds.
   - Extension Compatibility: True
   - Priority: High
   - Complexity: High
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Output length limits -- --max-output truncates large page outputs to prevent LLM context flooding.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] --download-path option -- Set a default download directory via flag, AGENT_BROWSER_DOWNLOAD_PATH env var, or downloadPath config key. Without it, downloads go to a temporary directory deleted when the browser closes.
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
-- [ ] --selector flag for scroll -- Scroll within a specific container element instead of the page: agent-browser scroll down 500 --selector "div.scroll-container"
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [F] --selector flag for scroll -- Scroll within a specific container element instead of the page: agent-browser scroll down 500 --selector "div.scroll-container"
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.14.0 - New Features
 
-- [ ] keyboard command -- Type with real keystrokes, insert text, and press shortcuts at the currently focused element without needing a selector (keyboard type, keyboard inserttext).
+- [F] keyboard command -- Type with real keystrokes, insert text, and press shortcuts at the currently focused element without needing a selector (keyboard type, keyboard inserttext).
+  - Oracle Coverage: covered (keyboard-type)
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] --color-scheme flag -- Persistent dark/light mode preference across browser sessions via flag or AGENT_BROWSER_COLOR_SCHEME env var.
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.14.0 - Bug Fixes
 
@@ -901,21 +1068,25 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [N] Fixed remote debugging (CDP) reconnection.
-  - Extension Compatibility: True
+  - Extension Compatibility: False
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed state load failing when no browser is running.
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed --annotate flag warning appearing when not explicitly passed via CLI.
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.13.0 - New Features
 
@@ -924,6 +1095,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: High
   - Complexity: Low
   - Testing: Capture before/after fixture snapshots and screenshots, then assert textual and visual diff artifacts against known changes.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.12.0 - New Features
 
@@ -932,6 +1104,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: High
   - Complexity: High
   - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.11.0 - New Features
 
@@ -940,41 +1113,49 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [N] Profiler commands -- Chrome DevTools profiling with profiler start and profiler stop.
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [ ] Browser extension loading -- --extension flag to load browser extensions.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Storage state management -- state save and state load commands for auth state persistence.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Use a fixture that sets cookies, localStorage, sessionStorage, and IndexedDB; assert CLI export/import/clear behavior through JSON output.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] iOS device emulation -- --device flag for device emulation.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Use a fixture that reports viewport, device hints, geolocation, media queries, locale, and timezone; assert values before and after settings commands.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [P] Enhanced click -- --new-tab option for click commands.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [P] Enhanced find -- Additional actions and filtering options.
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [N] CDP WebSocket URLs -- --cdp now accepts WebSocket URLs in addition to ports.
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## v0.10.0 - New Features
 
@@ -983,21 +1164,25 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [ ] Encrypted state - Optional AES-256-GCM encryption for saved session state data
   - Extension Compatibility: True
   - Priority: High
   - Complexity: High
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] State management commands - New commands for listing, showing, renaming, clearing, and cleaning up session state files
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [P] New tab on click - Added --new-tab option for click commands to open links in new tabs
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 
 ## v0.9.4 - Bug Fixes
 
@@ -1006,19 +1191,23 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Confirmed this feature is fully implemented in /pire-browser or is highly compatible. The specified testing strategy is appropriate and should ensure stability.
 
 ## v0.9.3 - Improvements
 
-- [P] Added support for custom executable path in CLI browser launch options
+- [F] Added support for custom executable path in CLI browser launch options
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
+  - GPT-5.5 review: Fully covered for launch/setup through `--firefox-path`.
 - [ ] Documentation site UI improvements including a new chat component with sheet-based interface
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.9.2 - Improvements
 
@@ -1027,16 +1216,19 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Added AI-powered docs chat feature
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Updated README with Homebrew installation instructions for macOS users
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.9.1 - New Features
 
@@ -1045,11 +1237,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Run deterministic JavaScript against a fixture and assert returned JSON, thrown-error handling, and page-side side effects.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [P] -C/--cursor flag for snapshots - Include cursor-interactive elements like divs with onclick handlers or cursor:pointer styles
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use a pointer-event fixture that records mouse/pointer/wheel events and coordinates; assert the expected event log.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 
 ## v0.9.0 - New Features
 
@@ -1058,6 +1252,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a platform-gated test that skips on Firefox backend and asserts a clear unsupported_provider response; validate later with an Appium simulator smoke test.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 
 ## v0.8.10 - Improvements
 
@@ -1066,11 +1261,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Run deterministic JavaScript against a fixture and assert returned JSON, thrown-error handling, and page-side side effects.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed binary permission issues on macOS/Linux when postinstall scripts don't run
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.8.9 - Improvements
 
@@ -1079,6 +1276,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Run deterministic JavaScript against a fixture and assert returned JSON, thrown-error handling, and page-side side effects.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.8.8 - Improvements
 
@@ -1087,11 +1285,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Updated documentation with AI agent setup instructions
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Exercise with Rust unit tests for setup parsing/paths and the Windows smoke script registering the native host, then assert install-status --json fields.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.8.7 - Bug Fixes
 
@@ -1100,16 +1300,19 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [ ] Added pre-flight checks for socket path length limits and directory write permissions
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [P] Improved error handling to properly exit with failure status when browser launch fails
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 
 ## v0.8.6 - Bug Fixes
 
@@ -1118,11 +1321,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [P] CLI now cleans up stale socket and PID files before starting a new daemon
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 
 ## v0.8.5 - Bug Fixes
 
@@ -1131,11 +1336,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Made the CLI binary executable in the npm package
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.8.4 - Bug Fixes
 
@@ -1144,6 +1351,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.8.3 - Improvements
 
@@ -1152,16 +1360,19 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Added postinstall logic to patch npm bin entry on global installs for zero-overhead native binary invocation
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Added CI tests to verify global installation across all platforms
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.8.2 - Bug Fixes
 
@@ -1170,11 +1381,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Added retry logic to CI install command for transient browser installation failures
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.8.1 - Improvements
 
@@ -1183,57 +1396,69 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Updated documentation site with a new mobile navigation system
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.8.0 - New Features
 
-- [N] Kernel cloud browser provider - Connect to Kernel (kernel.sh) for remote browser infrastructure with stealth mode and persistent profiles
+- [ ] Kernel cloud browser provider - Connect to Kernel (kernel.sh) for remote browser infrastructure with stealth mode and persistent profiles
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Ignore HTTPS certificate errors - New flag for working with self-signed certificates and development environments
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Enhanced cookie management - Extended cookies set command with additional flags for setting cookies before page load
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.8.0 - Bug Fixes
 
-- [P] Fixed tab list command not recognizing new pages opened via clicks or target="_blank" links
+- [F] Fixed tab list command not recognizing new pages opened via clicks or target="_blank" links
+  - Oracle Coverage: covered (tabs-new-select-close)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
+  - GPT-5.5 review: Fully covered for current tab listing: `tabs list` reconciles Firefox tabs and records created tabs through browser tab events.
 - [ ] Fixed check command hanging indefinitely
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fixed set device not applying deviceScaleFactor - HiDPI screenshots now work correctly
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [P] Fixed state load and profile persistence not working in v0.7.6
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
-- [ ] Screenshots now save to temp directory when no path is provided
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
+- [P] Screenshots now save to temp directory when no path is provided
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.7.1 - Bug Fixes
 
@@ -1242,6 +1467,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.7.0 - New Features
 
@@ -1250,31 +1476,37 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative backend-capability test that documents the Firefox extension limitation and asserts a clear unsupported response.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [F] Persistent browser profiles - Store cookies, localStorage, and login sessions across browser restarts
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Gemini feedback: Confirmed this feature is fully implemented in /pire-browser or is highly compatible. The specified testing strategy is appropriate and should ensure stability.
 - [N] Remote CDP WebSocket URLs - Connect to remote browser services via WebSocket
   - Extension Compatibility: False
   - Priority: Low
   - Complexity: High
   - Testing: Add a negative integration test that the Firefox backend returns an explicit unsupported_cdp error; cover any future CDP backend with a real DevTools fixture.
+  - Gemini feedback: Agree that this is Not Compatible. Extension Compatibility is False due to architecture differences (e.g. CDP vs WebExtension). Skip this feature.
 - [ ] download command - Trigger downloads and wait for completion
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [P] Browser launch configuration - Fine-grained control over browser startup
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [ ] Enhanced skills - Hierarchical structure with references and templates for Claude Code
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.7.0 - Bug Fixes
 
@@ -1283,26 +1515,31 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: High
   - Complexity: Medium
   - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] WebSocket URLs work in connect command
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Low
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [P] Fixed socket file location (uses ~/.agent-browser instead of TMPDIR)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [F] Windows binary path fix (.exe extension)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Confirmed this feature is fully implemented in /pire-browser or is highly compatible. The specified testing strategy is appropriate and should ensure stability.
 - [ ] State load and path-based actions now show correct output messages
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.6.0 - New Features
 
@@ -1311,36 +1548,43 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: High
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [N] connect command - Connect to a browser via CDP and persist the connection for subsequent commands
-  - Extension Compatibility: True
+  - Extension Compatibility: False
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] --proxy flag - Configure browser proxy with optional authentication
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
-- [ ] get styles command - Extract computed styles from elements
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [F] get styles command - Extract computed styles from elements
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Claude marketplace plugin - Added .claude-plugin/marketplace.json for Claude Code integration
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run the command with --json in unit/e2e tests and validate the response against a checked schema.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Enhanced network output - network requests now shows method, URL, and resource type
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Use a local fixture server that records requests/responses; assert headers, blocking/routing decisions, offline behavior, and emitted HAR fields.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] --version flag - Display CLI version
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 
 ## v0.6.0 - Bug Fixes
 
@@ -1349,53 +1593,66 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Support libasound2t64 on newer Ubuntu versions (24.04+)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [N] Prevent CDP timeout on empty URL tabs
-  - Extension Compatibility: True
+  - Extension Compatibility: False
   - Priority: Medium
   - Complexity: Low
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Output screenshot as base64 when no path provided
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
-- [ ] Resolve refs in get value command
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [F] Resolve refs in get value command
+  - Oracle Coverage: covered (get-text-value-attr-url)
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use an accessibility fixture with labels, roles, test ids, duplicate matches, shadow DOM, and iframes; assert refs and locator actions are stable.
-- [P] Support URL parameter in tab new command
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+- [F] Support URL parameter in tab new command
+  - Oracle Coverage: covered (tabs-new-select-close)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Low
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature is partially implemented in /pire-browser or is a viable addition. The priority and complexity align with the remaining effort. Testing should focus on the gaps identified.
 - [ ] Allow about:, data:, and file: URL schemes
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Low
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Detect stale unix socket by attempting connection
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Respect AGENT_BROWSER_HEADED environment variable
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Low
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Handle SIGPIPE to prevent panic when piping to head/tail
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Convert the release note into a focused regression test using the smallest fixture that reproduces the behavior, then add it to smoke or unit coverage.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
 - [ ] Fix null path validation in screenshot command
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Capture a deterministic fixture page, verify the output file exists, decode image dimensions, and compare key pixels or an approved snapshot.
+  - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
