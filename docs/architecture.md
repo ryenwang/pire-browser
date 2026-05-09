@@ -6,7 +6,9 @@
 2. `pire-browser-host.exe` is the Firefox Native Messaging host.
 3. The Firefox extension is the browser-side controller.
 
-Firefox owns the native host lifecycle. The CLI never starts or stops Firefox and never talks to Firefox directly. It discovers a live extension session from `%LOCALAPPDATA%\pire-browser\sessions`, connects to the session's Windows named pipe, sends one JSON-RPC command, and prints the response.
+Firefox owns the native host lifecycle once the extension is running. The extension starts `pire-browser-host.exe` through Native Messaging, and the CLI talks to that host through a current-user Windows named pipe.
+
+For the default session only, browser-control commands may also use the managed Firefox launcher when no live extension session exists. In that cold-start path, the CLI starts Firefox through the managed `web-ext` profile, waits for the extension to connect back through Native Messaging, then dispatches the original command over the pipe. Explicit `--session` commands do not auto-launch; they require an existing live session until Epic 4 defines named-session lifecycle semantics.
 
 ## IPC
 
@@ -33,3 +35,14 @@ When a locator cannot be re-resolved uniquely, commands return `ref_stale` or `a
 - Cross-origin frames are best-effort. Inaccessible frames are opaque.
 - Dialog handling uses a page-world shim and can only observe pages where injection is allowed.
 - Screenshot support is visible-viewport only.
+- Per-command flags that require a different browser process shape, such as headless mode or color scheme, are accepted for parser compatibility but reported as ignored warnings when JSON output is requested.
+- Robust network-idle waits require network instrumentation and are deferred to the browser data plane.
+- File upload automation is backend-specific; the Firefox WebExtension path does not claim local file input control.
+
+## Epic 2 Readiness Notes
+
+- Core waits in Epic 2 are DOM/content waits: selector state, text, URL, page load completion, fixed delay, and supported function predicates.
+- `wait --load networkidle` belongs to Epic 5 because it depends on reliable network observation.
+- Frame stitching is an Epic 2 reliability requirement. The extension must keep `all_frames: true`, stitch accessible frame snapshots into one result, and represent inaccessible frames as explicit opaque records.
+- Lite observability moves into Epic 2: CLI/host/extension logs should carry command id, session id, command root, timing, timeout source, and error code. Screenshots, traces, HAR, dashboards, recording, and diffing remain Epic 6.
+- IPC concurrency is an Epic 2 decision point. Until multiplexed dispatch is implemented and tested, reliability claims should assume single-flight command semantics.

@@ -9,6 +9,7 @@ import {
   listFilesSafe,
   loadCases,
   loadCompatibility,
+  loadCompatibilityBaseline,
   readInstalledAgentBrowserVersion,
   resolveAgentBrowserExecutable,
   resolvePireExecutable,
@@ -106,7 +107,7 @@ try {
 
 summary.finishedAt = new Date().toISOString();
 summary.pass = summary.cases.every((testCase) => testCase.pass);
-summary.coverage = summarizeCoverage(summary.cases, await loadCompatibility());
+summary.coverage = summarizeCoverage(summary.cases, await loadCompatibility(), await loadCompatibilityBaseline());
 summary.files = await listFilesSafe(runDir);
 await writeJson(join(runDir, "summary.json"), summary);
 
@@ -115,9 +116,9 @@ console.log(`Oracle comparison summary: ${summary.pass ? "PASS" : "FAIL"}`);
 console.log(`Run artifacts: ${runDir}`);
 process.exit(summary.pass ? 0 : 1);
 
-function summarizeCoverage(cases, compatibility) {
+function summarizeCoverage(cases, compatibility, compatibilityBaseline) {
   const items = cases.flatMap((testCase) => testCase.compatibilityItems ?? []);
-  const policy = evaluateCoveragePolicy(compatibility, cases);
+  const policy = evaluateCoveragePolicy(compatibility, cases, compatibilityBaseline);
   return {
     totalItems: items.length,
     tapeCovered: items.filter((item) => item.tapeCovered).length,

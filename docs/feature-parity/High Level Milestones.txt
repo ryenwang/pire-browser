@@ -1,87 +1,170 @@
-The clean high-level roadmap I’d use is:
-**Epic 0: Reference Baseline And Test Oracle**
+# High Level Milestones
 
-**Epic 1: Compatibility Contract**
-Goal: make `agent-browser` docs the product spec, not an inspiration source.
+The strategic move is to avoid chasing the full `agent-browser` checklist linearly. Build the platform layers first, keep the pinned docs as the contract, and mark commands compatible only when the behavior sits on a reliable layer underneath.
 
-Includes: compatibility matrix, command aliases, output envelopes, exit codes, error names, text/JSON parity, fixture-driven tests.
+## Epic 0: Reference Baseline And Test Oracle
 
-Why: this keeps us from building “similar” behavior that still breaks drop-in replacement use.
+Goal: make compatibility measurable before expanding browser behavior.
 
-Success: every documented command is classified as `exact`, `best_effort`, `not_available`, and status cannot improve without tests.
+Includes: pinned `agent-browser@0.26.0` baseline metadata, oracle fixtures, fixture case linting, normalized text and JSON comparison, strict envelope assertions, negative-path assertions, version checks, doctor/report/CI commands, and deterministic artifact validation.
 
-**Epic 2: Core Agent Loop Reliability**
-Goal: make the basic loop boringly dependable: open, inspect, decide, act, wait, inspect again.
+Why: without a trusted oracle, compatibility claims become opinion. The oracle gives us a way to prove both happy-path and failure-path parity, including exit codes, error names, JSON envelope shape, warnings, and selected browser state.
 
-Includes: `open/goto/navigate`, `snapshot -i`, refs, selectors, frames, click/fill/type/press, waits, forms, large payload chunking.
+Key design:
+- Baseline metadata records the pinned `agent-browser` package, source commit, install command, and current `pire-browser` package version.
+- Fixture cases use stable ids, stable step ids, explicit statuses, validated fixtures, validated assertions, and resolved compatibility item references.
+- The oracle supports both result assertions and browser-state assertions, including strict `jsonEnvelopeShape`, `notAvailableError`, `bestEffortWarning`, DOM state, URL/title checks, and event-log checks.
+- Normalization removes dynamic refs, generated ids, timestamps, durations, absolute paths, screenshot filenames, cosmetic whitespace where allowed, and browser-specific process text.
+- Normalization does not hide semantic differences such as success/failure, exit codes, error codes, required JSON fields, or warning codes.
 
-Why: this is where Pi and other agents spend most of their time. If this is brittle, advanced features do not matter.
+Success: malformed oracle inputs fail before runtime, pinned baseline metadata stays self-consistent, and `npm run oracle:ci` can prove deterministic parity for covered claims.
 
-Success: Lemonade-style flows work repeatedly from a cold Firefox start without prompt hacks.
+## Epic 1: Compatibility Contract
 
-**Epic 3: Selector And Ref Parity**
+Goal: make the pinned `agent-browser` docs the product spec, not an inspiration source.
+
+Includes: schema v3 compatibility matrix, docs-source fingerprint manifest, compatibility baseline file, command aliases, canonical doc-row rollups, output envelopes, exit-code taxonomy, error names, warning contracts, global-flag policy, unsupported-root generation, diff-aware ratchets, review queue reporting, and JSON report output.
+
+Why: this prevents us from building behavior that is merely similar to `agent-browser` while still breaking drop-in replacement use.
+
+Key design:
+- The compatibility source is the mirrored `agent-browser@0.26.0` docs, pinned by package version, source commit, captured date, and docs manifest hashes.
+- Every denominator row has `status`, `disposition`, `ownerEpic`, `contractReviewed`, source metadata, coverage metadata, and contract text.
+- Top-level statuses stay `exact`, `best_effort`, and `not_available`; `disposition` explains whether a gap is temporary, Firefox-specific, backend-specific, intentionally different, or not started.
+- Exact means parity after documented normalization, not byte equality.
+- Generated checklist rows default to unreviewed. Reviewed rows cannot keep boilerplate rationale or boilerplate contract text.
+- New or upgraded `exact` and `best_effort` claims require deterministic fixture coverage unless they are explicit legacy debt in the separate baseline file.
+- Baseline ids may shrink as coverage lands, but normal gates reject new baseline ids.
+- Unsupported runtime roots are generated from explicit matrix metadata, with provenance, so Rust CLI behavior does not drift from the matrix.
+- Documented global flags are classified as `honored`, `ignored_with_warning`, `deferred`, or `rejected`.
+- Changelog files are excluded from the compatibility denominator and treated only as historical context.
+
+Success: every documented contract item has an honest row, compatibility claims cannot silently improve or downgrade, unsupported features return stable metadata, and reports show both covered parity and remaining review work.
+
+## Epic 2: Core Agent Loop Reliability
+
+Goal: make the basic loop boringly dependable: start when eligible, open, inspect, decide, act, wait, inspect again.
+
+Includes: default-session managed Firefox auto-launch, extension connection handoff, `open/goto/navigate`, `snapshot -i`, refs, basic selectors, frame stitching, click/fill/type/press, DOM and content waits, forms, large payload chunking, stable timeouts, and lite debug logs.
+
+Why: most agent work depends on this loop. If the loop is brittle, advanced APIs do not matter.
+
+Key design:
+- Firefox owns the native host lifecycle once the extension is running.
+- The CLI may auto-launch managed Firefox for eligible default-session browser commands when no live session exists.
+- Explicit `--session` commands do not auto-launch until Epic 4 defines named-session lifecycle semantics.
+- Epic 2 waits cover selector state, text, URL, page load completion, fixed delay, and supported function predicates.
+- Robust `networkidle` waits are deferred to Epic 5 because they require network observation infrastructure.
+- Frame stitching is a reliability requirement: accessible frames are included, same-origin frame behavior gets fixtures, and inaccessible frames appear as stable opaque records.
+- `all_frames: true` remains a guarded extension invariant.
+- Lite observability starts here: CLI/host/extension logs should include command id, session id, command root, start/end timing, duration, error code, and timeout source.
+- IPC concurrency must be explicit. Epic 2 should either document single-flight behavior with stable timeout/status semantics or implement multiplexed dispatch before claiming concurrent reliability.
+
+Success: repeated default-profile runs can launch when eligible, connect to the extension, execute open/snapshot/action/wait loops, report failure paths predictably, and provide enough debug metadata to diagnose core-loop failures.
+
+## Epic 3: Selector And Ref Parity
+
 Goal: make `pire-browser` understand the same target language as `agent-browser`.
 
-Includes: CSS, text, XPath, role/name, label, placeholder, testid, alt/title, first/last/nth, exact matching, frame-scoped refs, stale ref recovery.
+Includes: CSS, text, XPath, role/name, label, placeholder, testid, alt/title, first/last/nth, exact matching, frame-scoped refs, stale ref recovery, ambiguity handling, disabled/unclickable target handling, and selector error parity.
 
-Why: most automation failures are not “can’t click”; they are “clicked or filled the wrong thing.”
+Why: many automation failures are not simple action failures; they are target-resolution failures. The browser must click or fill the intended element, and it must fail clearly when the target is missing, stale, ambiguous, disabled, hidden, or inaccessible.
 
-Success: agent-browser selector examples run unchanged against `pire-browser`.
+Key design:
+- Snapshot refs are re-resolvable locator recipes, not raw element handles.
+- Actions should re-resolve refs before touching the DOM and return stable errors such as stale ref, ambiguous locator, target not found, or disabled target.
+- Selector support should expand in clusters so sibling commands share parsing, matching, envelopes, and tests.
+- Negative-path fixtures matter as much as positive examples.
 
-**Epic 4: Sessions, Profiles, And State**
+Success: documented selector and ref examples run unchanged where the Firefox backend can support them, and unsupported or unsafe target paths fail with stable exit codes and JSON error envelopes.
+
+## Epic 4: Sessions, Profiles, And State
+
 Goal: make repeatable, isolated browser work possible.
 
-Includes: `--session`, `--session-name`, Firefox profile management, state save/load, cookies, local/session storage, auth vault, profile cleanup.
+Includes: `--session`, `--session-name`, named Firefox profile management, session lifecycle, state save/load, cookies, local storage, session storage, auth vault integration, stale-session cleanup, and profile cleanup.
 
-Why: real automation needs logged-in state, isolation between tasks, and reproducibility.
+Why: real automation needs logged-in state, reproducibility, and isolation between tasks. Default-session auto-launch is not enough once agents need multiple independent browser contexts.
 
-Success: two named sessions can run separately without leaking auth, tabs, cookies, or local storage.
+Key design:
+- Firefox remains the source of truth for live tabs, windows, navigation, and extension heartbeats.
+- Named-session auto-launch and profile reuse should be defined here, not inferred from Epic 2 default-session behavior.
+- Session isolation must cover auth, tabs, cookies, storage, and profile files.
+- State export/import should be explicit and auditable.
 
-**Epic 5: Browser Data Plane**
+Success: named sessions can run separately without leaking tabs, cookies, storage, auth, or profile state, and stale sessions produce clear, recoverable errors.
+
+## Epic 5: Browser Data Plane
+
 Goal: support automation beyond visible UI actions.
 
-Includes: downloads, uploads, clipboard, headers, network logging, abort/routing, HAR, response mocking best-effort, viewport/device/geolocation/offline/media permissions.
+Includes: downloads, clipboard, headers, network logging, robust network-idle waits, abort/routing where feasible, HAR capture, response mocking best-effort, viewport/device/geolocation/offline/media permissions, storage APIs, and network diagnostics.
 
-Why: this unlocks testing, scraping, replay, debugging, and workflows where the browser is both UI and data source.
+Why: agents need the browser as both UI and data source. Testing, scraping, replay, and debugging often require access to browser data that is not visible in the DOM.
 
-Success: common test-agent scripts using storage/network/download APIs can be swapped over with documented Firefox caveats.
+Key design:
+- Network-idle waits belong here because they need reliable network observation, not DOM-only heuristics.
+- Firefox WebExtension capabilities should be documented honestly, especially where they differ from CDP or Playwright-style control.
+- Backend-specific data-plane features should remain explicit rather than simulated poorly in the default Firefox path.
+- File upload automation is not part of the default Firefox WebExtension data plane; it belongs in Epic 8 unless an approved OS automation or browser-driver backend is introduced.
 
-**Epic 6: Observability And Debugging**
+Success: common storage, download, clipboard, and network workflows can move to `pire-browser` with documented Firefox caveats and fixture-backed compatibility claims.
+
+## Epic 6: Observability And Debugging
+
 Goal: make agent behavior inspectable by humans and machines.
 
-Includes: screenshots, full-page/annotated screenshots, console/errors, highlight, diffing, recording, dashboard, trace/profiler best-effort, streaming.
+Includes: screenshots, full-page screenshots where supported, annotated screenshots, console logs, page errors, highlight overlays, diffing, recording, dashboard, trace/profiler best-effort, streaming, and richer failure bundles.
 
-Why: when automation fails, we need evidence, not vibes.
+Why: when automation fails, we need evidence: what the browser saw, what command ran, what target was resolved, what changed, and what failed.
 
-Success: every failed action can produce enough context to answer “what did it see, what did it try, and why did it fail?”
+Key design:
+- Lite command/session/timing logs move earlier into Epic 2.
+- Epic 6 owns heavier debugging artifacts: screenshots, traces, recordings, HAR-adjacent views, dashboards, visual diffs, and human-readable failure context.
+- Debug output should be useful both interactively and in machine-readable CI artifacts.
 
-**Epic 7: Safety And Policy**
+Success: failed actions can produce enough structured and visual context to reconstruct the attempt and decide whether the failure was page state, selector logic, timing, policy, or backend capability.
+
+## Epic 7: Safety And Policy
+
 Goal: make powerful browser automation safe to run unattended.
 
-Includes: domain allowlists, credential handling, action confirmations, eval/network/download policy, redaction, output limits, restricted-page behavior.
+Includes: domain allowlists, credential handling, action confirmations, eval policy, network policy, download policy, upload policy for capable backends, redaction, output limits, restricted-page behavior, audit logs, and stable policy error metadata.
 
-Why: once `eval`, downloads, auth, and network control exist, safety has to be explicit.
+Why: browser automation touches logged-in sessions, private data, downloads, network control, and potentially destructive UI actions. Safety has to be part of the command contract, not an afterthought.
 
-Success: dangerous operations are either blocked, confirmed, or auditable with stable error metadata.
+Key design:
+- Dangerous operations should be blocked, confirmed, or audited.
+- Policy failures need stable error names, exit codes, JSON envelopes, and redacted diagnostics.
+- Safety rules should compose with sessions, downloads, network control, auth vault use, and backend-specific capabilities.
 
-**Epic 8: Advanced Backends And Ecosystem**
-Goal: support the checklist items that do not naturally fit Firefox WebExtension architecture.
+Success: unattended runs have explicit guardrails, policy decisions are visible in outputs and logs, and sensitive values are not leaked through normal reports or failure artifacts.
 
-Includes: Chrome/CDP backend, Browserbase/Browserless/Kernel, Lightpanda, iOS/Appium, Next.js/Vercel helpers, React/vitals, skills integration.
+## Epic 8: Advanced Backends And Ecosystem
 
-Why: some `agent-browser` features are backend-shaped, not command-shaped. We should not distort the Firefox implementation to fake them poorly.
+Goal: support checklist items that do not naturally fit the default Firefox WebExtension architecture.
 
-Success: backend-specific features become explicit capabilities, while the default Firefox path stays reliable.
+Includes: Chrome/CDP backend, Browserbase/Browserless/Kernel-style cloud backends, Lightpanda, iOS/Appium, file upload automation, OS-level automation if approved, Next.js/Vercel helpers, React/vitals, skills integration, and backend capability discovery.
 
-I’d build in this order:
+Why: some `agent-browser` features are backend-shaped, not command-shaped. The default Firefox path should stay reliable and honest instead of pretending to support capabilities it cannot safely provide.
 
-1. Compatibility Contract
-2. Core Agent Loop Reliability
-3. Selector And Ref Parity
-4. Sessions, Profiles, And State
-5. Browser Data Plane
-6. Observability And Debugging
-7. Safety And Policy
-8. Advanced Backends And Ecosystem
+Key design:
+- Backend-specific features should be exposed as explicit capabilities with clear compatibility rows.
+- CDP-only, cloud-only, mobile-only, and OS-dialog-dependent features should not distort the Firefox WebExtension implementation.
+- Capability discovery should make differences visible before an agent relies on unavailable behavior.
 
-The main strategic move: do not chase the 228-command checklist linearly. Build the platform layers first, then mark commands compatible only when they sit on a solid layer underneath.
+Success: backend-specific features become explicit, testable capabilities, while the default Firefox implementation remains dependable for its supported surface.
+
+## Build Order
+
+1. Reference Baseline And Test Oracle
+2. Compatibility Contract
+3. Core Agent Loop Reliability
+4. Selector And Ref Parity
+5. Sessions, Profiles, And State
+6. Browser Data Plane
+7. Observability And Debugging
+8. Safety And Policy
+9. Advanced Backends And Ecosystem
+
+The checklist remains the denominator and scoreboard. The epics define the platform layers that make those checklist rows safe to claim.

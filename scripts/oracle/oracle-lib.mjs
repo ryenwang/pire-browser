@@ -4,6 +4,13 @@ import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  compatibilityCoverageMap,
+  compatibilityItems,
+  compatibilityStatusEntries,
+  canonicalLinkRecords,
+  normalizeCoverageState,
+} from "./compatibility-contract.mjs";
 
 export const BASELINE_VERSION = "0.26.0";
 export const BASELINE_PACKAGE = "agent-browser";
@@ -11,13 +18,18 @@ export const BASELINE_COMMIT = "7ada3384e2afb5f3c43d9106389da86d8f807dca";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(SCRIPT_DIR, "..", "..");
+export const PACKAGE_JSON_PATH = join(REPO_ROOT, "package.json");
 export const ORACLE_ROOT = join(REPO_ROOT, "target", "agent-browser-oracle");
 export const ORACLE_NPM_ROOT = join(ORACLE_ROOT, "npm");
 export const ORACLE_RUNS_ROOT = join(ORACLE_ROOT, "runs");
 export const ORACLE_CASES_PATH = join(REPO_ROOT, "fixtures", "oracle", "cases.json");
 export const ORACLE_FIXTURE_ROOT = join(REPO_ROOT, "fixtures", "oracle");
+export const AGENT_BROWSER_DOCS_ROOT = join(REPO_ROOT, "docs", "feature-parity", "agent-browser");
 export const BASELINE_METADATA_PATH = join(REPO_ROOT, "docs", "agent-browser-oracle-baseline.json");
 export const COMPATIBILITY_PATH = join(REPO_ROOT, "docs", "agent-browser-compatibility.json");
+export const COMPATIBILITY_BASELINE_PATH = join(REPO_ROOT, "docs", "agent-browser-compatibility-baseline.json");
+export const UNSUPPORTED_ROOTS_PATH = join(REPO_ROOT, "docs", "agent-browser-unsupported-roots.json");
+export const DOCS_MANIFEST_PATH = join(REPO_ROOT, "docs", "agent-browser-docs-manifest.json");
 
 export function expectedOracleVersion() {
   return process.env.AGENT_BROWSER_ORACLE_VERSION || BASELINE_VERSION;
@@ -25,6 +37,39 @@ export function expectedOracleVersion() {
 
 export function readBaselineMetadata() {
   return JSON.parse(readFileSync(BASELINE_METADATA_PATH, "utf8"));
+}
+
+export function readPackageMetadata() {
+  return JSON.parse(readFileSync(PACKAGE_JSON_PATH, "utf8"));
+}
+
+export function validateBaselineMetadata(metadata, packageMetadata = readPackageMetadata()) {
+  const failures = [];
+  const expectedVersion = expectedOracleVersion();
+  if (metadata?.schemaVersion !== 1) failures.push("baseline metadata must use schemaVersion 1");
+  if (metadata?.agentBrowser?.package !== BASELINE_PACKAGE) failures.push(`agentBrowser.package must be ${BASELINE_PACKAGE}`);
+  if (metadata?.agentBrowser?.version !== expectedVersion) {
+    failures.push(`agentBrowser.version must be ${expectedVersion}`);
+  }
+  if (metadata?.agentBrowser?.sourceCommit !== BASELINE_COMMIT) failures.push("agentBrowser.sourceCommit must match the pinned baseline commit");
+  const pinnedInstallPattern = new RegExp(`(?:^|\\s)${escapeRegExp(BASELINE_PACKAGE)}@${escapeRegExp(expectedVersion)}(?:\\s|$)`);
+  if (!pinnedInstallPattern.test(String(metadata?.agentBrowser?.installCommand ?? ""))) {
+    failures.push(`agentBrowser.installCommand must reference ${BASELINE_PACKAGE}@${expectedVersion}`);
+  }
+  if (metadata?.pireBrowser?.package !== packageMetadata.name) {
+    failures.push(`pireBrowser.package must match package.json name ${packageMetadata.name}`);
+  }
+  if (metadata?.pireBrowser?.version !== packageMetadata.version) {
+    failures.push(`pireBrowser.version must match package.json version ${packageMetadata.version}`);
+  }
+  return {
+    pass: failures.length === 0,
+    failures,
+  };
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export async function loadCases(path = ORACLE_CASES_PATH) {
@@ -46,14 +91,65 @@ export async function loadCompatibility(path = COMPATIBILITY_PATH) {
   return JSON.parse(await readFile(path, "utf8"));
 }
 
+export async function loadCompatibilityBaseline(path = COMPATIBILITY_BASELINE_PATH) {
+  return JSON.parse(await readFile(path, "utf8"));
+}
+
+export async function loadUnsupportedRoots(path = UNSUPPORTED_ROOTS_PATH) {
+  return JSON.parse(await readFile(path, "utf8"));
+}
+
+export async function loadDocsManifest(path = DOCS_MANIFEST_PATH) {
+  return JSON.parse(await readFile(path, "utf8"));
+}
+
+const CASE_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+const CASE_STATUSES = new Set(["exact", "best_effort", "not_available", "error", "smoke", "unknown"]);
+const COMPATIBILITY_ITEM_STATUSES = new Set(["exact", "best_effort", "not_available", "error", "smoke", "unknown"]);
+const ASSERTION_TYPES = new Set([
+  "exitCodeEquals",
+  "exitCodeNonZero",
+  "stdoutContains",
+  "stderrNormalizedContains",
+  "outputContains",
+  "stdoutNormalizedEquals",
+  "jsonShape",
+  "jsonEnvelopeShape",
+  "notAvailableError",
+  "bestEffortWarning",
+  "errorNameEquals",
+  "errorCodeEquals",
+  "urlContains",
+  "titleContains",
+  "domValue",
+  "domText",
+  "eventLogContains",
+]);
+const ASSERTIONS_REQUIRING_VALUE = new Set([
+  "stdoutContains",
+  "stderrNormalizedContains",
+  "outputContains",
+  "urlContains",
+  "titleContains",
+  "domValue",
+  "domText",
+  "eventLogContains",
+]);
+const ASSERTIONS_REQUIRING_SELECTOR = new Set(["domValue", "domText", "eventLogContains"]);
+const ASSERTION_TOOLS = new Set(["agent-browser", "pire-browser"]);
+
 function validateCases(cases) {
   const ids = new Set();
   for (const testCase of cases) {
     if (!testCase.id || typeof testCase.id !== "string") {
       throw new Error("Every oracle case needs a string id");
     }
+    if (!CASE_ID_PATTERN.test(testCase.id)) throw new Error(`Oracle case id must be a stable slug: ${testCase.id}`);
     if (ids.has(testCase.id)) throw new Error(`Duplicate oracle case id: ${testCase.id}`);
     ids.add(testCase.id);
+    if (!CASE_STATUSES.has(testCase.status)) throw new Error(`Oracle case ${testCase.id} has unknown status: ${testCase.status}`);
+    validateCaseFixture(testCase);
+    validateCompatibilityItems(testCase);
     if (!Array.isArray(testCase.steps) || testCase.steps.length === 0) {
       throw new Error(`Oracle case ${testCase.id} needs at least one step`);
     }
@@ -62,11 +158,95 @@ function validateCases(cases) {
       if (!step.id || typeof step.id !== "string") {
         throw new Error(`Oracle case ${testCase.id} has a step without a string id`);
       }
+      if (!CASE_ID_PATTERN.test(step.id)) throw new Error(`Oracle step id must be a stable slug: ${testCase.id}/${step.id}`);
       if (stepIds.has(step.id)) throw new Error(`Duplicate step id in ${testCase.id}: ${step.id}`);
       stepIds.add(step.id);
       if (!step.command || typeof step.command !== "string") {
         throw new Error(`Oracle step ${testCase.id}/${step.id} needs a command string`);
       }
+      validateAssertions(testCase, step);
+      validateCaptures(testCase, step);
+    }
+    validateFinalAssertions(testCase);
+  }
+}
+
+function validateCaseFixture(testCase) {
+  const fixturePath = resolve(ORACLE_FIXTURE_ROOT, testCase.fixture);
+  const root = resolve(ORACLE_FIXTURE_ROOT);
+  if (fixturePath !== root && !fixturePath.startsWith(`${root}${sep}`)) {
+    throw new Error(`Oracle case ${testCase.id} fixture escapes the fixture root: ${testCase.fixture}`);
+  }
+  if (!existsSync(fixturePath) || !statSync(fixturePath).isFile()) {
+    throw new Error(`Oracle case ${testCase.id} fixture does not exist: ${testCase.fixture}`);
+  }
+}
+
+function validateCompatibilityItems(testCase) {
+  if (!Array.isArray(testCase.compatibilityItems)) {
+    throw new Error(`Oracle case ${testCase.id} compatibilityItems must be an array`);
+  }
+  for (const item of testCase.compatibilityItems) {
+    if (!item?.id || typeof item.id !== "string") throw new Error(`Oracle case ${testCase.id} compatibility item needs id`);
+    if (item.status != null && !COMPATIBILITY_ITEM_STATUSES.has(item.status)) {
+      throw new Error(`Oracle case ${testCase.id} compatibility item ${item.id} has unknown status: ${item.status}`);
+    }
+    if (item.tapeCovered != null && typeof item.tapeCovered !== "boolean") {
+      throw new Error(`Oracle case ${testCase.id} compatibility item ${item.id} tapeCovered must be boolean`);
+    }
+  }
+}
+
+function validateAssertions(testCase, step) {
+  if (!Array.isArray(step.assertions)) throw new Error(`Oracle step ${testCase.id}/${step.id} assertions must be an array`);
+  validateAssertionList(`${testCase.id}/${step.id}`, step.assertions);
+}
+
+function validateFinalAssertions(testCase) {
+  if (!Array.isArray(testCase.finalAssertions)) throw new Error(`Oracle case ${testCase.id} finalAssertions must be an array`);
+  validateAssertionList(`${testCase.id}/final`, testCase.finalAssertions);
+}
+
+function validateAssertionList(location, assertions) {
+  for (const assertion of assertions) {
+    const type = typeof assertion === "string" ? assertion : assertion?.type;
+    if (!type || !ASSERTION_TYPES.has(type)) throw new Error(`Oracle assertion ${location} has unknown assertion type: ${type}`);
+    if (typeof assertion === "string") continue;
+    validateAssertionTools(location, assertion);
+    if (ASSERTIONS_REQUIRING_VALUE.has(type) && assertion.value == null && assertion.text == null) {
+      throw new Error(`Oracle assertion ${location}/${type} needs value or text`);
+    }
+    if (ASSERTIONS_REQUIRING_SELECTOR.has(type) && !assertion.selector) {
+      throw new Error(`Oracle assertion ${location}/${type} needs selector`);
+    }
+  }
+}
+
+function validateAssertionTools(location, assertion) {
+  if (assertion.tool != null && !ASSERTION_TOOLS.has(assertion.tool)) {
+    throw new Error(`Oracle assertion ${location} has invalid tool: ${assertion.tool}`);
+  }
+  if (assertion.tools != null) {
+    if (!Array.isArray(assertion.tools) || assertion.tools.length === 0) {
+      throw new Error(`Oracle assertion ${location} tools must be a non-empty array`);
+    }
+    for (const tool of assertion.tools) {
+      if (!ASSERTION_TOOLS.has(tool)) throw new Error(`Oracle assertion ${location} has invalid tool: ${tool}`);
+    }
+  }
+}
+
+function validateCaptures(testCase, step) {
+  if (!Array.isArray(step.captures)) throw new Error(`Oracle step ${testCase.id}/${step.id} captures must be an array`);
+  const names = new Set();
+  for (const capture of step.captures) {
+    if (!capture?.name || typeof capture.name !== "string") throw new Error(`Oracle capture ${testCase.id}/${step.id} needs name`);
+    if (names.has(capture.name)) throw new Error(`Duplicate capture name in ${testCase.id}/${step.id}: ${capture.name}`);
+    names.add(capture.name);
+    const hasLineIncludes = Array.isArray(capture.lineIncludes) && capture.lineIncludes.length > 0;
+    const hasRegex = typeof capture.regex === "string" && capture.regex.length > 0;
+    if (!hasLineIncludes && !hasRegex && capture.legacy !== true) {
+      throw new Error(`Oracle capture ${testCase.id}/${step.id}/${capture.name} needs lineIncludes, regex, or legacy`);
     }
   }
 }
@@ -495,13 +675,17 @@ export function evaluateResultAssertion(assertion, agentResult, pireResult) {
   const type = assertion.type ?? assertion;
   if (type === "exitCodeEquals") {
     const expected = assertion.value ?? 0;
-    const pass = agentResult.exitCode === expected && pireResult.exitCode === expected;
+    const tools = selectAssertionTools(assertion);
+    const pass = tools.every((tool) => resultForTool(tool, agentResult, pireResult).exitCode === expected);
+    const actual = tools
+      .map((tool) => `${tool}=${resultForTool(tool, agentResult, pireResult).exitCode}`)
+      .join(", ");
     return {
       type,
       pass,
       reason: pass
         ? `exit codes matched ${expected}`
-        : `exit code mismatch; expected ${expected}, agent-browser=${agentResult.exitCode}, pire-browser=${pireResult.exitCode}`,
+        : `exit code mismatch; expected ${expected}, ${actual}`,
     };
   }
   if (type === "exitCodeNonZero") {
@@ -572,13 +756,55 @@ export function evaluateResultAssertion(assertion, agentResult, pireResult) {
       return { type, pass: false, reason: `JSON parse failed: ${error.message}` };
     }
   }
+  if (type === "jsonEnvelopeShape") {
+    const tools = selectAssertionTools(assertion);
+    const failures = [];
+    for (const tool of tools) {
+      const result = resultForTool(tool, agentResult, pireResult);
+      const check = validateJsonEnvelopeShape(result.stdout, assertion, tool);
+      if (!check.pass) failures.push(...check.failures);
+    }
+    return {
+      type,
+      pass: failures.length === 0,
+      reason: failures.length === 0 ? "JSON envelope shape matched" : failures.join("; "),
+    };
+  }
   if (type === "notAvailableError") {
     const tools = selectAssertionTools(assertion);
     const pass = tools.every((tool) => {
       const result = resultForTool(tool, agentResult, pireResult);
-      return result.exitCode !== 0 && /not[_ -]?available|unsupported|not implemented|NotAvailableError/i.test(`${result.stdout}\n${result.stderr}`);
+      const expectedExitCode = assertion.exitCode ?? (tool === "pire-browser" ? 78 : null);
+      const exitMatches = expectedExitCode == null ? result.exitCode !== 0 : result.exitCode === expectedExitCode;
+      return exitMatches && /not[_ -]?available|unsupported|not implemented|NotAvailableError/i.test(`${result.stdout}\n${result.stderr}`);
     });
     return { type, pass, reason: pass ? "stable not-available failure" : "not-available failure shape missing" };
+  }
+  if (type === "bestEffortWarning") {
+    const tools = selectAssertionTools(assertion);
+    const pass = tools.every((tool) => {
+      const result = resultForTool(tool, agentResult, pireResult);
+      let parsed;
+      try {
+        parsed = JSON.parse(result.stdout);
+      } catch {
+        return false;
+      }
+      if (parsed?.success !== true || !Array.isArray(parsed.warnings)) return false;
+      return parsed.warnings.some((warning) => {
+        if (warning?.code !== "BEST_EFFORT_FIREFOX_GAP") return false;
+        if (typeof warning.feature !== "string" || warning.feature.length === 0) return false;
+        if (typeof warning.message !== "string" || warning.message.length === 0) return false;
+        return assertion.feature ? warning.feature === assertion.feature : true;
+      });
+    });
+    return {
+      type,
+      pass,
+      reason: pass
+        ? "best-effort warning envelope matched"
+        : "best-effort warning envelope missing BEST_EFFORT_FIREFOX_GAP code, feature, or message",
+    };
   }
   if (type === "errorNameEquals" || type === "errorCodeEquals") {
     const value = assertion.value;
@@ -587,6 +813,62 @@ export function evaluateResultAssertion(assertion, agentResult, pireResult) {
     return { type, pass, reason: pass ? `${type} matched` : `${type} differed` };
   }
   return { type, pass: false, reason: `unknown assertion type: ${type}` };
+}
+
+function validateJsonEnvelopeShape(stdout, assertion, tool) {
+  const failures = [];
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch (error) {
+    return { pass: false, failures: [`${tool} JSON parse failed: ${error.message}`] };
+  }
+
+  if (typeof parsed?.success !== "boolean") failures.push(`${tool} JSON envelope needs boolean success`);
+  if (typeof assertion.success === "boolean" && parsed?.success !== assertion.success) {
+    failures.push(`${tool} JSON envelope success expected ${assertion.success}, got ${parsed?.success}`);
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(parsed ?? {}, "warnings")) failures.push(`${tool} JSON envelope needs warnings`);
+  const warnings = parsed?.warnings ?? [];
+  if (!Array.isArray(warnings)) failures.push(`${tool} JSON envelope warnings must be an array`);
+  for (const warning of Array.isArray(warnings) ? warnings : []) {
+    if (typeof warning?.code !== "string") failures.push(`${tool} warning needs string code`);
+    if (typeof warning?.feature !== "string") failures.push(`${tool} warning needs string feature`);
+    if (typeof warning?.message !== "string") failures.push(`${tool} warning needs string message`);
+  }
+  for (const code of assertion.warningCodes ?? []) {
+    if (!warnings.some((warning) => warning?.code === code)) failures.push(`${tool} warning code missing: ${code}`);
+  }
+
+  if (parsed?.success === true) {
+    if (!Object.prototype.hasOwnProperty.call(parsed, "data")) failures.push(`${tool} success envelope needs data`);
+    if (parsed.error !== undefined && parsed.error !== null) failures.push(`${tool} success envelope error must be absent or null`);
+    for (const path of assertion.dataPaths ?? []) {
+      if (!hasPath(parsed.data, path)) failures.push(`${tool} data path missing: ${path}`);
+    }
+  } else if (parsed?.success === false) {
+    if (!parsed.error || typeof parsed.error !== "object") failures.push(`${tool} error envelope needs error object`);
+    if (typeof parsed.error?.code !== "string") failures.push(`${tool} error envelope needs error.code`);
+    if (typeof parsed.error?.message !== "string") failures.push(`${tool} error envelope needs error.message`);
+    if (assertion.errorCode && parsed.error?.code !== assertion.errorCode) {
+      failures.push(`${tool} error code expected ${assertion.errorCode}, got ${parsed.error?.code}`);
+    }
+  }
+
+  return { pass: failures.length === 0, failures };
+}
+
+function hasPath(value, path) {
+  const parts = String(path ?? "")
+    .split(".")
+    .filter(Boolean);
+  let current = value;
+  for (const part of parts) {
+    if (current == null || !Object.prototype.hasOwnProperty.call(current, part)) return false;
+    current = current[part];
+  }
+  return true;
 }
 
 function selectAssertionTools(assertion) {
@@ -620,19 +902,24 @@ export function summarizeOracleCoverage(cases, { onlyPassing = false } = {}) {
   };
 }
 
-export function evaluateCoveragePolicy(compatibility, cases) {
-  const statusEntries = Object.entries(compatibility.statuses ?? {}).flatMap(([status, items]) =>
-    (items ?? []).map((id) => ({ id, status }))
-  );
+export function evaluateCoveragePolicy(compatibility, cases, compatibilityBaseline = {}) {
+  const statusEntries = compatibilityStatusEntries(compatibility);
+  const matrixItems = compatibilityItems(compatibility);
   const statusIds = new Set(statusEntries.map((entry) => entry.id));
-  const exactIds = new Set(compatibility.statuses?.exact ?? []);
-  const bestEffortIds = new Set(compatibility.statuses?.best_effort ?? []);
+  const exactIds = new Set(statusEntries.filter((entry) => entry.status === "exact").map((entry) => entry.id));
+  const bestEffortIds = new Set(statusEntries.filter((entry) => entry.status === "best_effort").map((entry) => entry.id));
   const passingCoverage = summarizeOracleCoverage(cases, { onlyPassing: true });
   const coveredIds = passingCoverage.ids;
-  const docCoverage = compatibility.oracleCoverage ?? {};
-  const baseline = compatibility.coveragePolicy?.existingClaimBaseline ?? {};
-  const baselineExact = new Set(baseline.exact ?? []);
-  const baselineBestEffort = new Set(baseline.best_effort ?? []);
+  const itemById = new Map(matrixItems.map((item) => [item.id, item]));
+  const coveredByCanonicalItems = canonicalLinkRecords(matrixItems)
+    .filter((record) => normalizeCoverageState(itemById.get(record.id)?.coverage?.state) === "covered")
+    .filter((record) => coveredIds.has(record.canonicalItemId))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const canonicalCoveredIds = new Set(coveredByCanonicalItems.map((record) => record.id));
+  const effectiveCoveredIds = new Set([...coveredIds, ...canonicalCoveredIds]);
+  const docCoverage = compatibilityCoverageMap(compatibility);
+  const baselineExact = new Set(compatibilityBaseline.exact ?? []);
+  const baselineBestEffort = new Set(compatibilityBaseline.best_effort ?? []);
   const baselinePromotable = new Set([...baselineExact, ...baselineBestEffort]);
 
   const missingCoverageDocs = statusEntries
@@ -643,20 +930,32 @@ export function evaluateCoveragePolicy(compatibility, cases) {
     .filter((id) => !statusIds.has(id))
     .sort();
   const coveredWithoutPassingCase = Object.entries(docCoverage)
-    .filter(([, coverage]) => coverage?.state === "covered")
-    .filter(([id]) => !coveredIds.has(id))
+    .filter(([, coverage]) => normalizeCoverageState(coverage?.state) === "covered")
+    .filter(([id]) => !effectiveCoveredIds.has(id))
     .map(([id]) => id)
     .sort();
 
   const coveredExactItems = [...exactIds].filter((id) => coveredIds.has(id)).sort();
+  const coveredBestEffortItems = [...bestEffortIds].filter((id) => coveredIds.has(id)).sort();
   const uncoveredExistingExactItems = [...exactIds]
-    .filter((id) => !coveredIds.has(id) && baselineExact.has(id))
+    .filter((id) => !effectiveCoveredIds.has(id) && baselineExact.has(id))
+    .sort();
+  const uncoveredExistingBestEffortItems = [...bestEffortIds]
+    .filter((id) => !effectiveCoveredIds.has(id) && baselineBestEffort.has(id))
     .sort();
   const invalidNewExactClaims = [...exactIds]
-    .filter((id) => !coveredIds.has(id) && !baselinePromotable.has(id))
+    .filter((id) => !effectiveCoveredIds.has(id) && !baselinePromotable.has(id))
     .sort();
   const invalidNewBestEffortClaims = [...bestEffortIds]
-    .filter((id) => !coveredIds.has(id) && !baselinePromotable.has(id))
+    .filter((id) => !effectiveCoveredIds.has(id) && !baselinePromotable.has(id))
+    .sort();
+  const notComparableItems = matrixItems
+    .filter((item) => normalizeCoverageState(item.coverage?.state) === "not_comparable")
+    .map((item) => item.id)
+    .sort();
+  const smokeOnlyItems = matrixItems
+    .filter((item) => normalizeCoverageState(item.coverage?.state) === "smoke_only")
+    .map((item) => item.id)
     .sort();
 
   const failures = [
@@ -670,9 +969,14 @@ export function evaluateCoveragePolicy(compatibility, cases) {
     pass: failures.length === 0,
     failures,
     coveredExactItems,
+    coveredBestEffortItems,
+    coveredByCanonicalItems,
     uncoveredExistingExactItems,
+    uncoveredExistingBestEffortItems,
     invalidNewExactClaims,
     invalidNewBestEffortClaims,
+    notComparableItems,
+    smokeOnlyItems,
     coveredWithoutPassingCase,
     missingCoverageDocs,
     staleCoverageDocs,

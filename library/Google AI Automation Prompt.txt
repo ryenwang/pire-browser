@@ -1,0 +1,31 @@
+Google AI Automation Prompt.txt
+
+In the "Ask anything" text box, fill in the below and click the "Send button" (it will appear once text is entered in the text below).
+
+---
+
+Do research online and fill in the following sections for Dandy's World.
+
+## High-Level Game Identity
+
+## What A Session Feels Like
+Explain the player experience as if describing the game to a friend. Use concrete beats when evidence supports them: prep, entry/queue/start, core play, pressure/failure, mid-run choices, reward, and return. Say what the player does, what decisions matter, and what evidence supports it. Distinguish direct observation, strong inference, and weak inference. If the loaded place is only a lobby, menu, test place, snapshot, or one place in a larger game, explain both loaded-place play and likely full-game additions.
+
+## Story, Narrative, Lore, and Setting
+Explain premise, world, factions/characters, conflict, lore delivery, motifs, and emotional theme.
+If there is no authored story, quest dialogue, narrative arc, or explicit lore delivery, keep this section to at most 3 direct sentences: premise/theme, delivery medium, and emotional tone.
+
+## Visuals, Themes, Art Style, and Audio
+Describe visuals/audio: character style, environments, UI feel, lighting, effects, sound/music, and readability. If top class counts exist, cite useful counts/classes.
+
+## Core Mechanics and Loops
+Identify the named gameplay or hybrid loop and justify it. Explain objectives, actions, repeated runs/rounds, difficulty, skill, cooperation/competition, failure/recovery, economy, progression, random/rotating content, and return motivation. If evidence supports roguelite, extraction, simulator, gacha, battlegrounds, tycoon, obby, collection, or roleplay-hub patterns, say why. Avoid repeating the fantasy summary.
+
+## New Player Onboarding
+Describe first-time flow, tutorial/signposting, starter choices, early goals, and likely friction.
+
+## Characters, Entities, Items, and Progression
+Summarize playable roles/classes, enemies/NPCs/entities, items/tools/power-ups, currencies, rewards, unlocks, shops, cosmetics, achievements, and retention systems.
+
+## World, Areas, Navigation, HUDs, UI, and Menus
+Describe important locations/maps/rooms, traversal, objective spaces, HUD, menus, inventory/loadouts, settings, shops, and navigation flow.

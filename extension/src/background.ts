@@ -257,7 +257,14 @@ async function executeCommand(args: string[]): Promise<Record<string, unknown>> 
       return cookiesCommand(rest);
     case "storage":
       return storageCommand(rest);
+    case "install":
+    case "upgrade":
     case "download":
+    case "drag":
+    case "upload":
+    case "mouse":
+    case "clipboard":
+    case "set":
     case "network":
     case "stream":
     case "dashboard":
@@ -280,6 +287,12 @@ async function executeCommand(args: string[]): Promise<Record<string, unknown>> 
     case "pdf":
     case "connect":
     case "pushstate":
+    case "diff":
+    case "device":
+    case "tap":
+    case "swipe":
+    case "skills":
+    case "skill":
       return notAvailable(command, "This agent-browser command is parsed by pire-browser but is not implemented on the Firefox WebExtension backend yet.");
     case "close":
     case "quit":

@@ -4,6 +4,7 @@ import {
   BASELINE_METADATA_PATH,
   BASELINE_PACKAGE,
   expectedOracleVersion,
+  readPackageMetadata,
   readInstalledAgentBrowserVersion,
 } from "./oracle-lib.mjs";
 
@@ -14,13 +15,16 @@ run("npm", ["run", "oracle:install"], env);
 run("npm", ["run", "oracle:compare"], env);
 
 const installed = readInstalledAgentBrowserVersion();
+const packageMetadata = readPackageMetadata();
 const metadata = JSON.parse(readFileSync(BASELINE_METADATA_PATH, "utf8"));
 metadata.agentBrowser.version = installed;
 metadata.agentBrowser.installCommand = `npm install --prefix target/agent-browser-oracle/npm ${BASELINE_PACKAGE}@${version} --no-save`;
 metadata.agentBrowser.refreshedAt = new Date().toISOString();
+metadata.pireBrowser.package = packageMetadata.name;
+metadata.pireBrowser.version = packageMetadata.version;
 writeFileSync(BASELINE_METADATA_PATH, `${JSON.stringify(metadata, null, 2)}\n`);
 
-console.log(`Refreshed agent-browser oracle baseline metadata to ${BASELINE_PACKAGE}@${installed}.`);
+console.log(`Refreshed agent-browser oracle baseline metadata to ${BASELINE_PACKAGE}@${installed} for ${packageMetadata.name}@${packageMetadata.version}.`);
 
 function run(command, args, env) {
   const result = spawnSync(command, args, {

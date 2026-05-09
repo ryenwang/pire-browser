@@ -121,6 +121,13 @@ test("report always fails for failed run summaries", () => {
   assert.equal(exitCode, 1);
 });
 
+test("report args include review queue and unsupported root modes", () => {
+  const options = parseReportArgs(["--review-queue", "--unsupported-roots", "--json"]);
+  assert.equal(options.reviewQueue, true);
+  assert.equal(options.unsupportedRoots, true);
+  assert.equal(options.json, true);
+});
+
 async function writeRun(root, name, summary) {
   const dir = join(root, name);
   await mkdir(dir, { recursive: true });

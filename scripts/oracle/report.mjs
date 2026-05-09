@@ -5,8 +5,16 @@ import {
   evaluateCoveragePolicy,
   loadCases,
   loadCompatibility,
+  loadCompatibilityBaseline,
+  loadUnsupportedRoots,
   normalizeOutput,
 } from "./oracle-lib.mjs";
+import {
+  canonicalLinkCandidateRecords,
+  compatibilityItems,
+  reviewQueueItems,
+  reviewQueueSummary,
+} from "./compatibility-contract.mjs";
 import {
   findPreviousGreenRun,
   parseReportArgs,
@@ -19,15 +27,32 @@ import {
 const argv = process.argv.slice(2);
 const options = parseReportArgs(argv);
 const allCases = await loadCases();
+const compatibility = await loadCompatibility();
+const compatibilityBaseline = await loadCompatibilityBaseline();
+const unsupportedRoots = await loadUnsupportedRoots();
 const selectedRun = await selectReportRun({ runsRoot: ORACLE_RUNS_ROOT, argv, allCases });
 if (!selectedRun) {
+  const policy = evaluateCoveragePolicy(compatibility, [], compatibilityBaseline);
+  if (options.json) {
+    printJsonReport({
+      selectedRun: null,
+      summary: null,
+      failed: [],
+      coveragePolicy: policy,
+      enforceCoverage: true,
+      compatibility,
+      unsupportedRoots,
+    });
+    process.exit(policy.pass ? 0 : 1);
+  }
   console.log(
     options.latestAny
       ? `No oracle runs found below ${ORACLE_RUNS_ROOT}`
       : `No coverage-complete oracle runs found below ${ORACLE_RUNS_ROOT}. Run npm run oracle:compare, or pass --latest-any to inspect the newest subset run.`
   );
-  const policy = evaluateCoveragePolicy(await loadCompatibility(), []);
   printCoveragePolicy(policy);
+  printReviewQueue(compatibility, { full: options.reviewQueue });
+  if (options.reviewQueue || options.unsupportedRoots) printUnsupportedRoots(unsupportedRoots);
   process.exit(policy.pass ? 0 : 1);
 }
 
@@ -35,8 +60,22 @@ const summary = readSummary(selectedRun);
 const previousGreen = options.diffLastGreen
   ? await findPreviousGreenRun({ runsRoot: ORACLE_RUNS_ROOT, currentPath: selectedRun })
   : null;
-const coveragePolicy = evaluateCoveragePolicy(await loadCompatibility(), summary.cases ?? []);
+const coveragePolicy = evaluateCoveragePolicy(compatibility, summary.cases ?? [], compatibilityBaseline);
 const enforceCoverage = shouldEnforceCoverage({ summary, options, allCases });
+const failed = (summary.cases ?? []).filter((testCase) => !testCase.pass);
+
+if (options.json) {
+  printJsonReport({
+    selectedRun,
+    summary,
+    failed,
+    coveragePolicy,
+    enforceCoverage,
+    compatibility,
+    unsupportedRoots,
+  });
+  process.exit(reportExitCode({ summary, coveragePolicy, options, allCases }));
+}
 
 console.log(`Oracle report: ${summary.pass ? "PASS" : "FAIL"}`);
 console.log(`Run: ${selectedRun}`);
@@ -46,7 +85,6 @@ console.log(`Started: ${summary.startedAt ?? "unknown"}`);
 console.log(`Finished: ${summary.finishedAt ?? "unknown"}`);
 console.log("");
 
-const failed = (summary.cases ?? []).filter((testCase) => !testCase.pass);
 if (failed.length) {
   console.log("Failed cases:");
   for (const testCase of failed) {
@@ -64,6 +102,8 @@ if (uncoveredExact.length) {
 }
 
 printCoveragePolicy(coveragePolicy, { enforced: enforceCoverage });
+printReviewQueue(compatibility, { full: options.reviewQueue });
+if (options.reviewQueue || options.unsupportedRoots) printUnsupportedRoots(unsupportedRoots);
 
 if (previousGreen) {
   const previous = readSummary(previousGreen);
@@ -106,9 +146,35 @@ function printCoveragePolicy(policy, { enforced = true } = {}) {
   }
 
   console.log("");
+  console.log("Covered best-effort compatibility items:");
+  if (policy.coveredBestEffortItems.length) {
+    for (const item of policy.coveredBestEffortItems) console.log(`- ${item}`);
+  } else {
+    console.log("- none");
+  }
+
+  console.log("");
+  console.log("Covered by canonical compatibility items:");
+  if (policy.coveredByCanonicalItems?.length) {
+    for (const item of policy.coveredByCanonicalItems) {
+      console.log(`- ${item.id} -> ${item.canonicalItemId}`);
+    }
+  } else {
+    console.log("- none");
+  }
+
+  console.log("");
   console.log("Uncovered existing exact compatibility items:");
   if (policy.uncoveredExistingExactItems.length) {
     for (const item of policy.uncoveredExistingExactItems) console.log(`- ${item}`);
+  } else {
+    console.log("- none");
+  }
+
+  console.log("");
+  console.log("Uncovered existing best-effort compatibility items:");
+  if (policy.uncoveredExistingBestEffortItems.length) {
+    for (const item of policy.uncoveredExistingBestEffortItems) console.log(`- ${item}`);
   } else {
     console.log("- none");
   }
@@ -125,6 +191,22 @@ function printCoveragePolicy(policy, { enforced = true } = {}) {
     console.log("");
     console.log("Invalid new/upgraded best-effort claims:");
     for (const item of policy.invalidNewBestEffortClaims) console.log(`- ${item}`);
+  }
+
+  console.log("");
+  console.log("Not-comparable compatibility items:");
+  if (policy.notComparableItems.length) {
+    for (const item of policy.notComparableItems) console.log(`- ${item}`);
+  } else {
+    console.log("- none");
+  }
+
+  console.log("");
+  console.log("Smoke-only compatibility items:");
+  if (policy.smokeOnlyItems.length) {
+    for (const item of policy.smokeOnlyItems) console.log(`- ${item}`);
+  } else {
+    console.log("- none");
   }
 
   if (policy.coveredWithoutPassingCase.length) {
@@ -144,4 +226,103 @@ function printCoveragePolicy(policy, { enforced = true } = {}) {
     console.log("Stale oracleCoverage metadata entries:");
     for (const item of policy.staleCoverageDocs) console.log(`- ${item}`);
   }
+}
+
+function printReviewQueue(compatibility, { full = false } = {}) {
+  const items = compatibilityItems(compatibility);
+  const summary = reviewQueueSummary(items);
+  console.log("");
+  console.log("Unreviewed compatibility rows by epic/status/disposition:");
+  if (summary.length) {
+    for (const group of summary) {
+      console.log(`- ${group.ownerEpic} / ${group.status} / ${group.disposition}: ${group.count}`);
+    }
+  } else {
+    console.log("- none");
+  }
+
+  if (!full) return;
+  console.log("");
+  console.log("Review queue:");
+  let currentEpic = "";
+  for (const item of reviewQueueItems(items)) {
+    if (item.ownerEpic !== currentEpic) {
+      currentEpic = item.ownerEpic;
+      console.log(`## ${currentEpic ?? "Unassigned"}`);
+    }
+    console.log(`- ${item.id} [${item.status}/${item.disposition}]`);
+  }
+
+  const candidates = canonicalLinkCandidateRecords(items);
+  console.log("");
+  console.log("Possible canonical links:");
+  if (candidates.length) {
+    for (const candidate of candidates) {
+      console.log(`- ${candidate.id} -> ${candidate.canonicalItemId} (${candidate.commandRoot})`);
+    }
+  } else {
+    console.log("- none");
+  }
+}
+
+function printUnsupportedRoots(artifact) {
+  console.log("");
+  console.log("Unsupported root provenance:");
+  for (const record of artifact.roots ?? []) {
+    console.log(`- ${record.root}: ${record.itemIds.join(", ")}`);
+  }
+}
+
+function printJsonReport({ selectedRun, summary, failed, coveragePolicy, enforceCoverage, compatibility, unsupportedRoots }) {
+  const items = compatibilityItems(compatibility);
+  const payload = {
+    metadata: {
+      generatedAt: new Date().toISOString(),
+      selectedRun,
+      enforceCoverage,
+      schemaVersion: compatibility?.schemaVersion ?? null,
+    },
+    run: summary
+      ? {
+          pass: summary.pass,
+          runKind: summary.runKind ?? null,
+          coverageComplete: summary.coverageComplete ?? null,
+          startedAt: summary.startedAt ?? null,
+          finishedAt: summary.finishedAt ?? null,
+        }
+      : null,
+    failures: failed.map((testCase) => ({
+      id: testCase.id,
+      reason: testCase.reason ?? null,
+    })),
+    coveragePolicy: {
+      pass: coveragePolicy.pass,
+      failures: coveragePolicy.failures,
+      coveredExactItems: coveragePolicy.coveredExactItems,
+      coveredBestEffortItems: coveragePolicy.coveredBestEffortItems,
+      coveredByCanonicalItems: coveragePolicy.coveredByCanonicalItems,
+      uncoveredExistingExactItems: coveragePolicy.uncoveredExistingExactItems,
+      uncoveredExistingBestEffortItems: coveragePolicy.uncoveredExistingBestEffortItems,
+      invalidNewExactClaims: coveragePolicy.invalidNewExactClaims,
+      invalidNewBestEffortClaims: coveragePolicy.invalidNewBestEffortClaims,
+      notComparableItems: coveragePolicy.notComparableItems,
+      smokeOnlyItems: coveragePolicy.smokeOnlyItems,
+      coveredWithoutPassingCase: coveragePolicy.coveredWithoutPassingCase,
+      missingCoverageDocs: coveragePolicy.missingCoverageDocs,
+      staleCoverageDocs: coveragePolicy.staleCoverageDocs,
+    },
+    canonicalCoverage: coveragePolicy.coveredByCanonicalItems,
+    reviewQueue: {
+      summary: reviewQueueSummary(items),
+      items: reviewQueueItems(items).map((item) => ({
+        id: item.id,
+        ownerEpic: item.ownerEpic,
+        status: item.status,
+        disposition: item.disposition,
+      })),
+    },
+    canonicalCandidates: canonicalLinkCandidateRecords(items),
+    unsupportedRootProvenance: unsupportedRoots?.roots ?? [],
+  };
+  console.log(JSON.stringify(payload, null, 2));
 }

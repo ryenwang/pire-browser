@@ -12,5 +12,6 @@ describe("manifest", () => {
     expect(manifest.permissions).toContain("nativeMessaging");
     expect(manifest.permissions).toContain("<all_urls>");
     expect(manifest.background.persistent).toBe(true);
+    expect(manifest.content_scripts[0].all_frames).toBe(true);
   });
 });

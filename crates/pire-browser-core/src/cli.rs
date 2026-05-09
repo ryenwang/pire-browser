@@ -5,6 +5,11 @@ use uuid::Uuid;
 use crate::protocol::RpcRequest;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GlobalFlagWarning {
+    pub flag: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LocalCommand {
     Setup {
         windows: bool,
@@ -22,6 +27,7 @@ pub enum LocalCommand {
     Remote {
         session: Option<String>,
         json: bool,
+        ignored_global_flags: Vec<GlobalFlagWarning>,
         args: Vec<String>,
     },
 }
@@ -30,6 +36,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     let mut args = raw.to_vec();
     let mut session = None;
     let mut json_output = false;
+    let mut ignored_global_flags = Vec::new();
     const GLOBAL_VALUE_FLAGS: &[&str] = &[
         "--session",
         "--session-name",
@@ -69,12 +76,18 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             if flag == "--session" || flag == "--session-name" {
                 session = Some(value);
             }
+            if ignored_with_warning_global_flag(&flag) {
+                ignored_global_flags.push(GlobalFlagWarning { flag });
+            }
             continue;
         }
         if GLOBAL_BOOL_FLAGS.contains(&first.as_str()) {
             args.remove(0);
             if first == "--json" {
                 json_output = true;
+            }
+            if ignored_with_warning_global_flag(&first) {
+                ignored_global_flags.push(GlobalFlagWarning { flag: first });
             }
             continue;
         }
@@ -190,8 +203,13 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     Ok(LocalCommand::Remote {
         session,
         json: json_output,
+        ignored_global_flags,
         args,
     })
+}
+
+fn ignored_with_warning_global_flag(flag: &str) -> bool {
+    matches!(flag, "--headed" | "--headless" | "--color-scheme")
 }
 
 pub fn build_command_request(args: Vec<String>) -> RpcRequest {
@@ -265,6 +283,7 @@ mod tests {
             LocalCommand::Remote {
                 session: Some("abc".to_string()),
                 json: false,
+                ignored_global_flags: vec![],
                 args: s(&["find", "label", "Email", "fill", "x"])
             }
         );
@@ -278,6 +297,7 @@ mod tests {
             LocalCommand::Remote {
                 session: None,
                 json: true,
+                ignored_global_flags: vec![],
                 args: s(&["snapshot"])
             }
         );
@@ -301,7 +321,46 @@ mod tests {
             LocalCommand::Remote {
                 session: Some("lemonade".to_string()),
                 json: true,
+                ignored_global_flags: vec![
+                    GlobalFlagWarning {
+                        flag: "--headed".to_string()
+                    },
+                    GlobalFlagWarning {
+                        flag: "--color-scheme".to_string()
+                    }
+                ],
                 args: s(&["snapshot", "-i"])
+            }
+        );
+    }
+
+    #[test]
+    fn records_ignored_global_flags_that_need_json_warnings() {
+        let parsed = parse_cli_args(&s(&[
+            "--headless",
+            "--color-scheme",
+            "dark",
+            "--max-output",
+            "1000",
+            "get",
+            "title",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Remote {
+                session: None,
+                json: true,
+                ignored_global_flags: vec![
+                    GlobalFlagWarning {
+                        flag: "--headless".to_string()
+                    },
+                    GlobalFlagWarning {
+                        flag: "--color-scheme".to_string()
+                    }
+                ],
+                args: s(&["get", "title"])
             }
         );
     }

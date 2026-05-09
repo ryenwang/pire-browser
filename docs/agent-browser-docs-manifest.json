@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "compatibilityMatrix": "docs/agent-browser-compatibility.json",
+    "docsRoot": "docs/feature-parity/agent-browser",
+    "package": "agent-browser",
+    "version": "0.26.0",
+    "sourceCommit": "7ada3384e2afb5f3c43d9106389da86d8f807dca"
+  },
+  "algorithm": "sha256",
+  "lineEndings": "lf-normalized",
+  "excludedFiles": [
+    "26-changelog.md"
+  ],
+  "files": [
+    {
+      "path": "01-introduction.md",
+      "sha256": "966fa918d2f596af0fabafb1a5b733f1295f837ebd7e699906f0e656f9c02797",
+      "normalizedBytes": 21250
+    },
+    {
+      "path": "02-installation.md",
+      "sha256": "50a98b75c27e766a841f8e6e2ef51fd5283456c0bc2fb1174d27974f0e4e7be7",
+      "normalizedBytes": 25211
+    },
+    {
+      "path": "03-quick-start.md",
+      "sha256": "6c7d607da43402a82b6b71b65da73643d15bbaf638be7689255183b197c2f286",
+      "normalizedBytes": 18637
+    },
+    {
+      "path": "04-skills.md",
+      "sha256": "b4422d3e6eddc5d7f311a6ff17b64da8494cb968620b5e1eb2bd6950276c78c9",
+      "normalizedBytes": 10202
+    },
+    {
+      "path": "05-commands.md",
+      "sha256": "cb99a3d98abc1d45c15390e59005f5feae587db3c46d762007e9bb31e6141232",
+      "normalizedBytes": 131846
+    },
+    {
+      "path": "06-configuration.md",
+      "sha256": "18d2d8d9e4521160ee2708bf73cba51d3c79fcd09218a9eb775e88c7753556fd",
+      "normalizedBytes": 8215
+    },
+    {
+      "path": "07-selectors.md",
+      "sha256": "2e246de9720a18f89a7d24dfa837a17f266f3ac584a72ef8536e498af8d4f888",
+      "normalizedBytes": 9793
+    },
+    {
+      "path": "08-snapshots.md",
+      "sha256": "7781ec830f4b4d2d84777dd2238020a18d4914f922c34acc406029f2afc4d8cc",
+      "normalizedBytes": 14352
+    },
+    {
+      "path": "09-sessions.md",
+      "sha256": "c5d186b0eca040bf552551fc6061a9517af07fa9e818784b167af5b563e96a55",
+      "normalizedBytes": 29231
+    },
+    {
+      "path": "10-dashboard.md",
+      "sha256": "33f978194df46422556523b5f39087bee16f7b3f750f7b1fc799362d6a37e558",
+      "normalizedBytes": 9645
+    },
+    {
+      "path": "11-diffing.md",
+      "sha256": "57793c5b9154634d0d410993b3a87b2e669b1fedbdae0398ec5522e68398b073",
+      "normalizedBytes": 11482
+    },
+    {
+      "path": "12-cdp-mode.md",
+      "sha256": "e2dbfd7ce775f6514ee953a2313607e48faa1b784de537fa56f0005b331bf4c5",
+      "normalizedBytes": 13144
+    },
+    {
+      "path": "13-streaming.md",
+      "sha256": "c17ee4f35b671e35ef038867921ba88ca50ce0b8d17fbbfada2f50bc466044d5",
+      "normalizedBytes": 15852
+    },
+    {
+      "path": "14-profiler.md",
+      "sha256": "77580c3672be5713878fca868de77acba3cc2731fda159aa6742dc92b48dbe4e",
+      "normalizedBytes": 9766
+    },
+    {
+      "path": "15-ios.md",
+      "sha256": "d67d17a530c16952fdb239683aac3f45f0fc1cf1c0416634a3d1f711fb25466e",
+      "normalizedBytes": 21130
+    },
+    {
+      "path": "16-security.md",
+      "sha256": "32a04aeafd74e8e5a7541580d980642e03bab20eb9147e9548c7e59302b742ea",
+      "normalizedBytes": 15839
+    },
+    {
+      "path": "17-next.md",
+      "sha256": "cc2cfe8e00a9b08a2c95c714f5e32c08f9f7dc4d598045204100b414a8e9333f",
+      "normalizedBytes": 10596
+    },
+    {
+      "path": "18-native-mode.md",
+      "sha256": "69c091f1cc954a7e6e99f2951e7dee6f6e1251d45365469bf7ebc5e77483e1ee",
+      "normalizedBytes": 1442
+    },
+    {
+      "path": "19-providers-agentcore.md",
+      "sha256": "6d0923698cb9d6de5a03301d5d1887c6f1dc29f46514257f06776df2d9f29f32",
+      "normalizedBytes": 6476
+    },
+    {
+      "path": "20-providers-browser-use.md",
+      "sha256": "414d38b878d15427c7a24829aee125164672c17c3113849e8e1e2803f7e46b2d",
+      "normalizedBytes": 2282
+    },
+    {
+      "path": "21-providers-browserbase.md",
+      "sha256": "497f10288c1c68b47b9f2aae43fdd49de2bf4fd17e58010814d5feb8119f4c19",
+      "normalizedBytes": 2295
+    },
+    {
+      "path": "22-providers-browserless.md",
+      "sha256": "d26bf682e42d7b2dfe485092ed43d64f4f4483d1c43fe95ea3aea76ef4695825",
+      "normalizedBytes": 3317
+    },
+    {
+      "path": "23-providers-kernel.md",
+      "sha256": "aa1cf30df0dbfc225e4d2598dcf5f5dc0e05d32200ff6115a49700120550e911",
+      "normalizedBytes": 3241
+    },
+    {
+      "path": "24-engines-chrome.md",
+      "sha256": "f9bc398b686723101409787f07b50c053529c2a94bc63250233eee4f94bf3be7",
+      "normalizedBytes": 6323
+    },
+    {
+      "path": "25-engines-lightpanda.md",
+      "sha256": "64a75c64b75267c803388e6512080ecfba0677b6524a3784df659a5d55a9df18",
+      "normalizedBytes": 8395
+    }
+  ]
+}

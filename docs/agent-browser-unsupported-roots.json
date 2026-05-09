@@ -1,0 +1,610 @@
+{
+  "schemaVersion": 2,
+  "source": {
+    "compatibilityMatrix": "docs/agent-browser-compatibility.json",
+    "package": "agent-browser",
+    "version": "0.26.0",
+    "sourceCommit": "7ada3384e2afb5f3c43d9106389da86d8f807dca"
+  },
+  "unsupportedRoots": [
+    "addinitscript",
+    "auth",
+    "clipboard",
+    "confirm",
+    "connect",
+    "console",
+    "dashboard",
+    "deny",
+    "device",
+    "diff",
+    "download",
+    "drag",
+    "errors",
+    "highlight",
+    "install",
+    "mouse",
+    "network",
+    "pdf",
+    "profiler",
+    "profiles",
+    "pushstate",
+    "react",
+    "record",
+    "removeinitscript",
+    "session",
+    "set",
+    "skill",
+    "skills",
+    "state",
+    "stream",
+    "swipe",
+    "tap",
+    "trace",
+    "upgrade",
+    "upload",
+    "vitals"
+  ],
+  "roots": [
+    {
+      "root": "addinitscript",
+      "itemIds": [
+        "cmd-init-scripts"
+      ],
+      "ownerEpics": [
+        "Epic 2"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "auth",
+      "itemIds": [
+        "cmd-auth"
+      ],
+      "ownerEpics": [
+        "Epic 7"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "clipboard",
+      "itemIds": [
+        "cmd-clipboard"
+      ],
+      "ownerEpics": [
+        "Epic 5"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "confirm",
+      "itemIds": [
+        "doc-commands-172-agent-browser-confirm-confirmation-id-approve-a-pending-action",
+        "doc-commands-175-agent-browser-confirm-c-8f3a1234",
+        "doc-security-023-agent-browser-confirm-c-8f3a1234"
+      ],
+      "ownerEpics": [
+        "Epic 7"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "05-commands.md",
+        "16-security.md"
+      ]
+    },
+    {
+      "root": "connect",
+      "itemIds": [
+        "cmd-connect"
+      ],
+      "ownerEpics": [
+        "Epic 2"
+      ],
+      "dispositions": [
+        "backend_specific"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "console",
+      "itemIds": [
+        "doc-commands-151-agent-browser-console-view-console-messages",
+        "doc-commands-152-agent-browser-console-json-json-output-with-raw-cdp-args",
+        "doc-commands-153-agent-browser-console-clear-clear-console-log"
+      ],
+      "ownerEpics": [
+        "Epic 6",
+        "Epic 8"
+      ],
+      "dispositions": [
+        "backend_specific",
+        "not_started"
+      ],
+      "sourcePaths": [
+        "05-commands.md"
+      ]
+    },
+    {
+      "root": "dashboard",
+      "itemIds": [
+        "cmd-dashboard"
+      ],
+      "ownerEpics": [
+        "Epic 6"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "deny",
+      "itemIds": [
+        "doc-commands-173-agent-browser-deny-confirmation-id-deny-a-pending-action",
+        "doc-security-024-agent-browser-deny-c-8f3a1234"
+      ],
+      "ownerEpics": [
+        "Epic 7"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "05-commands.md",
+        "16-security.md"
+      ]
+    },
+    {
+      "root": "device",
+      "itemIds": [
+        "doc-ios-006-agent-browser-device-list"
+      ],
+      "ownerEpics": [
+        "Epic 8"
+      ],
+      "dispositions": [
+        "backend_specific"
+      ],
+      "sourcePaths": [
+        "15-ios.md"
+      ]
+    },
+    {
+      "root": "diff",
+      "itemIds": [
+        "doc-diffing-002-agent-browser-diff-snapshot"
+      ],
+      "ownerEpics": [
+        "Epic 6"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "11-diffing.md"
+      ]
+    },
+    {
+      "root": "download",
+      "itemIds": [
+        "cmd-download"
+      ],
+      "ownerEpics": [
+        "Epic 5"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "drag",
+      "itemIds": [
+        "cmd-drag"
+      ],
+      "ownerEpics": [
+        "Epic 2"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "errors",
+      "itemIds": [
+        "doc-commands-154-agent-browser-errors-view-page-errors",
+        "doc-commands-155-agent-browser-errors-clear-clear-error-log"
+      ],
+      "ownerEpics": [
+        "Epic 6"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "05-commands.md"
+      ]
+    },
+    {
+      "root": "highlight",
+      "itemIds": [
+        "doc-commands-156-agent-browser-highlight-sel-highlight-element"
+      ],
+      "ownerEpics": [
+        "Epic 6"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "05-commands.md"
+      ]
+    },
+    {
+      "root": "install",
+      "itemIds": [
+        "cmd-doctor-install-status"
+      ],
+      "ownerEpics": [
+        "Epic 1"
+      ],
+      "dispositions": [
+        "intentionally_different"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "mouse",
+      "itemIds": [
+        "cmd-mouse"
+      ],
+      "ownerEpics": [
+        "Epic 2"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "network",
+      "itemIds": [
+        "cmd-network"
+      ],
+      "ownerEpics": [
+        "Epic 5"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "pdf",
+      "itemIds": [
+        "cmd-pdf"
+      ],
+      "ownerEpics": [
+        "Epic 2"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "profiler",
+      "itemIds": [
+        "cmd-profiler"
+      ],
+      "ownerEpics": [
+        "Epic 4"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "profiles",
+      "itemIds": [
+        "cmd-profiles"
+      ],
+      "ownerEpics": [
+        "Epic 4"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "pushstate",
+      "itemIds": [
+        "cmd-pushstate"
+      ],
+      "ownerEpics": [
+        "Epic 4"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "react",
+      "itemIds": [
+        "cmd-react"
+      ],
+      "ownerEpics": [
+        "Epic 2"
+      ],
+      "dispositions": [
+        "backend_specific"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "record",
+      "itemIds": [
+        "cmd-record"
+      ],
+      "ownerEpics": [
+        "Epic 6"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "removeinitscript",
+      "itemIds": [
+        "cmd-init-scripts"
+      ],
+      "ownerEpics": [
+        "Epic 2"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "session",
+      "itemIds": [
+        "cmd-session-command"
+      ],
+      "ownerEpics": [
+        "Epic 4"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "set",
+      "itemIds": [
+        "cmd-set-viewport-device-geo-offline-headers-credentials-media",
+        "doc-commands-084-agent-browser-set-viewport-w-h-scale-set-viewport-size-scale-for-retina-",
+        "doc-commands-085-agent-browser-set-device-name-emulate-device-iphone-14",
+        "doc-commands-086-agent-browser-set-geo-lat-lng-set-geolocation",
+        "doc-commands-087-agent-browser-set-offline-on-off-toggle-offline-mode",
+        "doc-commands-088-agent-browser-set-headers-json-extra-http-headers",
+        "doc-commands-089-agent-browser-set-credentials-u-p-http-basic-auth",
+        "doc-commands-090-agent-browser-set-media-dark-light-emulate-color-scheme-persists-for-ses",
+        "doc-sessions-057-agent-browser-set-headers-x-custom-header-value"
+      ],
+      "ownerEpics": [
+        "Epic 4",
+        "Epic 5"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "05-commands.md",
+        "09-sessions.md",
+        "README.md"
+      ]
+    },
+    {
+      "root": "skill",
+      "itemIds": [
+        "cmd-skills-command"
+      ],
+      "ownerEpics": [
+        "Epic 2"
+      ],
+      "dispositions": [
+        "backend_specific"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "skills",
+      "itemIds": [
+        "cmd-skills-command"
+      ],
+      "ownerEpics": [
+        "Epic 2"
+      ],
+      "dispositions": [
+        "backend_specific"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "state",
+      "itemIds": [
+        "cmd-state"
+      ],
+      "ownerEpics": [
+        "Epic 4"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "stream",
+      "itemIds": [
+        "cmd-stream"
+      ],
+      "ownerEpics": [
+        "Epic 6"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "swipe",
+      "itemIds": [
+        "doc-ios-013-agent-browser-p-ios-swipe-up"
+      ],
+      "ownerEpics": [
+        "Epic 8"
+      ],
+      "dispositions": [
+        "backend_specific"
+      ],
+      "sourcePaths": [
+        "15-ios.md"
+      ]
+    },
+    {
+      "root": "tap",
+      "itemIds": [
+        "doc-ios-022-agent-browser-tap-e1"
+      ],
+      "ownerEpics": [
+        "Epic 8"
+      ],
+      "dispositions": [
+        "backend_specific"
+      ],
+      "sourcePaths": [
+        "15-ios.md"
+      ]
+    },
+    {
+      "root": "trace",
+      "itemIds": [
+        "cmd-trace"
+      ],
+      "ownerEpics": [
+        "Epic 6"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "upgrade",
+      "itemIds": [
+        "doc-installation-015-agent-browser-upgrade"
+      ],
+      "ownerEpics": [
+        "Epic 1"
+      ],
+      "dispositions": [
+        "not_started"
+      ],
+      "sourcePaths": [
+        "02-installation.md"
+      ]
+    },
+    {
+      "root": "upload",
+      "itemIds": [
+        "cmd-upload"
+      ],
+      "ownerEpics": [
+        "Epic 8"
+      ],
+      "dispositions": [
+        "backend_specific"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    },
+    {
+      "root": "vitals",
+      "itemIds": [
+        "cmd-vitals"
+      ],
+      "ownerEpics": [
+        "Epic 2"
+      ],
+      "dispositions": [
+        "backend_specific"
+      ],
+      "sourcePaths": [
+        "README.md"
+      ]
+    }
+  ]
+}

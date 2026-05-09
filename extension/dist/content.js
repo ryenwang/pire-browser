@@ -99,6 +99,9 @@
         if ("error" in resolved)
             return resolved;
         const element = resolved.element;
+        if (isDisabled(element)) {
+            return { error: { code: "not_enabled", message: `${describeElement(element)} is disabled` }, dialogs: drainDialogs() };
+        }
         element.scrollIntoView({ block: "center", inline: "center" });
         element.focus({ preventScroll: true });
         element.click();

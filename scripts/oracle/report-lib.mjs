@@ -8,6 +8,9 @@ export function parseReportArgs(argv) {
     diffLastGreen: false,
     enforceCoverage: false,
     failedDetails: false,
+    json: false,
+    reviewQueue: false,
+    unsupportedRoots: false,
     run: null,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -16,6 +19,9 @@ export function parseReportArgs(argv) {
     else if (arg === "--diff-last-green") options.diffLastGreen = true;
     else if (arg === "--enforce-coverage") options.enforceCoverage = true;
     else if (arg === "--failed-details") options.failedDetails = true;
+    else if (arg === "--json") options.json = true;
+    else if (arg === "--review-queue") options.reviewQueue = true;
+    else if (arg === "--unsupported-roots") options.unsupportedRoots = true;
     else if (arg === "--run") {
       const value = argv[index + 1];
       if (!value) throw new Error("--run requires a run directory");

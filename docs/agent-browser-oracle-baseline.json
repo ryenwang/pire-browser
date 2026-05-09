@@ -11,7 +11,7 @@
   },
   "pireBrowser": {
     "package": "pire-browser",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "preferredExecutableOrder": [
       "PIRE_BROWSER_EXE",
       "target/debug/pire-browser.exe",

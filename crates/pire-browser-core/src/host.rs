@@ -57,7 +57,7 @@ impl NativeBridge {
         let (tx, rx) = bounded::<RpcResponse>(1);
         self.pending.lock().unwrap().insert(request.id.clone(), tx);
 
-        log_host(&format!("native outbound request {}", request.id));
+        log_host(&native_outbound_request_log(&request.id));
         let write_result = {
             let mut stdout = self.stdout.lock().unwrap();
             write_native_message(
@@ -82,10 +82,7 @@ impl NativeBridge {
 
         match rx.recv_timeout(Duration::from_secs(30)) {
             Ok(mut response) => {
-                log_host(&format!(
-                    "native inbound response {} ok={}",
-                    response.id, response.ok
-                ));
+                log_host(&native_inbound_response_log(&response.id, response.ok));
                 if let Some(result) = response.result.as_mut() {
                     if let Err(err) = self.maybe_reassemble_large_result(result) {
                         response.ok = false;
@@ -111,7 +108,7 @@ impl NativeBridge {
                 response
             }
             Err(_) => {
-                log_host(&format!("native response timeout {}", request.id));
+                log_host(&native_response_timeout_log(&request.id));
                 self.pending.lock().unwrap().remove(&request.id);
                 RpcResponse::err(
                     request.id,
@@ -190,7 +187,7 @@ impl NativeBridge {
                 result,
                 error,
             } => {
-                log_host(&format!("received native response {id} ok={ok}"));
+                log_host(&native_inbound_response_log(&id, ok));
                 let response = RpcResponse {
                     id,
                     ok,
@@ -344,7 +341,10 @@ fn handle_pipe_line_inner(bridge: &NativeBridge, line: &str) -> String {
             format!("failed to parse request JSON: {err}"),
         ),
     };
-    log_host(&format!("pipe response ok={}", response.ok));
+    log_host(&format!(
+        "pipe response id={} ok={}",
+        response.id, response.ok
+    ));
     serde_json::to_string(&response).unwrap_or_else(|err| {
         json!({
             "id": "invalid",
@@ -366,5 +366,30 @@ fn log_host(message: &str) {
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         use std::io::Write;
         let _ = writeln!(file, "{} {}", now_ms(), message);
+    }
+}
+
+fn native_outbound_request_log(id: &str) -> String {
+    format!("native outbound request {id}")
+}
+
+fn native_inbound_response_log(id: &str, ok: bool) -> String {
+    format!("native inbound response {id} ok={ok}")
+}
+
+fn native_response_timeout_log(id: &str) -> String {
+    format!("native response timeout {id}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_debug_log_messages_include_request_ids() {
+        let id = "rpc-123";
+        assert!(native_outbound_request_log(id).contains(id));
+        assert!(native_inbound_response_log(id, true).contains(id));
+        assert!(native_response_timeout_log(id).contains(id));
     }
 }
