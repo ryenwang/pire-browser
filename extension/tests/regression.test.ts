@@ -76,6 +76,16 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain('type: "result_chunk"');
     expect(body).toContain("largeResult");
   });
+
+  it("keeps page targets tied to both Firefox tab and window ids", () => {
+    const body = background();
+    expect(body).toContain("type PageRecord = {");
+    expect(body).toContain("tabId: number;");
+    expect(body).toContain("windowId: number;");
+    expect(body).toContain("async function activatePage(page: PageRecord)");
+    expect(body).toContain("browser.windows.update(page.windowId, { focused: true })");
+    expect(body).toContain("browser.tabs.update(page.tabId, { active: true })");
+  });
 });
 
 describe("command shape parity", () => {

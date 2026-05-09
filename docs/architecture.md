@@ -23,6 +23,8 @@ Firefox is the source of truth. The extension tracks tab/window/navigation event
 
 If the user closes a tab, commands that target that tab return `tab_closed`. If Firefox exits or the extension disconnects, the session file is removed or becomes stale and the CLI reports `extension_disconnected`.
 
+The CLI should target browser "pages", not raw Firefox tabs or windows. The background script owns the Firefox-specific routing between `browser.tabs` and `browser.windows`, including popups and new windows, so later session/state work can present a stable page id even when Firefox represents the surface as a tab in a different window.
+
 ## Locator Model
 
 Snapshot refs like `@e1` are not raw element handles. They store a re-resolvable locator recipe built from role, accessible-ish name, label, text, placeholder, test ID, and frame ID. Actions re-resolve the locator before touching the DOM.
@@ -36,12 +38,14 @@ When a locator cannot be re-resolved uniquely, commands return `ref_stale` or `a
 - Dialog handling uses a page-world shim and can only observe pages where injection is allowed.
 - Screenshot support is visible-viewport only.
 - Per-command flags that require a different browser process shape, such as headless mode or color scheme, are accepted for parser compatibility but reported as ignored warnings when JSON output is requested.
+- Headless is not a per-command mode for an already-running WebExtension session. If a future managed-launcher mode supports headless Firefox, it should be treated as a separate launch configuration with its own oracle lane because viewport size, focus behavior, and visible-tab screenshot APIs may differ from headed Firefox.
 - Robust network-idle waits require network instrumentation and are deferred to the browser data plane.
 - File upload automation is backend-specific; the Firefox WebExtension path does not claim local file input control.
 
 ## Epic 2 Readiness Notes
 
 - Core waits in Epic 2 are DOM/content waits: selector state, text, URL, page load completion, fixed delay, and supported function predicates.
+- Default headed launch is the initial managed Firefox target. Before any headless managed-launcher mode is claimed compatible, the oracle should run a dedicated headless lane for auto-launch, viewport, focus-sensitive actions, and visible-tab screenshot behavior.
 - `wait --load networkidle` belongs to Epic 5 because it depends on reliable network observation.
 - Frame stitching is an Epic 2 reliability requirement. The extension must keep `all_frames: true`, stitch accessible frame snapshots into one result, and represent inaccessible frames as explicit opaque records.
 - Lite observability moves into Epic 2: CLI/host/extension logs should carry command id, session id, command root, timing, timeout source, and error code. Screenshots, traces, HAR, dashboards, recording, and diffing remain Epic 6.

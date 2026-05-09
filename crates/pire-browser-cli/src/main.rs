@@ -81,15 +81,30 @@ fn run() -> Result<()> {
                 Ok(response) => response,
                 Err(err) if should_auto_launch_remote(session.as_deref(), &args, &err) => {
                     cleanup_stale_sessions(now_ms())?;
-                    let result = launch_firefox(LaunchOptions {
+                    let result = match launch_firefox(LaunchOptions {
                         profile: "Default".to_string(),
                         url: launch_url_for_remote_args(&args),
                         firefox_path: None,
-                    })?;
+                    }) {
+                        Ok(result) => result,
+                        Err(err) => {
+                            exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                            unreachable!();
+                        }
+                    };
                     eprintln!("{}", launch_result_text(&result));
-                    send_to_session(None, &request)?
+                    match send_to_session(None, &request) {
+                        Ok(response) => response,
+                        Err(err) => {
+                            exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                            unreachable!();
+                        }
+                    }
                 }
-                Err(err) => return Err(err),
+                Err(err) => {
+                    exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                    unreachable!();
+                }
             };
             if !response.ok {
                 let error = response
@@ -101,19 +116,7 @@ fn run() -> Result<()> {
                     });
                 if json {
                     let exit_code = exit_code_for_error(&error.code);
-                    let warnings = ignored_global_flag_warnings(&ignored_global_flags);
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&json!({
-                            "success": false,
-                            "error": {
-                                "code": error.code,
-                                "message": error.message,
-                                "data": error.data
-                            },
-                            "warnings": warnings
-                        }))?
-                    );
+                    print_json_error(&error, &ignored_global_flags)?;
                     std::process::exit(exit_code);
                 }
                 let err = format!("{}: {}", error.code, error.message);
@@ -126,6 +129,66 @@ fn run() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn exit_with_anyhow_error(
+    err: anyhow::Error,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+) -> Result<()> {
+    if json_output {
+        let error = rpc_error_from_anyhow(&err);
+        print_json_error(&error, ignored_global_flags)?;
+        std::process::exit(exit_code_for_error(&error.code));
+    }
+    Err(err)
+}
+
+fn print_json_error(
+    error: &pire_browser_core::protocol::RpcError,
+    ignored_global_flags: &[GlobalFlagWarning],
+) -> Result<()> {
+    let warnings = ignored_global_flag_warnings(ignored_global_flags);
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "success": false,
+            "error": {
+                "code": error.code,
+                "message": error.message,
+                "data": error.data
+            },
+            "warnings": warnings
+        }))?
+    );
+    Ok(())
+}
+
+fn rpc_error_from_anyhow(err: &anyhow::Error) -> pire_browser_core::protocol::RpcError {
+    let message = format!("{err:#}");
+    let (code, phase) = if message.contains("timed out waiting for pire-browser extension session")
+        || message.contains("timed out waiting for Firefox extension response")
+    {
+        ("timeout", "connect")
+    } else if message.contains("extension_disconnected")
+        || message.contains("no live Firefox extension session found")
+    {
+        ("extension_disconnected", "session")
+    } else if message.contains("web-ext exited before pire-browser connected")
+        || message.contains("failed to start web-ext")
+        || message.contains("could not discover Firefox")
+    {
+        ("browser_launch_failed", "launch")
+    } else if message.contains("multiple_sessions") {
+        ("multiple_sessions", "session")
+    } else {
+        ("command_failed", "runtime")
+    };
+    pire_browser_core::protocol::RpcError {
+        code: code.to_string(),
+        message,
+        data: Some(json!({ "phase": phase })),
+    }
 }
 
 fn local_not_available_result(
@@ -455,6 +518,50 @@ mod tests {
             &err
         ));
         assert!(!should_auto_launch_remote(None, &s(&["close"]), &err));
+    }
+
+    #[test]
+    fn classifies_launch_and_connect_failures_for_json_envelopes() {
+        let timeout = rpc_error_from_anyhow(&anyhow::anyhow!(
+            "timed out waiting for pire-browser extension session; check C:/tmp/web-ext.log"
+        ));
+        assert_eq!(timeout.code, "timeout");
+        assert_eq!(exit_code_for_error(&timeout.code), 124);
+
+        let disconnected = rpc_error_from_anyhow(&anyhow::anyhow!(
+            "extension_disconnected: no live Firefox extension session found"
+        ));
+        assert_eq!(disconnected.code, "extension_disconnected");
+
+        let launch = rpc_error_from_anyhow(&anyhow::anyhow!(
+            "web-ext exited before pire-browser connected (status: 1)"
+        ));
+        assert_eq!(launch.code, "browser_launch_failed");
+    }
+
+    #[test]
+    fn formats_json_error_envelope_with_ignored_global_flag_warnings() {
+        let error = pire_browser_core::protocol::RpcError {
+            code: "timeout".to_string(),
+            message: "timed out".to_string(),
+            data: Some(json!({ "phase": "connect" })),
+        };
+        let warnings = ignored_global_flag_warnings(&[GlobalFlagWarning {
+            flag: "--headless".to_string(),
+        }]);
+        let formatted = serde_json::to_string_pretty(&json!({
+            "success": false,
+            "error": {
+                "code": error.code,
+                "message": error.message,
+                "data": error.data
+            },
+            "warnings": warnings
+        }))
+        .unwrap();
+        assert!(formatted.contains("\"success\": false"));
+        assert!(formatted.contains("\"timeout\""));
+        assert!(formatted.contains("\"IGNORED_GLOBAL_FLAG\""));
     }
 
     #[test]

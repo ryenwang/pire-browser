@@ -2,6 +2,221 @@
   "schemaVersion": 2,
   "cases": [
     {
+      "id": "cold-default-session-core-loop",
+      "description": "From a clean default-session app-data root, auto-launch managed Firefox and run the core open/snapshot/action/wait/inspect loop.",
+      "status": "exact",
+      "visibleSafe": true,
+      "compatibilityItems": [
+        {
+          "id": "cmd-open",
+          "status": "exact",
+          "tapeCovered": true
+        },
+        {
+          "id": "cmd-snapshot-i",
+          "status": "exact",
+          "tapeCovered": true
+        },
+        {
+          "id": "cmd-fill-ref",
+          "status": "exact",
+          "tapeCovered": true
+        },
+        {
+          "id": "cmd-click-ref",
+          "status": "exact",
+          "tapeCovered": true
+        },
+        {
+          "id": "cmd-wait-selector",
+          "status": "exact",
+          "tapeCovered": true
+        },
+        {
+          "id": "cmd-get-title-url",
+          "status": "exact",
+          "tapeCovered": true
+        },
+        {
+          "id": "cmd-get-text-html-value-attr",
+          "status": "exact",
+          "tapeCovered": true
+        }
+      ],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/form.html",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "urlContains",
+              "value": "/form.html"
+            },
+            {
+              "type": "titleContains",
+              "value": "pire-browser oracle fixture"
+            }
+          ]
+        },
+        {
+          "id": "snapshot",
+          "command": "snapshot -i",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "stdoutContains",
+              "value": "Email"
+            },
+            {
+              "type": "stdoutContains",
+              "value": "Submit"
+            }
+          ],
+          "captures": [
+            {
+              "name": "email",
+              "source": "stdout",
+              "lineIncludes": [
+                "Email"
+              ]
+            },
+            {
+              "name": "submit",
+              "source": "stdout",
+              "lineIncludes": [
+                "Submit"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "fill",
+          "command": "fill {{refs.email}} \"cold-loop@example.com\"",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "domValue",
+              "selector": "#email",
+              "value": "cold-loop@example.com"
+            }
+          ]
+        },
+        {
+          "id": "click",
+          "command": "click {{refs.submit}}",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "wait",
+          "command": "wait \"#done:not([hidden])\"",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "domText",
+              "selector": "#done",
+              "value": "Submitted"
+            }
+          ]
+        },
+        {
+          "id": "get-value",
+          "command": "get value \"#email\"",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "stdoutContains",
+              "value": "cold-loop@example.com"
+            }
+          ]
+        },
+        {
+          "id": "get-url",
+          "command": "get url",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "stdoutContains",
+              "value": "/form.html"
+            }
+          ]
+        },
+        {
+          "id": "get-title-json",
+          "command": "get title --json",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 0
+            },
+            {
+              "type": "jsonEnvelopeShape",
+              "tool": "pire-browser",
+              "success": true,
+              "dataPaths": [
+                "text"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "missing-target-json",
+          "command": "click \"#missing-target\" --json",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 44
+            },
+            {
+              "type": "jsonEnvelopeShape",
+              "tool": "pire-browser",
+              "success": false,
+              "errorCode": "ref_stale"
+            }
+          ]
+        },
+        {
+          "id": "snapshot-again",
+          "command": "snapshot -i",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "stdoutContains",
+              "value": "Submit"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "open-fixture",
       "description": "Open the local fixture and verify both tools land on the same URL/title.",
       "status": "exact",

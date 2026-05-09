@@ -25,6 +25,8 @@ Epic 2 readiness has extra guardrails. Covered or promoted core-loop work should
 
 `jsonEnvelopeShape` is the strict structural JSON assertion for new Epic 2 coverage. It validates success/error envelope nesting, required keys, warnings array shape, selected data paths, and stable error codes after documented normalization. It does not normalize success/failure, exit codes, error codes, required fields, or warning codes.
 
+Default headed managed Firefox is the first Epic 2 launcher lane. Any future headless managed-launcher lane must have separate oracle coverage for auto-launch, viewport-sensitive assertions, focus-sensitive actions, and screenshot behavior. Per-command `--headless` remains governed by `globalFlagPolicy` and is not a live-session mode switch.
+
 Network-idle waits are Epic 5 because they require network instrumentation. Upload automation is Epic 8/backend-specific for the Firefox WebExtension path unless a future OS or browser-driver backend is approved.
 
 ## Comparison Ref And Ratchets

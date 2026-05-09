@@ -243,6 +243,7 @@
         const record = rememberTab(loadedTab);
         if (label)
             setLabel(record, label);
+        await activatePage(record);
         return { text: `Opened ${url} in ${record.agentId}${label ? ` (${label})` : ""}`, tab: record };
     }
     async function snapshotCommand(args) {
@@ -485,8 +486,7 @@
         const positional = firstPositionalArg(args, ["--screenshot-dir", "--screenshot-format", "--screenshot-quality"]);
         const path = dir && positional && !/[\\/]/.test(positional) ? `${dir.replace(/[\\/]$/, "")}/${positional}` : positional ?? `pire-browser-screenshot-${Date.now()}.${format === "jpeg" ? "jpg" : "png"}`;
         const tab = await targetTab();
-        await browser.tabs.update(tab.tabId, { active: true });
-        await browser.windows.update(tab.windowId, { focused: true });
+        await activatePage(tab);
         const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, { format, quality });
         const meta = await sendScreenshotChunks(dataUrl);
         return {
@@ -588,8 +588,7 @@
             const tab = findTab(subcommand === "select" ? target : subcommand);
             if (!tab)
                 return { error: { code: "tab_closed", message: `No live tab found: ${target}` } };
-            await browser.tabs.update(tab.tabId, { active: true });
-            await browser.windows.update(tab.windowId, { focused: true });
+            await activatePage(tab);
             return { text: `Selected ${tab.agentId}` };
         }
         if (subcommand === "close") {
@@ -821,10 +820,14 @@
         throw new Error("tab_closed: no active tab available");
     }
     function rememberTab(tab) {
+        if (typeof tab.id !== "number" || typeof tab.windowId !== "number") {
+            throw new Error("tab_missing_id: Firefox tab is missing tabId or windowId");
+        }
         let record = tabsByBrowserId.get(tab.id);
         if (!record) {
             record = {
                 tabId: tab.id,
+                windowId: tab.windowId,
                 agentId: `t${nextTabNumber++}`,
                 label: labels.get(String(tab.id)),
             };
@@ -837,6 +840,10 @@
         record.windowId = tab.windowId;
         record.closed = false;
         return record;
+    }
+    async function activatePage(page) {
+        await browser.windows.update(page.windowId, { focused: true });
+        await browser.tabs.update(page.tabId, { active: true });
     }
     function findTab(target) {
         if (!target)
@@ -864,7 +871,8 @@
     }
     function registerBrowserListeners() {
         browser.tabs.onCreated.addListener((tab) => {
-            rememberTab(tab);
+            if (typeof tab.id === "number" && typeof tab.windowId === "number")
+                rememberTab(tab);
             postEvent("tabs_changed", {});
         });
         browser.tabs.onRemoved.addListener((tabId) => {
@@ -874,7 +882,8 @@
             postEvent("tabs_changed", {});
         });
         browser.tabs.onUpdated.addListener((_tabId, _change, tab) => {
-            rememberTab(tab);
+            if (typeof tab.id === "number" && typeof tab.windowId === "number")
+                rememberTab(tab);
             postEvent("tabs_changed", {});
         });
         browser.tabs.onActivated.addListener(() => postEvent("focused", {}));

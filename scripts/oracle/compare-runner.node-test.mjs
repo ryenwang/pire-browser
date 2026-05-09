@@ -166,6 +166,33 @@ test("runner retries agent-browser daemon version restart once", async () => {
   assert.equal(caseRecord.steps[0].agentBrowser.adapterRetry, "agent-browser-daemon-version-mismatch");
 });
 
+test("runner uses a caller-provided per-run LOCALAPPDATA for pire-browser", async () => {
+  const calls = [];
+  const perRunLocalAppData = "C:\\oracle\\runs\\run-1\\pire-local-app-data";
+  const runCommandImpl = async (executable, args, options) => {
+    calls.push({ executable, args, options });
+    return result("ok\n");
+  };
+
+  const [caseRecord] = await runOracleCases({
+    ...baseOptions,
+    pireLocalAppDataRoot: perRunLocalAppData,
+    runCommandImpl,
+    cases: [
+      {
+        id: "per-run-app-data",
+        steps: [{ id: "status", command: "status", assertions: [{ type: "exitCodeEquals", value: 0 }] }],
+        finalAssertions: [],
+      },
+    ],
+  });
+
+  assert.equal(caseRecord.pass, true);
+  const pireCalls = calls.filter((call) => call.executable === "pire-browser");
+  assert.ok(pireCalls.length > 0);
+  assert.ok(pireCalls.every((call) => call.options.env.LOCALAPPDATA === perRunLocalAppData));
+});
+
 test("eventLogContains only matches events emitted after step start", async () => {
   let eventReadCount = 0;
   const runCommandImpl = async (_executable, args) => {

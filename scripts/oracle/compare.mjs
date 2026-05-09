@@ -36,6 +36,7 @@ verifyInstalledAgentBrowserVersion();
 
 const runDir = createRunDir(visibleRun ? "visible-compare" : "cli");
 const runLogDir = join(runDir, "logs");
+const pireLocalAppDataRoot = join(runDir, "pire-local-app-data");
 mkdirSync(runLogDir, { recursive: true });
 
 const agentBrowser = resolveAgentBrowserExecutable();
@@ -67,7 +68,7 @@ const summary = {
     profileDirs: {
       agentBrowserSocketDir: join(ORACLE_ROOT, "agent-browser-sockets"),
       agentBrowserProfile: process.env.AGENT_BROWSER_PROFILE ?? null,
-      pireBrowserLocalAppData: join(ORACLE_ROOT, "pire-local-app-data"),
+      pireBrowserLocalAppData: pireLocalAppDataRoot,
       pireBrowserMode: process.env.PIRE_BROWSER_ORACLE_NAMED_SESSION === "1" ? "named" : "default-auto-launch",
     },
   },
@@ -82,6 +83,7 @@ try {
     fixtureUrl: fixture.url,
     oracleRoot: ORACLE_ROOT,
     runLogDir,
+    pireLocalAppDataRoot,
     timeoutMs,
     probeTimeoutMs,
     visibleRun,

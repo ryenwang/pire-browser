@@ -69,16 +69,18 @@ type DialogRecord = {
   at: number;
 };
 
-type TabRecord = {
+type PageRecord = {
   tabId: number;
+  windowId: number;
   agentId: string;
   label?: string;
   url?: string;
   title?: string;
   active?: boolean;
-  windowId?: number;
   closed?: boolean;
 };
+
+type TabRecord = PageRecord;
 
 const HOST_NAME = "dev.pi.pire_browser";
 const CHUNK_SIZE = 700_000;
@@ -329,6 +331,7 @@ async function openCommand(args: string[], command = "open") {
   const loadedTab = await browser.tabs.get(tab.id);
   const record = rememberTab(loadedTab);
   if (label) setLabel(record, label);
+  await activatePage(record);
   return { text: `Opened ${url} in ${record.agentId}${label ? ` (${label})` : ""}`, tab: record };
 }
 
@@ -575,8 +578,7 @@ async function screenshotCommand(args: string[]) {
   const positional = firstPositionalArg(args, ["--screenshot-dir", "--screenshot-format", "--screenshot-quality"]);
   const path = dir && positional && !/[\\/]/.test(positional) ? `${dir.replace(/[\\/]$/, "")}/${positional}` : positional ?? `pire-browser-screenshot-${Date.now()}.${format === "jpeg" ? "jpg" : "png"}`;
   const tab = await targetTab();
-  await browser.tabs.update(tab.tabId, { active: true });
-  await browser.windows.update(tab.windowId, { focused: true });
+  await activatePage(tab);
   const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, { format, quality });
   const meta = await sendScreenshotChunks(dataUrl);
   return {
@@ -682,8 +684,7 @@ async function tabsCommand(args: string[]) {
   if (subcommand === "select" || findTab(subcommand)) {
     const tab = findTab(subcommand === "select" ? target : subcommand);
     if (!tab) return { error: { code: "tab_closed", message: `No live tab found: ${target}` } };
-    await browser.tabs.update(tab.tabId, { active: true });
-    await browser.windows.update(tab.windowId, { focused: true });
+    await activatePage(tab);
     return { text: `Selected ${tab.agentId}` };
   }
   if (subcommand === "close") {
@@ -910,10 +911,14 @@ async function targetTab(): Promise<TabRecord> {
 }
 
 function rememberTab(tab: any): TabRecord {
+  if (typeof tab.id !== "number" || typeof tab.windowId !== "number") {
+    throw new Error("tab_missing_id: Firefox tab is missing tabId or windowId");
+  }
   let record = tabsByBrowserId.get(tab.id);
   if (!record) {
     record = {
       tabId: tab.id,
+      windowId: tab.windowId,
       agentId: `t${nextTabNumber++}`,
       label: labels.get(String(tab.id)),
     };
@@ -926,6 +931,11 @@ function rememberTab(tab: any): TabRecord {
   record.windowId = tab.windowId;
   record.closed = false;
   return record;
+}
+
+async function activatePage(page: PageRecord) {
+  await browser.windows.update(page.windowId, { focused: true });
+  await browser.tabs.update(page.tabId, { active: true });
 }
 
 function findTab(target?: string): TabRecord | undefined {
@@ -955,7 +965,7 @@ async function reconcileTabs() {
 
 function registerBrowserListeners() {
   browser.tabs.onCreated.addListener((tab: any) => {
-    rememberTab(tab);
+    if (typeof tab.id === "number" && typeof tab.windowId === "number") rememberTab(tab);
     postEvent("tabs_changed", {});
   });
   browser.tabs.onRemoved.addListener((tabId: number) => {
@@ -964,7 +974,7 @@ function registerBrowserListeners() {
     postEvent("tabs_changed", {});
   });
   browser.tabs.onUpdated.addListener((_tabId: number, _change: any, tab: any) => {
-    rememberTab(tab);
+    if (typeof tab.id === "number" && typeof tab.windowId === "number") rememberTab(tab);
     postEvent("tabs_changed", {});
   });
   browser.tabs.onActivated.addListener(() => postEvent("focused", {}));
