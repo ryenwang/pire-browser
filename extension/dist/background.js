@@ -2,9 +2,12 @@
 {
     const HOST_NAME = "dev.pi.pire_browser";
     const CHUNK_SIZE = 700000;
+    const CLOSE_TEARDOWN_DELAY_MS = 0;
     let port;
     let profileId = "";
     let nextTabNumber = 1;
+    let controlledCloseScheduled = false;
+    let nativeReconnectEnabled = true;
     const tabsByBrowserId = new Map();
     const tabsByAgentId = new Map();
     const labels = new Map();
@@ -12,6 +15,8 @@
     connectNative();
     registerBrowserListeners();
     function connectNative() {
+        if (!nativeReconnectEnabled)
+            return;
         console.log("[pire-browser] connecting native host", HOST_NAME);
         try {
             port = browser.runtime.connectNative(HOST_NAME);
@@ -26,6 +31,8 @@
             const lastError = browser.runtime.lastError;
             if (lastError)
                 console.error("[pire-browser] native host disconnected", lastError.message);
+            if (!nativeReconnectEnabled)
+                return;
             setTimeout(connectNative, 1000);
         });
         void ensureProfileId().then(() => {
@@ -36,8 +43,8 @@
                 extension_id: browser.runtime.id,
                 extension_version: browser.runtime.getManifest().version,
             });
-            postEvent("focused", {});
-            setInterval(() => postEvent("heartbeat", {}), 5000);
+            void postSessionEvent("focused", {});
+            setInterval(() => void postSessionEvent("heartbeat", {}), 5000);
         });
     }
     async function ensureProfileId() {
@@ -65,6 +72,24 @@
             data: { ...data, profileId },
         };
         postNative(event);
+    }
+    async function postSessionEvent(name, data) {
+        postEvent(name, { ...data, activePage: await activePageSummary() });
+    }
+    async function activePageSummary() {
+        const active = await activeTab().catch(() => undefined);
+        if (typeof active?.id !== "number" || typeof active.windowId !== "number")
+            return null;
+        const record = rememberTab(active);
+        return {
+            agentId: record.agentId,
+            label: record.label,
+            title: record.title,
+            url: record.url,
+            tabId: record.tabId,
+            windowId: record.windowId,
+            updatedAt: Date.now(),
+        };
     }
     async function handleNativeMessage(message) {
         if (message.type === "request") {
@@ -211,7 +236,7 @@
             case "close":
             case "quit":
             case "exit":
-                window.close();
+                scheduleControlledClose();
                 return { text: "pire-browser extension close requested" };
             default:
                 return {
@@ -246,13 +271,12 @@
         await activatePage(record);
         return { text: `Opened ${url} in ${record.agentId}${label ? ` (${label})` : ""}`, tab: record };
     }
-    async function snapshotCommand(args) {
+    async function snapshotCommand(_args) {
         const tab = await targetTab();
         const frames = await snapshotTab(tab.tabId);
         refs.clear();
         let refNumber = 1;
         const lines = [`${tab.agentId} ${tab.title || tab.url || ""}`.trim()];
-        const interactive = args.includes("-i") || args.includes("--interactive");
         for (const frame of frames) {
             if (frame.opaque) {
                 lines.push(`  frame ${frame.frameId}: opaque ${frame.url ?? ""}`.trim());
@@ -267,9 +291,7 @@
                     locator: element.locator,
                     summary: summarizeElement(element),
                 });
-                if (interactive) {
-                    lines.push(`  ${ref} ${summarizeElement(element)}`);
-                }
+                lines.push(`  ${ref} ${summarizeElement(element)}`);
             }
         }
         return withDialogs({ text: lines.join("\n"), frames, refs: Array.from(refs.keys()) }, frames);
@@ -322,7 +344,7 @@
             payload.text = text;
         if (action === "select")
             payload.value = text;
-        const response = await sendFrame(tab.tabId, locator.frameId, payload);
+        const response = await sendFrame(tab.tabId, locator.frameId, payload, { staleOnFrameRoutingError: true });
         return normalizeContentResponse(response);
     }
     async function actOnFind(locator, action, text = "") {
@@ -338,20 +360,20 @@
         if (action === "fill")
             return fillLocator(locator, text, matches[0]);
         if (["text", "html", "value", "attr", "box", "styles"].includes(action)) {
-            const response = await sendFrame(tab.tabId, matches[0], { type: "get", locator, property: action, attribute: text });
+            const response = await sendFrame(tab.tabId, matches[0], { type: "get", locator, property: action, attribute: text }, { staleOnFrameRoutingError: true });
             return normalizeContentResponse(response);
         }
-        const response = await sendFrame(tab.tabId, matches[0], { type: action, locator, text, value: text, property: action });
+        const response = await sendFrame(tab.tabId, matches[0], { type: action, locator, text, value: text, property: action }, { staleOnFrameRoutingError: true });
         return normalizeContentResponse(response);
     }
     async function clickLocator(locator, frameId) {
         const tab = await targetTab();
-        const response = await sendFrame(tab.tabId, frameId, { type: "click", locator });
+        const response = await sendFrame(tab.tabId, frameId, { type: "click", locator }, { staleOnFrameRoutingError: true });
         return normalizeContentResponse(response);
     }
     async function fillLocator(locator, text, frameId) {
         const tab = await targetTab();
-        const response = await sendFrame(tab.tabId, frameId, { type: "fill", locator, text });
+        const response = await sendFrame(tab.tabId, frameId, { type: "fill", locator, text }, { staleOnFrameRoutingError: true });
         return normalizeContentResponse(response);
     }
     async function pressCommand(args) {
@@ -457,7 +479,7 @@
         if ("error" in locator)
             return locator;
         const tab = await targetTab();
-        const response = await sendFrame(tab.tabId, locator.frameId, { type: "get", locator: locator.locator, property, attribute });
+        const response = await sendFrame(tab.tabId, locator.frameId, { type: "get", locator: locator.locator, property, attribute }, { staleOnFrameRoutingError: true });
         return normalizeContentResponse(response);
     }
     async function isCommand(args) {
@@ -468,7 +490,7 @@
         if ("error" in locator)
             return locator;
         const tab = await targetTab();
-        const response = await sendFrame(tab.tabId, locator.frameId, { type: "is", locator: locator.locator, state });
+        const response = await sendFrame(tab.tabId, locator.frameId, { type: "is", locator: locator.locator, state }, { staleOnFrameRoutingError: true });
         return normalizeContentResponse(response);
     }
     async function evalCommand(args) {
@@ -579,7 +601,7 @@
             const label = valueAfter(args, "--label");
             const url = firstPositionalArg(args.slice(1), ["--label"]);
             const created = await browser.tabs.create({ url: url || "about:blank", active: true });
-            const record = rememberTab(created);
+            const record = markControlledPage(rememberTab(created));
             if (label)
                 setLabel(record, label);
             return { text: `Opened ${record.agentId}${label ? ` (${label})` : ""}`, tab: record };
@@ -649,9 +671,27 @@
         }
         return out;
     }
-    async function sendFrame(tabId, frameId, message) {
-        const options = typeof frameId === "number" ? { frameId } : undefined;
-        return browser.tabs.sendMessage(tabId, message, options);
+    async function sendFrame(tabId, frameId, message, behavior = {}) {
+        const target = typeof frameId === "number" ? { frameId } : undefined;
+        try {
+            return await browser.tabs.sendMessage(tabId, message, target);
+        }
+        catch (error) {
+            if (behavior.staleOnFrameRoutingError && typeof frameId === "number" && isFrameRoutingError(error)) {
+                return {
+                    error: {
+                        code: "ref_stale",
+                        message: `Frame ${frameId} is not available; run snapshot or find again`,
+                    },
+                    dialogs: [],
+                };
+            }
+            throw error;
+        }
+    }
+    function isFrameRoutingError(error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return /frame.*not found|receiving end does not exist|could not establish connection|no matching message handler/i.test(message);
     }
     function parseFind(args) {
         const [kind, ...rest] = args;
@@ -735,21 +775,37 @@
         const matches = (url) => Boolean(url && globToRegExp(pattern).test(url));
         if (matches(tab.url))
             return { text: `URL matched ${pattern}` };
-        await new Promise((resolve, reject) => {
-            const timer = setTimeout(() => {
+        return new Promise((resolve) => {
+            let settled = false;
+            const cleanup = () => {
+                clearTimeout(timer);
+                clearInterval(poll);
                 browser.tabs.onUpdated.removeListener(listener);
-                reject(new Error(`Timed out waiting for URL: ${pattern}`));
-            }, timeout);
+            };
+            const settle = (result) => {
+                if (settled)
+                    return;
+                settled = true;
+                cleanup();
+                resolve(result);
+            };
+            const checkCurrent = async () => {
+                const current = await browser.tabs.get(tab.tabId).catch(() => null);
+                if (matches(current?.url))
+                    settle({ text: `URL matched ${pattern}` });
+            };
             const listener = (tabId, changeInfo, updatedTab) => {
                 if (tabId === tab.tabId && matches(changeInfo.url ?? updatedTab.url)) {
-                    clearTimeout(timer);
-                    browser.tabs.onUpdated.removeListener(listener);
-                    resolve();
+                    settle({ text: `URL matched ${pattern}` });
                 }
             };
+            const timer = setTimeout(() => {
+                settle({ error: { code: "timeout", message: `Timed out waiting for URL: ${pattern}` } });
+            }, timeout);
+            const poll = setInterval(() => void checkCurrent(), 100);
             browser.tabs.onUpdated.addListener(listener);
+            void checkCurrent();
         });
-        return { text: `URL matched ${pattern}` };
     }
     function notAvailable(feature, message) {
         return {
@@ -813,10 +869,10 @@
         await reconcileTabs();
         const active = await activeTab();
         if (active?.id)
-            return rememberTab(active);
+            return markControlledPage(rememberTab(active));
         const first = Array.from(tabsByAgentId.values()).find((tab) => !tab.closed);
         if (first)
-            return first;
+            return markControlledPage(first);
         throw new Error("tab_closed: no active tab available");
     }
     function rememberTab(tab) {
@@ -842,8 +898,90 @@
         return record;
     }
     async function activatePage(page) {
+        markControlledPage(page);
         await browser.windows.update(page.windowId, { focused: true });
         await browser.tabs.update(page.tabId, { active: true });
+    }
+    function markControlledPage(page) {
+        page.controlled = true;
+        return page;
+    }
+    function scheduleControlledClose() {
+        if (controlledCloseScheduled)
+            return;
+        controlledCloseScheduled = true;
+        setTimeout(() => {
+            controlledCloseScheduled = false;
+            void closeControlledSurfaces().catch((error) => {
+                console.error("[pire-browser] controlled close failed", error);
+            });
+        }, CLOSE_TEARDOWN_DELAY_MS);
+    }
+    async function closeControlledSurfaces() {
+        await reconcileTabs();
+        const liveTabs = await browser.tabs.query({});
+        const controlledTabIds = new Set(Array.from(tabsByBrowserId.values())
+            .filter((tab) => tab.controlled && !tab.closed)
+            .map((tab) => tab.tabId));
+        const active = await activeTab();
+        const fallbackTabId = typeof active?.id === "number" ? active.id : undefined;
+        const plan = planControlledClose(liveTabs, controlledTabIds, fallbackTabId);
+        if (plan.windowIds.length > 0) {
+            disconnectNativeForControlledClose();
+        }
+        for (const windowId of plan.windowIds) {
+            await browser.windows.remove(windowId);
+        }
+        if (plan.tabIds.length > 0) {
+            await browser.tabs.remove(plan.tabIds);
+        }
+        for (const tabId of [...plan.tabIds, ...tabsInWindows(liveTabs, plan.windowIds)]) {
+            const record = tabsByBrowserId.get(tabId);
+            if (record)
+                record.closed = true;
+        }
+    }
+    function planControlledClose(liveTabs, controlledTabIds, fallbackTabId) {
+        const tabsByWindow = new Map();
+        for (const tab of liveTabs) {
+            if (typeof tab.id !== "number" || typeof tab.windowId !== "number")
+                continue;
+            const tabs = tabsByWindow.get(tab.windowId) ?? [];
+            tabs.push(tab);
+            tabsByWindow.set(tab.windowId, tabs);
+        }
+        const windowIds = [];
+        const tabIds = [];
+        for (const [windowId, windowTabs] of tabsByWindow) {
+            const controlledTabs = windowTabs.filter((tab) => controlledTabIds.has(tab.id));
+            if (controlledTabs.length === 0)
+                continue;
+            if (windowTabs.every((tab) => controlledTabIds.has(tab.id))) {
+                windowIds.push(windowId);
+            }
+            else {
+                tabIds.push(...controlledTabs.map((tab) => tab.id));
+            }
+        }
+        if (windowIds.length === 0 && tabIds.length === 0 && typeof fallbackTabId === "number") {
+            tabIds.push(fallbackTabId);
+        }
+        return { windowIds, tabIds };
+    }
+    function disconnectNativeForControlledClose() {
+        nativeReconnectEnabled = false;
+        try {
+            port?.disconnect?.();
+        }
+        catch {
+            // The browser may already be tearing down the native messaging port.
+        }
+    }
+    function tabsInWindows(liveTabs, windowIds) {
+        const windowIdSet = new Set(windowIds);
+        return liveTabs
+            .filter((tab) => typeof tab.id === "number" && typeof tab.windowId === "number" && windowIdSet.has(tab.windowId))
+            .map((tab) => tab.id);
     }
     function findTab(target) {
         if (!target)
@@ -873,21 +1011,21 @@
         browser.tabs.onCreated.addListener((tab) => {
             if (typeof tab.id === "number" && typeof tab.windowId === "number")
                 rememberTab(tab);
-            postEvent("tabs_changed", {});
+            void postSessionEvent("tabs_changed", {});
         });
         browser.tabs.onRemoved.addListener((tabId) => {
             const record = tabsByBrowserId.get(tabId);
             if (record)
                 record.closed = true;
-            postEvent("tabs_changed", {});
+            void postSessionEvent("tabs_changed", {});
         });
         browser.tabs.onUpdated.addListener((_tabId, _change, tab) => {
             if (typeof tab.id === "number" && typeof tab.windowId === "number")
                 rememberTab(tab);
-            postEvent("tabs_changed", {});
+            void postSessionEvent("tabs_changed", {});
         });
-        browser.tabs.onActivated.addListener(() => postEvent("focused", {}));
-        browser.windows.onFocusChanged.addListener(() => postEvent("focused", {}));
+        browser.tabs.onActivated.addListener(() => void postSessionEvent("focused", {}));
+        browser.windows.onFocusChanged.addListener(() => void postSessionEvent("focused", {}));
     }
     async function waitForTabComplete(tabId, timeout) {
         const tab = await browser.tabs.get(tabId);
@@ -1077,7 +1215,13 @@
         return parts;
     }
     function globToRegExp(pattern) {
-        const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*");
+        const doubleStar = "\u0000";
+        const escaped = pattern
+            .replace(/\*\*/g, doubleStar)
+            .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+            .replace(/\*/g, "[^/]*")
+            .split(doubleStar)
+            .join(".*");
         return new RegExp(`^${escaped}$`);
     }
     function bytesToBase64(bytes) {

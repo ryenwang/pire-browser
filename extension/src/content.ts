@@ -383,26 +383,27 @@ function waitForSelector(selector: string, timeout: number, state = "visible"): 
     return Boolean(element && isVisible(element));
   };
   if (satisfied()) {
-    return Promise.resolve({ text: `Selector found: ${selector}`, dialogs: drainDialogs() });
+    return Promise.resolve({ text: state === "hidden" ? `Selector hidden: ${selector}` : `Selector found: ${selector}`, dialogs: drainDialogs() });
   }
   return new Promise((resolve) => {
-    const started = Date.now();
-    const observer = new MutationObserver(() => {
+    let settled = false;
+    let observer: MutationObserver | undefined;
+    let timer: number | undefined;
+    const settle = (result: Record<string, unknown>) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      observer?.disconnect();
+      resolve(result);
+    };
+    observer = new MutationObserver(() => {
       if (satisfied()) {
-        observer.disconnect();
-        resolve({ text: `Selector found: ${selector}`, dialogs: drainDialogs() });
-      } else if (Date.now() - started > timeout) {
-        observer.disconnect();
-        resolve({
-          error: { code: "timeout", message: `Timed out waiting for selector: ${selector}` },
-          dialogs: drainDialogs(),
-        });
+        settle({ text: state === "hidden" ? `Selector hidden: ${selector}` : `Selector found: ${selector}`, dialogs: drainDialogs() });
       }
     });
     observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
-    window.setTimeout(() => {
-      observer.disconnect();
-      resolve({
+    timer = window.setTimeout(() => {
+      settle({
         error: { code: "timeout", message: `Timed out waiting for selector: ${selector}` },
         dialogs: drainDialogs(),
       });
@@ -414,42 +415,56 @@ function waitForText(text: string, timeout: number, hidden: boolean): Promise<Re
   const satisfied = () => clean(document.body?.innerText ?? "").includes(text) !== hidden;
   if (satisfied()) return Promise.resolve({ text: hidden ? `Text disappeared: ${text}` : `Text found: ${text}`, dialogs: drainDialogs() });
   return new Promise((resolve) => {
-    const observer = new MutationObserver(() => {
+    let settled = false;
+    let observer: MutationObserver | undefined;
+    let timer: number | undefined;
+    const settle = (result: Record<string, unknown>) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      observer?.disconnect();
+      resolve(result);
+    };
+    observer = new MutationObserver(() => {
       if (satisfied()) {
-        observer.disconnect();
-        resolve({ text: hidden ? `Text disappeared: ${text}` : `Text found: ${text}`, dialogs: drainDialogs() });
+        settle({ text: hidden ? `Text disappeared: ${text}` : `Text found: ${text}`, dialogs: drainDialogs() });
       }
     });
-    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
-    window.setTimeout(() => {
-      observer.disconnect();
-      resolve({ error: { code: "timeout", message: `Timed out waiting for text: ${text}` }, dialogs: drainDialogs() });
+    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true });
+    timer = window.setTimeout(() => {
+      settle({ error: { code: "timeout", message: `Timed out waiting for text: ${text}` }, dialogs: drainDialogs() });
     }, timeout);
   });
 }
 
 function waitForFunction(expression: string, timeout: number): Promise<Record<string, unknown>> {
+  const warnings = [bestEffortWarning("wait --fn", "Firefox WebExtensions evaluate wait --fn in the content-script isolated world, so page globals and framework state may not be visible.")];
   const evaluate = () => Boolean(Function(`return (${expression});`).call(window));
   try {
-    if (evaluate()) return Promise.resolve({ text: "Function condition satisfied", dialogs: drainDialogs() });
+    if (evaluate()) return Promise.resolve({ text: "Function condition satisfied", warnings, dialogs: drainDialogs() });
   } catch {
     // Keep polling; many conditions reference objects that appear later.
   }
   return new Promise((resolve) => {
+    let settled = false;
     const started = Date.now();
-    const timer = window.setInterval(() => {
+    let timer: number | undefined;
+    const settle = (result: Record<string, unknown>) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) window.clearInterval(timer);
+      resolve(result);
+    };
+    timer = window.setInterval(() => {
       try {
         if (evaluate()) {
-          window.clearInterval(timer);
-          resolve({ text: "Function condition satisfied", dialogs: drainDialogs() });
+          settle({ text: "Function condition satisfied", warnings, dialogs: drainDialogs() });
         } else if (Date.now() - started > timeout) {
-          window.clearInterval(timer);
-          resolve({ error: { code: "timeout", message: "Timed out waiting for function condition" }, dialogs: drainDialogs() });
+          settle({ error: { code: "timeout", message: "Timed out waiting for function condition" }, warnings, dialogs: drainDialogs() });
         }
       } catch {
         if (Date.now() - started > timeout) {
-          window.clearInterval(timer);
-          resolve({ error: { code: "timeout", message: "Timed out waiting for function condition" }, dialogs: drainDialogs() });
+          settle({ error: { code: "timeout", message: "Timed out waiting for function condition" }, warnings, dialogs: drainDialogs() });
         }
       }
     }, 100);

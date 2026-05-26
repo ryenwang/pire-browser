@@ -85,6 +85,11 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
         }
 
         if process_is_alive(metadata.launcher_pid) {
+            let _ = terminate_process_best_effort(metadata.launcher_pid);
+            thread::sleep(Duration::from_millis(250));
+        }
+
+        if process_is_alive(metadata.launcher_pid) {
             bail!(
                 "profile {} appears to be running under launcher PID {}, but no live pire-browser session was found; close that Firefox/web-ext instance or check {}",
                 options.profile,
@@ -383,6 +388,27 @@ fn process_is_alive(pid: u32) -> bool {
 
 #[cfg(not(windows))]
 fn process_is_alive(_pid: u32) -> bool {
+    false
+}
+
+#[cfg(windows)]
+fn terminate_process_best_effort(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+
+    unsafe {
+        let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
+        if handle.is_null() {
+            return false;
+        }
+        let ok = TerminateProcess(handle, 0);
+        CloseHandle(handle);
+        ok != 0
+    }
+}
+
+#[cfg(not(windows))]
+fn terminate_process_best_effort(_pid: u32) -> bool {
     false
 }
 

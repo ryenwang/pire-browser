@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -21,6 +22,8 @@ use winreg::RegKey;
 pub struct InstallStatusReport {
     pub ok: bool,
     pub firefox_path: Option<PathBuf>,
+    pub cli_executable: CheckStatus,
+    pub cli_on_path: CheckStatus,
     pub native_host: CheckStatus,
     pub native_manifest: CheckStatus,
     pub native_registry: CheckStatus,
@@ -65,6 +68,8 @@ impl CheckStatus {
 
 pub fn collect_install_status() -> Result<InstallStatusReport> {
     let firefox_path = discover_firefox(None);
+    let cli_executable = check_cli_executable();
+    let cli_on_path = check_cli_on_path();
     let native_host = check_native_host();
     let native_manifest = check_native_manifest();
     let native_registry = check_native_registry();
@@ -86,6 +91,8 @@ pub fn collect_install_status() -> Result<InstallStatusReport> {
     Ok(InstallStatusReport {
         ok,
         firefox_path,
+        cli_executable,
+        cli_on_path,
         native_host,
         native_manifest,
         native_registry,
@@ -113,6 +120,8 @@ pub fn install_status_text(report: &InstallStatusReport) -> String {
         report.firefox_path.is_some(),
         None,
     ));
+    lines.push(format_check_status(&report.cli_executable));
+    lines.push(format_check_status(&report.cli_on_path));
     lines.push(format_check_status(&report.native_host));
     lines.push(format_check_status(&report.native_manifest));
     lines.push(format_check_status(&report.native_registry));
@@ -135,6 +144,51 @@ pub fn install_status_text(report: &InstallStatusReport) -> String {
         ));
     }
     lines.join("\n")
+}
+
+fn check_cli_executable() -> CheckStatus {
+    match env::current_exe() {
+        Ok(path) => CheckStatus::ok("CLI executable", Some(path), None),
+        Err(err) => CheckStatus::fail("CLI executable", None, err.to_string()),
+    }
+}
+
+fn check_cli_on_path() -> CheckStatus {
+    let path_var = env::var_os("PATH");
+    let Some(path_var) = path_var else {
+        return CheckStatus::fail(
+            "CLI on PATH",
+            None,
+            "PATH is not set; explicit executable paths still work",
+        );
+    };
+    let candidates = executable_names();
+    for dir in env::split_paths(&path_var) {
+        for candidate in &candidates {
+            let path = dir.join(candidate);
+            if path.is_file() {
+                return CheckStatus::ok(
+                    "CLI on PATH",
+                    Some(path),
+                    Some("found by PATH lookup".to_string()),
+                );
+            }
+        }
+    }
+    CheckStatus::fail(
+        "CLI on PATH",
+        None,
+        "pire-browser was not found on PATH; use the explicit binary path or rerun the installer",
+    )
+}
+
+fn executable_names() -> Vec<String> {
+    let mut names = vec!["pire-browser".to_string()];
+    #[cfg(windows)]
+    {
+        names.insert(0, "pire-browser.exe".to_string());
+    }
+    names
 }
 
 pub fn install_status_json(report: &InstallStatusReport) -> Result<String> {
@@ -353,6 +407,12 @@ mod tests {
         let report = InstallStatusReport {
             ok: false,
             firefox_path: None,
+            cli_executable: CheckStatus::ok(
+                "CLI executable",
+                Some(PathBuf::from("pire-browser.exe")),
+                None,
+            ),
+            cli_on_path: CheckStatus::fail("CLI on PATH", None, "missing"),
             native_host: CheckStatus::fail("Native host binary", None, "missing"),
             native_manifest: CheckStatus::fail("Native manifest", None, "missing"),
             native_registry: CheckStatus::fail("Native registry", None, "missing"),
@@ -373,5 +433,15 @@ mod tests {
         };
         let text = install_status_text(&report);
         assert!(text.contains("0 live Firefox session"));
+        assert!(text.contains("CLI executable"));
+        assert!(text.contains("CLI on PATH"));
+    }
+
+    #[test]
+    fn executable_names_include_windows_name_when_applicable() {
+        let names = executable_names();
+        assert!(names.iter().any(|name| name == "pire-browser"));
+        #[cfg(windows)]
+        assert!(names.iter().any(|name| name == "pire-browser.exe"));
     }
 }

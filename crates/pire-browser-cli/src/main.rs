@@ -1,6 +1,7 @@
 use anyhow::{bail, Context, Result};
 use pire_browser_core::cli::{
-    build_command_request, format_cli_result, parse_cli_args, GlobalFlagWarning, LocalCommand,
+    build_command_request, format_cli_result, help_text, parse_cli_args, GlobalFlagWarning,
+    LocalCommand,
 };
 use pire_browser_core::install_status::{
     collect_install_status, install_status_json, install_status_text,
@@ -9,11 +10,15 @@ use pire_browser_core::ipc::send_pipe_request;
 use pire_browser_core::launch::{launch_firefox, launch_result_text, LaunchOptions};
 use pire_browser_core::protocol::{RpcRequest, RpcResponse};
 use pire_browser_core::session::{
-    cleanup_stale_sessions, list_sessions, now_ms, select_session, session_status_text,
+    cleanup_stale_sessions, list_sessions, now_ms, remove_session, select_session,
+    session_status_text, session_status_value,
 };
 use pire_browser_core::setup::{setup_result_text, setup_windows};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
+use std::io::{self, Write};
+use std::thread;
+use std::time::Duration;
 use uuid::Uuid;
 
 const UNSUPPORTED_ROOTS_JSON: &str =
@@ -29,6 +34,17 @@ fn main() {
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse_cli_args(&args)? {
+        LocalCommand::Help { topic } => {
+            if let Some(text) = help_text(topic.as_deref()) {
+                println!("{text}");
+            } else {
+                let topic = topic.unwrap_or_else(|| "(missing)".to_string());
+                eprintln!(
+                    "unsupported_command: No help topic for `{topic}`. Try `pire-browser help`."
+                );
+                std::process::exit(exit_code_for_error("unsupported_command"));
+            }
+        }
         LocalCommand::Setup {
             windows,
             firefox_path,
@@ -39,10 +55,17 @@ fn run() -> Result<()> {
             let result = setup_windows(firefox_path)?;
             println!("{}", setup_result_text(&result));
         }
-        LocalCommand::Status => {
+        LocalCommand::Status { json } => {
             cleanup_stale_sessions(now_ms())?;
             let sessions = list_sessions()?;
-            println!("{}", session_status_text(&sessions));
+            if json {
+                println!(
+                    "{}",
+                    format_cli_result(&session_status_value(&sessions), true)?
+                );
+            } else {
+                println!("{}", session_status_text(&sessions));
+            }
         }
         LocalCommand::Launch {
             profile,
@@ -66,6 +89,13 @@ fn run() -> Result<()> {
                 println!("{}", install_status_text(&report));
             }
         }
+        LocalCommand::DoctorFix { json } => {
+            let message =
+                "`doctor --fix` is not implemented yet; run `pire-browser setup --windows` or rebuild the extension manually based on doctor output.";
+            let result = not_available_result("doctor --fix", message, json, &[])?;
+            println!("{result}");
+            std::process::exit(exit_code_for_error("NotAvailableError"));
+        }
         LocalCommand::Remote {
             session,
             json,
@@ -76,36 +106,46 @@ fn run() -> Result<()> {
                 println!("{result}");
                 std::process::exit(exit_code_for_error("NotAvailableError"));
             }
+            if let Some(result) =
+                local_unsupported_command_result(&args, json, &ignored_global_flags)?
+            {
+                if json {
+                    println!("{result}");
+                } else {
+                    eprintln!("{result}");
+                }
+                std::process::exit(exit_code_for_error("unsupported_command"));
+            }
             let request = build_command_request(args.clone());
-            let response = match send_to_session(session.as_deref(), &request) {
-                Ok(response) => response,
-                Err(err) if should_auto_launch_remote(session.as_deref(), &args, &err) => {
-                    cleanup_stale_sessions(now_ms())?;
-                    let result = match launch_firefox(LaunchOptions {
-                        profile: "Default".to_string(),
-                        url: launch_url_for_remote_args(&args),
-                        firefox_path: None,
-                    }) {
-                        Ok(result) => result,
-                        Err(err) => {
-                            exit_with_anyhow_error(err, json, &ignored_global_flags)?;
-                            unreachable!();
-                        }
-                    };
-                    eprintln!("{}", launch_result_text(&result));
-                    match send_to_session(None, &request) {
-                        Ok(response) => response,
-                        Err(err) => {
-                            exit_with_anyhow_error(err, json, &ignored_global_flags)?;
-                            unreachable!();
+            let (response, response_session_id) =
+                match send_to_session(session.as_deref(), &request) {
+                    Ok(result) => result,
+                    Err(err) if should_auto_launch_remote(session.as_deref(), &args, &err) => {
+                        cleanup_stale_sessions(now_ms())?;
+                        let _result = match launch_firefox(LaunchOptions {
+                            profile: "Default".to_string(),
+                            url: launch_url_for_remote_args(&args),
+                            firefox_path: None,
+                        }) {
+                            Ok(result) => result,
+                            Err(err) => {
+                                exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                                unreachable!();
+                            }
+                        };
+                        match send_to_session(None, &request) {
+                            Ok(result) => result,
+                            Err(err) => {
+                                exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                                unreachable!();
+                            }
                         }
                     }
-                }
-                Err(err) => {
-                    exit_with_anyhow_error(err, json, &ignored_global_flags)?;
-                    unreachable!();
-                }
-            };
+                    Err(err) => {
+                        exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                        unreachable!();
+                    }
+                };
             if !response.ok {
                 let error = response
                     .error
@@ -119,13 +159,18 @@ fn run() -> Result<()> {
                     print_json_error(&error, &ignored_global_flags)?;
                     std::process::exit(exit_code);
                 }
-                let err = format!("{}: {}", error.code, error.message);
+                let err = plain_error_message(&error);
                 eprintln!("{err}");
                 std::process::exit(exit_code_for_error(&error.code));
             }
             let mut result = response.result.unwrap_or_else(|| json!({ "text": "ok" }));
             append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
             println!("{}", format_cli_result(&result, json)?);
+            if is_controlled_close_command(&args) {
+                let _ = remove_session(&response_session_id);
+                let _ = io::stdout().flush();
+                thread::sleep(Duration::from_millis(1000));
+            }
         }
     }
     Ok(())
@@ -205,22 +250,90 @@ fn local_not_available_result(
     let message = format!(
         "This documented agent-browser command is parsed by pire-browser but is not implemented on the Firefox WebExtension backend yet: {command}"
     );
+    Ok(Some(not_available_result(
+        command,
+        &message,
+        json_output,
+        ignored_global_flags,
+    )?))
+}
+
+fn not_available_result(
+    feature: &str,
+    message: &str,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+) -> Result<String> {
     if json_output {
         let warnings = ignored_global_flag_warnings(ignored_global_flags);
-        return Ok(Some(serde_json::to_string_pretty(&json!({
+        return Ok(serde_json::to_string_pretty(&json!({
             "success": false,
             "error": {
                 "code": "NotAvailableError",
                 "message": message,
                 "data": {
-                    "feature": command,
+                    "feature": feature,
                     "compatibility": "not_available"
+                }
+            },
+            "warnings": warnings
+        }))?);
+    }
+    Ok(format!("NotAvailableError: {message}"))
+}
+
+fn local_unsupported_command_result(
+    args: &[String],
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+) -> Result<Option<String>> {
+    let Some(command) = args.first().map(String::as_str) else {
+        return Ok(None);
+    };
+    if is_supported_remote_command(command) {
+        return Ok(None);
+    }
+    let suggestions = command_suggestions(command);
+    let suggestion_text = if suggestions.is_empty() {
+        "Try `pire-browser help` for supported commands.".to_string()
+    } else {
+        format!(
+            "Did you mean {}? Try `pire-browser help {}`.",
+            suggestions
+                .iter()
+                .map(|suggestion| format!("`{suggestion}`"))
+                .collect::<Vec<_>>()
+                .join(" or "),
+            suggestions[0]
+        )
+    };
+    let message = format!("Unsupported command: {command}. {suggestion_text}");
+    if json_output {
+        let warnings = ignored_global_flag_warnings(ignored_global_flags);
+        return Ok(Some(serde_json::to_string_pretty(&json!({
+            "success": false,
+            "error": {
+                "code": "unsupported_command",
+                "message": message,
+                "data": {
+                    "command": command,
+                    "suggestions": suggestions
                 }
             },
             "warnings": warnings
         }))?));
     }
-    Ok(Some(format!("NotAvailableError: {message}")))
+    Ok(Some(format!("unsupported_command: {message}")))
+}
+
+fn plain_error_message(error: &pire_browser_core::protocol::RpcError) -> String {
+    let mut message = format!("{}: {}", error.code, error.message);
+    if error.code == "invalid_args" && error.message == "target is required" {
+        message.push_str(
+            "\nHint: quote refs in PowerShell, for example `click '@e4'`; if the ref is stale, rerun `snapshot -i` or `find`.",
+        );
+    }
+    message
 }
 
 fn append_ignored_global_flag_warnings(
@@ -285,16 +398,28 @@ fn exit_code_for_error(code: &str) -> i32 {
         "ElementNotFound" | "not_found" | "ref_stale" | "ambiguous_locator" | "not_enabled" => 44,
         "InvalidArgumentError" | "invalid_args" => 2,
         "NotAvailableError" => 78,
+        "unsupported_command" => 1,
         _ => 1,
     }
 }
 
-fn send_to_session(session_id: Option<&str>, request: &RpcRequest) -> Result<RpcResponse> {
+fn send_to_session(
+    session_id: Option<&str>,
+    request: &RpcRequest,
+) -> Result<(RpcResponse, String)> {
     let session = select_session(session_id)?;
     let line = serde_json::to_string(request)?;
-    let response = send_pipe_request(&session.pipe_name, &line)
-        .with_context(|| format!("failed talking to session {}", session.session_id))?;
-    Ok(serde_json::from_str(&response)?)
+    let response = match send_pipe_request(&session.pipe_name, &line) {
+        Ok(response) => response,
+        Err(err) => {
+            if session_id.is_none() && is_stale_default_session_pipe_error(&err) {
+                let _ = remove_session(&session.session_id);
+            }
+            return Err(err)
+                .with_context(|| format!("failed talking to session {}", session.session_id));
+        }
+    };
+    Ok((serde_json::from_str(&response)?, session.session_id))
 }
 
 fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
@@ -342,6 +467,96 @@ fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
     )
 }
 
+fn is_supported_remote_command(command: &str) -> bool {
+    matches!(
+        command,
+        "status"
+            | "open"
+            | "goto"
+            | "navigate"
+            | "snapshot"
+            | "find"
+            | "click"
+            | "dblclick"
+            | "fill"
+            | "type"
+            | "press"
+            | "key"
+            | "keyboard"
+            | "keydown"
+            | "keyup"
+            | "hover"
+            | "focus"
+            | "select"
+            | "check"
+            | "uncheck"
+            | "scroll"
+            | "scrollintoview"
+            | "wait"
+            | "screenshot"
+            | "get"
+            | "is"
+            | "eval"
+            | "tab"
+            | "tabs"
+            | "back"
+            | "forward"
+            | "reload"
+            | "window"
+            | "frame"
+            | "dialog"
+            | "batch"
+            | "cookies"
+            | "storage"
+            | "close"
+            | "quit"
+            | "exit"
+    )
+}
+
+fn command_suggestions(command: &str) -> Vec<String> {
+    let candidates = [
+        "status",
+        "doctor",
+        "open",
+        "snapshot",
+        "find",
+        "click",
+        "fill",
+        "wait",
+        "screenshot",
+        "tabs",
+        "launch",
+        "setup",
+    ];
+    candidates
+        .iter()
+        .filter(|candidate| {
+            candidate.starts_with(command)
+                || command.starts_with(*candidate)
+                || levenshtein_distance(command, *candidate) <= 2
+        })
+        .take(3)
+        .map(|candidate| candidate.to_string())
+        .collect()
+}
+
+fn levenshtein_distance(left: &str, right: &str) -> usize {
+    let mut costs: Vec<usize> = (0..=right.len()).collect();
+    for (left_index, left_char) in left.chars().enumerate() {
+        let mut previous = left_index;
+        costs[0] = left_index + 1;
+        for (right_index, right_char) in right.chars().enumerate() {
+            let insertion = costs[right_index + 1] + 1;
+            let deletion = costs[right_index] + 1;
+            let substitution = previous + usize::from(left_char != right_char);
+            previous = costs[right_index + 1];
+            costs[right_index + 1] = insertion.min(deletion).min(substitution);
+        }
+    }
+    *costs.last().unwrap_or(&0)
+}
+
 fn launch_url_for_remote_args(args: &[String]) -> Option<String> {
     if args.iter().any(|arg| arg == "--new") {
         return None;
@@ -350,6 +565,13 @@ fn launch_url_for_remote_args(args: &[String]) -> Option<String> {
         Some("open" | "goto" | "navigate") => first_positional_arg(&args[1..], &["--label"]),
         _ => None,
     }
+}
+
+fn is_controlled_close_command(args: &[String]) -> bool {
+    matches!(
+        args.first().map(String::as_str),
+        Some("close" | "quit" | "exit")
+    )
 }
 
 fn first_positional_arg(args: &[String], value_flags: &[&str]) -> Option<String> {
@@ -382,7 +604,21 @@ fn is_auto_launchable_session_error(err: &anyhow::Error) -> bool {
     details.contains("extension_disconnected: no live Firefox extension session found")
         || (details.contains("failed talking to session")
             && (details.contains("The system cannot find the file specified")
-                || details.contains("os error 2")))
+                || details.contains("The pipe has been ended")
+                || details.contains("All pipe instances are busy")
+                || details.contains("os error 2")
+                || details.contains("os error 109")
+                || details.contains("os error 231")))
+}
+
+fn is_stale_default_session_pipe_error(err: &anyhow::Error) -> bool {
+    let details = format!("{err:#}");
+    details.contains("The system cannot find the file specified")
+        || details.contains("The pipe has been ended")
+        || details.contains("All pipe instances are busy")
+        || details.contains("os error 2")
+        || details.contains("os error 109")
+        || details.contains("os error 231")
 }
 
 #[allow(dead_code)]
@@ -479,6 +715,43 @@ mod tests {
     }
 
     #[test]
+    fn formats_unknown_commands_locally_with_suggestions() {
+        let result = local_unsupported_command_result(&s(&["stats"]), false, &[])
+            .unwrap()
+            .unwrap();
+        assert!(result.contains("unsupported_command"));
+        assert!(result.contains("status"));
+
+        let result = local_unsupported_command_result(&s(&["clipboard"]), false, &[]).unwrap();
+        assert!(result.is_some());
+        let unavailable = local_not_available_result(&s(&["clipboard"]), false, &[])
+            .unwrap()
+            .unwrap();
+        assert!(unavailable.contains("NotAvailableError"));
+    }
+
+    #[test]
+    fn supported_remote_commands_are_not_locally_rejected() {
+        for root in ["status", "open", "click", "tabs", "close"] {
+            assert!(local_unsupported_command_result(&s(&[root]), false, &[])
+                .unwrap()
+                .is_none());
+        }
+    }
+
+    #[test]
+    fn plain_invalid_target_errors_include_ref_hint() {
+        let error = pire_browser_core::protocol::RpcError {
+            code: "invalid_args".to_string(),
+            message: "target is required".to_string(),
+            data: None,
+        };
+        let message = plain_error_message(&error);
+        assert!(message.contains("click '@e4'"));
+        assert!(message.contains("snapshot -i"));
+    }
+
+    #[test]
     fn derives_launch_url_from_open_command() {
         assert_eq!(
             launch_url_for_remote_args(&s(&["open", "https://example.com", "--label", "docs"])),
@@ -518,6 +791,18 @@ mod tests {
             &err
         ));
         assert!(!should_auto_launch_remote(None, &s(&["close"]), &err));
+    }
+
+    #[test]
+    fn treats_closed_default_session_pipe_as_auto_launchable() {
+        for message in [
+            "failed talking to session abc: timed out waiting for response from \\\\.\\pipe\\abc: PeekNamedPipe failed: The pipe has been ended. (os error 109)",
+            "failed talking to session abc: failed to connect to pire-browser pipe \\\\.\\pipe\\abc: All pipe instances are busy. (os error 231)",
+        ] {
+            let err = anyhow::anyhow!(message);
+            assert!(is_auto_launchable_session_error(&err), "{message}");
+            assert!(is_stale_default_session_pipe_error(&err), "{message}");
+        }
     }
 
     #[test]

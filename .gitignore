@@ -31,3 +31,4 @@ coverage/
 
 # Local AI tool worktrees
 .claude/worktrees/
+.gemini/

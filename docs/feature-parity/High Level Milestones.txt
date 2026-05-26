@@ -2,6 +2,10 @@
 
 The strategic move is to avoid chasing the full `agent-browser` checklist linearly. Build the platform layers first, keep the pinned docs as the contract, and mark commands compatible only when the behavior sits on a reliable layer underneath.
 
+## Operational Gap Reviews
+
+Real `pire-browser` sessions can reveal operator pain before a compatibility row is ready to move. Review those sessions with `docs/workflows/session-review-roadmap/`: separate work handled by existing functionality from fallback work, map each gap to an owner epic, and file a plan or backlog note when the gap should influence build order. Session evidence may prioritize roadmap work, but compatibility status still changes only through reviewed contract metadata and fixture-backed oracle coverage.
+
 ## Epic 0: Reference Baseline And Test Oracle
 
 Goal: make compatibility measurable before expanding browser behavior.

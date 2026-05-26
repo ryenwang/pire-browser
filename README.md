@@ -8,6 +8,9 @@ It intentionally does **not** use BiDi or CDP. Firefox owns the extension/native
 
 ```bash
 pire-browser status
+pire-browser status --json
+pire-browser doctor
+pire-browser help click
 pire-browser setup --windows
 pire-browser launch
 pire-browser launch --url https://discord.com/login
@@ -15,8 +18,8 @@ pire-browser open https://example.com --label docs
 pire-browser snapshot -i
 pire-browser find label "Email" fill "hello@example.com"
 pire-browser find role button --name "Submit" click
-pire-browser click @e1
-pire-browser fill @e2 "hello"
+pire-browser click '@e1'
+pire-browser fill '@e2' "hello"
 pire-browser press Enter
 pire-browser wait --selector "#done"
 pire-browser screenshot out.png
@@ -92,6 +95,7 @@ It also registers the Firefox Native Messaging host for the current Windows user
 
 ```powershell
 pire-browser status
+pire-browser doctor
 pire-browser launch
 pire-browser open https://example.com
 pire-browser snapshot -i
@@ -169,9 +173,12 @@ dist\pire-browser-windows-x64.zip
 Check setup health without launching a browser:
 
 ```powershell
-.\target\debug\pire-browser.exe install-status
-.\target\debug\pire-browser.exe install-status --json
+.\target\debug\pire-browser.exe doctor
+.\target\debug\pire-browser.exe doctor --json
+.\target\debug\pire-browser.exe status --json
 ```
+
+Use `pire-browser help` for command discovery, or `pire-browser help click` for a focused command guide. In PowerShell, quote refs from `snapshot -i` or `find` output, for example `pire-browser click '@e4'`, so `@` is not parsed as shell syntax.
 
 The setup command registers the Native Messaging host under:
 

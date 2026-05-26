@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pire-browser dynamic oracle fixture</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 32px;
+        max-width: 760px;
+      }
+      label,
+      input,
+      button,
+      iframe {
+        display: block;
+        margin: 8px 0;
+      }
+      #spinner {
+        color: #7a4b00;
+        font-weight: 700;
+      }
+      iframe {
+        width: 100%;
+        height: 180px;
+        border: 1px solid #ccc;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="dynamic-heading">Dynamic Fixture</h1>
+      <div id="spinner">Loading dynamic content</div>
+      <div id="delayed" hidden>Welcome dynamic ready</div>
+      <button id="remove-me" type="button">Remove Me</button>
+      <button id="remove-frame" type="button">Remove Frame</button>
+      <iframe id="dynamic-frame" title="Dynamic child frame" src="/dynamic-frame.html"></iframe>
+    </main>
+
+    <script>
+      setTimeout(() => {
+        document.querySelector("#delayed").hidden = false;
+        document.querySelector("#spinner").hidden = true;
+        document.body.dataset.fnReady = "true";
+        history.pushState({}, "", "/dash");
+      }, 250);
+
+      document.querySelector("#remove-me").addEventListener("click", (event) => {
+        event.currentTarget.remove();
+      });
+
+      document.querySelector("#remove-frame").addEventListener("click", () => {
+        document.querySelector("#dynamic-frame")?.remove();
+      });
+    </script>
+  </body>
+</html>

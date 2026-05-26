@@ -1064,7 +1064,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Migrated schema v2 compatibility claim: wait <ms>.",
+      "rationale": "Reviewed fixture-backed exact contract for wait <ms>; deterministic oracle coverage locks wait behavior, exit codes, and JSON envelope shape after normalization.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -1078,32 +1078,34 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Fixture-backed exact parity for wait <ms>; compare after normalization while preserving semantic success and timeout behavior.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-ms-dynamic"
+        ],
+        "reason": "Covered by deterministic oracle fixture."
       },
       "limitations": [],
       "migration": {
         "schemaV2Id": "wait <ms>"
       },
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "cmd-wait-selector",
       "kind": "compatibility_claim",
       "status": "exact",
       "disposition": "temporary_gap",
-      "ownerEpic": "Epic 3",
+      "ownerEpic": "Epic 2",
       "rationale": "Reviewed fixture-backed exact contract for wait <selector>; deterministic oracle coverage locks text/JSON/exit behavior after normalization.",
       "source": {
         "kind": "summary",
@@ -1146,7 +1148,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Migrated schema v2 compatibility claim: wait --text.",
+      "rationale": "Reviewed fixture-backed exact contract for wait --text; deterministic oracle coverage locks wait behavior, exit codes, and JSON envelope shape after normalization.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -1160,25 +1162,29 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Fixture-backed exact parity for wait --text; compare after normalization while preserving semantic success and timeout behavior.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
-          0
+          0,
+          124
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-text-dynamic",
+          "wait-timeout-json"
+        ],
+        "reason": "Covered by deterministic oracle fixture."
       },
       "limitations": [],
       "migration": {
         "schemaV2Id": "wait --text"
       },
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "cmd-wait-url",
@@ -1186,7 +1192,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Migrated schema v2 compatibility claim: wait --url.",
+      "rationale": "Reviewed fixture-backed exact contract for wait --url; deterministic oracle coverage locks wait behavior, exit codes, and JSON envelope shape after normalization.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -1200,33 +1206,37 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Fixture-backed exact parity for wait --url; compare after normalization while preserving semantic success and timeout behavior.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
-          0
+          0,
+          124
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-url-dynamic",
+          "wait-timeout-json"
+        ],
+        "reason": "Covered by deterministic oracle fixture."
       },
       "limitations": [],
       "migration": {
         "schemaV2Id": "wait --url"
       },
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "cmd-wait-fn",
       "kind": "compatibility_claim",
-      "status": "exact",
+      "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Migrated schema v2 compatibility claim: wait --fn.",
+      "rationale": "Reviewed fixture-backed best-effort contract for wait --fn; Firefox WebExtension content scripts evaluate in an isolated world, so page globals and framework state are not exact agent-browser parity.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -1240,33 +1250,37 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "wait --fn is supported for DOM-visible predicates in the content-script world, with documented Firefox/WebExtension caveats.",
+        "json": "Success envelope includes a contractual BEST_EFFORT_FIREFOX_GAP warning explaining isolated-world execution.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
-        "warningsContractual": false
+        "errorName": "Timeout failures must use the stable timeout class after normalization.",
+        "warningsContractual": true
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-fn-content-world-warning"
+        ],
+        "reason": "Covered by deterministic oracle fixture with contractual best-effort warning."
       },
-      "limitations": [],
+      "limitations": [
+        "Evaluates in the Firefox WebExtension content-script isolated world; page globals and framework internals may not be visible."
+      ],
       "migration": {
         "schemaV2Id": "wait --fn"
       },
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "cmd-wait-selector-state-hidden",
       "kind": "compatibility_claim",
       "status": "exact",
       "disposition": "temporary_gap",
-      "ownerEpic": "Epic 4",
-      "rationale": "Migrated schema v2 compatibility claim: wait <selector> --state hidden.",
+      "ownerEpic": "Epic 2",
+      "rationale": "Reviewed fixture-backed exact contract for wait <selector> --state hidden; deterministic oracle coverage locks wait behavior, exit codes, and JSON envelope shape after normalization.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -1280,25 +1294,27 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Fixture-backed exact parity for wait <selector> --state hidden; compare after normalization while preserving semantic success and timeout behavior.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-selector-hidden-dynamic"
+        ],
+        "reason": "Covered by deterministic oracle fixture."
       },
       "limitations": [],
       "migration": {
         "schemaV2Id": "wait <selector> --state hidden"
       },
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "cmd-get-text-html-value-attr",
@@ -6530,8 +6546,8 @@
       "kind": "documented_checklist_item",
       "status": "exact",
       "disposition": "temporary_gap",
-      "ownerEpic": "Epic 6",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "ownerEpic": "Epic 2",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-url; coverage rolls up to the fixture-backed wait --url contract.",
       "source": {
         "kind": "docs",
         "path": "03-quick-start.md",
@@ -6548,22 +6564,27 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-url; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
-          0
+          0,
+          124
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-url-dynamic",
+          "wait-timeout-json"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-url; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-url"
     },
     {
       "id": "doc-quick-start-018-agent-browser-wait-2000-wait-milliseconds",
@@ -6571,7 +6592,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-ms; coverage rolls up to the fixture-backed wait <ms> contract.",
       "source": {
         "kind": "docs",
         "path": "03-quick-start.md",
@@ -6586,22 +6607,25 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-ms; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-ms-dynamic"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-ms; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-ms"
     },
     {
       "id": "doc-quick-start-019-agent-browser-open-example-com-agent-browser-wait-load-networkidle-agent",
@@ -9804,8 +9828,8 @@
       "kind": "documented_checklist_item",
       "status": "exact",
       "disposition": "temporary_gap",
-      "ownerEpic": "Epic 3",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "ownerEpic": "Epic 2",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-selector; coverage rolls up to the fixture-backed wait <selector> contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -9820,8 +9844,8 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-selector; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success envelope for JSON-covered cases when applicable; command data must retain documented fields.",
         "exitCode": [
           0
         ],
@@ -9829,13 +9853,16 @@
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-selector"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-selector; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-selector"
     },
     {
       "id": "doc-commands-066-agent-browser-wait-ms-wait-for-time",
@@ -9843,7 +9870,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-ms; coverage rolls up to the fixture-backed wait <ms> contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -9858,22 +9885,25 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-ms; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-ms-dynamic"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-ms; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-ms"
     },
     {
       "id": "doc-commands-067-agent-browser-wait-text-welcome-wait-for-text-substring-match",
@@ -9881,7 +9911,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-text; coverage rolls up to the fixture-backed wait --text contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -9898,22 +9928,27 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-text; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
-          0
+          0,
+          124
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-text-dynamic",
+          "wait-timeout-json"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-text; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-text"
     },
     {
       "id": "doc-commands-068-agent-browser-wait-url-dash-wait-for-url-pattern",
@@ -9921,7 +9956,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-url; coverage rolls up to the fixture-backed wait --url contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -9938,22 +9973,27 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-url; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
-          0
+          0,
+          124
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-url-dynamic",
+          "wait-timeout-json"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-url; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-url"
     },
     {
       "id": "doc-commands-069-agent-browser-wait-load-networkidle-wait-for-load-state",
@@ -10000,10 +10040,10 @@
     {
       "id": "doc-commands-070-agent-browser-wait-fn-condition-wait-for-js-condition",
       "kind": "documented_checklist_item",
-      "status": "exact",
+      "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-fn; coverage rolls up to the fixture-backed wait --fn contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -10020,22 +10060,25 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-fn; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Success envelope includes a contractual BEST_EFFORT_FIREFOX_GAP warning explaining isolated-world execution.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
-        "warningsContractual": false
+        "errorName": "Timeout failures must use the stable timeout class after normalization.",
+        "warningsContractual": true
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-fn-content-world-warning"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-fn; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-fn"
     },
     {
       "id": "doc-commands-071-agent-browser-wait-download-path-wait-for-download",
@@ -10082,10 +10125,10 @@
     {
       "id": "doc-commands-072-agent-browser-wait-fn-document-body-innertext-includes-loading-wait-for-",
       "kind": "documented_checklist_item",
-      "status": "exact",
+      "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-fn; coverage rolls up to the fixture-backed wait --fn contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -10102,30 +10145,33 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-fn; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Success envelope includes a contractual BEST_EFFORT_FIREFOX_GAP warning explaining isolated-world execution.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
-        "warningsContractual": false
+        "errorName": "Timeout failures must use the stable timeout class after normalization.",
+        "warningsContractual": true
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-fn-content-world-warning"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-fn; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-fn"
     },
     {
       "id": "doc-commands-073-agent-browser-wait-spinner-state-hidden-wait-for-element-to-disappear",
       "kind": "documented_checklist_item",
       "status": "exact",
       "disposition": "temporary_gap",
-      "ownerEpic": "Epic 4",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "ownerEpic": "Epic 2",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-selector-state-hidden; coverage rolls up to the fixture-backed wait <selector> --state hidden contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -10142,22 +10188,25 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-selector-state-hidden; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-selector-hidden-dynamic"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-selector-state-hidden; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-selector-state-hidden"
     },
     {
       "id": "doc-commands-074-agent-browser-download-sel-path-click-element-to-trigger-download",

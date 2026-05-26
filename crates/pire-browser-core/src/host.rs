@@ -18,7 +18,7 @@ use crate::native::{read_native_message, write_native_message};
 use crate::protocol::{
     NativeInbound, NativeOutbound, RpcError, RpcRequest, RpcResponse, EXTENSION_ID,
 };
-use crate::session::{now_ms, remove_session, write_session_atomic, SessionInfo};
+use crate::session::{now_ms, remove_session, write_session_atomic, ActivePageInfo, SessionInfo};
 use crate::transfer::{ResultTransferMeta, ScreenshotTransferMeta, TransferStore};
 
 #[derive(Clone)]
@@ -171,14 +171,7 @@ impl NativeBridge {
             }
             NativeInbound::Event { name, data } => {
                 let _ = self.session.update(|session| {
-                    let now = now_ms();
-                    session.last_heartbeat_at = now;
-                    if name == "focused" {
-                        session.last_focused_at = now;
-                    }
-                    if let Some(profile_id) = data.get("profileId").and_then(|v| v.as_str()) {
-                        session.profile_id = profile_id.to_string();
-                    }
+                    apply_session_event(session, &name, &data, now_ms());
                 });
             }
             NativeInbound::Response {
@@ -237,6 +230,20 @@ impl NativeBridge {
     }
 }
 
+fn apply_session_event(session: &mut SessionInfo, name: &str, data: &Value, now: u64) {
+    session.last_heartbeat_at = now;
+    if name == "focused" {
+        session.last_focused_at = now;
+    }
+    if let Some(profile_id) = data.get("profileId").and_then(|v| v.as_str()) {
+        session.profile_id = profile_id.to_string();
+    }
+    if let Some(active_page) = data.get("activePage") {
+        session.active_page =
+            serde_json::from_value::<Option<ActivePageInfo>>(active_page.clone()).unwrap_or(None);
+    }
+}
+
 pub fn run_native_host() -> Result<()> {
     let session_id = Uuid::new_v4().to_string();
     let pipe_name = pipe_name_for_session(&session_id)?;
@@ -250,6 +257,7 @@ pub fn run_native_host() -> Result<()> {
         started_at: now,
         last_heartbeat_at: now,
         last_focused_at: now,
+        active_page: None,
     };
     write_session_atomic(&session)?;
     let shared_session = SharedSession::new(session);
@@ -445,6 +453,7 @@ mod tests {
             started_at: 1,
             last_heartbeat_at: 1,
             last_focused_at: 1,
+            active_page: None,
         };
         let request_log = pipe_request_log(&request, &session);
         assert!(request_log.contains("rpc-456"));
@@ -457,5 +466,51 @@ mod tests {
         assert!(response_log.contains("rpc-456"));
         assert!(response_log.contains("duration_ms=45"));
         assert!(response_log.contains("error_code=timeout"));
+    }
+
+    #[test]
+    fn session_events_update_active_page_metadata() {
+        let mut session = SessionInfo {
+            session_id: "session-1".into(),
+            profile_id: "pending".into(),
+            pipe_name: "pipe".into(),
+            extension_id: "ext".into(),
+            extension_version: "1".into(),
+            started_at: 1,
+            last_heartbeat_at: 1,
+            last_focused_at: 1,
+            active_page: None,
+        };
+
+        apply_session_event(
+            &mut session,
+            "focused",
+            &json!({
+                "profileId": "profile-1",
+                "activePage": {
+                    "agentId": "t1",
+                    "label": "docs",
+                    "title": "Docs",
+                    "url": "https://example.com",
+                    "tabId": 10,
+                    "windowId": 2,
+                    "updatedAt": 123
+                }
+            }),
+            200,
+        );
+
+        assert_eq!(session.profile_id, "profile-1");
+        assert_eq!(session.last_heartbeat_at, 200);
+        assert_eq!(session.last_focused_at, 200);
+        assert_eq!(session.active_page.as_ref().unwrap().agent_id, "t1");
+
+        apply_session_event(
+            &mut session,
+            "heartbeat",
+            &json!({ "activePage": null }),
+            300,
+        );
+        assert!(session.active_page.is_none());
     }
 }

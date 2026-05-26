@@ -50,6 +50,7 @@
           "assertions": [
             {
               "type": "exitCodeEquals",
+              "tool": "pire-browser",
               "value": 0
             },
             {
@@ -561,6 +562,447 @@
               "type": "domText",
               "selector": "#done",
               "value": "Submitted"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wait-ms-dynamic",
+      "description": "Wait a fixed number of milliseconds long enough for delayed fixture text to appear.",
+      "status": "exact",
+      "compatibilityItems": [
+        {
+          "id": "cmd-wait-ms",
+          "status": "exact",
+          "tapeCovered": true
+        }
+      ],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/dynamic.html"
+        },
+        {
+          "id": "wait-ms",
+          "command": "wait 350",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "domText",
+              "selector": "#delayed",
+              "value": "Welcome dynamic ready"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wait-text-dynamic",
+      "description": "Wait for delayed body text using the documented --text wait mode.",
+      "status": "exact",
+      "compatibilityItems": [
+        {
+          "id": "cmd-wait-text",
+          "status": "exact",
+          "tapeCovered": true
+        }
+      ],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/dynamic.html"
+        },
+        {
+          "id": "wait-text",
+          "command": "wait --text \"Welcome dynamic ready\" --timeout 2000",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "domText",
+              "selector": "#delayed",
+              "value": "Welcome dynamic ready"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wait-url-dynamic",
+      "description": "Wait for a delayed path URL transition using the documented --url wait mode.",
+      "status": "exact",
+      "compatibilityItems": [
+        {
+          "id": "cmd-wait-url",
+          "status": "exact",
+          "tapeCovered": true
+        }
+      ],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/url-transition.html"
+        },
+        {
+          "id": "wait-url",
+          "command": "wait --url \"**/dash.html\" --timeout 2000",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 0
+            },
+            {
+              "type": "urlContains",
+              "value": "/dash.html"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wait-selector-hidden-dynamic",
+      "description": "Wait for an element to become hidden using --state hidden.",
+      "status": "exact",
+      "compatibilityItems": [
+        {
+          "id": "cmd-wait-selector-state-hidden",
+          "status": "exact",
+          "tapeCovered": true
+        }
+      ],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/dynamic.html"
+        },
+        {
+          "id": "wait-hidden",
+          "command": "wait \"#spinner\" --state hidden --timeout 2000",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wait-fn-content-world-warning",
+      "description": "wait --fn works for DOM-visible predicates but reports the content-script isolated-world limitation.",
+      "status": "best_effort",
+      "compatibilityItems": [
+        {
+          "id": "cmd-wait-fn",
+          "status": "best_effort",
+          "tapeCovered": true
+        }
+      ],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/dynamic.html"
+        },
+        {
+          "id": "wait-fn",
+          "command": "wait --fn \"document.body.dataset.fnReady === 'true'\" --timeout 2000 --json",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 0
+            },
+            {
+              "type": "jsonEnvelopeShape",
+              "tool": "pire-browser",
+              "success": true,
+              "dataPaths": [
+                "text"
+              ],
+              "warningCodes": [
+                "BEST_EFFORT_FIREFOX_GAP"
+              ]
+            },
+            {
+              "type": "bestEffortWarning",
+              "tool": "pire-browser",
+              "feature": "wait --fn"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wait-timeout-json",
+      "description": "DOM wait timeouts return the stable pire-browser timeout envelope and exit code.",
+      "status": "error",
+      "compatibilityItems": [],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/dynamic.html"
+        },
+        {
+          "id": "selector-timeout",
+          "command": "wait \"#never-appears\" --timeout 1 --json",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 124
+            },
+            {
+              "type": "jsonEnvelopeShape",
+              "tool": "pire-browser",
+              "success": false,
+              "errorCode": "timeout"
+            }
+          ]
+        },
+        {
+          "id": "text-timeout",
+          "command": "wait --text \"Never appears\" --timeout 1 --json",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 124
+            },
+            {
+              "type": "jsonEnvelopeShape",
+              "tool": "pire-browser",
+              "success": false,
+              "errorCode": "timeout"
+            }
+          ]
+        },
+        {
+          "id": "url-timeout",
+          "command": "wait --url \"**#never\" --timeout 1 --json",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 124
+            },
+            {
+              "type": "jsonEnvelopeShape",
+              "tool": "pire-browser",
+              "success": false,
+              "errorCode": "timeout"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "snapshot-default-flat-refs",
+      "description": "Default snapshot emits useful flat ref-oriented output without claiming full accessibility-tree parity.",
+      "status": "exact",
+      "compatibilityItems": [],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/form.html"
+        },
+        {
+          "id": "snapshot",
+          "command": "snapshot",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "stdoutContains",
+              "value": "Email"
+            },
+            {
+              "type": "stdoutContains",
+              "value": "Submit"
+            }
+          ],
+          "captures": [
+            {
+              "name": "email",
+              "source": "stdout",
+              "lineIncludes": [
+                "Email"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "fill-default-ref",
+          "command": "fill {{refs.email}} \"snapshot-default@example.com\"",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "domValue",
+              "selector": "#email",
+              "value": "snapshot-default@example.com"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "iframe-ref-action",
+      "description": "Refs captured from a same-origin iframe are actionable through the core loop.",
+      "status": "exact",
+      "compatibilityItems": [],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/dynamic.html"
+        },
+        {
+          "id": "snapshot",
+          "command": "snapshot -i",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "stdoutContains",
+              "value": "Frame Email"
+            }
+          ],
+          "captures": [
+            {
+              "name": "frameEmail",
+              "source": "stdout",
+              "lineIncludes": [
+                "Frame Email"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "fill-frame-ref",
+          "command": "fill {{refs.frameEmail}} \"frame-filled@example.com\"",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "get-frame-value",
+          "command": "get value {{refs.frameEmail}}",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "value": 0
+            },
+            {
+              "type": "stdoutContains",
+              "value": "frame-filled@example.com"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "negative-removed-element-ref-json",
+      "description": "A ref whose element was removed fails with a stable stale-ref JSON envelope.",
+      "status": "error",
+      "compatibilityItems": [],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/dynamic.html"
+        },
+        {
+          "id": "snapshot",
+          "command": "snapshot -i",
+          "captures": [
+            {
+              "name": "removeMe",
+              "source": "stdout",
+              "lineIncludes": [
+                "Remove Me"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "remove",
+          "command": "click {{refs.removeMe}}"
+        },
+        {
+          "id": "click-stale",
+          "command": "click {{refs.removeMe}} --json",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 44
+            },
+            {
+              "type": "jsonEnvelopeShape",
+              "tool": "pire-browser",
+              "success": false,
+              "errorCode": "ref_stale"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "negative-removed-frame-ref-json",
+      "description": "A ref whose iframe was removed fails with a stable stale-ref JSON envelope.",
+      "status": "error",
+      "compatibilityItems": [],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/dynamic.html"
+        },
+        {
+          "id": "snapshot",
+          "command": "snapshot -i",
+          "captures": [
+            {
+              "name": "frameSubmit",
+              "source": "stdout",
+              "lineIncludes": [
+                "Frame Submit"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "remove-frame",
+          "command": "click \"#remove-frame\""
+        },
+        {
+          "id": "click-stale-frame-ref",
+          "command": "click {{refs.frameSubmit}} --json",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 44
+            },
+            {
+              "type": "jsonEnvelopeShape",
+              "tool": "pire-browser",
+              "success": false,
+              "errorCode": "ref_stale"
             }
           ]
         }
