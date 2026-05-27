@@ -30,7 +30,6 @@
     "react",
     "record",
     "removeinitscript",
-    "session",
     "set",
     "skill",
     "skills",
@@ -391,21 +390,6 @@
       ],
       "ownerEpics": [
         "Epic 2"
-      ],
-      "dispositions": [
-        "not_started"
-      ],
-      "sourcePaths": [
-        "README.md"
-      ]
-    },
-    {
-      "root": "session",
-      "itemIds": [
-        "cmd-session-command"
-      ],
-      "ownerEpics": [
-        "Epic 4"
       ],
       "dispositions": [
         "not_started"

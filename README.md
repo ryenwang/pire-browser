@@ -24,6 +24,9 @@ pire-browser clipboard read
 pire-browser clipboard write "hello"
 pire-browser clipboard copy
 pire-browser clipboard paste
+pire-browser session list
+pire-browser session attach <session-id>
+pire-browser session cleanup
 pire-browser press Enter
 pire-browser wait --selector "#done"
 pire-browser screenshot out.png
@@ -152,6 +155,24 @@ For login-required sites, use the persistent Firefox profile rather than passing
 
 `status --json` and `doctor --json` include an `authHandoff` advisory for the `Default` profile. It reports whether the profile folder exists and confirms that login state is `not_inspected`; `pire-browser` does not read cookies, saved passwords, session tokens, or one-time codes for this diagnostic.
 
+### Session Targeting
+
+Use `session list` when more than one Firefox extension session may be live:
+
+```powershell
+.\target\debug\pire-browser.exe session list
+.\target\debug\pire-browser.exe session list --json
+```
+
+Use `session attach <id>` to print the exact prefix for follow-up commands:
+
+```powershell
+.\target\debug\pire-browser.exe session attach <session-id>
+.\target\debug\pire-browser.exe --session <session-id> snapshot -i
+```
+
+If an explicit session id is wrong or stale, the CLI reports live candidates and points back to `session list`. `session cleanup` removes stale session files only; it does not close live Firefox sessions or delete browser profiles.
+
 ### Smoke Test
 
 Run the repeatable Windows smoke test from PowerShell:
@@ -192,9 +213,10 @@ Check setup health without launching a browser:
 .\target\debug\pire-browser.exe doctor
 .\target\debug\pire-browser.exe doctor --json
 .\target\debug\pire-browser.exe status --json
+.\target\debug\pire-browser.exe session list --json
 ```
 
-Use `pire-browser help` for command discovery, or `pire-browser help clipboard` for clipboard read/write/copy/paste details. In PowerShell, quote refs from `snapshot -i` or `find` output, for example `pire-browser click '@e4'`, so `@` is not parsed as shell syntax.
+Use `pire-browser help` for command discovery, `pire-browser help clipboard` for clipboard read/write/copy/paste details, or `pire-browser help session` for targeting commands. In PowerShell, quote refs from `snapshot -i` or `find` output, for example `pire-browser click '@e4'`, so `@` is not parsed as shell syntax.
 
 The setup command registers the Native Messaging host under:
 

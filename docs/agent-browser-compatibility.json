@@ -3457,12 +3457,7 @@
       "migration": {
         "schemaV2Id": "session command"
       },
-      "contractReviewed": false,
-      "runtime": {
-        "unsupportedRoots": [
-          "session"
-        ]
-      }
+      "contractReviewed": false
     },
     {
       "id": "cmd-profiles",

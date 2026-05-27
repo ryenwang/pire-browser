@@ -30,13 +30,14 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-  - GPT-5.5 review: Partial via `pire-browser status`, which lists live Firefox extension sessions; the agent-browser `session list` command shape is not implemented.
-- [ ] `agent-browser session`
+  - GPT-5.5 review: Implemented as `pire-browser session list`, sharing the same live-session metadata model as `status`; compatibility remains partial until multi-session isolation has fixture-backed coverage.
+- [P] `agent-browser session`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Bare `pire-browser session` currently lists live sessions and the default target; it does not persist a current session name across shell commands.
 
 ## Session isolation
 

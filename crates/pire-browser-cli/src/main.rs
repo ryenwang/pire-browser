@@ -12,8 +12,9 @@ use pire_browser_core::launch::{launch_firefox, launch_result_text, LaunchOption
 use pire_browser_core::protocol::{RpcRequest, RpcResponse};
 use pire_browser_core::redaction::{redact_json_value, redact_text};
 use pire_browser_core::session::{
-    cleanup_stale_sessions, list_sessions, now_ms, remove_session, select_session,
-    session_status_text, session_status_value,
+    cleanup_stale_sessions, cleanup_stale_sessions_with_report, list_sessions, now_ms,
+    remove_session, select_session, session_attach_text, session_attach_value,
+    session_cleanup_text, session_cleanup_value, session_status_text, session_status_value,
 };
 use pire_browser_core::setup::{setup_result_text, setup_windows};
 use serde_json::{json, Value};
@@ -74,6 +75,46 @@ fn run() -> Result<()> {
             } else {
                 println!("{}", session_status_text(&sessions));
                 println!("{}", auth_handoff_text(&auth_handoff));
+            }
+        }
+        LocalCommand::SessionList { json } => {
+            cleanup_stale_sessions(now_ms())?;
+            let sessions = list_sessions()?;
+            if json {
+                println!(
+                    "{}",
+                    format_cli_result(&session_status_value(&sessions), true)?
+                );
+            } else {
+                println!("{}", session_status_text(&sessions));
+            }
+        }
+        LocalCommand::SessionAttach { session, json } => {
+            let session = match select_session(Some(&session)) {
+                Ok(session) => session,
+                Err(err) => {
+                    exit_with_anyhow_error(err, json, &[])?;
+                    unreachable!();
+                }
+            };
+            if json {
+                println!(
+                    "{}",
+                    format_cli_result(&session_attach_value(&session), true)?
+                );
+            } else {
+                println!("{}", session_attach_text(&session));
+            }
+        }
+        LocalCommand::SessionCleanup { json } => {
+            let report = cleanup_stale_sessions_with_report(now_ms())?;
+            if json {
+                println!(
+                    "{}",
+                    format_cli_result(&session_cleanup_value(&report), true)?
+                );
+            } else {
+                println!("{}", session_cleanup_text(&report));
             }
         }
         LocalCommand::Launch {
@@ -230,6 +271,8 @@ fn rpc_error_from_anyhow(err: &anyhow::Error) -> pire_browser_core::protocol::Rp
         || message.contains("no live Firefox extension session found")
     {
         ("extension_disconnected", "session")
+    } else if message.contains("session_not_found") {
+        ("session_not_found", "session")
     } else if message.contains("web-ext exited before pire-browser connected")
         || message.contains("failed to start web-ext")
         || message.contains("could not discover Firefox")
@@ -414,6 +457,7 @@ fn exit_code_for_error(code: &str) -> i32 {
         "InvalidArgumentError" | "invalid_args" => 2,
         "NotAvailableError" => 78,
         "unsupported_command" => 1,
+        "session_not_found" => 1,
         _ => 1,
     }
 }
@@ -525,6 +569,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "cookies"
             | "storage"
             | "clipboard"
+            | "session"
             | "close"
             | "quit"
             | "exit"
@@ -542,6 +587,7 @@ fn command_suggestions(command: &str) -> Vec<String> {
         "fill",
         "wait",
         "clipboard",
+        "session",
         "screenshot",
         "tabs",
         "launch",
@@ -745,11 +791,24 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+        assert!(
+            local_unsupported_command_result(&s(&["session"]), false, &[])
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
     fn supported_remote_commands_are_not_locally_rejected() {
-        for root in ["status", "open", "click", "tabs", "clipboard", "close"] {
+        for root in [
+            "status",
+            "open",
+            "click",
+            "tabs",
+            "clipboard",
+            "session",
+            "close",
+        ] {
             assert!(local_unsupported_command_result(&s(&[root]), false, &[])
                 .unwrap()
                 .is_none());
@@ -834,6 +893,11 @@ mod tests {
             "extension_disconnected: no live Firefox extension session found"
         ));
         assert_eq!(disconnected.code, "extension_disconnected");
+
+        let missing_session = rpc_error_from_anyhow(&anyhow::anyhow!(
+            "session_not_found: no live pire-browser session found for `abc`"
+        ));
+        assert_eq!(missing_session.code, "session_not_found");
 
         let launch = rpc_error_from_anyhow(&anyhow::anyhow!(
             "web-ext exited before pire-browser connected (status: 1)"

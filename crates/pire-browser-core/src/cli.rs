@@ -32,6 +32,16 @@ pub enum LocalCommand {
     Status {
         json: bool,
     },
+    SessionList {
+        json: bool,
+    },
+    SessionAttach {
+        session: String,
+        json: bool,
+    },
+    SessionCleanup {
+        json: bool,
+    },
     Remote {
         session: Option<String>,
         json: bool,
@@ -235,6 +245,50 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         return Ok(LocalCommand::InstallStatus { json: json_output });
     }
 
+    if command == "session" || command == "sessions" {
+        args.remove(0);
+        remove_json_flags(&mut args, &mut json_output);
+        let subcommand = args.first().map(String::as_str).unwrap_or("list");
+        match subcommand {
+            "list" => {
+                if !args.is_empty() {
+                    args.remove(0);
+                }
+                remove_json_flags(&mut args, &mut json_output);
+                if let Some(extra) = args.first() {
+                    bail!("unsupported session list option: {extra}");
+                }
+                return Ok(LocalCommand::SessionList { json: json_output });
+            }
+            "attach" => {
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                let Some(session) = args.first().cloned() else {
+                    bail!("session attach requires a session id");
+                };
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                if let Some(extra) = args.first() {
+                    bail!("unsupported session attach option: {extra}");
+                }
+                return Ok(LocalCommand::SessionAttach {
+                    session,
+                    json: json_output,
+                });
+            }
+            "cleanup" => {
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                if let Some(extra) = args.first() {
+                    bail!("unsupported session cleanup option: {extra}");
+                }
+                return Ok(LocalCommand::SessionCleanup { json: json_output });
+            }
+            other if other.starts_with('-') => bail!("unsupported session option: {other}"),
+            other => bail!("unsupported session command: {other}; try `pire-browser session list`"),
+        }
+    }
+
     if command == "status" && session.is_none() {
         args.remove(0);
         while let Some(arg) = args.first() {
@@ -266,6 +320,18 @@ fn is_help_flag(arg: &str) -> bool {
     arg == "--help" || arg == "-h"
 }
 
+fn remove_json_flags(args: &mut Vec<String>, json_output: &mut bool) {
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--json" {
+            args.remove(i);
+            *json_output = true;
+        } else {
+            i += 1;
+        }
+    }
+}
+
 fn ignored_with_warning_global_flag(flag: &str) -> bool {
     matches!(flag, "--headed" | "--headless" | "--color-scheme")
 }
@@ -282,6 +348,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "fill" => FILL_HELP,
         "wait" => WAIT_HELP,
         "clipboard" => CLIPBOARD_HELP,
+        "session" | "sessions" => SESSION_HELP,
         "screenshot" => SCREENSHOT_HELP,
         "tabs" | "tab" => TABS_HELP,
         "setup" => SETUP_HELP,
@@ -309,6 +376,7 @@ Common commands:
   find label "Email" fill "x@y"   Find by semantic locator and act
   wait --selector "#done"         Wait for page state
   clipboard read                  Read text from the system clipboard
+  session list                    List live Firefox sessions
   screenshot out.png              Capture the visible viewport
   tabs list                       List tracked tabs
 
@@ -396,6 +464,17 @@ Usage:
 Reads and writes text clipboard contents through the Firefox extension.
 copy and paste use the active page selection or focused editable element and
 return a best-effort warning because native Ctrl+C/Ctrl+V handlers are not run.
+"##;
+
+const SESSION_HELP: &str = r##"
+Usage:
+  pire-browser session list [--json]
+  pire-browser session attach <id> [--json]
+  pire-browser session cleanup [--json]
+
+Lists live Firefox extension sessions, prints the `--session <id>` prefix for a
+chosen session, or removes stale session files. This does not create named
+sessions or inspect browser cookies, storage, or credentials.
 "##;
 
 const SCREENSHOT_HELP: &str = r##"
@@ -640,6 +719,30 @@ mod tests {
     }
 
     #[test]
+    fn parses_session_lifecycle_commands() {
+        assert_eq!(
+            parse_cli_args(&s(&["session", "list", "--json"])).unwrap(),
+            LocalCommand::SessionList { json: true }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["sessions", "--json"])).unwrap(),
+            LocalCommand::SessionList { json: true }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["session", "attach", "abc", "--json"])).unwrap(),
+            LocalCommand::SessionAttach {
+                session: "abc".to_string(),
+                json: true
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["session", "cleanup"])).unwrap(),
+            LocalCommand::SessionCleanup { json: false }
+        );
+        assert!(parse_cli_args(&s(&["session", "rename", "abc"])).is_err());
+    }
+
+    #[test]
     fn parses_doctor_noop_flags_and_fix() {
         let parsed = parse_cli_args(&s(&["doctor", "--offline", "--quick", "--json"])).unwrap();
         assert_eq!(parsed, LocalCommand::InstallStatus { json: true });
@@ -655,6 +758,9 @@ mod tests {
         assert!(help_text(Some("clipboard"))
             .unwrap()
             .contains("clipboard read"));
+        assert!(help_text(Some("session"))
+            .unwrap()
+            .contains("session attach"));
         assert!(help_text(Some("unknown")).is_none());
     }
 
