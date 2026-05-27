@@ -2,13 +2,16 @@ use anyhow::{bail, Context, Result};
 use pire_browser_core::auth_handoff::{auth_handoff_text, collect_default_auth_handoff};
 use pire_browser_core::cli::{
     build_command_request, format_cli_result, help_text, parse_cli_args, GlobalFlagWarning,
-    LocalCommand,
+    LocalCommand, SessionTarget,
 };
 use pire_browser_core::install_status::{
     collect_install_status, install_status_json, install_status_text,
 };
 use pire_browser_core::ipc::send_pipe_request;
-use pire_browser_core::launch::{launch_firefox, launch_result_text, LaunchOptions};
+use pire_browser_core::launch::{
+    annotate_session_profile_names, launch_firefox, launch_result_text,
+    live_session_for_profile_name, validate_profile_name, LaunchOptions,
+};
 use pire_browser_core::protocol::{RpcRequest, RpcResponse};
 use pire_browser_core::redaction::{redact_json_value, redact_text};
 use pire_browser_core::session::{
@@ -61,7 +64,8 @@ fn run() -> Result<()> {
         }
         LocalCommand::Status { json } => {
             cleanup_stale_sessions(now_ms())?;
-            let sessions = list_sessions()?;
+            let mut sessions = list_sessions()?;
+            annotate_session_profile_names(&mut sessions)?;
             let auth_handoff = collect_default_auth_handoff()?;
             if json {
                 let mut value = session_status_value(&sessions);
@@ -79,7 +83,8 @@ fn run() -> Result<()> {
         }
         LocalCommand::SessionList { json } => {
             cleanup_stale_sessions(now_ms())?;
-            let sessions = list_sessions()?;
+            let mut sessions = list_sessions()?;
+            annotate_session_profile_names(&mut sessions)?;
             if json {
                 println!(
                     "{}",
@@ -97,6 +102,9 @@ fn run() -> Result<()> {
                     unreachable!();
                 }
             };
+            let mut sessions = vec![session];
+            annotate_session_profile_names(&mut sessions)?;
+            let session = sessions.remove(0);
             if json {
                 println!(
                     "{}",
@@ -107,7 +115,8 @@ fn run() -> Result<()> {
             }
         }
         LocalCommand::SessionCleanup { json } => {
-            let report = cleanup_stale_sessions_with_report(now_ms())?;
+            let mut report = cleanup_stale_sessions_with_report(now_ms())?;
+            annotate_session_profile_names(&mut report.live_sessions)?;
             if json {
                 println!(
                     "{}",
@@ -147,7 +156,7 @@ fn run() -> Result<()> {
             std::process::exit(exit_code_for_error("NotAvailableError"));
         }
         LocalCommand::Remote {
-            session,
+            target,
             json,
             ignored_global_flags,
             args,
@@ -167,10 +176,14 @@ fn run() -> Result<()> {
                 std::process::exit(exit_code_for_error("unsupported_command"));
             }
             let request = build_command_request(args.clone());
-            let (response, response_session_id) =
-                match send_to_session(session.as_deref(), &request) {
-                    Ok(result) => result,
-                    Err(err) if should_auto_launch_remote(session.as_deref(), &args, &err) => {
+            let dispatch_result = match target {
+                SessionTarget::Id(session_id) => send_to_session(Some(&session_id), &request),
+                SessionTarget::Name(profile_name) => {
+                    send_to_named_session(&profile_name, &args, &request)
+                }
+                SessionTarget::Default => match send_to_session(None, &request) {
+                    Ok(result) => Ok(result),
+                    Err(err) if should_auto_launch_remote(None, &args, &err) => {
                         cleanup_stale_sessions(now_ms())?;
                         let _result = match launch_firefox(LaunchOptions {
                             profile: "Default".to_string(),
@@ -184,7 +197,7 @@ fn run() -> Result<()> {
                             }
                         };
                         match send_to_session(None, &request) {
-                            Ok(result) => result,
+                            Ok(result) => Ok(result),
                             Err(err) => {
                                 exit_with_anyhow_error(err, json, &ignored_global_flags)?;
                                 unreachable!();
@@ -195,7 +208,15 @@ fn run() -> Result<()> {
                         exit_with_anyhow_error(err, json, &ignored_global_flags)?;
                         unreachable!();
                     }
-                };
+                },
+            };
+            let (response, response_session_id) = match dispatch_result {
+                Ok(result) => result,
+                Err(err) => {
+                    exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                    unreachable!();
+                }
+            };
             if !response.ok {
                 let error = response
                     .error
@@ -273,6 +294,8 @@ fn rpc_error_from_anyhow(err: &anyhow::Error) -> pire_browser_core::protocol::Rp
         ("extension_disconnected", "session")
     } else if message.contains("session_not_found") {
         ("session_not_found", "session")
+    } else if message.contains("invalid_args:") {
+        ("invalid_args", "parse")
     } else if message.contains("web-ext exited before pire-browser connected")
         || message.contains("failed to start web-ext")
         || message.contains("could not discover Firefox")
@@ -479,6 +502,38 @@ fn send_to_session(
         }
     };
     Ok((serde_json::from_str(&response)?, session.session_id))
+}
+
+fn send_to_named_session(
+    profile_name: &str,
+    args: &[String],
+    request: &RpcRequest,
+) -> Result<(RpcResponse, String)> {
+    validate_profile_name(profile_name)?;
+    cleanup_stale_sessions(now_ms())?;
+    if let Some(session) = live_session_for_profile_name(profile_name)? {
+        let session_id = session.session_id;
+        return send_to_session(Some(&session_id), request);
+    }
+
+    if is_controlled_close_command(args) {
+        bail!(
+            "session_not_found: no live pire-browser session found for profile name `{profile_name}`. `--session-name {profile_name} close` does not launch Firefox; run `pire-browser session list` to inspect live sessions."
+        );
+    }
+    if !can_auto_launch_for_remote_args(args) {
+        bail!(
+            "session_not_found: no live pire-browser session found for profile name `{profile_name}`. Run `pire-browser --session-name {profile_name} open <url>` to launch it or `pire-browser session list` to inspect live sessions."
+        );
+    }
+
+    let result = launch_firefox(LaunchOptions {
+        profile: profile_name.to_string(),
+        url: launch_url_for_remote_args(args),
+        firefox_path: None,
+    })?;
+    let session_id = result.session.session_id;
+    send_to_session(Some(&session_id), request)
 }
 
 fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
@@ -898,6 +953,12 @@ mod tests {
             "session_not_found: no live pire-browser session found for `abc`"
         ));
         assert_eq!(missing_session.code, "session_not_found");
+
+        let invalid_args = rpc_error_from_anyhow(&anyhow::anyhow!(
+            "invalid_args: profile name may contain only letters, numbers, internal spaces, `_`, `-`, and `.`"
+        ));
+        assert_eq!(invalid_args.code, "invalid_args");
+        assert_eq!(exit_code_for_error(&invalid_args.code), 2);
 
         let launch = rpc_error_from_anyhow(&anyhow::anyhow!(
             "web-ext exited before pire-browser connected (status: 1)"

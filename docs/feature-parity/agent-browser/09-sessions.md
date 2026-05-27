@@ -30,7 +30,8 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-  - GPT-5.5 review: Implemented as `pire-browser session list`, sharing the same live-session metadata model as `status`; compatibility remains partial until multi-session isolation has fixture-backed coverage.
+  - GPT-5.5 review: Implemented as `pire-browser session list`, sharing the same live-session metadata model as `status`; compatibility remains partial because multi-session isolation is smoke-covered rather than oracle-matrix covered.
+  - GPT-5.5 implementation note: `status` and `session list --json` now include optional `profileName` when a live session matches managed launcher metadata.
 - [P] `agent-browser session`
   - Extension Compatibility: True
   - Priority: Medium
@@ -180,19 +181,21 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
 
 ## Session persistence
 
-- [ ] `agent-browser --session-name twitter open twitter.com`
+- [P] `agent-browser --session-name twitter open twitter.com`
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser --session-name twitter click "#login"`
+  - GPT-5.5 implementation note: `pire-browser --session-name <name> open <url>` reuses or launches a same-named managed Firefox profile; compatibility remains partial because env-var session names, state import/export, and profile cleanup are out of scope.
+- [P] `agent-browser --session-name twitter click "#login"`
   - Oracle Coverage: covered (click-css)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Follow-up commands with `--session-name <name>` dispatch to an existing live named profile session or launch one for eligible browser commands; `close` remains strict and does not launch.
 - [ ] Support documented usage: `export AGENT_BROWSER_SESSION_NAME=twitter`
   - Extension Compatibility: True
   - Priority: Low
@@ -209,36 +212,41 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
 
 ## Session name rules
 
-- [ ] `agent-browser --session-name my-project open example.com`
+- [P] `agent-browser --session-name my-project open example.com`
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser --session-name test_session_v2 open example.com`
+  - GPT-5.5 implementation note: Accepted as a simple managed Firefox profile name and smoke-tested through profile-backed lifecycle behavior.
+- [P] `agent-browser --session-name test_session_v2 open example.com`
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser --session-name "../bad" open example.com` - path traversal
+  - GPT-5.5 implementation note: Accepted as a simple managed Firefox profile name and covered by Rust profile-name validation.
+- [P] `agent-browser --session-name "../bad" open example.com` - path traversal
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser --session-name "my session" open example.com` - spaces
+  - GPT-5.5 implementation note: Rejected before launch by `pire-browser --session-name` validation because managed profile names cannot contain path traversal.
+- [P] `agent-browser --session-name "my session" open example.com` - spaces
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser --session-name "foo/bar" open example.com` - slashes
+  - GPT-5.5 implementation note: Accepted and preserved exactly; command-prefix help quotes names with spaces.
+- [P] `agent-browser --session-name "foo/bar" open example.com` - slashes
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Rejected before launch by `pire-browser --session-name` validation because managed profile names cannot contain path separators.
 
 ## State encryption
 

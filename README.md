@@ -24,6 +24,8 @@ pire-browser clipboard read
 pire-browser clipboard write "hello"
 pire-browser clipboard copy
 pire-browser clipboard paste
+pire-browser --session-name work open https://example.com
+pire-browser --session-name work snapshot -i
 pire-browser session list
 pire-browser session attach <session-id>
 pire-browser session cleanup
@@ -49,7 +51,7 @@ Install the private Pi package with one command:
 pi install git:git@github.com:ryenwang/pire-browser@v0.1.5
 ```
 
-The package installs the `pire-browser` Pi tool and runs the Windows setup step automatically. That setup registers the Firefox Native Messaging host for the current Windows user. Browser commands such as `open https://example.com` auto-launch the managed Firefox profile if no live extension session is running.
+The package installs the `pire-browser` Pi tool and runs the Windows setup step automatically. That setup registers the Firefox Native Messaging host for the current Windows user. Browser commands such as `open https://example.com` auto-launch the managed `Default` Firefox profile if no live extension session is running. Use `--session-name <name>` before a browser command to reuse or launch a separate managed Firefox profile for that workflow.
 
 If Firefox is installed somewhere unusual:
 
@@ -124,7 +126,7 @@ cargo run -p pire-browser-cli -- setup --windows
 npx --prefix extension web-ext run --source-dir extension --firefox "C:\Program Files\Mozilla Firefox\firefox.exe"
 ```
 
-### Persistent Default Profile
+### Persistent Profiles
 
 Use `launch` for day-to-day automation when you want Firefox to remember site logins:
 
@@ -142,6 +144,16 @@ Use `launch` for day-to-day automation when you want Firefox to remember site lo
 Firefox stores cookies, sessions, and saved passwords inside that profile, so the same `Default` profile can stay logged into Discord, Gofile, and other sites. `pire-browser` only stores launcher metadata under `%LOCALAPPDATA%\pire-browser\profiles\Default`; it does not store or expose website credentials. Deleting the `Default` profile folder clears those saved browser sessions.
 
 On launch, `pire-browser` also seeds the `Default` profile's `user.js` to skip Firefox's Terms/Privacy first-run popup and the legacy first-run page. It also attempts the equivalent current-user policy under `HKCU\Software\Policies\Mozilla\Firefox` when Windows allows it.
+
+For reusable named workflows, put `--session-name <name>` before the command. The name maps one-to-one to a managed Firefox profile directory, reuses an existing live session when one exists, and launches that profile when a browser command needs it:
+
+```powershell
+.\target\debug\pire-browser.exe --session-name work open https://example.com
+.\target\debug\pire-browser.exe --session-name work snapshot -i
+.\target\debug\pire-browser.exe --session-name "my session" get url
+```
+
+Profile names are preserved exactly and may contain letters, numbers, internal spaces, `_`, `-`, and `.`. Empty names, path traversal, slashes, and `:` are rejected before launch.
 
 ### Secret-Safe Auth Handoff
 
@@ -171,6 +183,8 @@ Use `session attach <id>` to print the exact prefix for follow-up commands:
 .\target\debug\pire-browser.exe --session <session-id> snapshot -i
 ```
 
+`--session <id>` is strict: it targets only an existing live session id and never starts Firefox. `--session-name <name>` is lifecycle-aware for browser commands: it reuses or launches the named managed profile, while `--session-name <name> close` only targets an existing live named session. `session list` and `status --json` include `profileName` when a live session can be matched to launcher metadata.
+
 If an explicit session id is wrong or stale, the CLI reports live candidates and points back to `session list`. `session cleanup` removes stale session files only; it does not close live Firefox sessions or delete browser profiles.
 
 ### Smoke Test
@@ -193,6 +207,12 @@ Use a custom Firefox path or fixture port:
 
 ```powershell
 .\scripts\smoke.ps1 -Port 8765 -FirefoxPath "C:\Program Files\Mozilla Firefox\firefox.exe"
+```
+
+Run the named-profile lifecycle smoke to verify storage isolation between two managed profiles:
+
+```powershell
+npm run smoke:named-sessions
 ```
 
 Create the Windows release package locally:

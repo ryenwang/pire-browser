@@ -10,6 +10,13 @@ pub struct GlobalFlagWarning {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionTarget {
+    Default,
+    Id(String),
+    Name(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LocalCommand {
     Help {
         topic: Option<String>,
@@ -43,7 +50,7 @@ pub enum LocalCommand {
         json: bool,
     },
     Remote {
-        session: Option<String>,
+        target: SessionTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
         args: Vec<String>,
@@ -64,7 +71,8 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     }
 
     let mut args = raw.to_vec();
-    let mut session = None;
+    let mut session_id = None;
+    let mut session_name = None;
     let mut json_output = false;
     let mut ignored_global_flags = Vec::new();
     const GLOBAL_VALUE_FLAGS: &[&str] = &[
@@ -103,8 +111,10 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 bail!("{flag} requires a value");
             };
             args.remove(0);
-            if flag == "--session" || flag == "--session-name" {
-                session = Some(value);
+            match flag.as_str() {
+                "--session" => set_session_id(&mut session_id, &session_name, value)?,
+                "--session-name" => set_session_name(&session_id, &mut session_name, value)?,
+                _ => {}
             }
             if ignored_with_warning_global_flag(&flag) {
                 ignored_global_flags.push(GlobalFlagWarning { flag });
@@ -122,13 +132,21 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             continue;
         }
         match first.as_str() {
-            "--session" | "--session-name" => {
+            "--session" => {
                 args.remove(0);
                 let Some(value) = args.first().cloned() else {
                     bail!("{first} requires a value");
                 };
                 args.remove(0);
-                session = Some(value);
+                set_session_id(&mut session_id, &session_name, value)?;
+            }
+            "--session-name" => {
+                args.remove(0);
+                let Some(value) = args.first().cloned() else {
+                    bail!("{first} requires a value");
+                };
+                args.remove(0);
+                set_session_name(&session_id, &mut session_name, value)?;
             }
             "--json" => {
                 args.remove(0);
@@ -138,6 +156,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         }
     }
 
+    let session_target = session_target_from_flags(session_id, session_name);
     let Some(command) = args.first().cloned() else {
         return Ok(LocalCommand::Help { topic: None });
     };
@@ -289,7 +308,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         }
     }
 
-    if command == "status" && session.is_none() {
+    if command == "status" && matches!(session_target, SessionTarget::Default) {
         args.remove(0);
         while let Some(arg) = args.first() {
             match arg.as_str() {
@@ -309,11 +328,54 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     }
 
     Ok(LocalCommand::Remote {
-        session,
+        target: session_target,
         json: json_output,
         ignored_global_flags,
         args,
     })
+}
+
+fn set_session_id(
+    session_id: &mut Option<String>,
+    session_name: &Option<String>,
+    value: String,
+) -> Result<()> {
+    if session_name.is_some() {
+        bail!("cannot use --session and --session-name together");
+    }
+    if session_id.is_some() {
+        bail!("--session was provided more than once");
+    }
+    *session_id = Some(value);
+    Ok(())
+}
+
+fn set_session_name(
+    session_id: &Option<String>,
+    session_name: &mut Option<String>,
+    value: String,
+) -> Result<()> {
+    if session_id.is_some() {
+        bail!("cannot use --session and --session-name together");
+    }
+    if session_name.is_some() {
+        bail!("--session-name was provided more than once");
+    }
+    *session_name = Some(value);
+    Ok(())
+}
+
+fn session_target_from_flags(
+    session_id: Option<String>,
+    session_name: Option<String>,
+) -> SessionTarget {
+    if let Some(session_id) = session_id {
+        SessionTarget::Id(session_id)
+    } else if let Some(session_name) = session_name {
+        SessionTarget::Name(session_name)
+    } else {
+        SessionTarget::Default
+    }
 }
 
 fn is_help_flag(arg: &str) -> bool {
@@ -376,6 +438,7 @@ Common commands:
   find label "Email" fill "x@y"   Find by semantic locator and act
   wait --selector "#done"         Wait for page state
   clipboard read                  Read text from the system clipboard
+  --session-name work open <url>  Reuse or launch a named Firefox profile
   session list                    List live Firefox sessions
   screenshot out.png              Capture the visible viewport
   tabs list                       List tracked tabs
@@ -409,6 +472,8 @@ Usage:
   pire-browser navigate <url>
 
 Opens a page in the default session, auto-launching managed Firefox when needed.
+Use `--session-name <name>` before the command to reuse or launch a named
+managed Firefox profile.
 "##;
 
 const SNAPSHOT_HELP: &str = r##"
@@ -471,10 +536,16 @@ Usage:
   pire-browser session list [--json]
   pire-browser session attach <id> [--json]
   pire-browser session cleanup [--json]
+  pire-browser --session <id> snapshot -i
+  pire-browser --session-name <name> open <url>
+  pire-browser --session-name <name> close
 
 Lists live Firefox extension sessions, prints the `--session <id>` prefix for a
-chosen session, or removes stale session files. This does not create named
-sessions or inspect browser cookies, storage, or credentials.
+chosen session, or removes stale session files. `--session <id>` is strict and
+never launches Firefox. `--session-name <name>` reuses or launches a managed
+Firefox profile with that simple name; close targets an existing named session
+only. Profile names may contain letters, numbers, internal spaces, `_`, `-`,
+and `.`.
 "##;
 
 const SCREENSHOT_HELP: &str = r##"
@@ -506,6 +577,8 @@ Usage:
   pire-browser launch [--profile Default] [--url <url>] [--firefox-path <path>]
 
 Starts the managed Firefox profile and waits for the extension to connect.
+For reusable named command workflows, prefer `--session-name <name> <command>`;
+`launch --profile <name>` only starts or reuses the profile.
 "##;
 
 pub fn build_command_request(args: Vec<String>) -> RpcRequest {
@@ -605,7 +678,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                session: Some("abc".to_string()),
+                target: SessionTarget::Id("abc".to_string()),
                 json: false,
                 ignored_global_flags: vec![],
                 args: s(&["find", "label", "Email", "fill", "x"])
@@ -619,7 +692,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                session: None,
+                target: SessionTarget::Default,
                 json: true,
                 ignored_global_flags: vec![],
                 args: s(&["snapshot"])
@@ -643,7 +716,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                session: Some("lemonade".to_string()),
+                target: SessionTarget::Name("lemonade".to_string()),
                 json: true,
                 ignored_global_flags: vec![
                     GlobalFlagWarning {
@@ -674,7 +747,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                session: None,
+                target: SessionTarget::Default,
                 json: true,
                 ignored_global_flags: vec![
                     GlobalFlagWarning {
@@ -716,6 +789,26 @@ mod tests {
         assert_eq!(parsed, LocalCommand::Status { json: true });
         let parsed = parse_cli_args(&s(&["--json", "status"])).unwrap();
         assert_eq!(parsed, LocalCommand::Status { json: true });
+    }
+
+    #[test]
+    fn rejects_mixed_session_target_flags() {
+        assert!(parse_cli_args(&s(&[
+            "--session",
+            "abc",
+            "--session-name",
+            "work",
+            "snapshot"
+        ]))
+        .is_err());
+        assert!(parse_cli_args(&s(&[
+            "--session-name",
+            "work",
+            "--session",
+            "abc",
+            "snapshot"
+        ]))
+        .is_err());
     }
 
     #[test]

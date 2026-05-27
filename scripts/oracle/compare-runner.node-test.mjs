@@ -193,6 +193,33 @@ test("runner uses a caller-provided per-run LOCALAPPDATA for pire-browser", asyn
   assert.ok(pireCalls.every((call) => call.options.env.LOCALAPPDATA === perRunLocalAppData));
 });
 
+test("runner uses profile-backed --session-name for named pire-browser oracle mode", async () => {
+  const calls = [];
+  const runCommandImpl = async (executable, args, options) => {
+    calls.push({ executable, args, options });
+    return { ...result("ok\n"), args };
+  };
+
+  const [caseRecord] = await runOracleCases({
+    ...baseOptions,
+    env: { ...process.env, PIRE_BROWSER_ORACLE_NAMED_SESSION: "1" },
+    runCommandImpl,
+    cases: [
+      {
+        id: "named-pire-mode",
+        steps: [{ id: "open", command: "open {{fixtureUrl}}/form.html", assertions: [{ type: "exitCodeEquals", value: 0 }] }],
+        finalAssertions: [],
+      },
+    ],
+  });
+
+  assert.equal(caseRecord.pass, true);
+  const pireCalls = calls.filter((call) => call.executable === "pire-browser");
+  assert.ok(pireCalls.length > 0);
+  assert.ok(pireCalls.every((call) => call.args[0] === "--session-name"));
+  assert.equal(caseRecord.cleanup.pireBrowser.args[0], "--session-name");
+});
+
 test("eventLogContains only matches events emitted after step start", async () => {
   let eventReadCount = 0;
   const runCommandImpl = async (_executable, args) => {

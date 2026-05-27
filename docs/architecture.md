@@ -8,7 +8,7 @@
 
 Firefox owns the native host lifecycle once the extension is running. The extension starts `pire-browser-host.exe` through Native Messaging, and the CLI talks to that host through a current-user Windows named pipe.
 
-For the default session only, browser-control commands may also use the managed Firefox launcher when no live extension session exists. In that cold-start path, the CLI starts Firefox through the managed `web-ext` profile, waits for the extension to connect back through Native Messaging, then dispatches the original command over the pipe. Explicit `--session` commands do not auto-launch; they require an existing live session until Epic 4 defines named-session lifecycle semantics.
+For the default session, browser-control commands may use the managed Firefox launcher when no live extension session exists. In that cold-start path, the CLI starts Firefox through the managed `web-ext` profile, waits for the extension to connect back through Native Messaging, then dispatches the original command over the pipe. Explicit `--session <id>` commands remain strict and never auto-launch. `--session-name <name>` maps to a managed Firefox profile name: browser commands reuse a matching live session or launch that named profile, while `--session-name <name> close` targets an existing named live session only.
 
 ## IPC
 

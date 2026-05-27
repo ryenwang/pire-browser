@@ -30,6 +30,8 @@ pub struct ActivePageInfo {
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
     pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_name: Option<String>,
     pub profile_id: String,
     pub pipe_name: String,
     pub extension_id: String,
@@ -195,17 +197,31 @@ pub fn select_session(session_id: Option<&str>) -> Result<SessionInfo> {
 }
 
 pub fn session_attach_text(session: &SessionInfo) -> String {
-    format!(
+    let mut text = format!(
         "Attached session {}.\nUse: pire-browser --session {} <command>",
         session.session_id, session.session_id
-    )
+    );
+    if let Some(profile_name) = &session.profile_name {
+        text.push_str(&format!(
+            "\nReusable profile: pire-browser --session-name {} <command>",
+            command_arg_text(profile_name)
+        ));
+    }
+    text
 }
 
 pub fn session_attach_value(session: &SessionInfo) -> Value {
-    json!({
+    let mut value = json!({
         "session": session,
         "commandPrefix": format!("pire-browser --session {}", session.session_id)
-    })
+    });
+    if let Some(profile_name) = &session.profile_name {
+        value["namedCommandPrefix"] = json!(format!(
+            "pire-browser --session-name {}",
+            command_arg_text(profile_name)
+        ));
+    }
+    value
 }
 
 pub fn session_status_text(sessions: &[SessionInfo]) -> String {
@@ -224,9 +240,15 @@ pub fn session_status_text(sessions: &[SessionInfo]) -> String {
         text.push_str(&format!("\nDefault target: {default_session_id}"));
     }
     for session in sessions {
+        let profile_name = session
+            .profile_name
+            .as_ref()
+            .map(|name| format!(" name={name}"))
+            .unwrap_or_default();
         text.push_str(&format!(
-            "\n- {} profile={} extension={} heartbeat={} focused={}",
+            "\n- {}{} profile={} extension={} heartbeat={} focused={}",
             session.session_id,
+            profile_name,
             session.profile_id,
             session.extension_version,
             session.last_heartbeat_at,
@@ -312,7 +334,15 @@ fn explicit_session_not_found_message(session_id: &str, sessions: &[SessionInfo]
 }
 
 fn session_candidate_text(session: &SessionInfo) -> String {
-    let mut text = format!("{} profile={}", session.session_id, session.profile_id);
+    let profile_name = session
+        .profile_name
+        .as_ref()
+        .map(|name| format!(" name={name}"))
+        .unwrap_or_default();
+    let mut text = format!(
+        "{}{} profile={}",
+        session.session_id, profile_name, session.profile_id
+    );
     if let Some(active_page) = &session.active_page {
         text.push_str(&format!(" active={}", active_page_text(active_page)));
     }
@@ -345,6 +375,14 @@ fn active_page_text(active_page: &ActivePageInfo) -> String {
     format!("{}{}{}{}", active_page.agent_id, label, title, url)
 }
 
+fn command_arg_text(value: &str) -> String {
+    if value.chars().any(char::is_whitespace) {
+        format!("'{value}'")
+    } else {
+        value.to_string()
+    }
+}
+
 pub fn read_session_file(path: &Path) -> Result<SessionInfo> {
     let body = fs::read_to_string(path)?;
     Ok(serde_json::from_str(&body)?)
@@ -357,6 +395,7 @@ mod tests {
     fn test_session(id: &str, profile: &str, heartbeat: u64, focused: u64) -> SessionInfo {
         SessionInfo {
             session_id: id.into(),
+            profile_name: None,
             profile_id: profile.into(),
             pipe_name: format!("pipe-{id}"),
             extension_id: "ext".into(),
@@ -379,6 +418,7 @@ mod tests {
     fn status_text_names_default_target_and_active_page() {
         let sessions = vec![SessionInfo {
             session_id: "s1".into(),
+            profile_name: Some("Default".into()),
             profile_id: "p1".into(),
             pipe_name: "pipe".into(),
             extension_id: "ext".into(),
@@ -398,11 +438,13 @@ mod tests {
         }];
         let text = session_status_text(&sessions);
         assert!(text.contains("Default target: s1"));
+        assert!(text.contains("name=Default profile=p1"));
         assert!(text.contains("active: t1 (docs) Docs - https://example.com"));
 
         let value = session_status_value(&sessions);
         assert_eq!(value["defaultSessionId"], "s1");
         assert_eq!(value["ambiguousDefault"], false);
+        assert_eq!(value["liveSessions"][0]["profileName"], "Default");
         assert_eq!(value["liveSessions"][0]["activePage"]["agentId"], "t1");
     }
 
@@ -420,14 +462,24 @@ mod tests {
 
     #[test]
     fn session_attach_output_gives_reusable_prefix() {
-        let session = test_session("s1", "p1", 20, 20);
+        let mut session = test_session("s1", "p1", 20, 20);
+        session.profile_name = Some("Default".into());
         let text = session_attach_text(&session);
         assert!(text.contains("Attached session s1"));
         assert!(text.contains("pire-browser --session s1 <command>"));
+        assert!(text.contains("pire-browser --session-name Default <command>"));
 
         let value = session_attach_value(&session);
         assert_eq!(value["session"]["sessionId"], "s1");
         assert_eq!(value["commandPrefix"], "pire-browser --session s1");
+        assert_eq!(
+            value["namedCommandPrefix"],
+            "pire-browser --session-name Default"
+        );
+
+        session.profile_name = Some("my session".into());
+        assert!(session_attach_text(&session)
+            .contains("pire-browser --session-name 'my session' <command>"));
     }
 
     #[test]
@@ -464,5 +516,23 @@ mod tests {
         assert!(message.contains("pire-browser session list"));
         assert!(message.contains("s1 profile=p1"));
         assert!(message.contains("active=t1 (docs) Docs - https://example.com"));
+    }
+
+    #[test]
+    fn older_session_json_defaults_missing_profile_name() {
+        let session: SessionInfo = serde_json::from_str(
+            r#"{
+                "sessionId": "s1",
+                "profileId": "p1",
+                "pipeName": "pipe",
+                "extensionId": "ext",
+                "extensionVersion": "1",
+                "startedAt": 1,
+                "lastHeartbeatAt": 2,
+                "lastFocusedAt": 3
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(session.profile_name, None);
     }
 }

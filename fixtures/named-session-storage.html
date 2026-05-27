@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pire-browser named session storage fixture</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 32px;
+        max-width: 720px;
+      }
+      #stored {
+        border: 1px solid #888;
+        margin-top: 16px;
+        padding: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Named session storage fixture</h1>
+    <p id="stored" aria-live="polite"></p>
+
+    <script>
+      const key = "pire-browser-named-session-token";
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("value")) {
+        localStorage.setItem(key, params.get("value"));
+      }
+      document.querySelector("#stored").textContent =
+        localStorage.getItem(key) || "EMPTY";
+    </script>
+  </body>
+</html>
