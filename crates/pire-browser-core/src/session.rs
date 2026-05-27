@@ -26,7 +26,7 @@ pub struct ActivePageInfo {
     pub updated_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
     pub session_id: String,
@@ -39,6 +39,14 @@ pub struct SessionInfo {
     pub last_focused_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_page: Option<ActivePageInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCleanupReport {
+    pub removed_stale_sessions: usize,
+    pub removed_session_ids: Vec<String>,
+    pub live_sessions: Vec<SessionInfo>,
 }
 
 impl SessionInfo {
@@ -123,12 +131,25 @@ pub fn list_sessions() -> Result<Vec<SessionInfo>> {
 }
 
 pub fn cleanup_stale_sessions(now: u64) -> Result<()> {
+    cleanup_stale_sessions_with_report(now).map(|_| ())
+}
+
+pub fn cleanup_stale_sessions_with_report(now: u64) -> Result<SessionCleanupReport> {
+    let mut removed_session_ids = Vec::new();
+    let mut live_sessions = Vec::new();
     for session in list_sessions()? {
         if session.is_stale(now) {
             let _ = remove_session(&session.session_id);
+            removed_session_ids.push(session.session_id);
+        } else {
+            live_sessions.push(session);
         }
     }
-    Ok(())
+    Ok(SessionCleanupReport {
+        removed_stale_sessions: removed_session_ids.len(),
+        removed_session_ids,
+        live_sessions,
+    })
 }
 
 pub fn select_session(session_id: Option<&str>) -> Result<SessionInfo> {
@@ -140,10 +161,13 @@ pub fn select_session(session_id: Option<&str>) -> Result<SessionInfo> {
         .collect();
 
     if let Some(session_id) = session_id {
-        return sessions
-            .into_iter()
+        return Ok(sessions
+            .iter()
             .find(|session| session.session_id == session_id)
-            .with_context(|| format!("no live pire-browser session found for {session_id}"));
+            .cloned()
+            .ok_or_else(|| {
+                anyhow::anyhow!(explicit_session_not_found_message(session_id, &sessions))
+            })?);
     }
 
     match sessions.as_slice() {
@@ -168,6 +192,20 @@ pub fn select_session(session_id: Option<&str>) -> Result<SessionInfo> {
             Ok(newest.clone())
         }
     }
+}
+
+pub fn session_attach_text(session: &SessionInfo) -> String {
+    format!(
+        "Attached session {}.\nUse: pire-browser --session {} <command>",
+        session.session_id, session.session_id
+    )
+}
+
+pub fn session_attach_value(session: &SessionInfo) -> Value {
+    json!({
+        "session": session,
+        "commandPrefix": format!("pire-browser --session {}", session.session_id)
+    })
 }
 
 pub fn session_status_text(sessions: &[SessionInfo]) -> String {
@@ -210,6 +248,30 @@ pub fn session_status_value(sessions: &[SessionInfo]) -> Value {
     })
 }
 
+pub fn session_cleanup_text(report: &SessionCleanupReport) -> String {
+    let noun = if report.removed_stale_sessions == 1 {
+        "session file"
+    } else {
+        "session files"
+    };
+    let mut text = format!("Removed {} stale {}.", report.removed_stale_sessions, noun);
+    if report.live_sessions.is_empty() {
+        text.push_str("\nNo live pire-browser Firefox sessions remain.");
+    } else {
+        text.push_str("\n");
+        text.push_str(&session_status_text(&report.live_sessions));
+    }
+    text
+}
+
+pub fn session_cleanup_value(report: &SessionCleanupReport) -> Value {
+    json!({
+        "removedStaleSessions": report.removed_stale_sessions,
+        "removedSessionIds": report.removed_session_ids,
+        "liveSessions": report.live_sessions
+    })
+}
+
 pub fn default_session_target(sessions: &[SessionInfo]) -> (Option<String>, bool) {
     match sessions {
         [] => (None, false),
@@ -228,6 +290,33 @@ pub fn default_session_target(sessions: &[SessionInfo]) -> (Option<String>, bool
             }
         }
     }
+}
+
+fn explicit_session_not_found_message(session_id: &str, sessions: &[SessionInfo]) -> String {
+    let mut message = format!(
+        "session_not_found: no live pire-browser session found for `{session_id}`. Run `pire-browser session list` and retry with `--session <id>`."
+    );
+    if sessions.is_empty() {
+        message.push_str(" No live sessions are available.");
+    } else {
+        message.push_str(" Live sessions: ");
+        message.push_str(
+            &sessions
+                .iter()
+                .map(session_candidate_text)
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+    }
+    message
+}
+
+fn session_candidate_text(session: &SessionInfo) -> String {
+    let mut text = format!("{} profile={}", session.session_id, session.profile_id);
+    if let Some(active_page) = &session.active_page {
+        text.push_str(&format!(" active={}", active_page_text(active_page)));
+    }
+    text
 }
 
 fn active_page_text(active_page: &ActivePageInfo) -> String {
@@ -265,19 +354,23 @@ pub fn read_session_file(path: &Path) -> Result<SessionInfo> {
 mod tests {
     use super::*;
 
+    fn test_session(id: &str, profile: &str, heartbeat: u64, focused: u64) -> SessionInfo {
+        SessionInfo {
+            session_id: id.into(),
+            profile_id: profile.into(),
+            pipe_name: format!("pipe-{id}"),
+            extension_id: "ext".into(),
+            extension_version: "1".into(),
+            started_at: 1,
+            last_heartbeat_at: heartbeat,
+            last_focused_at: focused,
+            active_page: None,
+        }
+    }
+
     #[test]
     fn stale_sessions_use_heartbeat() {
-        let session = SessionInfo {
-            session_id: "s1".into(),
-            profile_id: "p1".into(),
-            pipe_name: "pipe".into(),
-            extension_id: "ext".into(),
-            extension_version: "0".into(),
-            started_at: 1,
-            last_heartbeat_at: 10,
-            last_focused_at: 10,
-            active_page: None,
-        };
+        let session = test_session("s1", "p1", 10, 10);
         assert!(!session.is_stale(10 + SESSION_TTL_MS));
         assert!(session.is_stale(11 + SESSION_TTL_MS));
     }
@@ -316,32 +409,60 @@ mod tests {
     #[test]
     fn status_value_reports_ambiguous_default() {
         let sessions = vec![
-            SessionInfo {
-                session_id: "s1".into(),
-                profile_id: "p1".into(),
-                pipe_name: "pipe".into(),
-                extension_id: "ext".into(),
-                extension_version: "1".into(),
-                started_at: 1,
-                last_heartbeat_at: 20,
-                last_focused_at: 20,
-                active_page: None,
-            },
-            SessionInfo {
-                session_id: "s2".into(),
-                profile_id: "p2".into(),
-                pipe_name: "pipe2".into(),
-                extension_id: "ext".into(),
-                extension_version: "1".into(),
-                started_at: 1,
-                last_heartbeat_at: 19,
-                last_focused_at: 19,
-                active_page: None,
-            },
+            test_session("s1", "p1", 20, 20),
+            test_session("s2", "p2", 19, 19),
         ];
         let value = session_status_value(&sessions);
         assert!(value["defaultSessionId"].is_null());
         assert_eq!(value["ambiguousDefault"], true);
         assert!(session_status_text(&sessions).contains("use `--session <id>`"));
+    }
+
+    #[test]
+    fn session_attach_output_gives_reusable_prefix() {
+        let session = test_session("s1", "p1", 20, 20);
+        let text = session_attach_text(&session);
+        assert!(text.contains("Attached session s1"));
+        assert!(text.contains("pire-browser --session s1 <command>"));
+
+        let value = session_attach_value(&session);
+        assert_eq!(value["session"]["sessionId"], "s1");
+        assert_eq!(value["commandPrefix"], "pire-browser --session s1");
+    }
+
+    #[test]
+    fn session_cleanup_output_reports_removed_and_live_sessions() {
+        let report = SessionCleanupReport {
+            removed_stale_sessions: 2,
+            removed_session_ids: vec!["old1".into(), "old2".into()],
+            live_sessions: vec![test_session("s1", "p1", 20, 20)],
+        };
+        let text = session_cleanup_text(&report);
+        assert!(text.contains("Removed 2 stale session files"));
+        assert!(text.contains("Default target: s1"));
+
+        let value = session_cleanup_value(&report);
+        assert_eq!(value["removedStaleSessions"], 2);
+        assert_eq!(value["removedSessionIds"][0], "old1");
+        assert_eq!(value["liveSessions"][0]["sessionId"], "s1");
+    }
+
+    #[test]
+    fn explicit_session_not_found_message_lists_candidates() {
+        let mut session = test_session("s1", "p1", 20, 20);
+        session.active_page = Some(ActivePageInfo {
+            agent_id: "t1".into(),
+            label: Some("docs".into()),
+            title: Some("Docs".into()),
+            url: Some("https://example.com".into()),
+            tab_id: 10,
+            window_id: 1,
+            updated_at: 20,
+        });
+        let message = explicit_session_not_found_message("missing", &[session]);
+        assert!(message.contains("session_not_found"));
+        assert!(message.contains("pire-browser session list"));
+        assert!(message.contains("s1 profile=p1"));
+        assert!(message.contains("active=t1 (docs) Docs - https://example.com"));
     }
 }
