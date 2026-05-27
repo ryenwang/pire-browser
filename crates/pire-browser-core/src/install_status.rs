@@ -6,6 +6,7 @@ use anyhow::Result;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::auth_handoff::{auth_handoff_text, collect_default_auth_handoff, AuthHandoffInfo};
 use crate::firefox::discover_firefox;
 use crate::launch::{default_profile_status, firefox_startup_policy_status, DEFAULT_PROFILE_NAME};
 use crate::protocol::{EXTENSION_ID, NATIVE_HOST_NAME};
@@ -32,6 +33,7 @@ pub struct InstallStatusReport {
     pub default_profile: CheckStatus,
     pub default_profile_launcher: CheckStatus,
     pub firefox_startup_policy: CheckStatus,
+    pub auth_handoff: AuthHandoffInfo,
     pub live_sessions: Vec<SessionInfo>,
 }
 
@@ -77,6 +79,7 @@ pub fn collect_install_status() -> Result<InstallStatusReport> {
     let extension_build = check_extension_build();
     let (default_profile, default_profile_launcher) = check_default_profile();
     let firefox_startup_policy = check_firefox_startup_policy();
+    let auth_handoff = collect_default_auth_handoff()?;
 
     cleanup_stale_sessions(now_ms())?;
     let live_sessions = list_sessions()?;
@@ -101,6 +104,7 @@ pub fn collect_install_status() -> Result<InstallStatusReport> {
         default_profile,
         default_profile_launcher,
         firefox_startup_policy,
+        auth_handoff,
         live_sessions,
     })
 }
@@ -130,6 +134,7 @@ pub fn install_status_text(report: &InstallStatusReport) -> String {
     lines.push(format_check_status(&report.default_profile));
     lines.push(format_check_status(&report.default_profile_launcher));
     lines.push(format_check_status(&report.firefox_startup_policy));
+    lines.push(auth_handoff_text(&report.auth_handoff));
     lines.push(format!(
         "{} live Firefox session(s)",
         report.live_sessions.len()
@@ -429,12 +434,17 @@ mod tests {
                 None,
                 "missing",
             ),
+            auth_handoff: crate::auth_handoff::auth_handoff_from_data_dir(
+                &PathBuf::from(r"C:\Users\me\AppData\Local\pire-browser"),
+                DEFAULT_PROFILE_NAME,
+            ),
             live_sessions: Vec::new(),
         };
         let text = install_status_text(&report);
         assert!(text.contains("0 live Firefox session"));
         assert!(text.contains("CLI executable"));
         assert!(text.contains("CLI on PATH"));
+        assert!(text.contains("Auth handoff"));
     }
 
     #[test]

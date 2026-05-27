@@ -5,11 +5,12 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type, type Static } from "typebox";
 import { run, splitCommand, type FinishReason } from "./pire-browser-runner";
+import { redactDiagnosticText, redactProbe } from "./redaction";
 
 const PireBrowserParams = Type.Object({
   command: Type.String({
     description:
-      "pire-browser command string, for example: status --json, doctor, open https://example.com, snapshot -i, click '@e4', or find label Email fill hello@example.com. The CLI auto-launches Firefox for browser commands when no live session exists.",
+      "pire-browser command string, for example: status --json, doctor, clipboard read, clipboard write hello, open https://example.com, snapshot -i, click '@e4', or find label Email fill hello@example.com. The CLI auto-launches Firefox for browser commands when no live session exists.",
   }),
 });
 
@@ -24,10 +25,11 @@ export default function (pi: ExtensionAPI) {
       description:
         "Control the user's Firefox browser through the pire-browser Firefox extension and native host.",
       promptSnippet:
-        "pire-browser: control the user's Firefox browser with commands such as status --json, doctor, help <topic>, open <url>, snapshot -i, find, click, fill, press, scroll, wait, screenshot, and tabs list/select/close.",
+        "pire-browser: control the user's Firefox browser with commands such as status --json, doctor, help <topic>, open <url>, snapshot -i, find, click, fill, clipboard read/write/copy/paste, press, scroll, wait, screenshot, and tabs list/select/close.",
       promptGuidelines: [
         "Use pire-browser when the user asks to open, inspect, or interact with web pages in Firefox.",
         "Use `pire-browser doctor` for setup/PATH diagnostics and `pire-browser status --json` when you need structured live-session and default-target information.",
+        "Use `clipboard read|write|copy|paste` for text clipboard workflows; copy/paste are Firefox best-effort page-selection/focused-editable operations.",
         "It is valid for the first browser action to be `pire-browser open <url>`; the CLI auto-launches Firefox when no live session exists.",
         "After a successful or recovered open/goto/navigate result, use `pire-browser snapshot -i` to inspect the page before interacting with it.",
         "Prefer agent-browser-compatible command shapes: `tab`, `get`, `is`, `type`, `find role ...`, CSS selectors, and fresh quoted `@eN` refs from `snapshot -i`, such as `click '@e4'`.",
@@ -43,21 +45,22 @@ export default function (pi: ExtensionAPI) {
         const executable = resolveExecutable();
         const args = splitCommand(params.command);
         const result = await run(executable, args, signal);
+        const stderr = redactDiagnosticText(result.stderr);
         return {
           content: [
             {
               type: "text",
-              text: result.stdout || result.stderr || "pire-browser command completed with no output",
+              text: result.stdout || stderr || "pire-browser command completed with no output",
             },
           ],
           details: {
-            command: params.command,
+            command: redactDiagnosticText(params.command),
             exitCode: result.exitCode,
             finishReason: result.finishReason,
             timedOut: result.timedOut,
             recovered: result.recovered,
-            stderr: result.stderr,
-            probe: result.probe,
+            stderr,
+            probe: result.probe ? redactProbe(result.probe) : undefined,
           },
         };
       },

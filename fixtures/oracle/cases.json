@@ -1865,6 +1865,251 @@
       ]
     },
     {
+      "id": "clipboard-write-read",
+      "description": "Clipboard write and read round-trip text through the Firefox backend.",
+      "status": "exact",
+      "fixture": "clipboard.html",
+      "compatibilityItems": [
+        {
+          "id": "cmd-clipboard",
+          "status": "best_effort",
+          "tapeCovered": true
+        },
+        {
+          "id": "doc-commands-080-agent-browser-clipboard-read-read-text-from-clipboard",
+          "status": "exact",
+          "tapeCovered": true
+        },
+        {
+          "id": "doc-commands-081-agent-browser-clipboard-write-hello-world-write-text-to-clipboard",
+          "status": "exact",
+          "tapeCovered": true
+        }
+      ],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/clipboard.html"
+        },
+        {
+          "id": "write",
+          "command": "clipboard write pire-write-read-token",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "read",
+          "command": "clipboard read",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 0
+            },
+            {
+              "type": "outputContains",
+              "tool": "pire-browser",
+              "value": "pire-write-read-token"
+            }
+          ]
+        },
+        {
+          "id": "read-json",
+          "command": "clipboard read --json",
+          "assertions": [
+            {
+              "type": "jsonEnvelopeShape",
+              "tool": "pire-browser",
+              "success": true,
+              "dataPaths": [
+                "text",
+                "value",
+                "length"
+              ]
+            },
+            {
+              "type": "outputContains",
+              "tool": "pire-browser",
+              "value": "pire-write-read-token"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "clipboard-copy-selection",
+      "description": "Clipboard copy captures the current page selection with a Firefox best-effort warning.",
+      "status": "best_effort",
+      "fixture": "clipboard.html",
+      "compatibilityItems": [
+        {
+          "id": "cmd-clipboard",
+          "status": "best_effort",
+          "tapeCovered": true
+        },
+        {
+          "id": "doc-commands-082-agent-browser-clipboard-copy-copy-current-selection-ctrl-c",
+          "status": "best_effort",
+          "tapeCovered": true
+        }
+      ],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/clipboard.html"
+        },
+        {
+          "id": "select-text",
+          "command": "click \"#select-copy\"",
+          "assertions": [
+            {
+              "type": "domText",
+              "selector": "#selection-state",
+              "value": "pire-copy-selection-token"
+            }
+          ]
+        },
+        {
+          "id": "copy",
+          "command": "clipboard copy --json",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 0
+            },
+            {
+              "type": "bestEffortWarning",
+              "tool": "pire-browser",
+              "feature": "clipboard copy"
+            }
+          ]
+        },
+        {
+          "id": "read",
+          "command": "clipboard read",
+          "assertions": [
+            {
+              "type": "outputContains",
+              "tool": "pire-browser",
+              "value": "pire-copy-selection-token"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "clipboard-paste-focused",
+      "description": "Clipboard paste inserts text into the focused editable element with a Firefox best-effort warning.",
+      "status": "best_effort",
+      "fixture": "clipboard.html",
+      "compatibilityItems": [
+        {
+          "id": "cmd-clipboard",
+          "status": "best_effort",
+          "tapeCovered": true
+        },
+        {
+          "id": "doc-commands-083-agent-browser-clipboard-paste-paste-from-clipboard-ctrl-v",
+          "status": "best_effort",
+          "tapeCovered": true
+        }
+      ],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/clipboard.html"
+        },
+        {
+          "id": "write",
+          "command": "clipboard write pire-paste-token",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "focus",
+          "command": "click \"#paste-target\""
+        },
+        {
+          "id": "paste",
+          "command": "clipboard paste --json",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 0
+            },
+            {
+              "type": "bestEffortWarning",
+              "tool": "pire-browser",
+              "feature": "clipboard paste"
+            }
+          ]
+        },
+        {
+          "id": "get-pasted-value",
+          "command": "get value \"#paste-target\"",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 0
+            },
+            {
+              "type": "outputContains",
+              "tool": "pire-browser",
+              "value": "pire-paste-token"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "negative-clipboard-copy-empty-selection",
+      "description": "Clipboard copy without a current selection fails with an actionable JSON error.",
+      "status": "error",
+      "fixture": "clipboard.html",
+      "compatibilityItems": [],
+      "steps": [
+        {
+          "id": "open",
+          "command": "open {{fixtureUrl}}/clipboard.html"
+        },
+        {
+          "id": "copy-empty",
+          "command": "clipboard copy --json",
+          "assertions": [
+            {
+              "type": "exitCodeEquals",
+              "tool": "pire-browser",
+              "value": 2
+            },
+            {
+              "type": "jsonEnvelopeShape",
+              "tool": "pire-browser",
+              "success": false,
+              "errorCode": "InvalidArgumentError"
+            },
+            {
+              "type": "outputContains",
+              "tool": "pire-browser",
+              "value": "non-empty current selection"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "ignored-global-flag-warning-json",
       "description": "Per-command Firefox-impossible global flags are accepted but exposed as JSON warnings.",
       "status": "best_effort",

@@ -281,6 +281,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "click" => CLICK_HELP,
         "fill" => FILL_HELP,
         "wait" => WAIT_HELP,
+        "clipboard" => CLIPBOARD_HELP,
         "screenshot" => SCREENSHOT_HELP,
         "tabs" | "tab" => TABS_HELP,
         "setup" => SETUP_HELP,
@@ -307,6 +308,7 @@ Common commands:
   fill '@e2' "text"               Fill a ref from snapshot/find output
   find label "Email" fill "x@y"   Find by semantic locator and act
   wait --selector "#done"         Wait for page state
+  clipboard read                  Read text from the system clipboard
   screenshot out.png              Capture the visible viewport
   tabs list                       List tracked tabs
 
@@ -382,6 +384,18 @@ Usage:
   pire-browser wait --selector "#done" --timeout 5000
   pire-browser wait --text "Saved"
   pire-browser wait --url "**/dashboard"
+"##;
+
+const CLIPBOARD_HELP: &str = r##"
+Usage:
+  pire-browser clipboard read
+  pire-browser clipboard write "hello"
+  pire-browser clipboard copy
+  pire-browser clipboard paste
+
+Reads and writes text clipboard contents through the Firefox extension.
+copy and paste use the active page selection or focused editable element and
+return a best-effort warning because native Ctrl+C/Ctrl+V handlers are not run.
 "##;
 
 const SCREENSHOT_HELP: &str = r##"
@@ -638,6 +652,9 @@ mod tests {
         let text = help_text(None).unwrap();
         assert!(text.contains("click '@e4'"));
         assert!(help_text(Some("status")).unwrap().contains("status"));
+        assert!(help_text(Some("clipboard"))
+            .unwrap()
+            .contains("clipboard read"));
         assert!(help_text(Some("unknown")).is_none());
     }
 

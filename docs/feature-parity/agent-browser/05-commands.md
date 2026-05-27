@@ -583,30 +583,34 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
 
 ## Clipboard
 
-- [ ] `agent-browser clipboard read` - Read text from clipboard
+- [F] `agent-browser clipboard read` - Read text from clipboard
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Use native-host clipboard helpers plus a paste-target fixture; assert read/write/copy/paste round trips without leaking stale clipboard data.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser clipboard write "Hello, World!"` - Write text to clipboard
+  - GPT-5.5 implementation note: Covered for text clipboard reads through the Firefox extension clipboard API; `clipboard read` returns raw text in plain output and `text`/`value`/`length` in JSON.
+- [F] `agent-browser clipboard write "Hello, World!"` - Write text to clipboard
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Use native-host clipboard helpers plus a paste-target fixture; assert read/write/copy/paste round trips without leaking stale clipboard data.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser clipboard copy` - Copy current selection (Ctrl+C)
+  - GPT-5.5 implementation note: Covered for text clipboard writes through the Firefox extension clipboard API; success output reports character count without echoing clipboard contents.
+- [P] `agent-browser clipboard copy` - Copy current selection (Ctrl+C)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Use native-host clipboard helpers plus a paste-target fixture; assert read/write/copy/paste round trips without leaking stale clipboard data.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser clipboard paste` - Paste from clipboard (Ctrl+V)
+  - GPT-5.5 implementation note: Best-effort text copy is covered for current page selection. Firefox uses the extension clipboard API and does not invoke native Ctrl+C or custom page clipboard handlers.
+- [P] `agent-browser clipboard paste` - Paste from clipboard (Ctrl+V)
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Use native-host clipboard helpers plus a paste-target fixture; assert read/write/copy/paste round trips without leaking stale clipboard data.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Best-effort text paste is covered for focused input, textarea, and contenteditable targets. Firefox inserts text through the extension and does not invoke native Ctrl+V or custom page clipboard handlers.
 
 ## Settings
 

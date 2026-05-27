@@ -19,6 +19,7 @@ import {
 } from "./oracle-lib.mjs";
 import { runOracleCases } from "./compare-runner.mjs";
 import { selectOracleCases } from "./compare-selection.mjs";
+import { redactArtifact, redactDiagnosticText } from "./redaction.mjs";
 
 const timeoutMs = Number.parseInt(process.env.ORACLE_COMMAND_TIMEOUT_MS ?? "45000", 10);
 const probeTimeoutMs = Number.parseInt(process.env.ORACLE_PROBE_TIMEOUT_MS ?? "10000", 10);
@@ -90,8 +91,8 @@ try {
     onCaseComplete: async (caseRecord) => {
       const caseDir = join(runDir, caseRecord.id);
       mkdirSync(caseDir, { recursive: true });
-      await writeJson(join(caseDir, "result.json"), caseRecord);
-      console.log(`${caseRecord.pass ? "PASS" : "FAIL"} ${caseRecord.id}: ${caseRecord.reason}`);
+      await writeJson(join(caseDir, "result.json"), redactArtifact(caseRecord));
+      console.log(`${caseRecord.pass ? "PASS" : "FAIL"} ${caseRecord.id}: ${redactDiagnosticText(caseRecord.reason)}`);
     },
   });
 
@@ -101,7 +102,7 @@ try {
     visibleSafe: caseRecord.visibleSafe,
     compatibilityItems: caseRecord.compatibilityItems,
     pass: caseRecord.pass,
-    reason: caseRecord.reason,
+    reason: redactDiagnosticText(caseRecord.reason),
   }));
 } finally {
   await fixture.close();

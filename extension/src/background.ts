@@ -93,6 +93,16 @@ type ActivePageSummary = {
   updatedAt: number;
 };
 
+type ClipboardFrameResult = {
+  handled?: boolean;
+  focused?: boolean;
+  pasted?: boolean;
+  text?: string;
+  length?: number;
+  reason?: string;
+  dialogs?: DialogRecord[];
+};
+
 const HOST_NAME = "dev.pi.pire_browser";
 const CHUNK_SIZE = 700_000;
 const CLOSE_TEARDOWN_DELAY_MS = 0;
@@ -294,13 +304,14 @@ async function executeCommand(args: string[]): Promise<Record<string, unknown>> 
       return cookiesCommand(rest);
     case "storage":
       return storageCommand(rest);
+    case "clipboard":
+      return clipboardCommand(rest);
     case "install":
     case "upgrade":
     case "download":
     case "drag":
     case "upload":
     case "mouse":
-    case "clipboard":
     case "set":
     case "network":
     case "stream":
@@ -694,6 +705,133 @@ async function storageCommand(args: string[]) {
           : `Object.fromEntries(Array.from({length:${area}.length},(_,i)=>{const k=${area}.key(i);return [k,${area}.getItem(k)]}))`;
   const result = await evalCommand([expression]);
   return { ...result, warnings: mergeWarnings((result as any).warnings, [bestEffortWarning("storage", "Storage commands execute in the page context for the active origin.")]) };
+}
+
+async function clipboardCommand(args: string[]) {
+  const [subcommand, ...rest] = args;
+  if (subcommand === "read") {
+    const read = await readClipboardText();
+    if ("error" in read) return read;
+    return { text: read.text, value: read.text, length: read.text.length };
+  }
+  if (subcommand === "write") {
+    if (rest.length === 0) {
+      return { error: { code: "InvalidArgumentError", message: "clipboard write requires <text>" } };
+    }
+    const text = rest.join(" ");
+    const written = await writeClipboardText(text);
+    if ("error" in written) return written;
+    return { text: `Wrote ${text.length} character(s) to clipboard`, length: text.length };
+  }
+  if (subcommand === "copy") {
+    const selection = await selectedTextFromActiveTab();
+    if (!selection?.text) {
+      return { error: { code: "InvalidArgumentError", message: "clipboard copy requires a non-empty current selection" } };
+    }
+    const written = await writeClipboardText(selection.text);
+    if ("error" in written) return written;
+    return {
+      text: `Copied ${selection.text.length} character(s) from selection`,
+      length: selection.text.length,
+      warnings: [
+        bestEffortWarning(
+          "clipboard copy",
+          "Copied the current page selection through the Firefox extension clipboard API; native Ctrl+C and custom page clipboard handlers were not invoked."
+        ),
+      ],
+      dialogs: selection.dialogs ?? [],
+    };
+  }
+  if (subcommand === "paste") {
+    const read = await readClipboardText();
+    if ("error" in read) return read;
+    const pasted = await pasteTextIntoFocusedFrame(read.text);
+    if (!pasted) {
+      return {
+        error: {
+          code: "InvalidArgumentError",
+          message: "clipboard paste requires a focused editable element; click or focus an input, textarea, or contenteditable target first",
+        },
+      };
+    }
+    return {
+      text: `Pasted ${read.text.length} character(s) into focused element`,
+      length: read.text.length,
+      warnings: [
+        bestEffortWarning(
+          "clipboard paste",
+          "Inserted clipboard text through the Firefox extension; native Ctrl+V and custom page clipboard handlers were not invoked."
+        ),
+      ],
+      dialogs: pasted.dialogs ?? [],
+    };
+  }
+  return { error: { code: "InvalidArgumentError", message: "clipboard requires read|write|copy|paste" } };
+}
+
+async function readClipboardText(): Promise<{ text: string } | { error: Record<string, unknown> }> {
+  if (!navigator.clipboard?.readText) {
+    return notAvailable("clipboard read", "Firefox did not expose navigator.clipboard.readText to the extension context.");
+  }
+  try {
+    return { text: await navigator.clipboard.readText() };
+  } catch (error) {
+    return {
+      error: {
+        code: "ClipboardError",
+        message: `Failed to read clipboard text: ${error instanceof Error ? error.message : String(error)}`,
+      },
+    };
+  }
+}
+
+async function writeClipboardText(text: string): Promise<{ ok: true } | { error: Record<string, unknown> }> {
+  if (!navigator.clipboard?.writeText) {
+    return notAvailable("clipboard write", "Firefox did not expose navigator.clipboard.writeText to the extension context.");
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    return { ok: true };
+  } catch (error) {
+    return {
+      error: {
+        code: "ClipboardError",
+        message: `Failed to write clipboard text: ${error instanceof Error ? error.message : String(error)}`,
+      },
+    };
+  }
+}
+
+async function selectedTextFromActiveTab(): Promise<ClipboardFrameResult | null> {
+  const tab = await targetTab();
+  const responses = await clipboardFrameResponses(tab.tabId, { type: "clipboard_selection" });
+  const withText = responses.filter((response) => typeof response.text === "string" && response.text.length > 0);
+  return withText.find((response) => response.focused) ?? withText[0] ?? null;
+}
+
+async function pasteTextIntoFocusedFrame(text: string): Promise<ClipboardFrameResult | null> {
+  const tab = await targetTab();
+  const responses = await clipboardFrameResponses(tab.tabId, { type: "clipboard_paste", text });
+  return responses.find((response) => response.pasted) ?? null;
+}
+
+async function clipboardFrameResponses(tabId: number, message: Record<string, unknown>): Promise<ClipboardFrameResult[]> {
+  const frames = await frameIdsForTab(tabId);
+  const responses: ClipboardFrameResult[] = [];
+  for (const frameId of frames) {
+    try {
+      const response = (await sendFrame(tabId, frameId, message)) as ClipboardFrameResult;
+      if (response?.handled || response?.pasted || response?.text) responses.push(response);
+    } catch {
+      // Cross-origin or restricted frames can reject extension messages.
+    }
+  }
+  return responses;
+}
+
+async function frameIdsForTab(tabId: number): Promise<number[]> {
+  const frames = await browser.webNavigation.getAllFrames({ tabId }).catch(() => [{ frameId: 0 }]);
+  return frames.map((frame: any) => frame.frameId).filter((frameId: unknown): frameId is number => typeof frameId === "number");
 }
 
 async function tabsCommand(args: string[]) {

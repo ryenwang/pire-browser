@@ -20,6 +20,10 @@ pire-browser find label "Email" fill "hello@example.com"
 pire-browser find role button --name "Submit" click
 pire-browser click '@e1'
 pire-browser fill '@e2' "hello"
+pire-browser clipboard read
+pire-browser clipboard write "hello"
+pire-browser clipboard copy
+pire-browser clipboard paste
 pire-browser press Enter
 pire-browser wait --selector "#done"
 pire-browser screenshot out.png
@@ -136,6 +140,18 @@ Firefox stores cookies, sessions, and saved passwords inside that profile, so th
 
 On launch, `pire-browser` also seeds the `Default` profile's `user.js` to skip Firefox's Terms/Privacy first-run popup and the legacy first-run page. It also attempts the equivalent current-user policy under `HKCU\Software\Policies\Mozilla\Firefox` when Windows allows it.
 
+### Secret-Safe Auth Handoff
+
+For login-required sites, use the persistent Firefox profile rather than passing credentials through tool commands:
+
+```powershell
+.\target\debug\pire-browser.exe launch --url <login-url>
+# Sign in manually in the Firefox window.
+.\target\debug\pire-browser.exe status --json
+```
+
+`status --json` and `doctor --json` include an `authHandoff` advisory for the `Default` profile. It reports whether the profile folder exists and confirms that login state is `not_inspected`; `pire-browser` does not read cookies, saved passwords, session tokens, or one-time codes for this diagnostic.
+
 ### Smoke Test
 
 Run the repeatable Windows smoke test from PowerShell:
@@ -178,7 +194,7 @@ Check setup health without launching a browser:
 .\target\debug\pire-browser.exe status --json
 ```
 
-Use `pire-browser help` for command discovery, or `pire-browser help click` for a focused command guide. In PowerShell, quote refs from `snapshot -i` or `find` output, for example `pire-browser click '@e4'`, so `@` is not parsed as shell syntax.
+Use `pire-browser help` for command discovery, or `pire-browser help clipboard` for clipboard read/write/copy/paste details. In PowerShell, quote refs from `snapshot -i` or `find` output, for example `pire-browser click '@e4'`, so `@` is not parsed as shell syntax.
 
 The setup command registers the Native Messaging host under:
 

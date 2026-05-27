@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use pire_browser_core::auth_handoff::{auth_handoff_text, collect_default_auth_handoff};
 use pire_browser_core::cli::{
     build_command_request, format_cli_result, help_text, parse_cli_args, GlobalFlagWarning,
     LocalCommand,
@@ -9,6 +10,7 @@ use pire_browser_core::install_status::{
 use pire_browser_core::ipc::send_pipe_request;
 use pire_browser_core::launch::{launch_firefox, launch_result_text, LaunchOptions};
 use pire_browser_core::protocol::{RpcRequest, RpcResponse};
+use pire_browser_core::redaction::{redact_json_value, redact_text};
 use pire_browser_core::session::{
     cleanup_stale_sessions, list_sessions, now_ms, remove_session, select_session,
     session_status_text, session_status_value,
@@ -26,7 +28,7 @@ const UNSUPPORTED_ROOTS_JSON: &str =
 
 fn main() {
     if let Err(err) = run() {
-        eprintln!("{err:#}");
+        eprintln!("{}", redact_text(&format!("{err:#}")));
         std::process::exit(1);
     }
 }
@@ -40,7 +42,8 @@ fn run() -> Result<()> {
             } else {
                 let topic = topic.unwrap_or_else(|| "(missing)".to_string());
                 eprintln!(
-                    "unsupported_command: No help topic for `{topic}`. Try `pire-browser help`."
+                    "unsupported_command: No help topic for `{}`. Try `pire-browser help`.",
+                    redact_text(&topic)
                 );
                 std::process::exit(exit_code_for_error("unsupported_command"));
             }
@@ -58,13 +61,19 @@ fn run() -> Result<()> {
         LocalCommand::Status { json } => {
             cleanup_stale_sessions(now_ms())?;
             let sessions = list_sessions()?;
+            let auth_handoff = collect_default_auth_handoff()?;
             if json {
-                println!(
-                    "{}",
-                    format_cli_result(&session_status_value(&sessions), true)?
-                );
+                let mut value = session_status_value(&sessions);
+                if let Some(object) = value.as_object_mut() {
+                    object.insert(
+                        "authHandoff".to_string(),
+                        serde_json::to_value(auth_handoff)?,
+                    );
+                }
+                println!("{}", format_cli_result(&value, true)?);
             } else {
                 println!("{}", session_status_text(&sessions));
+                println!("{}", auth_handoff_text(&auth_handoff));
             }
         }
         LocalCommand::Launch {
@@ -194,14 +203,16 @@ fn print_json_error(
     ignored_global_flags: &[GlobalFlagWarning],
 ) -> Result<()> {
     let warnings = ignored_global_flag_warnings(ignored_global_flags);
+    let mut data = error.data.clone().unwrap_or(Value::Null);
+    redact_json_value(&mut data);
     println!(
         "{}",
         serde_json::to_string_pretty(&json!({
             "success": false,
             "error": {
                 "code": error.code,
-                "message": error.message,
-                "data": error.data
+                "message": redact_text(&error.message),
+                "data": data
             },
             "warnings": warnings
         }))?
@@ -231,7 +242,7 @@ fn rpc_error_from_anyhow(err: &anyhow::Error) -> pire_browser_core::protocol::Rp
     };
     pire_browser_core::protocol::RpcError {
         code: code.to_string(),
-        message,
+        message: redact_text(&message),
         data: Some(json!({ "phase": phase })),
     }
 }
@@ -266,6 +277,7 @@ fn not_available_result(
 ) -> Result<String> {
     if json_output {
         let warnings = ignored_global_flag_warnings(ignored_global_flags);
+        let message = redact_text(message);
         return Ok(serde_json::to_string_pretty(&json!({
             "success": false,
             "error": {
@@ -279,7 +291,7 @@ fn not_available_result(
             "warnings": warnings
         }))?);
     }
-    Ok(format!("NotAvailableError: {message}"))
+    Ok(format!("NotAvailableError: {}", redact_text(message)))
 }
 
 fn local_unsupported_command_result(
@@ -307,7 +319,10 @@ fn local_unsupported_command_result(
             suggestions[0]
         )
     };
-    let message = format!("Unsupported command: {command}. {suggestion_text}");
+    let redacted_command = redact_text(command);
+    let message = redact_text(&format!(
+        "Unsupported command: {command}. {suggestion_text}"
+    ));
     if json_output {
         let warnings = ignored_global_flag_warnings(ignored_global_flags);
         return Ok(Some(serde_json::to_string_pretty(&json!({
@@ -316,7 +331,7 @@ fn local_unsupported_command_result(
                 "code": "unsupported_command",
                 "message": message,
                 "data": {
-                    "command": command,
+                    "command": redacted_command,
                     "suggestions": suggestions
                 }
             },
@@ -333,7 +348,7 @@ fn plain_error_message(error: &pire_browser_core::protocol::RpcError) -> String 
             "\nHint: quote refs in PowerShell, for example `click '@e4'`; if the ref is stale, rerun `snapshot -i` or `find`.",
         );
     }
-    message
+    redact_text(&message)
 }
 
 fn append_ignored_global_flag_warnings(
@@ -366,7 +381,7 @@ fn ignored_global_flag_warnings(ignored_global_flags: &[GlobalFlagWarning]) -> V
             json!({
                 "code": "IGNORED_GLOBAL_FLAG",
                 "feature": warning.flag,
-                "message": format!("{} is accepted for agent-browser CLI compatibility but is not applied to the current Firefox WebExtension session.", warning.flag)
+                "message": redact_text(&format!("{} is accepted for agent-browser CLI compatibility but is not applied to the current Firefox WebExtension session.", warning.flag))
             })
         })
         .collect()
@@ -463,6 +478,7 @@ fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
                 | "batch"
                 | "cookies"
                 | "storage"
+                | "clipboard"
         )
     )
 }
@@ -508,6 +524,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "batch"
             | "cookies"
             | "storage"
+            | "clipboard"
             | "close"
             | "quit"
             | "exit"
@@ -524,6 +541,7 @@ fn command_suggestions(command: &str) -> Vec<String> {
         "click",
         "fill",
         "wait",
+        "clipboard",
         "screenshot",
         "tabs",
         "launch",
@@ -722,17 +740,16 @@ mod tests {
         assert!(result.contains("unsupported_command"));
         assert!(result.contains("status"));
 
-        let result = local_unsupported_command_result(&s(&["clipboard"]), false, &[]).unwrap();
-        assert!(result.is_some());
-        let unavailable = local_not_available_result(&s(&["clipboard"]), false, &[])
-            .unwrap()
-            .unwrap();
-        assert!(unavailable.contains("NotAvailableError"));
+        assert!(
+            local_unsupported_command_result(&s(&["clipboard"]), false, &[])
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
     fn supported_remote_commands_are_not_locally_rejected() {
-        for root in ["status", "open", "click", "tabs", "close"] {
+        for root in ["status", "open", "click", "tabs", "clipboard", "close"] {
             assert!(local_unsupported_command_result(&s(&[root]), false, &[])
                 .unwrap()
                 .is_none());
@@ -828,8 +845,8 @@ mod tests {
     fn formats_json_error_envelope_with_ignored_global_flag_warnings() {
         let error = pire_browser_core::protocol::RpcError {
             code: "timeout".to_string(),
-            message: "timed out".to_string(),
-            data: Some(json!({ "phase": "connect" })),
+            message: "timed out token=raw-secret-token".to_string(),
+            data: Some(json!({ "phase": "connect", "accessToken": "raw-token" })),
         };
         let warnings = ignored_global_flag_warnings(&[GlobalFlagWarning {
             flag: "--headless".to_string(),
@@ -847,6 +864,24 @@ mod tests {
         assert!(formatted.contains("\"success\": false"));
         assert!(formatted.contains("\"timeout\""));
         assert!(formatted.contains("\"IGNORED_GLOBAL_FLAG\""));
+    }
+
+    #[test]
+    fn diagnostic_errors_are_redacted() {
+        let error = pire_browser_core::protocol::RpcError {
+            code: "command_failed".to_string(),
+            message: "failed with Authorization: Bearer raw-secret".to_string(),
+            data: Some(json!({ "token": "raw-token" })),
+        };
+        let message = plain_error_message(&error);
+        assert!(message.contains("[REDACTED]"));
+        assert!(!message.contains("raw-secret"));
+
+        let classified = rpc_error_from_anyhow(&anyhow::anyhow!(
+            "failed open https://example.test/callback?code=oauth-code-123"
+        ));
+        assert!(!classified.message.contains("oauth-code-123"));
+        assert!(classified.message.contains("code=[REDACTED]"));
     }
 
     #[test]

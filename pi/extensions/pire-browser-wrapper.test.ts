@@ -70,4 +70,38 @@ describe("pire-browser Pi wrapper", () => {
       recovered: false,
     });
   });
+
+  it("redacts command and diagnostic details while preserving successful stdout", async () => {
+    runMock.mockResolvedValue({
+      stdout: "page text token=visible-success",
+      stderr: "Authorization: Bearer diagnostic-secret",
+      exitCode: 0,
+      finishReason: "close",
+      timedOut: false,
+      recovered: false,
+      probe: {
+        status: {
+          stdout: "active https://example.test/?code=probe-secret",
+          stderr: "",
+          exitCode: 0,
+          timedOut: false,
+        },
+        liveSession: true,
+        liveTabs: false,
+      },
+    });
+
+    const tool = registerTool();
+    const result = await tool.execute(
+      "call-1",
+      { command: "open https://example.test/?access_token=command-secret" },
+      new AbortController().signal
+    );
+
+    expect(result.content[0].text).toBe("page text token=visible-success");
+    expect(JSON.stringify(result.details)).toContain("[REDACTED]");
+    expect(JSON.stringify(result.details)).not.toContain("command-secret");
+    expect(JSON.stringify(result.details)).not.toContain("diagnostic-secret");
+    expect(JSON.stringify(result.details)).not.toContain("probe-secret");
+  });
 });

@@ -35,6 +35,12 @@ function loadClosePlanner(): ClosePlanner {
 }
 
 describe("compiled MV2 scripts", () => {
+  it("declares text clipboard permissions", () => {
+    const manifest = JSON.parse(extensionFile("manifest.json"));
+    expect(manifest.permissions).toContain("clipboardRead");
+    expect(manifest.permissions).toContain("clipboardWrite");
+  });
+
   it("do not emit module export syntax", () => {
     for (const file of ["background.js", "content.js"]) {
       const body = extensionFile(`dist/${file}`);
@@ -226,6 +232,30 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain('void postSessionEvent("heartbeat", {})');
     expect(body).toContain('void postSessionEvent("focused", {})');
     expect(body).toContain('void postSessionEvent("tabs_changed", {})');
+  });
+
+  it("routes strict clipboard commands through the extension clipboard API", () => {
+    const body = background();
+    expect(body).toContain('case "clipboard":');
+    expect(body).toContain("return clipboardCommand(rest);");
+    expect(body).toContain("async function clipboardCommand");
+    expect(body).toContain("navigator.clipboard.readText()");
+    expect(body).toContain("navigator.clipboard.writeText(text)");
+    expect(body).toContain("clipboard_selection");
+    expect(body).toContain("clipboard_paste");
+    expect(body).toContain('"clipboard copy"');
+    expect(body).toContain('"clipboard paste"');
+  });
+
+  it("extracts selections and pastes only into focused editable text targets", () => {
+    const body = content();
+    expect(body).toContain("function clipboardSelection()");
+    expect(body).toContain("function clipboardPaste(text: string)");
+    expect(body).toContain("function selectedTextFromEditable");
+    expect(body).toContain("function selectedTextFromDocument");
+    expect(body).toContain("function isEditableTextTarget");
+    expect(body).toContain("insertText(target, text)");
+    expect(body).toContain("No focused editable element");
   });
 
   it("keeps default snapshot flat and ref-oriented rather than tree-shaped", () => {

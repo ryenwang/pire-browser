@@ -2948,10 +2948,10 @@
     {
       "id": "cmd-clipboard",
       "kind": "compatibility_claim",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "permanent_firefox_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Migrated schema v2 compatibility claim: clipboard.",
+      "rationale": "Reviewed fixture-backed clipboard contract: read/write are exact text clipboard operations, while copy/paste are useful Firefox extension equivalents with explicit native-handler caveats.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -2965,32 +2965,32 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Fixture-backed clipboard command support for text read/write plus selection copy and focused paste with documented Firefox warnings.",
+        "json": "Success envelopes expose read values and warning envelopes for copy/paste; failures keep stable error names for invalid selection, focus, or clipboard API failures.",
         "exitCode": [
-          78
+          0
         ],
-        "errorName": "NotAvailableError",
-        "warningsContractual": false
+        "errorName": "InvalidArgumentError for invalid selection/focus; ClipboardError for browser clipboard API failures.",
+        "warningsContractual": true
       },
       "coverage": {
-        "state": "not_comparable",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "clipboard-write-read",
+          "clipboard-copy-selection",
+          "clipboard-paste-focused"
+        ],
+        "reason": "Covered by deterministic clipboard oracle fixtures for text read/write and best-effort page copy/paste."
       },
       "limitations": [
-        "Feature is intentionally unavailable or not started on the Firefox WebExtension backend."
+        "copy and paste use the Firefox extension clipboard API plus page selection or DOM insertion; native Ctrl+C/Ctrl+V and custom page clipboard handlers are not invoked.",
+        "Text clipboard only; rich content, images, files, and OS-level clipboard events are out of scope."
       ],
       "migration": {
         "schemaV2Id": "clipboard"
       },
-      "contractReviewed": false,
-      "runtime": {
-        "unsupportedRoots": [
-          "clipboard"
-        ]
-      }
+      "contractReviewed": true
     },
     {
       "id": "cmd-set-viewport-device-geo-offline-headers-credentials-media",
@@ -10453,17 +10453,17 @@
     {
       "id": "doc-commands-080-agent-browser-clipboard-read-read-text-from-clipboard",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "exact",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed fixture-backed exact contract for clipboard read; deterministic oracle coverage locks raw text output and JSON data fields.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Clipboard",
         "anchor": "clipboard",
         "checklist": "`agent-browser clipboard read` - Read text from clipboard",
-        "docStatus": "blank"
+        "docStatus": "F"
       },
       "command": {
         "primary": "clipboard",
@@ -10471,39 +10471,39 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Raw clipboard text is printed in plain output.",
+        "json": "Success envelope contains data.text, data.value, and data.length for automation.",
         "exitCode": [
-          78
+          0
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "ClipboardError for browser clipboard API failures.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "clipboard-write-read"
+        ],
+        "reason": "Covered by deterministic clipboard write/read round-trip fixture."
       },
-      "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
-      ],
-      "contractReviewed": false
+      "limitations": [],
+      "contractReviewed": true
     },
     {
       "id": "doc-commands-081-agent-browser-clipboard-write-hello-world-write-text-to-clipboard",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "exact",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed fixture-backed exact contract for clipboard write; deterministic oracle coverage locks text round-trip behavior without echoing written contents on success.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Clipboard",
         "anchor": "clipboard",
         "checklist": "`agent-browser clipboard write \"Hello, World!\"` - Write text to clipboard",
-        "docStatus": "blank"
+        "docStatus": "F"
       },
       "command": {
         "primary": "clipboard",
@@ -10511,39 +10511,39 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Success output reports the number of characters written without echoing clipboard contents.",
+        "json": "Success envelope contains character-count metadata and no secret value echo.",
         "exitCode": [
-          78
+          0
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "InvalidArgumentError for missing text; ClipboardError for browser clipboard API failures.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "clipboard-write-read"
+        ],
+        "reason": "Covered by deterministic clipboard write/read round-trip fixture."
       },
-      "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
-      ],
-      "contractReviewed": false
+      "limitations": [],
+      "contractReviewed": true
     },
     {
       "id": "doc-commands-082-agent-browser-clipboard-copy-copy-current-selection-ctrl-c",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "permanent_firefox_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed fixture-backed best-effort contract for clipboard copy; Firefox copies selected text through the extension clipboard API instead of native Ctrl+C.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Clipboard",
         "anchor": "clipboard",
         "checklist": "`agent-browser clipboard copy` - Copy current selection (Ctrl+C)",
-        "docStatus": "blank"
+        "docStatus": "P"
       },
       "command": {
         "primary": "clipboard",
@@ -10551,39 +10551,41 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Success output reports copied character count without echoing selected text.",
+        "json": "Success envelope includes a BEST_EFFORT_FIREFOX_GAP warning for the native-handler limitation.",
         "exitCode": [
-          78
+          0
         ],
-        "errorName": "NotAvailableError",
-        "warningsContractual": false
+        "errorName": "InvalidArgumentError when no non-empty selection exists; ClipboardError for browser clipboard API failures.",
+        "warningsContractual": true
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "clipboard-copy-selection"
+        ],
+        "reason": "Covered by deterministic selection-copy fixture with warning assertion."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Does not invoke native Ctrl+C or page custom clipboard event handlers; it copies the current selected text through the extension clipboard API."
       ],
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "doc-commands-083-agent-browser-clipboard-paste-paste-from-clipboard-ctrl-v",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "permanent_firefox_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed fixture-backed best-effort contract for clipboard paste; Firefox inserts clipboard text into the focused editable element without native Ctrl+V handlers.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Clipboard",
         "anchor": "clipboard",
         "checklist": "`agent-browser clipboard paste` - Paste from clipboard (Ctrl+V)",
-        "docStatus": "blank"
+        "docStatus": "P"
       },
       "command": {
         "primary": "clipboard",
@@ -10591,24 +10593,26 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Success output reports pasted character count without echoing clipboard contents.",
+        "json": "Success envelope includes a BEST_EFFORT_FIREFOX_GAP warning for the native-handler limitation.",
         "exitCode": [
-          78
+          0
         ],
-        "errorName": "NotAvailableError",
-        "warningsContractual": false
+        "errorName": "InvalidArgumentError when no editable target is focused; ClipboardError for browser clipboard API failures.",
+        "warningsContractual": true
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "clipboard-paste-focused"
+        ],
+        "reason": "Covered by deterministic focused-input paste fixture with warning assertion."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Does not invoke native Ctrl+V or page custom clipboard event handlers; it inserts text into focused input, textarea, or contenteditable targets."
       ],
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "doc-commands-084-agent-browser-set-viewport-w-h-scale-set-viewport-size-scale-for-retina-",

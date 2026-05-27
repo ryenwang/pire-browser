@@ -77,6 +77,8 @@ browser.runtime.onMessage.addListener((message: any) => {
   if (message.type === "press") return Promise.resolve(pressKey(String(message.key ?? "")));
   if (message.type === "keyboard_type") return Promise.resolve(typeFocused(String(message.text ?? ""), true));
   if (message.type === "keyboard_inserttext") return Promise.resolve(typeFocused(String(message.text ?? ""), false));
+  if (message.type === "clipboard_selection") return Promise.resolve(clipboardSelection());
+  if (message.type === "clipboard_paste") return Promise.resolve(clipboardPaste(String(message.text ?? "")));
   if (message.type === "scroll") {
     return Promise.resolve(scrollPage(String(message.direction ?? "down"), Number(message.pixels ?? 900), message.selector));
   }
@@ -331,6 +333,39 @@ function typeFocused(text: string, keyEvents: boolean) {
     if (keyEvents) dispatchKey(target, char, "keyup");
   }
   return { text: keyEvents ? "Typed at current focus" : "Inserted text at current focus", dialogs: drainDialogs() };
+}
+
+function clipboardSelection() {
+  const text = selectedTextFromEditable(document.activeElement) ?? selectedTextFromDocument();
+  return {
+    handled: true,
+    focused: document.hasFocus(),
+    text,
+    length: text.length,
+    dialogs: drainDialogs(),
+  };
+}
+
+function clipboardPaste(text: string) {
+  const target = document.activeElement;
+  if (!target || !isEditableTextTarget(target)) {
+    return {
+      handled: true,
+      focused: document.hasFocus(),
+      pasted: false,
+      reason: "No focused editable element",
+      dialogs: drainDialogs(),
+    };
+  }
+  insertText(target, text);
+  return {
+    handled: true,
+    focused: document.hasFocus(),
+    pasted: true,
+    text: `Pasted ${text.length} character(s)`,
+    length: text.length,
+    dialogs: drainDialogs(),
+  };
 }
 
 function scrollPage(direction: string, pixels: number, selector?: unknown) {
@@ -747,6 +782,33 @@ function keyName(key: string): string {
 
 function isTextLike(element: Element): boolean {
   return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || (element as HTMLElement).isContentEditable;
+}
+
+function isEditableTextTarget(element: Element): boolean {
+  if (element instanceof HTMLTextAreaElement) return !element.disabled && !element.readOnly;
+  if (element instanceof HTMLInputElement) {
+    const nonTextTypes = new Set(["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"]);
+    return !element.disabled && !element.readOnly && !nonTextTypes.has(element.type);
+  }
+  return (element as HTMLElement).isContentEditable;
+}
+
+function selectedTextFromEditable(element: Element | null): string | null {
+  if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) return null;
+  try {
+    const start = element.selectionStart;
+    const end = element.selectionEnd;
+    if (typeof start !== "number" || typeof end !== "number" || start === end) return "";
+    return element.value.slice(start, end);
+  } catch {
+    return null;
+  }
+}
+
+function selectedTextFromDocument(): string {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return "";
+  return selection.toString();
 }
 
 function insertText(element: Element, text: string) {

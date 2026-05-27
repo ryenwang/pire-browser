@@ -39,7 +39,9 @@ Each gap should record:
 ## Redaction Rules
 
 - Never include raw access tokens, refresh tokens, session cookies, OAuth secrets, passwords, one-time login codes, or full authorization URLs with sensitive query parameters.
-- Prefer describing sensitive values by role, such as `Convex one-time token` or `Google OAuth client secret`, rather than by value.
+- Prefer describing sensitive values by role, such as `Convex one-time token`, `OAuth callback code`, `session cookie`, or `Google OAuth client secret`, rather than by value.
+- Redact sensitive URL query values such as `code`, `access_token`, `refresh_token`, `id_token`, `token`, `client_secret`, `password`, and `api_key`.
+- Redact authorization and cookie evidence by type only, for example `Authorization: Bearer [REDACTED]` or `Cookie: [REDACTED]`.
 - If a command output contains secrets, summarize the outcome and record where the secret was stored only when that storage location is safe to mention.
 - Screenshots used as evidence should avoid showing account identifiers, secret fields, or private user data unless the review explicitly needs that context and the artifact is handled as private.
 - When unsure, redact first and preserve enough surrounding context to explain the workflow impact.

@@ -50,6 +50,10 @@
             return Promise.resolve(typeFocused(String(message.text ?? ""), true));
         if (message.type === "keyboard_inserttext")
             return Promise.resolve(typeFocused(String(message.text ?? ""), false));
+        if (message.type === "clipboard_selection")
+            return Promise.resolve(clipboardSelection());
+        if (message.type === "clipboard_paste")
+            return Promise.resolve(clipboardPaste(String(message.text ?? "")));
         if (message.type === "scroll") {
             return Promise.resolve(scrollPage(String(message.direction ?? "down"), Number(message.pixels ?? 900), message.selector));
         }
@@ -307,6 +311,37 @@
                 dispatchKey(target, char, "keyup");
         }
         return { text: keyEvents ? "Typed at current focus" : "Inserted text at current focus", dialogs: drainDialogs() };
+    }
+    function clipboardSelection() {
+        const text = selectedTextFromEditable(document.activeElement) ?? selectedTextFromDocument();
+        return {
+            handled: true,
+            focused: document.hasFocus(),
+            text,
+            length: text.length,
+            dialogs: drainDialogs(),
+        };
+    }
+    function clipboardPaste(text) {
+        const target = document.activeElement;
+        if (!target || !isEditableTextTarget(target)) {
+            return {
+                handled: true,
+                focused: document.hasFocus(),
+                pasted: false,
+                reason: "No focused editable element",
+                dialogs: drainDialogs(),
+            };
+        }
+        insertText(target, text);
+        return {
+            handled: true,
+            focused: document.hasFocus(),
+            pasted: true,
+            text: `Pasted ${text.length} character(s)`,
+            length: text.length,
+            dialogs: drainDialogs(),
+        };
     }
     function scrollPage(direction, pixels, selector) {
         const scroller = selector ? document.querySelector(String(selector)) ?? findScrollContainer() : findScrollContainer();
@@ -712,6 +747,35 @@
     }
     function isTextLike(element) {
         return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element.isContentEditable;
+    }
+    function isEditableTextTarget(element) {
+        if (element instanceof HTMLTextAreaElement)
+            return !element.disabled && !element.readOnly;
+        if (element instanceof HTMLInputElement) {
+            const nonTextTypes = new Set(["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"]);
+            return !element.disabled && !element.readOnly && !nonTextTypes.has(element.type);
+        }
+        return element.isContentEditable;
+    }
+    function selectedTextFromEditable(element) {
+        if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement))
+            return null;
+        try {
+            const start = element.selectionStart;
+            const end = element.selectionEnd;
+            if (typeof start !== "number" || typeof end !== "number" || start === end)
+                return "";
+            return element.value.slice(start, end);
+        }
+        catch {
+            return null;
+        }
+    }
+    function selectedTextFromDocument() {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0 || selection.isCollapsed)
+            return "";
+        return selection.toString();
     }
     function insertText(element, text) {
         if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
