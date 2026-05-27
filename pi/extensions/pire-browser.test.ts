@@ -108,6 +108,49 @@ describe("pire-browser Pi runner", () => {
     expect(result.probe?.liveTabs).toBe(true);
   });
 
+  it("detects live sessions in richer status output", async () => {
+    const controller = new AbortController();
+    const { calls, spawnCommand } = createSpawn((call) => {
+      if (call.args[0] === "open") return;
+      if (call.args[0] === "status") {
+        queueMicrotask(() => {
+          call.child.stdout.emit(
+            "data",
+            [
+              "1 live pire-browser session(s):",
+              "Default target: abc",
+              "- abc profile=Default extension=0.1.5 heartbeat=1 focused=1",
+              "  active: t1 Docs - https://example.com",
+            ].join("\n")
+          );
+          call.child.emit("close", 0);
+        });
+      }
+      if (call.args[0] === "tabs") {
+        queueMicrotask(() => {
+          call.child.stdout.emit("data", "t1 * Docs https://example.com");
+          call.child.emit("close", 0);
+        });
+      }
+    });
+
+    const result = await run("pire-browser", ["open", "https://example.com"], controller.signal, {
+      spawnCommand,
+      firstProbeDelayMs: 1,
+      probeIntervalMs: 5,
+      probeTimeoutMs: 100,
+      toolTimeoutMs: 500,
+    });
+
+    expect(calls.map((call) => call.args.join(" "))).toEqual([
+      "open https://example.com",
+      "status",
+      "tabs list",
+    ]);
+    expect(result.recovered).toBe(true);
+    expect(result.probe?.liveSession).toBe(true);
+  });
+
   it("recovers a navigation command that exits nonzero after Firefox launched", async () => {
     const controller = new AbortController();
     const { calls, spawnCommand } = createSpawn((call) => {
@@ -151,6 +194,62 @@ describe("pire-browser Pi runner", () => {
     });
     expect(result.stdout).toContain("Recovered after auto-launch");
     expect(result.stdout).toContain("command_failed: timeout waiting for page load");
+  });
+
+  it("redacts diagnostic stderr and recovery probe text without changing successful stdout", async () => {
+    const controller = new AbortController();
+    const { spawnCommand } = createSpawn((call) => {
+      if (call.args[0] === "status") {
+        queueMicrotask(() => {
+          call.child.stdout.emit("data", "ok token=stdout-secret");
+          call.child.stderr.emit("data", "Cookie: session=stderr-secret");
+          call.child.emit("close", 0);
+        });
+      }
+    });
+
+    const status = await run("pire-browser", ["status"], controller.signal, {
+      spawnCommand,
+      toolTimeoutMs: 500,
+    });
+
+    expect(status.stdout).toBe("ok token=stdout-secret");
+    expect(status.stderr).toContain("[REDACTED]");
+    expect(status.stderr).not.toContain("stderr-secret");
+
+    const recoveredController = new AbortController();
+    const { spawnCommand: recoveredSpawn } = createSpawn((call) => {
+      if (call.args[0] === "open") {
+        queueMicrotask(() => {
+          call.child.stderr.emit("data", "failed token=recovery-secret");
+          call.child.emit("exit", 1);
+        });
+      }
+      if (call.args[0] === "status") {
+        queueMicrotask(() => {
+          call.child.stdout.emit("data", "1 live pire-browser session(s):\nactive https://example.test/?code=probe-secret");
+          call.child.emit("close", 0);
+        });
+      }
+      if (call.args[0] === "tabs") {
+        queueMicrotask(() => {
+          call.child.stdout.emit("data", "t1 https://example.test/?access_token=tab-secret");
+          call.child.emit("close", 0);
+        });
+      }
+    });
+
+    const recovered = await run("pire-browser", ["open", "https://example.test"], recoveredController.signal, {
+      spawnCommand: recoveredSpawn,
+      exitDrainMs: 1,
+      probeTimeoutMs: 100,
+      toolTimeoutMs: 500,
+    });
+
+    expect(recovered.stdout).toContain("[REDACTED]");
+    expect(JSON.stringify(recovered)).not.toContain("recovery-secret");
+    expect(JSON.stringify(recovered)).not.toContain("probe-secret");
+    expect(JSON.stringify(recovered)).not.toContain("tab-secret");
   });
 
   it("does not recover a failed navigation exit without a live session", async () => {

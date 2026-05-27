@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pire-browser dynamic child frame</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 16px;
+      }
+      label,
+      input,
+      button {
+        display: block;
+        margin: 8px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Dynamic Child Frame</h2>
+    <label for="frame-email">Frame Email</label>
+    <input id="frame-email" type="email" placeholder="frame@example.com" />
+    <button id="frame-submit" type="button">Frame Submit</button>
+    <div id="frame-done" hidden>Frame Submitted</div>
+
+    <script>
+      document.querySelector("#frame-submit").addEventListener("click", () => {
+        document.querySelector("#frame-done").hidden = false;
+      });
+    </script>
+  </body>
+</html>

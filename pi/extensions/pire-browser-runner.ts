@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { redactDiagnosticText, redactProbe } from "./redaction";
 
 const DEFAULT_TOOL_TIMEOUT_MS = 105_000;
 const FIRST_PROBE_DELAY_MS = 20_000;
@@ -150,11 +151,7 @@ export function run(
       if (settled) return;
       settled = true;
       cleanup();
-      resolvePromise({
-        ...result,
-        stdout: result.stdout.trim(),
-        stderr: result.stderr.trim(),
-      });
+      resolvePromise(redactRunResult(result));
     };
 
     const finishWithCurrentOutput = (finishReason: FinishReason, exitCode: number | null) => {
@@ -316,6 +313,16 @@ export function run(
 function toolTimeoutFromEnv(): number {
   const value = Number.parseInt(process.env.PIRE_BROWSER_TOOL_TIMEOUT_MS ?? "", 10);
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_TOOL_TIMEOUT_MS;
+}
+
+function redactRunResult(result: RunResult): RunResult {
+  const stdout = result.stdout.trim();
+  return {
+    ...result,
+    stdout: result.recovered ? redactDiagnosticText(stdout) : stdout,
+    stderr: redactDiagnosticText(result.stderr.trim()),
+    probe: result.probe ? redactProbe(result.probe) : undefined,
+  };
 }
 
 function isNavigationCommand(args: string[]): boolean {

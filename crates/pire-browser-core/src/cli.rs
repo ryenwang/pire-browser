@@ -11,6 +11,9 @@ pub struct GlobalFlagWarning {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LocalCommand {
+    Help {
+        topic: Option<String>,
+    },
     Setup {
         windows: bool,
         firefox_path: Option<String>,
@@ -23,7 +26,12 @@ pub enum LocalCommand {
     InstallStatus {
         json: bool,
     },
-    Status,
+    DoctorFix {
+        json: bool,
+    },
+    Status {
+        json: bool,
+    },
     Remote {
         session: Option<String>,
         json: bool,
@@ -33,6 +41,18 @@ pub enum LocalCommand {
 }
 
 pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
+    if raw.is_empty() {
+        return Ok(LocalCommand::Help { topic: None });
+    }
+    if raw.first().map(|arg| is_help_flag(arg)).unwrap_or(false) {
+        return Ok(LocalCommand::Help { topic: None });
+    }
+    if raw.first().map(String::as_str) == Some("help") {
+        return Ok(LocalCommand::Help {
+            topic: raw.get(1).cloned(),
+        });
+    }
+
     let mut args = raw.to_vec();
     let mut session = None;
     let mut json_output = false;
@@ -109,8 +129,20 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     }
 
     let Some(command) = args.first().cloned() else {
-        bail!("missing command; try `pire-browser status`");
+        return Ok(LocalCommand::Help { topic: None });
     };
+
+    if command == "help" {
+        return Ok(LocalCommand::Help {
+            topic: args.get(1).cloned(),
+        });
+    }
+
+    if args.iter().skip(1).any(|arg| is_help_flag(arg)) {
+        return Ok(LocalCommand::Help {
+            topic: Some(command),
+        });
+    }
 
     if command == "setup" {
         args.remove(0);
@@ -178,6 +210,32 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     }
 
     if command == "install-status" || command == "doctor" {
+        let doctorish = command.clone();
+        args.remove(0);
+        let mut fix = false;
+        while let Some(arg) = args.first() {
+            match arg.as_str() {
+                "--json" => {
+                    args.remove(0);
+                    json_output = true;
+                }
+                "--offline" | "--quick" => {
+                    args.remove(0);
+                }
+                "--fix" => {
+                    args.remove(0);
+                    fix = true;
+                }
+                other => bail!("unsupported {doctorish} option: {other}"),
+            }
+        }
+        if fix {
+            return Ok(LocalCommand::DoctorFix { json: json_output });
+        }
+        return Ok(LocalCommand::InstallStatus { json: json_output });
+    }
+
+    if command == "status" && session.is_none() {
         args.remove(0);
         while let Some(arg) = args.first() {
             match arg.as_str() {
@@ -185,14 +243,10 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                     args.remove(0);
                     json_output = true;
                 }
-                other => bail!("unsupported install-status option: {other}"),
+                other => bail!("unsupported status option: {other}"),
             }
         }
-        return Ok(LocalCommand::InstallStatus { json: json_output });
-    }
-
-    if command == "status" && session.is_none() {
-        return Ok(LocalCommand::Status);
+        return Ok(LocalCommand::Status { json: json_output });
     }
 
     if let Some(index) = args.iter().position(|arg| arg == "--json") {
@@ -208,9 +262,172 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     })
 }
 
+fn is_help_flag(arg: &str) -> bool {
+    arg == "--help" || arg == "-h"
+}
+
 fn ignored_with_warning_global_flag(flag: &str) -> bool {
     matches!(flag, "--headed" | "--headless" | "--color-scheme")
 }
+
+pub fn help_text(topic: Option<&str>) -> Option<String> {
+    let text = match topic.unwrap_or("").to_ascii_lowercase().as_str() {
+        "" => TOP_LEVEL_HELP,
+        "status" => STATUS_HELP,
+        "doctor" | "install-status" => DOCTOR_HELP,
+        "open" | "goto" | "navigate" => OPEN_HELP,
+        "snapshot" => SNAPSHOT_HELP,
+        "find" => FIND_HELP,
+        "click" => CLICK_HELP,
+        "fill" => FILL_HELP,
+        "wait" => WAIT_HELP,
+        "clipboard" => CLIPBOARD_HELP,
+        "screenshot" => SCREENSHOT_HELP,
+        "tabs" | "tab" => TABS_HELP,
+        "setup" => SETUP_HELP,
+        "launch" => LAUNCH_HELP,
+        _ => return None,
+    };
+    Some(text.trim().to_string())
+}
+
+const TOP_LEVEL_HELP: &str = r##"
+pire-browser controls the user's Firefox browser through a local WebExtension.
+
+Usage:
+  pire-browser <command> [args]
+  pire-browser help [topic]
+  pire-browser <command> --help
+
+Common commands:
+  status [--json]                 Show live Firefox sessions and default target
+  doctor [--json] [--offline]     Check setup health and PATH/install hints
+  open <url> [--label <name>]      Open a URL, auto-launching Firefox if needed
+  snapshot -i                     Inspect the active page and print refs
+  click '@e4'                     Click a ref from snapshot/find output
+  fill '@e2' "text"               Fill a ref from snapshot/find output
+  find label "Email" fill "x@y"   Find by semantic locator and act
+  wait --selector "#done"         Wait for page state
+  clipboard read                  Read text from the system clipboard
+  screenshot out.png              Capture the visible viewport
+  tabs list                       List tracked tabs
+
+PowerShell note:
+  Quote refs such as '@e4' so PowerShell does not treat @ as syntax.
+"##;
+
+const STATUS_HELP: &str = r##"
+Usage:
+  pire-browser status [--json]
+
+Shows live Firefox extension sessions, the session default commands will target,
+and the active page when Firefox has reported one.
+"##;
+
+const DOCTOR_HELP: &str = r##"
+Usage:
+  pire-browser doctor [--json] [--offline] [--quick]
+  pire-browser install-status [--json]
+
+Checks Firefox discovery, native messaging setup, extension build files, managed
+profile state, live sessions, and CLI/PATH advisories. --offline and --quick are
+accepted as no-op compatibility flags. --fix is not implemented yet.
+"##;
+
+const OPEN_HELP: &str = r##"
+Usage:
+  pire-browser open <url> [--label <name>] [--new]
+  pire-browser goto <url>
+  pire-browser navigate <url>
+
+Opens a page in the default session, auto-launching managed Firefox when needed.
+"##;
+
+const SNAPSHOT_HELP: &str = r##"
+Usage:
+  pire-browser snapshot -i
+  pire-browser snapshot --json
+
+Prints a compact page snapshot with refs such as @e1. Use quoted refs in
+PowerShell, for example: pire-browser click '@e1'.
+"##;
+
+const FIND_HELP: &str = r##"
+Usage:
+  pire-browser find role button --name "Submit"
+  pire-browser find label "Email" fill "hello@example.com"
+  pire-browser find text "Continue" click
+
+Finds elements by supported selector families and can optionally perform an
+action on the single match.
+"##;
+
+const CLICK_HELP: &str = r##"
+Usage:
+  pire-browser click '@e4'
+  pire-browser click "#submit"
+
+Clicks a ref or selector. If a ref is stale, rerun snapshot -i or find.
+"##;
+
+const FILL_HELP: &str = r##"
+Usage:
+  pire-browser fill '@e2' "hello"
+  pire-browser fill "input[name=email]" "hello@example.com"
+
+Fills a ref or selector. Quote refs in PowerShell, for example '@e2'.
+"##;
+
+const WAIT_HELP: &str = r##"
+Usage:
+  pire-browser wait 1000
+  pire-browser wait --selector "#done" --timeout 5000
+  pire-browser wait --text "Saved"
+  pire-browser wait --url "**/dashboard"
+"##;
+
+const CLIPBOARD_HELP: &str = r##"
+Usage:
+  pire-browser clipboard read
+  pire-browser clipboard write "hello"
+  pire-browser clipboard copy
+  pire-browser clipboard paste
+
+Reads and writes text clipboard contents through the Firefox extension.
+copy and paste use the active page selection or focused editable element and
+return a best-effort warning because native Ctrl+C/Ctrl+V handlers are not run.
+"##;
+
+const SCREENSHOT_HELP: &str = r##"
+Usage:
+  pire-browser screenshot out.png
+  pire-browser screenshot --screenshot-dir screenshots out.png
+
+Captures the visible viewport of the active Firefox tab.
+"##;
+
+const TABS_HELP: &str = r##"
+Usage:
+  pire-browser tabs list
+  pire-browser tabs new <url> [--label <name>]
+  pire-browser tabs select <tN-or-label>
+  pire-browser tabs close <tN-or-label>
+  pire-browser tabs label <tN> <label>
+"##;
+
+const SETUP_HELP: &str = r##"
+Usage:
+  pire-browser setup --windows [--firefox-path <path>]
+
+Registers the Firefox Native Messaging host for the current Windows user.
+"##;
+
+const LAUNCH_HELP: &str = r##"
+Usage:
+  pire-browser launch [--profile Default] [--url <url>] [--firefox-path <path>]
+
+Starts the managed Firefox profile and waits for the extension to connect.
+"##;
 
 pub fn build_command_request(args: Vec<String>) -> RpcRequest {
     RpcRequest {
@@ -262,6 +479,34 @@ mod tests {
             LocalCommand::Setup {
                 windows: true,
                 firefox_path: Some("C:/Firefox/firefox.exe".to_string())
+            }
+        );
+    }
+
+    #[test]
+    fn parses_empty_args_as_help() {
+        assert_eq!(
+            parse_cli_args(&[]).unwrap(),
+            LocalCommand::Help { topic: None }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["--help"])).unwrap(),
+            LocalCommand::Help { topic: None }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["help", "status"])).unwrap(),
+            LocalCommand::Help {
+                topic: Some("status".to_string())
+            }
+        );
+    }
+
+    #[test]
+    fn parses_command_help() {
+        assert_eq!(
+            parse_cli_args(&s(&["open", "--help"])).unwrap(),
+            LocalCommand::Help {
+                topic: Some("open".to_string())
             }
         );
     }
@@ -384,6 +629,33 @@ mod tests {
     fn parses_doctor_as_install_status() {
         let parsed = parse_cli_args(&s(&["doctor", "--json"])).unwrap();
         assert_eq!(parsed, LocalCommand::InstallStatus { json: true });
+    }
+
+    #[test]
+    fn parses_status_json() {
+        let parsed = parse_cli_args(&s(&["status", "--json"])).unwrap();
+        assert_eq!(parsed, LocalCommand::Status { json: true });
+        let parsed = parse_cli_args(&s(&["--json", "status"])).unwrap();
+        assert_eq!(parsed, LocalCommand::Status { json: true });
+    }
+
+    #[test]
+    fn parses_doctor_noop_flags_and_fix() {
+        let parsed = parse_cli_args(&s(&["doctor", "--offline", "--quick", "--json"])).unwrap();
+        assert_eq!(parsed, LocalCommand::InstallStatus { json: true });
+        let parsed = parse_cli_args(&s(&["doctor", "--fix", "--json"])).unwrap();
+        assert_eq!(parsed, LocalCommand::DoctorFix { json: true });
+    }
+
+    #[test]
+    fn help_text_includes_ref_quoting_guidance() {
+        let text = help_text(None).unwrap();
+        assert!(text.contains("click '@e4'"));
+        assert!(help_text(Some("status")).unwrap().contains("status"));
+        assert!(help_text(Some("clipboard"))
+            .unwrap()
+            .contains("clipboard read"));
+        assert!(help_text(Some("unknown")).is_none());
     }
 
     #[test]

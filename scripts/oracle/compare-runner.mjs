@@ -19,6 +19,7 @@ export async function runOracleCases({
   fixtureUrl,
   oracleRoot,
   runLogDir,
+  pireLocalAppDataRoot = join(oracleRoot, "pire-local-app-data"),
   timeoutMs,
   probeTimeoutMs,
   visibleRun = false,
@@ -33,11 +34,13 @@ export async function runOracleCases({
       agentBrowser,
       pireBrowser,
       oracleRoot,
+      pireLocalAppDataRoot,
     });
     const pireCtx = toolContext("pire-browser", testCase.id, fixtureUrl, {
       agentBrowser,
       pireBrowser,
       oracleRoot,
+      pireLocalAppDataRoot,
     });
     const invoke = createInvoker({
       runCommandImpl,
@@ -168,7 +171,7 @@ export function stateNeedsForAssertions(assertions) {
   };
 }
 
-function toolContext(tool, caseId, fixtureUrl, { agentBrowser, pireBrowser, oracleRoot }) {
+function toolContext(tool, caseId, fixtureUrl, { agentBrowser, pireBrowser, oracleRoot, pireLocalAppDataRoot }) {
   const session = `oracle-${tool}-${caseId}-${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, "-");
   if (tool === "agent-browser") {
     return {
@@ -190,7 +193,7 @@ function toolContext(tool, caseId, fixtureUrl, { agentBrowser, pireBrowser, orac
     executable: pireBrowser,
     globalArgs: useNamedPireSession ? ["--session", session] : [],
     env: {
-      LOCALAPPDATA: join(oracleRoot, "pire-local-app-data"),
+      LOCALAPPDATA: pireLocalAppDataRoot,
     },
     fixtureUrl,
     refs: {},

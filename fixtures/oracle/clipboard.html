@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Clipboard Fixture</title>
+  </head>
+  <body>
+    <h1>Clipboard Fixture</h1>
+    <p id="copy-source">pire-copy-selection-token</p>
+    <button id="select-copy" type="button">Select copy token</button>
+    <label for="paste-target">Paste target</label>
+    <input id="paste-target" autocomplete="off" />
+    <div id="selection-state" aria-live="polite"></div>
+    <script>
+      const source = document.getElementById("copy-source");
+      const button = document.getElementById("select-copy");
+      const state = document.getElementById("selection-state");
+
+      button.addEventListener("click", () => {
+        const range = document.createRange();
+        range.selectNodeContents(source);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        state.textContent = selection.toString();
+      });
+    </script>
+  </body>
+</html>

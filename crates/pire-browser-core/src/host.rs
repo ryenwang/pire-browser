@@ -18,7 +18,7 @@ use crate::native::{read_native_message, write_native_message};
 use crate::protocol::{
     NativeInbound, NativeOutbound, RpcError, RpcRequest, RpcResponse, EXTENSION_ID,
 };
-use crate::session::{now_ms, remove_session, write_session_atomic, SessionInfo};
+use crate::session::{now_ms, remove_session, write_session_atomic, ActivePageInfo, SessionInfo};
 use crate::transfer::{ResultTransferMeta, ScreenshotTransferMeta, TransferStore};
 
 #[derive(Clone)]
@@ -171,14 +171,7 @@ impl NativeBridge {
             }
             NativeInbound::Event { name, data } => {
                 let _ = self.session.update(|session| {
-                    let now = now_ms();
-                    session.last_heartbeat_at = now;
-                    if name == "focused" {
-                        session.last_focused_at = now;
-                    }
-                    if let Some(profile_id) = data.get("profileId").and_then(|v| v.as_str()) {
-                        session.profile_id = profile_id.to_string();
-                    }
+                    apply_session_event(session, &name, &data, now_ms());
                 });
             }
             NativeInbound::Response {
@@ -237,6 +230,20 @@ impl NativeBridge {
     }
 }
 
+fn apply_session_event(session: &mut SessionInfo, name: &str, data: &Value, now: u64) {
+    session.last_heartbeat_at = now;
+    if name == "focused" {
+        session.last_focused_at = now;
+    }
+    if let Some(profile_id) = data.get("profileId").and_then(|v| v.as_str()) {
+        session.profile_id = profile_id.to_string();
+    }
+    if let Some(active_page) = data.get("activePage") {
+        session.active_page =
+            serde_json::from_value::<Option<ActivePageInfo>>(active_page.clone()).unwrap_or(None);
+    }
+}
+
 pub fn run_native_host() -> Result<()> {
     let session_id = Uuid::new_v4().to_string();
     let pipe_name = pipe_name_for_session(&session_id)?;
@@ -250,6 +257,7 @@ pub fn run_native_host() -> Result<()> {
         started_at: now,
         last_heartbeat_at: now,
         last_focused_at: now,
+        active_page: None,
     };
     write_session_atomic(&session)?;
     let shared_session = SharedSession::new(session);
@@ -325,10 +333,12 @@ fn handle_pipe_line(bridge: &NativeBridge, line: &str) -> String {
 }
 
 fn handle_pipe_line_inner(bridge: &NativeBridge, line: &str) -> String {
+    let started_at = now_ms();
     let parsed = serde_json::from_str::<RpcRequest>(line);
     let response = match parsed {
         Ok(request) => {
-            log_host(&format!("dispatching method {}", request.method));
+            let session = bridge.session.snapshot();
+            log_host(&pipe_request_log(&request, &session));
             if request.method == "host_status" {
                 RpcResponse::ok(request.id, json!(bridge.session.snapshot()))
             } else {
@@ -341,10 +351,7 @@ fn handle_pipe_line_inner(bridge: &NativeBridge, line: &str) -> String {
             format!("failed to parse request JSON: {err}"),
         ),
     };
-    log_host(&format!(
-        "pipe response id={} ok={}",
-        response.id, response.ok
-    ));
+    log_host(&pipe_response_log(&response, started_at, now_ms()));
     serde_json::to_string(&response).unwrap_or_else(|err| {
         json!({
             "id": "invalid",
@@ -366,7 +373,44 @@ fn log_host(message: &str) {
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         use std::io::Write;
         let _ = writeln!(file, "{} {}", now_ms(), message);
+        let _ = file.flush();
     }
+}
+
+fn pipe_request_log(request: &RpcRequest, session: &SessionInfo) -> String {
+    format!(
+        "pipe request id={} method={} command_root={} session_id={} profile_id={}",
+        request.id,
+        request.method,
+        command_root_from_request(request),
+        session.session_id,
+        session.profile_id
+    )
+}
+
+fn pipe_response_log(response: &RpcResponse, started_at: u64, finished_at: u64) -> String {
+    let error_code = response
+        .error
+        .as_ref()
+        .map(|error| error.code.as_str())
+        .unwrap_or("");
+    format!(
+        "pipe response id={} ok={} duration_ms={} error_code={}",
+        response.id,
+        response.ok,
+        finished_at.saturating_sub(started_at),
+        error_code
+    )
+}
+
+fn command_root_from_request(request: &RpcRequest) -> &str {
+    request
+        .params
+        .get("args")
+        .and_then(|args| args.as_array())
+        .and_then(|args| args.first())
+        .and_then(|arg| arg.as_str())
+        .unwrap_or("")
 }
 
 fn native_outbound_request_log(id: &str) -> String {
@@ -391,5 +435,82 @@ mod tests {
         assert!(native_outbound_request_log(id).contains(id));
         assert!(native_inbound_response_log(id, true).contains(id));
         assert!(native_response_timeout_log(id).contains(id));
+    }
+
+    #[test]
+    fn pipe_debug_log_messages_include_session_command_and_error_metadata() {
+        let request = RpcRequest {
+            id: "rpc-456".into(),
+            method: "command".into(),
+            params: json!({ "args": ["open", "https://example.com"] }),
+        };
+        let session = SessionInfo {
+            session_id: "session-1".into(),
+            profile_id: "profile-1".into(),
+            pipe_name: "pipe".into(),
+            extension_id: "ext".into(),
+            extension_version: "1".into(),
+            started_at: 1,
+            last_heartbeat_at: 1,
+            last_focused_at: 1,
+            active_page: None,
+        };
+        let request_log = pipe_request_log(&request, &session);
+        assert!(request_log.contains("rpc-456"));
+        assert!(request_log.contains("command_root=open"));
+        assert!(request_log.contains("session_id=session-1"));
+        assert!(request_log.contains("profile_id=profile-1"));
+
+        let response = RpcResponse::err("rpc-456", "timeout", "timed out");
+        let response_log = pipe_response_log(&response, 100, 145);
+        assert!(response_log.contains("rpc-456"));
+        assert!(response_log.contains("duration_ms=45"));
+        assert!(response_log.contains("error_code=timeout"));
+    }
+
+    #[test]
+    fn session_events_update_active_page_metadata() {
+        let mut session = SessionInfo {
+            session_id: "session-1".into(),
+            profile_id: "pending".into(),
+            pipe_name: "pipe".into(),
+            extension_id: "ext".into(),
+            extension_version: "1".into(),
+            started_at: 1,
+            last_heartbeat_at: 1,
+            last_focused_at: 1,
+            active_page: None,
+        };
+
+        apply_session_event(
+            &mut session,
+            "focused",
+            &json!({
+                "profileId": "profile-1",
+                "activePage": {
+                    "agentId": "t1",
+                    "label": "docs",
+                    "title": "Docs",
+                    "url": "https://example.com",
+                    "tabId": 10,
+                    "windowId": 2,
+                    "updatedAt": 123
+                }
+            }),
+            200,
+        );
+
+        assert_eq!(session.profile_id, "profile-1");
+        assert_eq!(session.last_heartbeat_at, 200);
+        assert_eq!(session.last_focused_at, 200);
+        assert_eq!(session.active_page.as_ref().unwrap().agent_id, "t1");
+
+        apply_session_event(
+            &mut session,
+            "heartbeat",
+            &json!({ "activePage": null }),
+            300,
+        );
+        assert!(session.active_page.is_none());
     }
 }

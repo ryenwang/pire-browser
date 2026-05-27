@@ -10,6 +10,7 @@ import {
   verifyInstalledAgentBrowserVersion,
   writeJson,
 } from "./oracle-lib.mjs";
+import { redactDiagnosticText } from "./redaction.mjs";
 
 const shouldRun =
   process.env.ORACLE_PI_RUN === "1" ||
@@ -100,14 +101,14 @@ try {
     maxToolCalls,
     agentBrowser: {
       exitCode: agentResult.exitCode,
-      stdout: agentResult.stdout,
-      stderr: agentResult.stderr,
+      stdout: redactDiagnosticText(agentResult.stdout),
+      stderr: redactDiagnosticText(agentResult.stderr),
       timedOut: agentResult.timedOut,
     },
     pireBrowser: {
       exitCode: pireResult.exitCode,
-      stdout: pireResult.stdout,
-      stderr: pireResult.stderr,
+      stdout: redactDiagnosticText(pireResult.stdout),
+      stderr: redactDiagnosticText(pireResult.stderr),
       timedOut: pireResult.timedOut,
     },
   };

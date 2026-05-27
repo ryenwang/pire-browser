@@ -1064,7 +1064,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Migrated schema v2 compatibility claim: wait <ms>.",
+      "rationale": "Reviewed fixture-backed exact contract for wait <ms>; deterministic oracle coverage locks wait behavior, exit codes, and JSON envelope shape after normalization.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -1078,32 +1078,34 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Fixture-backed exact parity for wait <ms>; compare after normalization while preserving semantic success and timeout behavior.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-ms-dynamic"
+        ],
+        "reason": "Covered by deterministic oracle fixture."
       },
       "limitations": [],
       "migration": {
         "schemaV2Id": "wait <ms>"
       },
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "cmd-wait-selector",
       "kind": "compatibility_claim",
       "status": "exact",
       "disposition": "temporary_gap",
-      "ownerEpic": "Epic 3",
+      "ownerEpic": "Epic 2",
       "rationale": "Reviewed fixture-backed exact contract for wait <selector>; deterministic oracle coverage locks text/JSON/exit behavior after normalization.",
       "source": {
         "kind": "summary",
@@ -1146,7 +1148,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Migrated schema v2 compatibility claim: wait --text.",
+      "rationale": "Reviewed fixture-backed exact contract for wait --text; deterministic oracle coverage locks wait behavior, exit codes, and JSON envelope shape after normalization.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -1160,25 +1162,29 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Fixture-backed exact parity for wait --text; compare after normalization while preserving semantic success and timeout behavior.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
-          0
+          0,
+          124
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-text-dynamic",
+          "wait-timeout-json"
+        ],
+        "reason": "Covered by deterministic oracle fixture."
       },
       "limitations": [],
       "migration": {
         "schemaV2Id": "wait --text"
       },
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "cmd-wait-url",
@@ -1186,7 +1192,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Migrated schema v2 compatibility claim: wait --url.",
+      "rationale": "Reviewed fixture-backed exact contract for wait --url; deterministic oracle coverage locks wait behavior, exit codes, and JSON envelope shape after normalization.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -1200,33 +1206,37 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Fixture-backed exact parity for wait --url; compare after normalization while preserving semantic success and timeout behavior.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
-          0
+          0,
+          124
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-url-dynamic",
+          "wait-timeout-json"
+        ],
+        "reason": "Covered by deterministic oracle fixture."
       },
       "limitations": [],
       "migration": {
         "schemaV2Id": "wait --url"
       },
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "cmd-wait-fn",
       "kind": "compatibility_claim",
-      "status": "exact",
+      "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Migrated schema v2 compatibility claim: wait --fn.",
+      "rationale": "Reviewed fixture-backed best-effort contract for wait --fn; Firefox WebExtension content scripts evaluate in an isolated world, so page globals and framework state are not exact agent-browser parity.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -1240,33 +1250,37 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "wait --fn is supported for DOM-visible predicates in the content-script world, with documented Firefox/WebExtension caveats.",
+        "json": "Success envelope includes a contractual BEST_EFFORT_FIREFOX_GAP warning explaining isolated-world execution.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
-        "warningsContractual": false
+        "errorName": "Timeout failures must use the stable timeout class after normalization.",
+        "warningsContractual": true
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-fn-content-world-warning"
+        ],
+        "reason": "Covered by deterministic oracle fixture with contractual best-effort warning."
       },
-      "limitations": [],
+      "limitations": [
+        "Evaluates in the Firefox WebExtension content-script isolated world; page globals and framework internals may not be visible."
+      ],
       "migration": {
         "schemaV2Id": "wait --fn"
       },
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "cmd-wait-selector-state-hidden",
       "kind": "compatibility_claim",
       "status": "exact",
       "disposition": "temporary_gap",
-      "ownerEpic": "Epic 4",
-      "rationale": "Migrated schema v2 compatibility claim: wait <selector> --state hidden.",
+      "ownerEpic": "Epic 2",
+      "rationale": "Reviewed fixture-backed exact contract for wait <selector> --state hidden; deterministic oracle coverage locks wait behavior, exit codes, and JSON envelope shape after normalization.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -1280,25 +1294,27 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Fixture-backed exact parity for wait <selector> --state hidden; compare after normalization while preserving semantic success and timeout behavior.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Existing compatibility claim; deterministic oracle case has not been migrated yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-selector-hidden-dynamic"
+        ],
+        "reason": "Covered by deterministic oracle fixture."
       },
       "limitations": [],
       "migration": {
         "schemaV2Id": "wait <selector> --state hidden"
       },
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "cmd-get-text-html-value-attr",
@@ -2932,10 +2948,10 @@
     {
       "id": "cmd-clipboard",
       "kind": "compatibility_claim",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "permanent_firefox_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Migrated schema v2 compatibility claim: clipboard.",
+      "rationale": "Reviewed fixture-backed clipboard contract: read/write are exact text clipboard operations, while copy/paste are useful Firefox extension equivalents with explicit native-handler caveats.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -2949,32 +2965,32 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Fixture-backed clipboard command support for text read/write plus selection copy and focused paste with documented Firefox warnings.",
+        "json": "Success envelopes expose read values and warning envelopes for copy/paste; failures keep stable error names for invalid selection, focus, or clipboard API failures.",
         "exitCode": [
-          78
+          0
         ],
-        "errorName": "NotAvailableError",
-        "warningsContractual": false
+        "errorName": "InvalidArgumentError for invalid selection/focus; ClipboardError for browser clipboard API failures.",
+        "warningsContractual": true
       },
       "coverage": {
-        "state": "not_comparable",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "clipboard-write-read",
+          "clipboard-copy-selection",
+          "clipboard-paste-focused"
+        ],
+        "reason": "Covered by deterministic clipboard oracle fixtures for text read/write and best-effort page copy/paste."
       },
       "limitations": [
-        "Feature is intentionally unavailable or not started on the Firefox WebExtension backend."
+        "copy and paste use the Firefox extension clipboard API plus page selection or DOM insertion; native Ctrl+C/Ctrl+V and custom page clipboard handlers are not invoked.",
+        "Text clipboard only; rich content, images, files, and OS-level clipboard events are out of scope."
       ],
       "migration": {
         "schemaV2Id": "clipboard"
       },
-      "contractReviewed": false,
-      "runtime": {
-        "unsupportedRoots": [
-          "clipboard"
-        ]
-      }
+      "contractReviewed": true
     },
     {
       "id": "cmd-set-viewport-device-geo-offline-headers-credentials-media",
@@ -6530,8 +6546,8 @@
       "kind": "documented_checklist_item",
       "status": "exact",
       "disposition": "temporary_gap",
-      "ownerEpic": "Epic 6",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "ownerEpic": "Epic 2",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-url; coverage rolls up to the fixture-backed wait --url contract.",
       "source": {
         "kind": "docs",
         "path": "03-quick-start.md",
@@ -6548,22 +6564,27 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-url; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
-          0
+          0,
+          124
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-url-dynamic",
+          "wait-timeout-json"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-url; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-url"
     },
     {
       "id": "doc-quick-start-018-agent-browser-wait-2000-wait-milliseconds",
@@ -6571,7 +6592,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-ms; coverage rolls up to the fixture-backed wait <ms> contract.",
       "source": {
         "kind": "docs",
         "path": "03-quick-start.md",
@@ -6586,22 +6607,25 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-ms; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-ms-dynamic"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-ms; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-ms"
     },
     {
       "id": "doc-quick-start-019-agent-browser-open-example-com-agent-browser-wait-load-networkidle-agent",
@@ -9804,8 +9828,8 @@
       "kind": "documented_checklist_item",
       "status": "exact",
       "disposition": "temporary_gap",
-      "ownerEpic": "Epic 3",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "ownerEpic": "Epic 2",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-selector; coverage rolls up to the fixture-backed wait <selector> contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -9820,8 +9844,8 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-selector; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success envelope for JSON-covered cases when applicable; command data must retain documented fields.",
         "exitCode": [
           0
         ],
@@ -9829,13 +9853,16 @@
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-selector"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-selector; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-selector"
     },
     {
       "id": "doc-commands-066-agent-browser-wait-ms-wait-for-time",
@@ -9843,7 +9870,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-ms; coverage rolls up to the fixture-backed wait <ms> contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -9858,22 +9885,25 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-ms; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-ms-dynamic"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-ms; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-ms"
     },
     {
       "id": "doc-commands-067-agent-browser-wait-text-welcome-wait-for-text-substring-match",
@@ -9881,7 +9911,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-text; coverage rolls up to the fixture-backed wait --text contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -9898,22 +9928,27 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-text; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
-          0
+          0,
+          124
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-text-dynamic",
+          "wait-timeout-json"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-text; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-text"
     },
     {
       "id": "doc-commands-068-agent-browser-wait-url-dash-wait-for-url-pattern",
@@ -9921,7 +9956,7 @@
       "status": "exact",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-url; coverage rolls up to the fixture-backed wait --url contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -9938,22 +9973,27 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-url; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
-          0
+          0,
+          124
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-url-dynamic",
+          "wait-timeout-json"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-url; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-url"
     },
     {
       "id": "doc-commands-069-agent-browser-wait-load-networkidle-wait-for-load-state",
@@ -10000,10 +10040,10 @@
     {
       "id": "doc-commands-070-agent-browser-wait-fn-condition-wait-for-js-condition",
       "kind": "documented_checklist_item",
-      "status": "exact",
+      "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-fn; coverage rolls up to the fixture-backed wait --fn contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -10020,22 +10060,25 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-fn; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Success envelope includes a contractual BEST_EFFORT_FIREFOX_GAP warning explaining isolated-world execution.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
-        "warningsContractual": false
+        "errorName": "Timeout failures must use the stable timeout class after normalization.",
+        "warningsContractual": true
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-fn-content-world-warning"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-fn; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-fn"
     },
     {
       "id": "doc-commands-071-agent-browser-wait-download-path-wait-for-download",
@@ -10082,10 +10125,10 @@
     {
       "id": "doc-commands-072-agent-browser-wait-fn-document-body-innertext-includes-loading-wait-for-",
       "kind": "documented_checklist_item",
-      "status": "exact",
+      "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 2",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-fn; coverage rolls up to the fixture-backed wait --fn contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -10102,30 +10145,33 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-fn; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Success envelope includes a contractual BEST_EFFORT_FIREFOX_GAP warning explaining isolated-world execution.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
-        "warningsContractual": false
+        "errorName": "Timeout failures must use the stable timeout class after normalization.",
+        "warningsContractual": true
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-fn-content-world-warning"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-fn; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-fn"
     },
     {
       "id": "doc-commands-073-agent-browser-wait-spinner-state-hidden-wait-for-element-to-disappear",
       "kind": "documented_checklist_item",
       "status": "exact",
       "disposition": "temporary_gap",
-      "ownerEpic": "Epic 4",
-      "rationale": "Mirrored checklist inventory item with source status [F]. Compatibility can improve only with fixture coverage.",
+      "ownerEpic": "Epic 2",
+      "rationale": "Reviewed duplicate documentation surface for cmd-wait-selector-state-hidden; coverage rolls up to the fixture-backed wait <selector> --state hidden contract.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -10142,22 +10188,25 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Semantic parity after documented normalization.",
-        "json": "Success envelope with data and warnings array.",
+        "text": "Covered through canonical fixture-backed contract cmd-wait-selector-state-hidden; this row preserves the documented command surface without duplicating fixtures.",
+        "json": "Validated success and/or error envelope for JSON-covered cases; command data must retain documented fields.",
         "exitCode": [
           0
         ],
-        "errorName": "Must match documented failure class after normalization.",
+        "errorName": "Timeout and target failures must match documented failure class after normalization.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "wait-selector-hidden-dynamic"
+        ],
+        "reason": "Covered by canonical compatibility item cmd-wait-selector-state-hidden; duplicate documentation surface reviewed for command-root parity."
       },
       "limitations": [],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-wait-selector-state-hidden"
     },
     {
       "id": "doc-commands-074-agent-browser-download-sel-path-click-element-to-trigger-download",
@@ -10404,17 +10453,17 @@
     {
       "id": "doc-commands-080-agent-browser-clipboard-read-read-text-from-clipboard",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "exact",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed fixture-backed exact contract for clipboard read; deterministic oracle coverage locks raw text output and JSON data fields.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Clipboard",
         "anchor": "clipboard",
         "checklist": "`agent-browser clipboard read` - Read text from clipboard",
-        "docStatus": "blank"
+        "docStatus": "F"
       },
       "command": {
         "primary": "clipboard",
@@ -10422,39 +10471,39 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Raw clipboard text is printed in plain output.",
+        "json": "Success envelope contains data.text, data.value, and data.length for automation.",
         "exitCode": [
-          78
+          0
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "ClipboardError for browser clipboard API failures.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "clipboard-write-read"
+        ],
+        "reason": "Covered by deterministic clipboard write/read round-trip fixture."
       },
-      "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
-      ],
-      "contractReviewed": false
+      "limitations": [],
+      "contractReviewed": true
     },
     {
       "id": "doc-commands-081-agent-browser-clipboard-write-hello-world-write-text-to-clipboard",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "exact",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed fixture-backed exact contract for clipboard write; deterministic oracle coverage locks text round-trip behavior without echoing written contents on success.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Clipboard",
         "anchor": "clipboard",
         "checklist": "`agent-browser clipboard write \"Hello, World!\"` - Write text to clipboard",
-        "docStatus": "blank"
+        "docStatus": "F"
       },
       "command": {
         "primary": "clipboard",
@@ -10462,39 +10511,39 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Success output reports the number of characters written without echoing clipboard contents.",
+        "json": "Success envelope contains character-count metadata and no secret value echo.",
         "exitCode": [
-          78
+          0
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "InvalidArgumentError for missing text; ClipboardError for browser clipboard API failures.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "clipboard-write-read"
+        ],
+        "reason": "Covered by deterministic clipboard write/read round-trip fixture."
       },
-      "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
-      ],
-      "contractReviewed": false
+      "limitations": [],
+      "contractReviewed": true
     },
     {
       "id": "doc-commands-082-agent-browser-clipboard-copy-copy-current-selection-ctrl-c",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "permanent_firefox_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed fixture-backed best-effort contract for clipboard copy; Firefox copies selected text through the extension clipboard API instead of native Ctrl+C.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Clipboard",
         "anchor": "clipboard",
         "checklist": "`agent-browser clipboard copy` - Copy current selection (Ctrl+C)",
-        "docStatus": "blank"
+        "docStatus": "P"
       },
       "command": {
         "primary": "clipboard",
@@ -10502,39 +10551,41 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Success output reports copied character count without echoing selected text.",
+        "json": "Success envelope includes a BEST_EFFORT_FIREFOX_GAP warning for the native-handler limitation.",
         "exitCode": [
-          78
+          0
         ],
-        "errorName": "NotAvailableError",
-        "warningsContractual": false
+        "errorName": "InvalidArgumentError when no non-empty selection exists; ClipboardError for browser clipboard API failures.",
+        "warningsContractual": true
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "clipboard-copy-selection"
+        ],
+        "reason": "Covered by deterministic selection-copy fixture with warning assertion."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Does not invoke native Ctrl+C or page custom clipboard event handlers; it copies the current selected text through the extension clipboard API."
       ],
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "doc-commands-083-agent-browser-clipboard-paste-paste-from-clipboard-ctrl-v",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "permanent_firefox_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed fixture-backed best-effort contract for clipboard paste; Firefox inserts clipboard text into the focused editable element without native Ctrl+V handlers.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Clipboard",
         "anchor": "clipboard",
         "checklist": "`agent-browser clipboard paste` - Paste from clipboard (Ctrl+V)",
-        "docStatus": "blank"
+        "docStatus": "P"
       },
       "command": {
         "primary": "clipboard",
@@ -10542,24 +10593,26 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Success output reports pasted character count without echoing clipboard contents.",
+        "json": "Success envelope includes a BEST_EFFORT_FIREFOX_GAP warning for the native-handler limitation.",
         "exitCode": [
-          78
+          0
         ],
-        "errorName": "NotAvailableError",
-        "warningsContractual": false
+        "errorName": "InvalidArgumentError when no editable target is focused; ClipboardError for browser clipboard API failures.",
+        "warningsContractual": true
       },
       "coverage": {
-        "state": "uncovered",
-        "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "state": "covered",
+        "tapeCovered": true,
+        "cases": [
+          "clipboard-paste-focused"
+        ],
+        "reason": "Covered by deterministic focused-input paste fixture with warning assertion."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Does not invoke native Ctrl+V or page custom clipboard event handlers; it inserts text into focused input, textarea, or contenteditable targets."
       ],
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "doc-commands-084-agent-browser-set-viewport-w-h-scale-set-viewport-size-scale-for-retina-",

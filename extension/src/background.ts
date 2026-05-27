@@ -69,23 +69,49 @@ type DialogRecord = {
   at: number;
 };
 
-type TabRecord = {
+type PageRecord = {
   tabId: number;
+  windowId: number;
   agentId: string;
   label?: string;
   url?: string;
   title?: string;
   active?: boolean;
-  windowId?: number;
   closed?: boolean;
+  controlled?: boolean;
+};
+
+type TabRecord = PageRecord;
+type ControlledClosePlan = { windowIds: number[]; tabIds: number[] };
+type ActivePageSummary = {
+  agentId: string;
+  label?: string;
+  title?: string;
+  url?: string;
+  tabId: number;
+  windowId: number;
+  updatedAt: number;
+};
+
+type ClipboardFrameResult = {
+  handled?: boolean;
+  focused?: boolean;
+  pasted?: boolean;
+  text?: string;
+  length?: number;
+  reason?: string;
+  dialogs?: DialogRecord[];
 };
 
 const HOST_NAME = "dev.pi.pire_browser";
 const CHUNK_SIZE = 700_000;
+const CLOSE_TEARDOWN_DELAY_MS = 0;
 
 let port: any;
 let profileId = "";
 let nextTabNumber = 1;
+let controlledCloseScheduled = false;
+let nativeReconnectEnabled = true;
 const tabsByBrowserId = new Map<number, TabRecord>();
 const tabsByAgentId = new Map<string, TabRecord>();
 const labels = new Map<string, string>();
@@ -95,6 +121,7 @@ connectNative();
 registerBrowserListeners();
 
 function connectNative() {
+  if (!nativeReconnectEnabled) return;
   console.log("[pire-browser] connecting native host", HOST_NAME);
   try {
     port = browser.runtime.connectNative(HOST_NAME);
@@ -107,6 +134,7 @@ function connectNative() {
   port.onDisconnect.addListener(() => {
     const lastError = browser.runtime.lastError;
     if (lastError) console.error("[pire-browser] native host disconnected", lastError.message);
+    if (!nativeReconnectEnabled) return;
     setTimeout(connectNative, 1000);
   });
 
@@ -118,8 +146,8 @@ function connectNative() {
       extension_id: browser.runtime.id,
       extension_version: browser.runtime.getManifest().version,
     });
-    postEvent("focused", {});
-    setInterval(() => postEvent("heartbeat", {}), 5000);
+    void postSessionEvent("focused", {});
+    setInterval(() => void postSessionEvent("heartbeat", {}), 5000);
   });
 }
 
@@ -148,6 +176,25 @@ function postEvent(name: string, data: Record<string, unknown>) {
     data: { ...data, profileId },
   };
   postNative(event);
+}
+
+async function postSessionEvent(name: string, data: Record<string, unknown>) {
+  postEvent(name, { ...data, activePage: await activePageSummary() });
+}
+
+async function activePageSummary(): Promise<ActivePageSummary | null> {
+  const active = await activeTab().catch(() => undefined);
+  if (typeof active?.id !== "number" || typeof active.windowId !== "number") return null;
+  const record = rememberTab(active);
+  return {
+    agentId: record.agentId,
+    label: record.label,
+    title: record.title,
+    url: record.url,
+    tabId: record.tabId,
+    windowId: record.windowId,
+    updatedAt: Date.now(),
+  };
 }
 
 async function handleNativeMessage(message: any) {
@@ -257,13 +304,14 @@ async function executeCommand(args: string[]): Promise<Record<string, unknown>> 
       return cookiesCommand(rest);
     case "storage":
       return storageCommand(rest);
+    case "clipboard":
+      return clipboardCommand(rest);
     case "install":
     case "upgrade":
     case "download":
     case "drag":
     case "upload":
     case "mouse":
-    case "clipboard":
     case "set":
     case "network":
     case "stream":
@@ -297,7 +345,7 @@ async function executeCommand(args: string[]): Promise<Record<string, unknown>> 
     case "close":
     case "quit":
     case "exit":
-      window.close();
+      scheduleControlledClose();
       return { text: "pire-browser extension close requested" };
     default:
       return {
@@ -329,16 +377,16 @@ async function openCommand(args: string[], command = "open") {
   const loadedTab = await browser.tabs.get(tab.id);
   const record = rememberTab(loadedTab);
   if (label) setLabel(record, label);
+  await activatePage(record);
   return { text: `Opened ${url} in ${record.agentId}${label ? ` (${label})` : ""}`, tab: record };
 }
 
-async function snapshotCommand(args: string[]) {
+async function snapshotCommand(_args: string[]) {
   const tab = await targetTab();
   const frames = await snapshotTab(tab.tabId);
   refs.clear();
   let refNumber = 1;
   const lines: string[] = [`${tab.agentId} ${tab.title || tab.url || ""}`.trim()];
-  const interactive = args.includes("-i") || args.includes("--interactive");
 
   for (const frame of frames) {
     if (frame.opaque) {
@@ -354,9 +402,7 @@ async function snapshotCommand(args: string[]) {
         locator: element.locator,
         summary: summarizeElement(element),
       });
-      if (interactive) {
-        lines.push(`  ${ref} ${summarizeElement(element)}`);
-      }
+      lines.push(`  ${ref} ${summarizeElement(element)}`);
     }
   }
 
@@ -410,7 +456,7 @@ async function targetActionCommand(action: string, args: string[]) {
   const payload: Record<string, unknown> = { type: action, locator: locator.locator };
   if (action === "type") payload.text = text;
   if (action === "select") payload.value = text;
-  const response = await sendFrame(tab.tabId, locator.frameId, payload);
+  const response = await sendFrame(tab.tabId, locator.frameId, payload, { staleOnFrameRoutingError: true });
   return normalizeContentResponse(response);
 }
 
@@ -423,22 +469,22 @@ async function actOnFind(locator: Locator, action: string, text = "") {
   if (action === "click") return clickLocator(locator, matches[0]);
   if (action === "fill") return fillLocator(locator, text, matches[0]);
   if (["text", "html", "value", "attr", "box", "styles"].includes(action)) {
-    const response = await sendFrame(tab.tabId, matches[0], { type: "get", locator, property: action, attribute: text });
+    const response = await sendFrame(tab.tabId, matches[0], { type: "get", locator, property: action, attribute: text }, { staleOnFrameRoutingError: true });
     return normalizeContentResponse(response);
   }
-  const response = await sendFrame(tab.tabId, matches[0], { type: action, locator, text, value: text, property: action });
+  const response = await sendFrame(tab.tabId, matches[0], { type: action, locator, text, value: text, property: action }, { staleOnFrameRoutingError: true });
   return normalizeContentResponse(response);
 }
 
 async function clickLocator(locator: Locator, frameId?: number) {
   const tab = await targetTab();
-  const response = await sendFrame(tab.tabId, frameId, { type: "click", locator });
+  const response = await sendFrame(tab.tabId, frameId, { type: "click", locator }, { staleOnFrameRoutingError: true });
   return normalizeContentResponse(response);
 }
 
 async function fillLocator(locator: Locator, text: string, frameId?: number) {
   const tab = await targetTab();
-  const response = await sendFrame(tab.tabId, frameId, { type: "fill", locator, text });
+  const response = await sendFrame(tab.tabId, frameId, { type: "fill", locator, text }, { staleOnFrameRoutingError: true });
   return normalizeContentResponse(response);
 }
 
@@ -546,7 +592,7 @@ async function getCommand(args: string[]) {
   const locator = locatorFromTarget(target);
   if ("error" in locator) return locator;
   const tab = await targetTab();
-  const response = await sendFrame(tab.tabId, locator.frameId, { type: "get", locator: locator.locator, property, attribute });
+  const response = await sendFrame(tab.tabId, locator.frameId, { type: "get", locator: locator.locator, property, attribute }, { staleOnFrameRoutingError: true });
   return normalizeContentResponse(response);
 }
 
@@ -556,7 +602,7 @@ async function isCommand(args: string[]) {
   const locator = locatorFromTarget(target);
   if ("error" in locator) return locator;
   const tab = await targetTab();
-  const response = await sendFrame(tab.tabId, locator.frameId, { type: "is", locator: locator.locator, state });
+  const response = await sendFrame(tab.tabId, locator.frameId, { type: "is", locator: locator.locator, state }, { staleOnFrameRoutingError: true });
   return normalizeContentResponse(response);
 }
 
@@ -575,8 +621,7 @@ async function screenshotCommand(args: string[]) {
   const positional = firstPositionalArg(args, ["--screenshot-dir", "--screenshot-format", "--screenshot-quality"]);
   const path = dir && positional && !/[\\/]/.test(positional) ? `${dir.replace(/[\\/]$/, "")}/${positional}` : positional ?? `pire-browser-screenshot-${Date.now()}.${format === "jpeg" ? "jpg" : "png"}`;
   const tab = await targetTab();
-  await browser.tabs.update(tab.tabId, { active: true });
-  await browser.windows.update(tab.windowId, { focused: true });
+  await activatePage(tab);
   const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, { format, quality });
   const meta = await sendScreenshotChunks(dataUrl);
   return {
@@ -662,6 +707,133 @@ async function storageCommand(args: string[]) {
   return { ...result, warnings: mergeWarnings((result as any).warnings, [bestEffortWarning("storage", "Storage commands execute in the page context for the active origin.")]) };
 }
 
+async function clipboardCommand(args: string[]) {
+  const [subcommand, ...rest] = args;
+  if (subcommand === "read") {
+    const read = await readClipboardText();
+    if ("error" in read) return read;
+    return { text: read.text, value: read.text, length: read.text.length };
+  }
+  if (subcommand === "write") {
+    if (rest.length === 0) {
+      return { error: { code: "InvalidArgumentError", message: "clipboard write requires <text>" } };
+    }
+    const text = rest.join(" ");
+    const written = await writeClipboardText(text);
+    if ("error" in written) return written;
+    return { text: `Wrote ${text.length} character(s) to clipboard`, length: text.length };
+  }
+  if (subcommand === "copy") {
+    const selection = await selectedTextFromActiveTab();
+    if (!selection?.text) {
+      return { error: { code: "InvalidArgumentError", message: "clipboard copy requires a non-empty current selection" } };
+    }
+    const written = await writeClipboardText(selection.text);
+    if ("error" in written) return written;
+    return {
+      text: `Copied ${selection.text.length} character(s) from selection`,
+      length: selection.text.length,
+      warnings: [
+        bestEffortWarning(
+          "clipboard copy",
+          "Copied the current page selection through the Firefox extension clipboard API; native Ctrl+C and custom page clipboard handlers were not invoked."
+        ),
+      ],
+      dialogs: selection.dialogs ?? [],
+    };
+  }
+  if (subcommand === "paste") {
+    const read = await readClipboardText();
+    if ("error" in read) return read;
+    const pasted = await pasteTextIntoFocusedFrame(read.text);
+    if (!pasted) {
+      return {
+        error: {
+          code: "InvalidArgumentError",
+          message: "clipboard paste requires a focused editable element; click or focus an input, textarea, or contenteditable target first",
+        },
+      };
+    }
+    return {
+      text: `Pasted ${read.text.length} character(s) into focused element`,
+      length: read.text.length,
+      warnings: [
+        bestEffortWarning(
+          "clipboard paste",
+          "Inserted clipboard text through the Firefox extension; native Ctrl+V and custom page clipboard handlers were not invoked."
+        ),
+      ],
+      dialogs: pasted.dialogs ?? [],
+    };
+  }
+  return { error: { code: "InvalidArgumentError", message: "clipboard requires read|write|copy|paste" } };
+}
+
+async function readClipboardText(): Promise<{ text: string } | { error: Record<string, unknown> }> {
+  if (!navigator.clipboard?.readText) {
+    return notAvailable("clipboard read", "Firefox did not expose navigator.clipboard.readText to the extension context.");
+  }
+  try {
+    return { text: await navigator.clipboard.readText() };
+  } catch (error) {
+    return {
+      error: {
+        code: "ClipboardError",
+        message: `Failed to read clipboard text: ${error instanceof Error ? error.message : String(error)}`,
+      },
+    };
+  }
+}
+
+async function writeClipboardText(text: string): Promise<{ ok: true } | { error: Record<string, unknown> }> {
+  if (!navigator.clipboard?.writeText) {
+    return notAvailable("clipboard write", "Firefox did not expose navigator.clipboard.writeText to the extension context.");
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    return { ok: true };
+  } catch (error) {
+    return {
+      error: {
+        code: "ClipboardError",
+        message: `Failed to write clipboard text: ${error instanceof Error ? error.message : String(error)}`,
+      },
+    };
+  }
+}
+
+async function selectedTextFromActiveTab(): Promise<ClipboardFrameResult | null> {
+  const tab = await targetTab();
+  const responses = await clipboardFrameResponses(tab.tabId, { type: "clipboard_selection" });
+  const withText = responses.filter((response) => typeof response.text === "string" && response.text.length > 0);
+  return withText.find((response) => response.focused) ?? withText[0] ?? null;
+}
+
+async function pasteTextIntoFocusedFrame(text: string): Promise<ClipboardFrameResult | null> {
+  const tab = await targetTab();
+  const responses = await clipboardFrameResponses(tab.tabId, { type: "clipboard_paste", text });
+  return responses.find((response) => response.pasted) ?? null;
+}
+
+async function clipboardFrameResponses(tabId: number, message: Record<string, unknown>): Promise<ClipboardFrameResult[]> {
+  const frames = await frameIdsForTab(tabId);
+  const responses: ClipboardFrameResult[] = [];
+  for (const frameId of frames) {
+    try {
+      const response = (await sendFrame(tabId, frameId, message)) as ClipboardFrameResult;
+      if (response?.handled || response?.pasted || response?.text) responses.push(response);
+    } catch {
+      // Cross-origin or restricted frames can reject extension messages.
+    }
+  }
+  return responses;
+}
+
+async function frameIdsForTab(tabId: number): Promise<number[]> {
+  const frames = await browser.webNavigation.getAllFrames({ tabId }).catch(() => [{ frameId: 0 }]);
+  return frames.map((frame: any) => frame.frameId).filter((frameId: unknown): frameId is number => typeof frameId === "number");
+}
+
 async function tabsCommand(args: string[]) {
   const [subcommand, target, value] = args;
   await reconcileTabs();
@@ -675,15 +847,14 @@ async function tabsCommand(args: string[]) {
     const label = valueAfter(args, "--label");
     const url = firstPositionalArg(args.slice(1), ["--label"]);
     const created = await browser.tabs.create({ url: url || "about:blank", active: true });
-    const record = rememberTab(created);
+    const record = markControlledPage(rememberTab(created));
     if (label) setLabel(record, label);
     return { text: `Opened ${record.agentId}${label ? ` (${label})` : ""}`, tab: record };
   }
   if (subcommand === "select" || findTab(subcommand)) {
     const tab = findTab(subcommand === "select" ? target : subcommand);
     if (!tab) return { error: { code: "tab_closed", message: `No live tab found: ${target}` } };
-    await browser.tabs.update(tab.tabId, { active: true });
-    await browser.windows.update(tab.windowId, { focused: true });
+    await activatePage(tab);
     return { text: `Selected ${tab.agentId}` };
   }
   if (subcommand === "close") {
@@ -744,9 +915,32 @@ async function findInTab(tabId: number, locator: Locator): Promise<FrameSnapshot
   return out;
 }
 
-async function sendFrame(tabId: number, frameId: number | undefined, message: Record<string, unknown>) {
-  const options = typeof frameId === "number" ? { frameId } : undefined;
-  return browser.tabs.sendMessage(tabId, message, options);
+async function sendFrame(
+  tabId: number,
+  frameId: number | undefined,
+  message: Record<string, unknown>,
+  behavior: { staleOnFrameRoutingError?: boolean } = {}
+) {
+  const target = typeof frameId === "number" ? { frameId } : undefined;
+  try {
+    return await browser.tabs.sendMessage(tabId, message, target);
+  } catch (error) {
+    if (behavior.staleOnFrameRoutingError && typeof frameId === "number" && isFrameRoutingError(error)) {
+      return {
+        error: {
+          code: "ref_stale",
+          message: `Frame ${frameId} is not available; run snapshot or find again`,
+        },
+        dialogs: [],
+      };
+    }
+    throw error;
+  }
+}
+
+function isFrameRoutingError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /frame.*not found|receiving end does not exist|could not establish connection|no matching message handler/i.test(message);
 }
 
 function parseFind(args: string[]):
@@ -820,21 +1014,35 @@ async function waitForUrl(pattern: string, timeout: number) {
   const tab = await targetTab();
   const matches = (url?: string) => Boolean(url && globToRegExp(pattern).test(url));
   if (matches(tab.url)) return { text: `URL matched ${pattern}` };
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
+  return new Promise<Record<string, unknown>>((resolve) => {
+    let settled = false;
+    const cleanup = () => {
+      clearTimeout(timer);
+      clearInterval(poll);
       browser.tabs.onUpdated.removeListener(listener);
-      reject(new Error(`Timed out waiting for URL: ${pattern}`));
-    }, timeout);
+    };
+    const settle = (result: Record<string, unknown>) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+    const checkCurrent = async () => {
+      const current = await browser.tabs.get(tab.tabId).catch(() => null);
+      if (matches(current?.url)) settle({ text: `URL matched ${pattern}` });
+    };
     const listener = (tabId: number, changeInfo: any, updatedTab: any) => {
       if (tabId === tab.tabId && matches(changeInfo.url ?? updatedTab.url)) {
-        clearTimeout(timer);
-        browser.tabs.onUpdated.removeListener(listener);
-        resolve();
+        settle({ text: `URL matched ${pattern}` });
       }
     };
+    const timer = setTimeout(() => {
+      settle({ error: { code: "timeout", message: `Timed out waiting for URL: ${pattern}` } });
+    }, timeout);
+    const poll = setInterval(() => void checkCurrent(), 100);
     browser.tabs.onUpdated.addListener(listener);
+    void checkCurrent();
   });
-  return { text: `URL matched ${pattern}` };
 }
 
 function notAvailable(feature: string, message: string) {
@@ -903,17 +1111,21 @@ async function activeTab(): Promise<any | undefined> {
 async function targetTab(): Promise<TabRecord> {
   await reconcileTabs();
   const active = await activeTab();
-  if (active?.id) return rememberTab(active);
+  if (active?.id) return markControlledPage(rememberTab(active));
   const first = Array.from(tabsByAgentId.values()).find((tab) => !tab.closed);
-  if (first) return first;
+  if (first) return markControlledPage(first);
   throw new Error("tab_closed: no active tab available");
 }
 
 function rememberTab(tab: any): TabRecord {
+  if (typeof tab.id !== "number" || typeof tab.windowId !== "number") {
+    throw new Error("tab_missing_id: Firefox tab is missing tabId or windowId");
+  }
   let record = tabsByBrowserId.get(tab.id);
   if (!record) {
     record = {
       tabId: tab.id,
+      windowId: tab.windowId,
       agentId: `t${nextTabNumber++}`,
       label: labels.get(String(tab.id)),
     };
@@ -926,6 +1138,98 @@ function rememberTab(tab: any): TabRecord {
   record.windowId = tab.windowId;
   record.closed = false;
   return record;
+}
+
+async function activatePage(page: PageRecord) {
+  markControlledPage(page);
+  await browser.windows.update(page.windowId, { focused: true });
+  await browser.tabs.update(page.tabId, { active: true });
+}
+
+function markControlledPage<T extends PageRecord>(page: T): T {
+  page.controlled = true;
+  return page;
+}
+
+function scheduleControlledClose() {
+  if (controlledCloseScheduled) return;
+  controlledCloseScheduled = true;
+  setTimeout(() => {
+    controlledCloseScheduled = false;
+    void closeControlledSurfaces().catch((error) => {
+      console.error("[pire-browser] controlled close failed", error);
+    });
+  }, CLOSE_TEARDOWN_DELAY_MS);
+}
+
+async function closeControlledSurfaces() {
+  await reconcileTabs();
+  const liveTabs = await browser.tabs.query({});
+  const controlledTabIds = new Set(
+    Array.from(tabsByBrowserId.values())
+      .filter((tab) => tab.controlled && !tab.closed)
+      .map((tab) => tab.tabId)
+  );
+  const active = await activeTab();
+  const fallbackTabId = typeof active?.id === "number" ? active.id : undefined;
+  const plan = planControlledClose(liveTabs, controlledTabIds, fallbackTabId);
+
+  if (plan.windowIds.length > 0) {
+    disconnectNativeForControlledClose();
+  }
+  for (const windowId of plan.windowIds) {
+    await browser.windows.remove(windowId);
+  }
+  if (plan.tabIds.length > 0) {
+    await browser.tabs.remove(plan.tabIds);
+  }
+  for (const tabId of [...plan.tabIds, ...tabsInWindows(liveTabs, plan.windowIds)]) {
+    const record = tabsByBrowserId.get(tabId);
+    if (record) record.closed = true;
+  }
+}
+
+function planControlledClose(liveTabs: any[], controlledTabIds: Set<number>, fallbackTabId?: number): ControlledClosePlan {
+  const tabsByWindow = new Map<number, any[]>();
+  for (const tab of liveTabs) {
+    if (typeof tab.id !== "number" || typeof tab.windowId !== "number") continue;
+    const tabs = tabsByWindow.get(tab.windowId) ?? [];
+    tabs.push(tab);
+    tabsByWindow.set(tab.windowId, tabs);
+  }
+
+  const windowIds: number[] = [];
+  const tabIds: number[] = [];
+  for (const [windowId, windowTabs] of tabsByWindow) {
+    const controlledTabs = windowTabs.filter((tab) => controlledTabIds.has(tab.id));
+    if (controlledTabs.length === 0) continue;
+    if (windowTabs.every((tab) => controlledTabIds.has(tab.id))) {
+      windowIds.push(windowId);
+    } else {
+      tabIds.push(...controlledTabs.map((tab) => tab.id));
+    }
+  }
+
+  if (windowIds.length === 0 && tabIds.length === 0 && typeof fallbackTabId === "number") {
+    tabIds.push(fallbackTabId);
+  }
+  return { windowIds, tabIds };
+}
+
+function disconnectNativeForControlledClose() {
+  nativeReconnectEnabled = false;
+  try {
+    port?.disconnect?.();
+  } catch {
+    // The browser may already be tearing down the native messaging port.
+  }
+}
+
+function tabsInWindows(liveTabs: any[], windowIds: number[]) {
+  const windowIdSet = new Set(windowIds);
+  return liveTabs
+    .filter((tab) => typeof tab.id === "number" && typeof tab.windowId === "number" && windowIdSet.has(tab.windowId))
+    .map((tab) => tab.id as number);
 }
 
 function findTab(target?: string): TabRecord | undefined {
@@ -955,20 +1259,20 @@ async function reconcileTabs() {
 
 function registerBrowserListeners() {
   browser.tabs.onCreated.addListener((tab: any) => {
-    rememberTab(tab);
-    postEvent("tabs_changed", {});
+    if (typeof tab.id === "number" && typeof tab.windowId === "number") rememberTab(tab);
+    void postSessionEvent("tabs_changed", {});
   });
   browser.tabs.onRemoved.addListener((tabId: number) => {
     const record = tabsByBrowserId.get(tabId);
     if (record) record.closed = true;
-    postEvent("tabs_changed", {});
+    void postSessionEvent("tabs_changed", {});
   });
   browser.tabs.onUpdated.addListener((_tabId: number, _change: any, tab: any) => {
-    rememberTab(tab);
-    postEvent("tabs_changed", {});
+    if (typeof tab.id === "number" && typeof tab.windowId === "number") rememberTab(tab);
+    void postSessionEvent("tabs_changed", {});
   });
-  browser.tabs.onActivated.addListener(() => postEvent("focused", {}));
-  browser.windows.onFocusChanged.addListener(() => postEvent("focused", {}));
+  browser.tabs.onActivated.addListener(() => void postSessionEvent("focused", {}));
+  browser.windows.onFocusChanged.addListener(() => void postSessionEvent("focused", {}));
 }
 
 async function waitForTabComplete(tabId: number, timeout: number) {
@@ -1162,7 +1466,13 @@ function splitCommand(command: string): string[] {
 }
 
 function globToRegExp(pattern: string) {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*");
+  const doubleStar = "\u0000";
+  const escaped = pattern
+    .replace(/\*\*/g, doubleStar)
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, "[^/]*")
+    .split(doubleStar)
+    .join(".*");
   return new RegExp(`^${escaped}$`);
 }
 

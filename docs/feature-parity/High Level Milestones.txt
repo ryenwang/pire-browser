@@ -2,6 +2,10 @@
 
 The strategic move is to avoid chasing the full `agent-browser` checklist linearly. Build the platform layers first, keep the pinned docs as the contract, and mark commands compatible only when the behavior sits on a reliable layer underneath.
 
+## Operational Gap Reviews
+
+Real `pire-browser` sessions can reveal operator pain before a compatibility row is ready to move. Review those sessions with `docs/workflows/session-review-roadmap/`: separate work handled by existing functionality from fallback work, map each gap to an owner epic, and file a plan or backlog note when the gap should influence build order. Session evidence may prioritize roadmap work, but compatibility status still changes only through reviewed contract metadata and fixture-backed oracle coverage.
+
 ## Epic 0: Reference Baseline And Test Oracle
 
 Goal: make compatibility measurable before expanding browser behavior.
@@ -16,6 +20,7 @@ Key design:
 - The oracle supports both result assertions and browser-state assertions, including strict `jsonEnvelopeShape`, `notAvailableError`, `bestEffortWarning`, DOM state, URL/title checks, and event-log checks.
 - Normalization removes dynamic refs, generated ids, timestamps, durations, absolute paths, screenshot filenames, cosmetic whitespace where allowed, and browser-specific process text.
 - Normalization does not hide semantic differences such as success/failure, exit codes, error codes, required JSON fields, or warning codes.
+- Epic 2 launcher work should add explicit oracle lanes for supported launch modes. Default headed Firefox is the first lane; any future headless managed-launcher lane needs separate coverage because Firefox WebExtension viewport, focus, and screenshot behavior can differ.
 
 Success: malformed oracle inputs fail before runtime, pinned baseline metadata stays self-consistent, and `npm run oracle:ci` can prove deterministic parity for covered claims.
 
@@ -53,6 +58,7 @@ Key design:
 - Firefox owns the native host lifecycle once the extension is running.
 - The CLI may auto-launch managed Firefox for eligible default-session browser commands when no live session exists.
 - Explicit `--session` commands do not auto-launch until Epic 4 defines named-session lifecycle semantics.
+- Per-command `--headless`, `--headed`, and process-shape flags remain compatibility-parser inputs, not live-session mode switches. If Epic 2 adds a real headless managed-launch mode, it must be a separate tested launch configuration.
 - Epic 2 waits cover selector state, text, URL, page load completion, fixed delay, and supported function predicates.
 - Robust `networkidle` waits are deferred to Epic 5 because they require network observation infrastructure.
 - Frame stitching is a reliability requirement: accessible frames are included, same-origin frame behavior gets fixtures, and inaccessible frames appear as stable opaque records.
@@ -88,6 +94,7 @@ Why: real automation needs logged-in state, reproducibility, and isolation betwe
 
 Key design:
 - Firefox remains the source of truth for live tabs, windows, navigation, and extension heartbeats.
+- The extension should expose a stable page-target abstraction over Firefox tabs and windows, so the CLI does not care whether Firefox created a new tab, popup, or separate window.
 - Named-session auto-launch and profile reuse should be defined here, not inferred from Epic 2 default-session behavior.
 - Session isolation must cover auth, tabs, cookies, storage, and profile files.
 - State export/import should be explicit and auditable.

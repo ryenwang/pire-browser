@@ -27,6 +27,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Secret-safe auth handoff diagnostics are implemented through `status`/`doctor` profile advisories and diagnostic redaction, but the auth vault remains unimplemented.
 - [ ] Prompt injection via page content -- Malicious pages can embed text that looks like tool output or system instructions. Content boundary markers (--content-boundaries) let the orchestrator distinguish trusted tool output from untrusted page content.
   - Extension Compatibility: True
   - Priority: High
@@ -69,6 +70,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Low
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Use the persistent Firefox profile auth handoff for now; storing credentials in a local auth vault is still out of scope.
 - [ ] `agent-browser auth login github`
   - Extension Compatibility: True
   - Priority: High

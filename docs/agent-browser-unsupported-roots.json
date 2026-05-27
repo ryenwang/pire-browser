@@ -9,7 +9,6 @@
   "unsupportedRoots": [
     "addinitscript",
     "auth",
-    "clipboard",
     "confirm",
     "connect",
     "console",
@@ -67,21 +66,6 @@
       ],
       "ownerEpics": [
         "Epic 7"
-      ],
-      "dispositions": [
-        "not_started"
-      ],
-      "sourcePaths": [
-        "README.md"
-      ]
-    },
-    {
-      "root": "clipboard",
-      "itemIds": [
-        "cmd-clipboard"
-      ],
-      "ownerEpics": [
-        "Epic 5"
       ],
       "dispositions": [
         "not_started"

@@ -23,6 +23,7 @@ import {
   selectReportRun,
   shouldEnforceCoverage,
 } from "./report-lib.mjs";
+import { redactDiagnosticText } from "./redaction.mjs";
 
 const argv = process.argv.slice(2);
 const options = parseReportArgs(argv);
@@ -88,7 +89,7 @@ console.log("");
 if (failed.length) {
   console.log("Failed cases:");
   for (const testCase of failed) {
-    console.log(`- ${testCase.id}: ${testCase.reason}`);
+    console.log(`- ${testCase.id}: ${redactDiagnosticText(testCase.reason)}`);
   }
 } else {
   console.log("Failed cases: none");
@@ -123,11 +124,11 @@ if (options.failedDetails) {
     console.log(`## ${testCase.id}`);
     for (const step of result.steps ?? []) {
       if (step.pass) continue;
-      console.log(`Step ${step.id}: ${step.commandTemplate}`);
+      console.log(`Step ${step.id}: ${redactDiagnosticText(step.commandTemplate)}`);
       console.log(`agent-browser exit=${step.agentBrowser?.exitCode} finish=${step.agentBrowser?.finishReason}`);
       console.log(`pire-browser exit=${step.pireBrowser?.exitCode} finish=${step.pireBrowser?.finishReason}`);
-      console.log(`agent stdout: ${normalizeOutput(step.agentBrowser?.stdout).slice(0, 300)}`);
-      console.log(`pire stdout: ${normalizeOutput(step.pireBrowser?.stdout).slice(0, 300)}`);
+      console.log(`agent stdout: ${redactDiagnosticText(normalizeOutput(step.agentBrowser?.stdout)).slice(0, 300)}`);
+      console.log(`pire stdout: ${redactDiagnosticText(normalizeOutput(step.pireBrowser?.stdout)).slice(0, 300)}`);
       console.log("");
     }
   }
@@ -293,7 +294,7 @@ function printJsonReport({ selectedRun, summary, failed, coveragePolicy, enforce
       : null,
     failures: failed.map((testCase) => ({
       id: testCase.id,
-      reason: testCase.reason ?? null,
+      reason: testCase.reason == null ? null : redactDiagnosticText(testCase.reason),
     })),
     coveragePolicy: {
       pass: coveragePolicy.pass,
