@@ -20,15 +20,27 @@ use pire_browser_core::session::{
     session_cleanup_text, session_cleanup_value, session_status_text, session_status_value,
 };
 use pire_browser_core::setup::{setup_result_text, setup_windows};
+use pire_browser_core::state_file::{
+    display_url_without_query_or_fragment, read_state_file_with_metadata,
+    state_from_extension_export, sweep_expired_state_receipts, validate_state_inspection_receipt,
+    write_state_file, write_state_inspection_receipt, ActiveOriginStateFile,
+    StateInspectionReceipt,
+};
+use pire_browser_core::state_policy::{
+    collect_state_policy, resolve_state_load_policy, state_policy_text, StateLoadPolicyDecision,
+    StateLoadPolicyFlag, StatePolicyWarning,
+};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 use uuid::Uuid;
 
 const UNSUPPORTED_ROOTS_JSON: &str =
     include_str!("../../../docs/agent-browser-unsupported-roots.json");
+const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
     if let Err(err) = run() {
@@ -67,6 +79,7 @@ fn run() -> Result<()> {
             let mut sessions = list_sessions()?;
             annotate_session_profile_names(&mut sessions)?;
             let auth_handoff = collect_default_auth_handoff()?;
+            let state_policy = collect_state_policy();
             if json {
                 let mut value = session_status_value(&sessions);
                 if let Some(object) = value.as_object_mut() {
@@ -74,11 +87,16 @@ fn run() -> Result<()> {
                         "authHandoff".to_string(),
                         serde_json::to_value(auth_handoff)?,
                     );
+                    object.insert(
+                        "statePolicy".to_string(),
+                        serde_json::to_value(state_policy)?,
+                    );
                 }
                 println!("{}", format_cli_result(&value, true)?);
             } else {
                 println!("{}", session_status_text(&sessions));
                 println!("{}", auth_handoff_text(&auth_handoff));
+                println!("{}", state_policy_text(&state_policy));
             }
         }
         LocalCommand::SessionList { json } => {
@@ -125,6 +143,37 @@ fn run() -> Result<()> {
             } else {
                 println!("{}", session_cleanup_text(&report));
             }
+        }
+        LocalCommand::StateSave {
+            target,
+            json,
+            ignored_global_flags,
+            path,
+        } => {
+            handle_state_save(target, json, ignored_global_flags, PathBuf::from(path))?;
+        }
+        LocalCommand::StateLoad {
+            target,
+            json,
+            ignored_global_flags,
+            path,
+            policy_flag,
+        } => {
+            handle_state_load(
+                target,
+                json,
+                ignored_global_flags,
+                PathBuf::from(path),
+                policy_flag,
+            )?;
+        }
+        LocalCommand::StateInspect {
+            json,
+            ignored_global_flags,
+            path,
+            record,
+        } => {
+            handle_state_inspect(json, ignored_global_flags, PathBuf::from(path), record)?;
         }
         LocalCommand::Launch {
             profile,
@@ -252,19 +301,507 @@ fn exit_with_anyhow_error(
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
 ) -> Result<()> {
+    exit_with_anyhow_error_with_policy(err, json_output, ignored_global_flags, &[])
+}
+
+fn exit_with_anyhow_error_with_policy(
+    err: anyhow::Error,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    policy_warnings: &[StatePolicyWarning],
+) -> Result<()> {
     if json_output {
         let error = rpc_error_from_anyhow(&err);
-        print_json_error(&error, ignored_global_flags)?;
+        print_json_error_with_policy(&error, ignored_global_flags, policy_warnings)?;
         std::process::exit(exit_code_for_error(&error.code));
     }
+    if !policy_warnings.is_empty() {
+        let mut message = format!("{err:#}");
+        for warning in policy_warnings {
+            message.push_str(&format!(
+                "\nWarning [{}]: {}",
+                warning.code, warning.message
+            ));
+        }
+        return Err(anyhow::anyhow!(message));
+    }
     Err(err)
+}
+
+fn handle_state_save(
+    target: SessionTarget,
+    json_output: bool,
+    ignored_global_flags: Vec<GlobalFlagWarning>,
+    path: PathBuf,
+) -> Result<()> {
+    let request = build_command_request(vec!["state".to_string(), "export".to_string()]);
+    let (response, session_id) = match send_state_save_request(&target, &request) {
+        Ok(result) => result,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            unreachable!();
+        }
+    };
+    let export = response_result_or_exit(response, json_output, &ignored_global_flags)?;
+    let profile_name = match profile_name_for_state_source(&target, &session_id) {
+        Ok(profile_name) => profile_name,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            unreachable!();
+        }
+    };
+    let state = match state_from_extension_export(export, session_id, profile_name) {
+        Ok(state) => state,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            unreachable!();
+        }
+    };
+    let bytes_written = match write_state_file(&path, &state) {
+        Ok(bytes_written) => bytes_written,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            unreachable!();
+        }
+    };
+    let mut value = state_save_value(&state, &path, bytes_written);
+    append_state_save_path_warning(&mut value, &path);
+    append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
+fn handle_state_load(
+    target: SessionTarget,
+    json_output: bool,
+    ignored_global_flags: Vec<GlobalFlagWarning>,
+    path: PathBuf,
+    policy_flag: StateLoadPolicyFlag,
+) -> Result<()> {
+    let policy_decision = match resolve_state_load_policy(policy_flag) {
+        Ok(decision) => decision,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            unreachable!();
+        }
+    };
+    let read = match read_state_file_with_metadata(&path) {
+        Ok(read) => read,
+        Err(err) => {
+            exit_with_anyhow_error_with_policy(
+                err,
+                json_output,
+                &ignored_global_flags,
+                &policy_decision.warnings,
+            )?;
+            unreachable!();
+        }
+    };
+    let tool_version_mismatch = if policy_decision.require_inspected {
+        if let Err(err) = sweep_expired_state_receipts(now_ms()) {
+            exit_with_anyhow_error_with_policy(
+                err,
+                json_output,
+                &ignored_global_flags,
+                &policy_decision.warnings,
+            )?;
+            unreachable!();
+        }
+        match validate_state_inspection_receipt(&read, now_ms(), CLI_VERSION) {
+            Ok(validation) => validation.tool_version_mismatch,
+            Err(err) => {
+                exit_with_anyhow_error_with_policy(
+                    err,
+                    json_output,
+                    &ignored_global_flags,
+                    &policy_decision.warnings,
+                )?;
+                unreachable!();
+            }
+        }
+    } else {
+        None
+    };
+    let state = read.state.clone();
+    let payload = serde_json::to_string(&state)?;
+    let request = build_command_request(vec!["state".to_string(), "import".to_string(), payload]);
+    let (response, _session_id) = match send_state_load_request(&target, &state, &request) {
+        Ok(result) => result,
+        Err(err) => {
+            exit_with_anyhow_error_with_policy(
+                err,
+                json_output,
+                &ignored_global_flags,
+                &policy_decision.warnings,
+            )?;
+            unreachable!();
+        }
+    };
+    let import_result = response_result_or_exit_with_policy(
+        response,
+        json_output,
+        &ignored_global_flags,
+        &policy_decision.warnings,
+    )?;
+    let mut value = state_load_value(&state, &path, &import_result);
+    append_state_policy_diagnostic(&mut value, &policy_decision)?;
+    append_state_policy_warnings(&mut value, &policy_decision.warnings, !json_output)?;
+    if let Some(receipt_version) = tool_version_mismatch {
+        append_warning_value(
+            &mut value,
+            json!({
+                "code": "STATE_INSPECTION_TOOL_VERSION_CHANGED",
+                "feature": "state load",
+                "message": format!("State inspection receipt was recorded by pire-browser {receipt_version}; continuing because the state file identity still matches."),
+            }),
+        );
+    }
+    append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
+fn handle_state_inspect(
+    json_output: bool,
+    ignored_global_flags: Vec<GlobalFlagWarning>,
+    path: PathBuf,
+    record: bool,
+) -> Result<()> {
+    let read = match read_state_file_with_metadata(&path) {
+        Ok(read) => read,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            unreachable!();
+        }
+    };
+    let mut value = state_inspect_value(&read.state, &path, read.bytes, !json_output);
+    if record {
+        if let Err(err) = sweep_expired_state_receipts(now_ms()) {
+            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            unreachable!();
+        }
+        let (receipt, receipt_path) =
+            match write_state_inspection_receipt(&read, now_ms(), CLI_VERSION) {
+                Ok(result) => result,
+                Err(err) => {
+                    exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+                    unreachable!();
+                }
+            };
+        append_state_receipt_info(&mut value, &receipt, &receipt_path);
+    }
+    append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
+fn send_state_save_request(
+    target: &SessionTarget,
+    request: &RpcRequest,
+) -> Result<(RpcResponse, String)> {
+    match target {
+        SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
+        SessionTarget::Name(profile_name) => {
+            validate_profile_name(profile_name)?;
+            cleanup_stale_sessions(now_ms())?;
+            let Some(session) = live_session_for_profile_name(profile_name)? else {
+                bail!(
+                    "session_not_found: state save requires a live pire-browser session for profile name `{profile_name}`. Run `pire-browser --session-name {profile_name} open <url>` first."
+                );
+            };
+            send_to_session(Some(&session.session_id), request)
+        }
+        SessionTarget::Default => send_to_session(None, request),
+    }
+}
+
+fn send_state_load_request(
+    target: &SessionTarget,
+    state: &ActiveOriginStateFile,
+    request: &RpcRequest,
+) -> Result<(RpcResponse, String)> {
+    match target {
+        SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
+        SessionTarget::Name(profile_name) => {
+            validate_profile_name(profile_name)?;
+            cleanup_stale_sessions(now_ms())?;
+            if let Some(session) = live_session_for_profile_name(profile_name)? {
+                return send_to_session(Some(&session.session_id), request);
+            }
+            let session_id = launch_state_target(
+                profile_name,
+                &display_url_without_query_or_fragment(&state.source.url),
+            )?;
+            send_to_session(Some(&session_id), request)
+        }
+        SessionTarget::Default => match send_to_session(None, request) {
+            Ok(result) => Ok(result),
+            Err(err) if is_auto_launchable_session_error(&err) => {
+                cleanup_stale_sessions(now_ms())?;
+                let session_id = launch_state_target(
+                    "Default",
+                    &display_url_without_query_or_fragment(&state.source.url),
+                )?;
+                send_to_session(Some(&session_id), request)
+            }
+            Err(err) => Err(err),
+        },
+    }
+}
+
+fn launch_state_target(profile: &str, url: &str) -> Result<String> {
+    let result = launch_firefox(LaunchOptions {
+        profile: profile.to_string(),
+        url: Some(url.to_string()),
+        firefox_path: None,
+    })?;
+    let session_id = result.session.session_id;
+    let open_request = build_command_request(vec!["open".to_string(), url.to_string()]);
+    let (open_response, _) = send_to_session(Some(&session_id), &open_request)?;
+    if !open_response.ok {
+        let error = open_response
+            .error
+            .map(|err| format!("{}: {}", err.code, err.message))
+            .unwrap_or_else(|| "unknown open failure".to_string());
+        bail!("browser_launch_failed: failed to open saved state URL before load: {error}");
+    }
+    Ok(session_id)
+}
+
+fn response_result_or_exit(
+    response: RpcResponse,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+) -> Result<Value> {
+    response_result_or_exit_with_policy(response, json_output, ignored_global_flags, &[])
+}
+
+fn response_result_or_exit_with_policy(
+    response: RpcResponse,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    policy_warnings: &[StatePolicyWarning],
+) -> Result<Value> {
+    if !response.ok {
+        let error = response
+            .error
+            .unwrap_or(pire_browser_core::protocol::RpcError {
+                code: "unknown_error".into(),
+                message: "unknown extension error".into(),
+                data: None,
+            });
+        if json_output {
+            let exit_code = exit_code_for_error(&error.code);
+            print_json_error_with_policy(&error, ignored_global_flags, policy_warnings)?;
+            std::process::exit(exit_code);
+        }
+        let mut err = plain_error_message(&error);
+        for warning in policy_warnings {
+            err.push_str(&format!(
+                "\nWarning [{}]: {}",
+                warning.code, warning.message
+            ));
+        }
+        eprintln!("{err}");
+        std::process::exit(exit_code_for_error(&error.code));
+    }
+    Ok(response.result.unwrap_or_else(|| json!({ "text": "ok" })))
+}
+
+fn profile_name_for_state_source(
+    target: &SessionTarget,
+    session_id: &str,
+) -> Result<Option<String>> {
+    if let SessionTarget::Name(profile_name) = target {
+        return Ok(Some(profile_name.clone()));
+    }
+    let mut sessions = list_sessions()?;
+    annotate_session_profile_names(&mut sessions)?;
+    Ok(sessions
+        .into_iter()
+        .find(|session| session.session_id == session_id)
+        .and_then(|session| session.profile_name))
+}
+
+fn state_save_value(state: &ActiveOriginStateFile, path: &Path, bytes_written: u64) -> Value {
+    let display_url = display_url_without_query_or_fragment(&state.source.url);
+    json!({
+        "text": format!(
+            "Saved active-origin state for {} ({}) to {} ({} cookie(s), {} localStorage key(s), {} sessionStorage key(s))",
+            state.source.origin,
+            display_url,
+            path.display(),
+            state.cookie_count(),
+            state.local_storage_key_count(),
+            state.session_storage_key_count()
+        ),
+        "path": path.display().to_string(),
+        "origin": state.source.origin,
+        "displayUrl": display_url,
+        "cookies": state.cookie_count(),
+        "localStorageKeys": state.local_storage_key_count(),
+        "sessionStorageKeys": state.session_storage_key_count(),
+        "bytesWritten": bytes_written
+    })
+}
+
+fn state_load_value(state: &ActiveOriginStateFile, path: &Path, import_result: &Value) -> Value {
+    let display_url = display_url_without_query_or_fragment(&state.source.url);
+    let cookies_set = import_result
+        .get("cookiesSet")
+        .and_then(Value::as_u64)
+        .unwrap_or(state.cookie_count() as u64);
+    let reloaded = import_result
+        .get("reloaded")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let mut value = json!({
+        "text": format!(
+            "Loaded active-origin state for {} ({}) from {} ({} cookie(s), {} localStorage key(s), {} sessionStorage key(s); reloaded={})",
+            state.source.origin,
+            display_url,
+            path.display(),
+            cookies_set,
+            state.local_storage_key_count(),
+            state.session_storage_key_count(),
+            reloaded
+        ),
+        "path": path.display().to_string(),
+        "origin": state.source.origin,
+        "displayUrl": display_url,
+        "cookiesSet": cookies_set,
+        "localStorageKeys": state.local_storage_key_count(),
+        "sessionStorageKeys": state.session_storage_key_count(),
+        "reloaded": reloaded
+    });
+    if let Some(warnings) = import_result.get("warnings") {
+        value["warnings"] = warnings.clone();
+    }
+    value
+}
+
+fn state_inspect_value(
+    state: &ActiveOriginStateFile,
+    path: &Path,
+    bytes: u64,
+    include_text: bool,
+) -> Value {
+    let display_url = display_url_without_query_or_fragment(&state.source.url);
+    let mut source = json!({
+        "origin": state.source.origin,
+        "displayUrl": display_url,
+    });
+    if let Some(session_id) = &state.source.session_id {
+        source["sessionId"] = json!(session_id);
+    }
+    if let Some(profile_name) = &state.source.profile_name {
+        source["profileName"] = json!(profile_name);
+    }
+
+    let mut value = json!({
+        "path": path.display().to_string(),
+        "schemaVersion": state.schema_version,
+        "kind": state.kind,
+        "createdAt": state.created_at,
+        "source": source,
+        "counts": {
+            "cookies": state.cookie_count(),
+            "localStorageKeys": state.local_storage_key_count(),
+            "sessionStorageKeys": state.session_storage_key_count(),
+        },
+        "bytes": bytes,
+    });
+
+    if include_text {
+        value["text"] = json!(state_inspect_text(state, path, bytes, &display_url));
+    }
+
+    value
+}
+
+fn append_state_receipt_info(
+    value: &mut Value,
+    receipt: &StateInspectionReceipt,
+    receipt_path: &Path,
+) {
+    if let Some(text) = value
+        .get("text")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+    {
+        let updated = format!(
+            "{text}\nReceipt: recorded at {} until {}",
+            receipt_path.display(),
+            receipt.expires_at
+        );
+        value["text"] = json!(updated);
+    }
+    value["receipt"] = json!({
+        "recorded": true,
+        "path": receipt_path.display().to_string(),
+        "expiresAt": receipt.expires_at,
+    });
+}
+
+fn state_inspect_text(
+    state: &ActiveOriginStateFile,
+    path: &Path,
+    bytes: u64,
+    display_url: &str,
+) -> String {
+    let mut lines = vec![
+        format!("State file: {}", path.display()),
+        format!("Schema: {} {}", state.schema_version, state.kind),
+        format!("Created: {}", state.created_at),
+        format!("Origin: {}", state.source.origin),
+        format!("URL: {display_url}"),
+    ];
+    if let Some(profile_name) = &state.source.profile_name {
+        lines.push(format!("Profile: {profile_name}"));
+    }
+    if let Some(session_id) = &state.source.session_id {
+        lines.push(format!("Session: {session_id}"));
+    }
+    lines.extend([
+        format!("Size: {bytes} bytes"),
+        format!(
+            "Counts: {} cookie(s), {} localStorage key(s), {} sessionStorage key(s)",
+            state.cookie_count(),
+            state.local_storage_key_count(),
+            state.session_storage_key_count()
+        ),
+        "Values: not shown by metadata-only inspect".to_string(),
+    ]);
+    lines.join("\n")
+}
+
+fn append_state_save_path_warning(result: &mut Value, path: &Path) {
+    if state_path_is_in_recommended_dir(path) {
+        return;
+    }
+    append_warning_value(
+        result,
+        json!({
+            "code": "STATE_FILE_OUTSIDE_RECOMMENDED_DIR",
+            "feature": "state save",
+            "message": "State files contain cookies and Web Storage secrets. Prefer `.pire-state/<origin>-<purpose>.json`, which is gitignored by this project.",
+        }),
+    );
 }
 
 fn print_json_error(
     error: &pire_browser_core::protocol::RpcError,
     ignored_global_flags: &[GlobalFlagWarning],
 ) -> Result<()> {
-    let warnings = ignored_global_flag_warnings(ignored_global_flags);
+    print_json_error_with_policy(error, ignored_global_flags, &[])
+}
+
+fn print_json_error_with_policy(
+    error: &pire_browser_core::protocol::RpcError,
+    ignored_global_flags: &[GlobalFlagWarning],
+    policy_warnings: &[StatePolicyWarning],
+) -> Result<()> {
+    let warnings = combined_warning_values(ignored_global_flags, policy_warnings)?;
     let mut data = error.data.clone().unwrap_or(Value::Null);
     redact_json_value(&mut data);
     println!(
@@ -422,21 +959,60 @@ fn append_ignored_global_flag_warnings(
     ignored_global_flags: &[GlobalFlagWarning],
 ) {
     let warnings = ignored_global_flag_warnings(ignored_global_flags);
-    if warnings.is_empty() {
-        return;
+    for warning in warnings {
+        append_warning_value(result, warning);
     }
+}
+
+fn append_state_policy_diagnostic(
+    result: &mut Value,
+    decision: &StateLoadPolicyDecision,
+) -> Result<()> {
+    result["statePolicy"] = serde_json::to_value(&decision.diagnostic)?;
+    Ok(())
+}
+
+fn append_state_policy_warnings(
+    result: &mut Value,
+    warnings: &[StatePolicyWarning],
+    include_text: bool,
+) -> Result<()> {
+    for warning in warnings {
+        if include_text {
+            append_warning_text(result, warning);
+        }
+        append_warning_value(result, serde_json::to_value(warning)?);
+    }
+    Ok(())
+}
+
+fn append_warning_text(result: &mut Value, warning: &StatePolicyWarning) {
+    let Some(text) = result
+        .get("text")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+    else {
+        return;
+    };
+    result["text"] = json!(format!(
+        "{text}\nWarning [{}]: {}",
+        warning.code, warning.message
+    ));
+}
+
+fn append_warning_value(result: &mut Value, warning: Value) {
     if !result.is_object() {
         *result = json!({
             "text": result.to_string(),
-            "warnings": warnings
+            "warnings": [warning]
         });
         return;
     }
     let existing = result.get_mut("warnings").and_then(Value::as_array_mut);
     if let Some(existing) = existing {
-        existing.extend(warnings);
+        existing.push(warning);
     } else if let Some(object) = result.as_object_mut() {
-        object.insert("warnings".to_string(), Value::Array(warnings));
+        object.insert("warnings".to_string(), Value::Array(vec![warning]));
     }
 }
 
@@ -451,6 +1027,29 @@ fn ignored_global_flag_warnings(ignored_global_flags: &[GlobalFlagWarning]) -> V
             })
         })
         .collect()
+}
+
+fn combined_warning_values(
+    ignored_global_flags: &[GlobalFlagWarning],
+    policy_warnings: &[StatePolicyWarning],
+) -> Result<Vec<Value>> {
+    let mut warnings = ignored_global_flag_warnings(ignored_global_flags);
+    for warning in policy_warnings {
+        warnings.push(serde_json::to_value(warning)?);
+    }
+    Ok(warnings)
+}
+
+fn state_path_is_in_recommended_dir(path: &Path) -> bool {
+    let Ok(current_dir) = std::env::current_dir() else {
+        return false;
+    };
+    let full_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        current_dir.join(path)
+    };
+    full_path.starts_with(current_dir.join(".pire-state"))
 }
 
 fn is_documented_not_available_command(command: &str) -> Result<bool> {
@@ -642,6 +1241,7 @@ fn command_suggestions(command: &str) -> Vec<String> {
         "fill",
         "wait",
         "clipboard",
+        "state",
         "session",
         "screenshot",
         "tabs",
@@ -653,7 +1253,7 @@ fn command_suggestions(command: &str) -> Vec<String> {
         .filter(|candidate| {
             candidate.starts_with(command)
                 || command.starts_with(*candidate)
-                || levenshtein_distance(command, *candidate) <= 2
+                || levenshtein_distance(command, candidate) <= 2
         })
         .take(3)
         .map(|candidate| candidate.to_string())
@@ -831,6 +1431,15 @@ mod tests {
         assert!(result.contains("\"success\": false"));
         assert!(result.contains("\"NotAvailableError\""));
         assert!(result.contains("\"compatibility\": \"not_available\""));
+    }
+
+    #[test]
+    fn state_show_remains_not_available() {
+        let result = local_not_available_result(&s(&["state", "show", "state.json"]), true, &[])
+            .unwrap()
+            .unwrap();
+        assert!(result.contains("\"NotAvailableError\""));
+        assert!(result.contains("\"feature\": \"state\""));
     }
 
     #[test]
@@ -1025,5 +1634,96 @@ mod tests {
         assert!(formatted.contains("\"IGNORED_GLOBAL_FLAG\""));
         assert!(formatted.contains("\"--headless\""));
         assert!(formatted.contains("\"--color-scheme\""));
+    }
+
+    #[test]
+    fn state_success_output_reports_counts_without_values() {
+        let state = ActiveOriginStateFile {
+            schema_version: 1,
+            tool: "pire-browser".to_string(),
+            kind: "active-origin-state".to_string(),
+            created_at: 1,
+            source: pire_browser_core::state_file::ActiveOriginStateSource {
+                url: "https://example.test/app?code=query-secret#fragment-secret".to_string(),
+                origin: "https://example.test".to_string(),
+                session_id: Some("s1".to_string()),
+                profile_name: Some("work".to_string()),
+            },
+            cookies: vec![json!({ "name": "cookie-name-secret", "value": "raw-cookie-secret" })],
+            local_storage: [(
+                "local-key-secret".to_string(),
+                "raw-local-secret".to_string(),
+            )]
+            .into(),
+            session_storage: [(
+                "session-key-secret".to_string(),
+                "raw-session-secret".to_string(),
+            )]
+            .into(),
+        };
+
+        let save = state_save_value(&state, Path::new("state.json"), 123);
+        let save_text = serde_json::to_string(&save).unwrap();
+        assert!(save_text.contains("\"cookies\":1"));
+        assert!(save_text.contains("\"displayUrl\":\"https://example.test/app\""));
+        assert!(!save_text.contains("\"url\""));
+        assert!(!save_text.contains("raw-cookie-secret"));
+        assert!(!save_text.contains("raw-local-secret"));
+        assert!(!save_text.contains("raw-session-secret"));
+        assert!(!save_text.contains("query-secret"));
+        assert!(!save_text.contains("fragment-secret"));
+
+        let load = state_load_value(
+            &state,
+            Path::new("state.json"),
+            &json!({ "cookiesSet": 1, "reloaded": true }),
+        );
+        let load_text = serde_json::to_string(&load).unwrap();
+        assert!(load_text.contains("\"cookiesSet\":1"));
+        assert!(load_text.contains("\"displayUrl\":\"https://example.test/app\""));
+        assert!(!load_text.contains("\"url\""));
+        assert!(!load_text.contains("raw-cookie-secret"));
+        assert!(!load_text.contains("raw-local-secret"));
+        assert!(!load_text.contains("raw-session-secret"));
+        assert!(!load_text.contains("query-secret"));
+        assert!(!load_text.contains("fragment-secret"));
+
+        for include_text in [true, false] {
+            let inspect = state_inspect_value(&state, Path::new("state.json"), 456, include_text);
+            let inspect_text = serde_json::to_string(&inspect).unwrap();
+            assert!(inspect_text.contains("\"cookies\":1"));
+            assert!(inspect_text.contains("\"localStorageKeys\":1"));
+            assert!(inspect_text.contains("\"sessionStorageKeys\":1"));
+            assert!(inspect_text.contains("https://example.test/app"));
+            assert!(!inspect_text.contains("sensitive"));
+            for sentinel in [
+                "cookie-name-secret",
+                "raw-cookie-secret",
+                "local-key-secret",
+                "raw-local-secret",
+                "session-key-secret",
+                "raw-session-secret",
+                "query-secret",
+                "fragment-secret",
+            ] {
+                assert!(!inspect_text.contains(sentinel), "{sentinel}");
+            }
+        }
+    }
+
+    #[test]
+    fn state_save_path_warning_uses_recommended_dir() {
+        let mut outside = json!({ "text": "ok" });
+        append_state_save_path_warning(&mut outside, Path::new("state.json"));
+        assert!(serde_json::to_string(&outside)
+            .unwrap()
+            .contains("STATE_FILE_OUTSIDE_RECOMMENDED_DIR"));
+
+        let mut inside = json!({ "text": "ok" });
+        append_state_save_path_warning(
+            &mut inside,
+            Path::new(".pire-state/example.com-review.json"),
+        );
+        assert!(inside.get("warnings").is_none());
     }
 }

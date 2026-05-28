@@ -176,7 +176,7 @@ mod windows_ipc {
         let security = SecurityDescriptor::for_current_user()?;
 
         while !stop.load(std::sync::atomic::Ordering::SeqCst) {
-            let mut attrs = SECURITY_ATTRIBUTES {
+            let attrs = SECURITY_ATTRIBUTES {
                 nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
                 lpSecurityDescriptor: security.ptr,
                 bInheritHandle: 0,
@@ -190,7 +190,7 @@ mod windows_ipc {
                     1024 * 1024,
                     1024 * 1024,
                     0,
-                    &mut attrs,
+                    &attrs,
                 )
             };
             let handle = Handle::new(raw).context("failed to create named pipe")?;

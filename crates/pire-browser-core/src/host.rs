@@ -315,7 +315,7 @@ pub fn run_native_host() -> Result<()> {
 }
 
 fn handle_pipe_line(bridge: &NativeBridge, line: &str) -> String {
-    log_host(&format!("pipe request: {line}"));
+    log_host(&format!("pipe request received bytes={}", line.len()));
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         handle_pipe_line_inner(bridge, line)
     }));

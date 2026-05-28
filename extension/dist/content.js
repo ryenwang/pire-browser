@@ -54,6 +54,10 @@
             return Promise.resolve(clipboardSelection());
         if (message.type === "clipboard_paste")
             return Promise.resolve(clipboardPaste(String(message.text ?? "")));
+        if (message.type === "state_export_storage")
+            return Promise.resolve(stateExportStorage());
+        if (message.type === "state_import_storage")
+            return Promise.resolve(stateImportStorage(message.localStorage, message.sessionStorage));
         if (message.type === "scroll") {
             return Promise.resolve(scrollPage(String(message.direction ?? "down"), Number(message.pixels ?? 900), message.selector));
         }
@@ -342,6 +346,45 @@
             length: text.length,
             dialogs: drainDialogs(),
         };
+    }
+    function stateExportStorage() {
+        return {
+            localStorage: storageSnapshot(localStorage),
+            sessionStorage: storageSnapshot(sessionStorage),
+            dialogs: drainDialogs(),
+        };
+    }
+    function stateImportStorage(localValues, sessionValues) {
+        const localMap = stringRecord(localValues);
+        const sessionMap = stringRecord(sessionValues);
+        localStorage.clear();
+        for (const [key, value] of Object.entries(localMap)) {
+            localStorage.setItem(key, value);
+        }
+        sessionStorage.clear();
+        for (const [key, value] of Object.entries(sessionMap)) {
+            sessionStorage.setItem(key, value);
+        }
+        return {
+            text: "Imported active-origin storage",
+            localStorageKeys: Object.keys(localMap).length,
+            sessionStorageKeys: Object.keys(sessionMap).length,
+            dialogs: drainDialogs(),
+        };
+    }
+    function storageSnapshot(storage) {
+        const out = {};
+        for (let index = 0; index < storage.length; index++) {
+            const key = storage.key(index);
+            if (key !== null)
+                out[key] = storage.getItem(key) ?? "";
+        }
+        return out;
+    }
+    function stringRecord(value) {
+        if (!value || typeof value !== "object")
+            return {};
+        return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, typeof item === "string" ? item : String(item ?? "")]));
     }
     function scrollPage(direction, pixels, selector) {
         const scroller = selector ? document.querySelector(String(selector)) ?? findScrollContainer() : findScrollContainer();

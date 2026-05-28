@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::protocol::RpcRequest;
+use crate::state_policy::StateLoadPolicyFlag;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlobalFlagWarning {
@@ -48,6 +49,25 @@ pub enum LocalCommand {
     },
     SessionCleanup {
         json: bool,
+    },
+    StateSave {
+        target: SessionTarget,
+        json: bool,
+        ignored_global_flags: Vec<GlobalFlagWarning>,
+        path: String,
+    },
+    StateLoad {
+        target: SessionTarget,
+        json: bool,
+        ignored_global_flags: Vec<GlobalFlagWarning>,
+        path: String,
+        policy_flag: StateLoadPolicyFlag,
+    },
+    StateInspect {
+        json: bool,
+        ignored_global_flags: Vec<GlobalFlagWarning>,
+        path: String,
+        record: bool,
     },
     Remote {
         target: SessionTarget,
@@ -322,6 +342,84 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         return Ok(LocalCommand::Status { json: json_output });
     }
 
+    if command == "state" {
+        let original_args = args.clone();
+        args.remove(0);
+        remove_json_flags(&mut args, &mut json_output);
+        let subcommand = args.first().map(String::as_str);
+        if matches!(subcommand, Some("save" | "load" | "inspect")) {
+            let subcommand = args.remove(0);
+            let mut path = None;
+            let mut record = false;
+            let mut require_inspected = false;
+            let mut no_require_inspected = false;
+            while let Some(arg) = args.first().cloned() {
+                args.remove(0);
+                match arg.as_str() {
+                    "--json" => json_output = true,
+                    "--record" if subcommand == "inspect" => record = true,
+                    "--record" => bail!("unsupported state {subcommand} option: --record"),
+                    "--require-inspected" if subcommand == "load" => require_inspected = true,
+                    "--require-inspected" => {
+                        bail!("unsupported state {subcommand} option: --require-inspected")
+                    }
+                    "--no-require-inspected" if subcommand == "load" => no_require_inspected = true,
+                    "--no-require-inspected" => {
+                        bail!("unsupported state {subcommand} option: --no-require-inspected")
+                    }
+                    other if other.starts_with('-') => {
+                        bail!("unsupported state {subcommand} option: {other}")
+                    }
+                    _ => {
+                        if path.is_some() {
+                            bail!("unsupported state {subcommand} option: {arg}");
+                        }
+                        path = Some(arg);
+                    }
+                }
+            }
+            if subcommand == "load" && require_inspected && no_require_inspected {
+                bail!(
+                    "invalid_args: cannot use --require-inspected and --no-require-inspected together"
+                );
+            }
+            let Some(path) = path else {
+                bail!("invalid_args: state {subcommand} requires <path>");
+            };
+            if subcommand == "save" {
+                return Ok(LocalCommand::StateSave {
+                    target: session_target,
+                    json: json_output,
+                    ignored_global_flags,
+                    path,
+                });
+            }
+            if subcommand == "inspect" {
+                return Ok(LocalCommand::StateInspect {
+                    json: json_output,
+                    ignored_global_flags,
+                    path,
+                    record,
+                });
+            }
+            let policy_flag = if require_inspected {
+                StateLoadPolicyFlag::RequireInspected
+            } else if no_require_inspected {
+                StateLoadPolicyFlag::NoRequireInspected
+            } else {
+                StateLoadPolicyFlag::Unspecified
+            };
+            return Ok(LocalCommand::StateLoad {
+                target: session_target,
+                json: json_output,
+                ignored_global_flags,
+                path,
+                policy_flag,
+            });
+        }
+        args = original_args;
+    }
+
     if let Some(index) = args.iter().position(|arg| arg == "--json") {
         args.remove(index);
         json_output = true;
@@ -410,6 +508,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "fill" => FILL_HELP,
         "wait" => WAIT_HELP,
         "clipboard" => CLIPBOARD_HELP,
+        "state" => STATE_HELP,
         "session" | "sessions" => SESSION_HELP,
         "screenshot" => SCREENSHOT_HELP,
         "tabs" | "tab" => TABS_HELP,
@@ -438,6 +537,9 @@ Common commands:
   find label "Email" fill "x@y"   Find by semantic locator and act
   wait --selector "#done"         Wait for page state
   clipboard read                  Read text from the system clipboard
+  state save .pire-state/app.json Save active-origin cookies and web storage
+  state inspect .pire-state/app.json
+  state inspect --record .pire-state/app.json
   --session-name work open <url>  Reuse or launch a named Firefox profile
   session list                    List live Firefox sessions
   screenshot out.png              Capture the visible viewport
@@ -529,6 +631,31 @@ Usage:
 Reads and writes text clipboard contents through the Firefox extension.
 copy and paste use the active page selection or focused editable element and
 return a best-effort warning because native Ctrl+C/Ctrl+V handlers are not run.
+"##;
+
+const STATE_HELP: &str = r##"
+Usage:
+  pire-browser state inspect ./.pire-state/example.com-review.json
+  pire-browser state inspect --record ./.pire-state/example.com-review.json
+  pire-browser state save ./.pire-state/example.com-review.json
+  pire-browser state load ./.pire-state/example.com-review.json
+  pire-browser state load --require-inspected ./.pire-state/example.com-review.json
+  pire-browser state load --no-require-inspected ./.pire-state/example.com-review.json
+  pire-browser --session-name work state save ./.pire-state/example.com-work.json
+  pire-browser --session-name work state load ./.pire-state/example.com-work.json
+
+Saves, loads, or inspects plaintext active-origin state for the targeted Firefox
+page: cookies, localStorage, and sessionStorage. State files contain secrets
+and should not be committed or shared. `state inspect` is metadata-only and is
+not upstream `agent-browser state show`, which returns parsed state content.
+Use `state inspect --record` before `state load --require-inspected` for an
+opt-in 24-hour local receipt gate stored outside the repo under LOCALAPPDATA.
+Set PIRE_BROWSER_REQUIRE_INSPECTED_STATE=1 to make normal `state load` require
+that receipt; use `--no-require-inspected` only as an explicit cooperative
+operator override.
+`--session <id>` is strict and never launches; `--session-name <name> state load`
+can launch that managed profile at the saved display URL when no live named
+session exists.
 "##;
 
 const SESSION_HELP: &str = r##"
@@ -836,6 +963,152 @@ mod tests {
     }
 
     #[test]
+    fn parses_state_save_and_load_commands() {
+        assert_eq!(
+            parse_cli_args(&s(&["state", "save", "state.json", "--json"])).unwrap(),
+            LocalCommand::StateSave {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                path: "state.json".to_string()
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "--session-name",
+                "work",
+                "--headless",
+                "state",
+                "load",
+                "work-state.json",
+                "--json"
+            ]))
+            .unwrap(),
+            LocalCommand::StateLoad {
+                target: SessionTarget::Name("work".to_string()),
+                json: true,
+                ignored_global_flags: vec![GlobalFlagWarning {
+                    flag: "--headless".to_string()
+                }],
+                path: "work-state.json".to_string(),
+                policy_flag: StateLoadPolicyFlag::Unspecified
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["--session", "abc", "state", "load", "state.json"])).unwrap(),
+            LocalCommand::StateLoad {
+                target: SessionTarget::Id("abc".to_string()),
+                json: false,
+                ignored_global_flags: vec![],
+                path: "state.json".to_string(),
+                policy_flag: StateLoadPolicyFlag::Unspecified
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "state",
+                "load",
+                "--require-inspected",
+                "state.json",
+                "--json"
+            ]))
+            .unwrap(),
+            LocalCommand::StateLoad {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                path: "state.json".to_string(),
+                policy_flag: StateLoadPolicyFlag::RequireInspected
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "state",
+                "load",
+                "--json",
+                "state.json",
+                "--no-require-inspected"
+            ]))
+            .unwrap(),
+            LocalCommand::StateLoad {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                path: "state.json".to_string(),
+                policy_flag: StateLoadPolicyFlag::NoRequireInspected
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["state", "inspect", "state.json", "--json"])).unwrap(),
+            LocalCommand::StateInspect {
+                json: true,
+                ignored_global_flags: vec![],
+                path: "state.json".to_string(),
+                record: false
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "state",
+                "inspect",
+                "--record",
+                "state.json",
+                "--json"
+            ]))
+            .unwrap(),
+            LocalCommand::StateInspect {
+                json: true,
+                ignored_global_flags: vec![],
+                path: "state.json".to_string(),
+                record: true
+            }
+        );
+        assert!(parse_cli_args(&s(&["state", "save"])).is_err());
+        assert!(parse_cli_args(&s(&["state", "inspect"])).is_err());
+        assert!(parse_cli_args(&s(&[
+            "state",
+            "inspect",
+            "--require-inspected",
+            "state.json"
+        ]))
+        .is_err());
+        assert!(parse_cli_args(&s(&[
+            "state",
+            "inspect",
+            "--no-require-inspected",
+            "state.json"
+        ]))
+        .is_err());
+        assert!(parse_cli_args(&s(&["state", "load", "--record", "state.json"])).is_err());
+        assert!(parse_cli_args(&s(&[
+            "state",
+            "load",
+            "--require-inspected",
+            "--no-require-inspected",
+            "state.json"
+        ]))
+        .is_err());
+        assert_eq!(
+            parse_cli_args(&s(&["state", "list"])).unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: false,
+                ignored_global_flags: vec![],
+                args: s(&["state", "list"])
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["state", "show", "state.json", "--json"])).unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                args: s(&["state", "show", "state.json"])
+            }
+        );
+    }
+
+    #[test]
     fn parses_doctor_noop_flags_and_fix() {
         let parsed = parse_cli_args(&s(&["doctor", "--offline", "--quick", "--json"])).unwrap();
         assert_eq!(parsed, LocalCommand::InstallStatus { json: true });
@@ -851,6 +1124,7 @@ mod tests {
         assert!(help_text(Some("clipboard"))
             .unwrap()
             .contains("clipboard read"));
+        assert!(help_text(Some("state")).unwrap().contains("state save"));
         assert!(help_text(Some("session"))
             .unwrap()
             .contains("session attach"));

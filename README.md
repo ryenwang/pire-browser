@@ -155,6 +155,22 @@ For reusable named workflows, put `--session-name <name>` before the command. Th
 
 Profile names are preserved exactly and may contain letters, numbers, internal spaces, `_`, `-`, and `.`. Empty names, path traversal, slashes, and `:` are rejected before launch.
 
+### Active-Origin State Files
+
+Use `state save` and `state load` when you need to hand off cookies and Web Storage for the active page origin:
+
+```powershell
+.\target\debug\pire-browser.exe --session-name work open https://app.example.com/dashboard
+.\target\debug\pire-browser.exe --session-name work state save .\.pire-state\app.example.com-review.json
+.\target\debug\pire-browser.exe state inspect .\.pire-state\app.example.com-review.json
+.\target\debug\pire-browser.exe state inspect --record .\.pire-state\app.example.com-review.json
+.\target\debug\pire-browser.exe --session-name review state load --require-inspected .\.pire-state\app.example.com-review.json
+$env:PIRE_BROWSER_REQUIRE_INSPECTED_STATE = "1"
+.\target\debug\pire-browser.exe --session-name review state load .\.pire-state\app.example.com-review.json
+```
+
+State files are plaintext and contain cookie, `localStorage`, and `sessionStorage` values. Do not commit or share them. The project gitignores `.pire-state/`; `state save` still accepts explicit paths, but warns when writing outside that directory. `state inspect` is metadata-only and read-only by default. `state inspect --record` writes a 24-hour local receipt under `%LOCALAPPDATA%\pire-browser\state-receipts`, and `state load --require-inspected` requires the file to match that receipt before loading. Teams can set `PIRE_BROWSER_REQUIRE_INSPECTED_STATE=1` so normal `state load` requires a fresh receipt; `--no-require-inspected` is an explicit one-command override and emits a `STATE_POLICY_OVERRIDDEN` warning. This is a cooperative guardrail against accidental or unreviewed loads, not a sandbox against code that can change environment variables or pass override flags. Display URLs strip query strings and fragments, for example `https://app.example.com/callback?code=secret#token` is shown and saved as `https://app.example.com/callback`. This is active-origin state only; it does not export passwords, IndexedDB, cache, service workers, full profiles, auth vault entries, or cross-origin SSO state. `state save` requires a live targeted page. `state load` reloads the page after applying state, and `--session <id>` remains strict and never launches.
+
 ### Secret-Safe Auth Handoff
 
 For login-required sites, use the persistent Firefox profile rather than passing credentials through tool commands:
@@ -215,6 +231,12 @@ Run the named-profile lifecycle smoke to verify storage isolation between two ma
 npm run smoke:named-sessions
 ```
 
+Run the state handoff smoke to verify active-origin save/load across named profiles:
+
+```powershell
+npm run smoke:state
+```
+
 Create the Windows release package locally:
 
 ```powershell
@@ -236,7 +258,7 @@ Check setup health without launching a browser:
 .\target\debug\pire-browser.exe session list --json
 ```
 
-Use `pire-browser help` for command discovery, `pire-browser help clipboard` for clipboard read/write/copy/paste details, or `pire-browser help session` for targeting commands. In PowerShell, quote refs from `snapshot -i` or `find` output, for example `pire-browser click '@e4'`, so `@` is not parsed as shell syntax.
+Use `pire-browser help` for command discovery, `pire-browser help clipboard` for clipboard read/write/copy/paste details, `pire-browser help state` for active-origin state files, or `pire-browser help session` for targeting commands. In PowerShell, quote refs from `snapshot -i` or `find` output, for example `pire-browser click '@e4'`, so `@` is not parsed as shell syntax.
 
 The setup command registers the Native Messaging host under:
 

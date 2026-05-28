@@ -163,13 +163,13 @@ pub fn select_session(session_id: Option<&str>) -> Result<SessionInfo> {
         .collect();
 
     if let Some(session_id) = session_id {
-        return Ok(sessions
+        return sessions
             .iter()
             .find(|session| session.session_id == session_id)
             .cloned()
             .ok_or_else(|| {
                 anyhow::anyhow!(explicit_session_not_found_message(session_id, &sessions))
-            })?);
+            });
     }
 
     match sessions.as_slice() {
@@ -280,7 +280,7 @@ pub fn session_cleanup_text(report: &SessionCleanupReport) -> String {
     if report.live_sessions.is_empty() {
         text.push_str("\nNo live pire-browser Firefox sessions remain.");
     } else {
-        text.push_str("\n");
+        text.push('\n');
         text.push_str(&session_status_text(&report.live_sessions));
     }
     text
@@ -359,7 +359,7 @@ fn active_page_text(active_page: &ActivePageInfo) -> String {
         .title
         .as_deref()
         .filter(|value| !value.is_empty())
-        .or_else(|| active_page.url.as_deref())
+        .or(active_page.url.as_deref())
         .unwrap_or("");
     let title = if title_or_url.is_empty() {
         String::new()

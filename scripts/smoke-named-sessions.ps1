@@ -5,13 +5,16 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$Pire = Join-Path $Repo "target\debug\pire-browser.exe"
+$RepoPire = Join-Path $Repo "target\debug\pire-browser.exe"
 $FixtureDir = Join-Path $Repo "fixtures"
 $RunId = "ns-$PID-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
 $Alpha = "alpha-$RunId"
 $Beta = "beta-$RunId"
 $OriginalLocalAppData = $env:LOCALAPPDATA
+$OriginalCargoTargetDir = $env:CARGO_TARGET_DIR
 $SmokeRoot = Join-Path $Repo "target\named-session-smoke\$RunId"
+$SmokeCargoTarget = Join-Path $SmokeRoot "cargo-target"
+$Pire = Join-Path $SmokeCargoTarget "debug\pire-browser.exe"
 $TempLocalAppData = Join-Path $SmokeRoot "local-app-data"
 $ServerOut = Join-Path $SmokeRoot "fixture-server.out.log"
 $ServerErr = Join-Path $SmokeRoot "fixture-server.err.log"
@@ -155,7 +158,10 @@ function Stop-SmokeProcesses {
   Get-CimInstance Win32_Process |
     Where-Object {
       $_.Name -eq "pire-browser-host.exe" -and
-      $_.CommandLine -like "*$Repo*target*debug*pire-browser-host.exe*"
+      (
+        $_.CommandLine -like "*$Repo*target*debug*pire-browser-host.exe*" -or
+        $_.CommandLine -like "*$SmokeCargoTarget*debug*pire-browser-host.exe*"
+      )
     } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
@@ -163,9 +169,9 @@ function Stop-SmokeProcesses {
 function Restore-Setup {
   if (-not $OriginalLocalAppData) { return }
   $env:LOCALAPPDATA = $OriginalLocalAppData
-  if (Test-Path $Pire) {
+  if (Test-Path $RepoPire) {
     try {
-      & $Pire setup --windows --firefox-path $FirefoxPath *> $null
+      & $RepoPire setup --windows --firefox-path $FirefoxPath *> $null
     } catch {
       Write-Warning "Failed to restore Native Messaging setup under original LOCALAPPDATA: $($_.Exception.Message)"
     }
@@ -179,6 +185,7 @@ try {
 
   New-Item -ItemType Directory -Force -Path $SmokeRoot,$TempLocalAppData | Out-Null
   $env:LOCALAPPDATA = $TempLocalAppData
+  $env:CARGO_TARGET_DIR = $SmokeCargoTarget
 
   $null = Invoke-Step "Build Rust binaries" { cargo build -j 1 }
   $null = Invoke-Step "Build Firefox extension" { npm --prefix extension run build }
@@ -239,6 +246,11 @@ try {
   Stop-SmokeProcesses
   Restore-Setup
   $env:LOCALAPPDATA = $OriginalLocalAppData
+  if ($OriginalCargoTargetDir) {
+    $env:CARGO_TARGET_DIR = $OriginalCargoTargetDir
+  } else {
+    Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
+  }
   if ($script:smokeSucceeded) {
     Remove-Item -LiteralPath $SmokeRoot -Recurse -Force -ErrorAction SilentlyContinue
   }

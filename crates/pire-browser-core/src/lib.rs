@@ -10,4 +10,6 @@ pub mod protocol;
 pub mod redaction;
 pub mod session;
 pub mod setup;
+pub mod state_file;
+pub mod state_policy;
 pub mod transfer;

@@ -55,13 +55,9 @@ pub fn discover_firefox(override_path: Option<String>) -> Option<PathBuf> {
         }
     }
 
-    for candidate in common_firefox_paths() {
-        if is_firefox_exe(&candidate) {
-            return Some(candidate);
-        }
-    }
-
-    None
+    common_firefox_paths()
+        .into_iter()
+        .find(|candidate| is_firefox_exe(candidate))
 }
 
 fn common_firefox_paths() -> Vec<PathBuf> {

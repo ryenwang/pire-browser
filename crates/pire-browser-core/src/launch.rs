@@ -395,9 +395,10 @@ fn npx_command() -> PathBuf {
     {
         let program_files = PathBuf::from(r"C:\Program Files\nodejs\npx.cmd");
         if program_files.exists() {
-            return program_files;
+            program_files
+        } else {
+            PathBuf::from("npx.cmd")
         }
-        return PathBuf::from("npx.cmd");
     }
 
     #[cfg(not(windows))]
