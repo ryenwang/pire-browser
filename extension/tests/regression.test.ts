@@ -247,6 +247,20 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain('"clipboard paste"');
   });
 
+  it("routes active-origin state export and import through focused helpers", () => {
+    const body = background();
+    expect(body).toContain('case "state":');
+    expect(body).toContain("return stateCommand(rest);");
+    expect(body).toContain("async function stateExportCommand");
+    expect(body).toContain("async function stateImportCommand");
+    expect(body).toContain('type: "state_export_storage"');
+    expect(body).toContain('type: "state_import_storage"');
+    expect(body).toContain("state load origin mismatch");
+    expect(body).toContain("displayUrlWithoutQueryOrFragment(state.source.url)");
+    expect(body).toContain("restoreCookie");
+    expect(body).toContain("browser.tabs.reload(tab.tabId)");
+  });
+
   it("extracts selections and pastes only into focused editable text targets", () => {
     const body = content();
     expect(body).toContain("function clipboardSelection()");
@@ -256,6 +270,17 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain("function isEditableTextTarget");
     expect(body).toContain("insertText(target, text)");
     expect(body).toContain("No focused editable element");
+  });
+
+  it("exports and imports active-origin web storage in the content script", () => {
+    const body = content();
+    expect(body).toContain('message.type === "state_export_storage"');
+    expect(body).toContain('message.type === "state_import_storage"');
+    expect(body).toContain("function stateExportStorage()");
+    expect(body).toContain("function stateImportStorage");
+    expect(body).toContain("localStorage.clear()");
+    expect(body).toContain("sessionStorage.clear()");
+    expect(body).toContain("function storageSnapshot");
   });
 
   it("keeps default snapshot flat and ref-oriented rather than tree-shaped", () => {

@@ -79,6 +79,8 @@ browser.runtime.onMessage.addListener((message: any) => {
   if (message.type === "keyboard_inserttext") return Promise.resolve(typeFocused(String(message.text ?? ""), false));
   if (message.type === "clipboard_selection") return Promise.resolve(clipboardSelection());
   if (message.type === "clipboard_paste") return Promise.resolve(clipboardPaste(String(message.text ?? "")));
+  if (message.type === "state_export_storage") return Promise.resolve(stateExportStorage());
+  if (message.type === "state_import_storage") return Promise.resolve(stateImportStorage(message.localStorage, message.sessionStorage));
   if (message.type === "scroll") {
     return Promise.resolve(scrollPage(String(message.direction ?? "down"), Number(message.pixels ?? 900), message.selector));
   }
@@ -366,6 +368,49 @@ function clipboardPaste(text: string) {
     length: text.length,
     dialogs: drainDialogs(),
   };
+}
+
+function stateExportStorage() {
+  return {
+    localStorage: storageSnapshot(localStorage),
+    sessionStorage: storageSnapshot(sessionStorage),
+    dialogs: drainDialogs(),
+  };
+}
+
+function stateImportStorage(localValues: unknown, sessionValues: unknown) {
+  const localMap = stringRecord(localValues);
+  const sessionMap = stringRecord(sessionValues);
+  localStorage.clear();
+  for (const [key, value] of Object.entries(localMap)) {
+    localStorage.setItem(key, value);
+  }
+  sessionStorage.clear();
+  for (const [key, value] of Object.entries(sessionMap)) {
+    sessionStorage.setItem(key, value);
+  }
+  return {
+    text: "Imported active-origin storage",
+    localStorageKeys: Object.keys(localMap).length,
+    sessionStorageKeys: Object.keys(sessionMap).length,
+    dialogs: drainDialogs(),
+  };
+}
+
+function storageSnapshot(storage: Storage): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (let index = 0; index < storage.length; index++) {
+    const key = storage.key(index);
+    if (key !== null) out[key] = storage.getItem(key) ?? "";
+  }
+  return out;
+}
+
+function stringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, typeof item === "string" ? item : String(item ?? "")])
+  );
 }
 
 function scrollPage(direction: string, pixels: number, selector?: unknown) {

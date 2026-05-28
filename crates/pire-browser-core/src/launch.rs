@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -172,7 +172,8 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
             .collect();
         sessions.sort_by_key(|session| std::cmp::Reverse(session.last_focused_at));
 
-        if let Some(session) = sessions.into_iter().next() {
+        if let Some(mut session) = sessions.into_iter().next() {
+            session.profile_name = Some(options.profile.clone());
             metadata.session_id = Some(session.session_id.clone());
             metadata.profile_id = Some(session.profile_id.clone());
             write_launcher_metadata_atomic(&launcher_path, &metadata)?;
@@ -237,17 +238,72 @@ fn launcher_metadata_path_from_data_dir(root: &Path, profile_name: &str) -> Path
     profile_metadata_dir_from_data_dir(root, profile_name).join("launcher.json")
 }
 
-fn validate_profile_name(profile_name: &str) -> Result<()> {
-    if profile_name.trim().is_empty() {
-        bail!("profile name cannot be empty");
+pub fn validate_profile_name(profile_name: &str) -> Result<()> {
+    if profile_name.is_empty() || profile_name.trim() != profile_name {
+        bail!("invalid_args: profile name must be non-empty and must not have leading or trailing whitespace");
     }
-    if profile_name
+    if profile_name == "." || profile_name == ".." {
+        bail!("invalid_args: profile name must be a simple managed profile name, not a path");
+    }
+    if !profile_name
         .chars()
-        .any(|ch| matches!(ch, '\\' | '/' | ':'))
-        || profile_name == "."
-        || profile_name == ".."
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, ' ' | '_' | '-' | '.'))
     {
-        bail!("profile name must be a simple name, not a path");
+        bail!("invalid_args: profile name may contain only letters, numbers, internal spaces, `_`, `-`, and `.`");
+    }
+    Ok(())
+}
+
+pub fn live_session_for_profile_name(profile_name: &str) -> Result<Option<SessionInfo>> {
+    validate_profile_name(profile_name)?;
+    cleanup_stale_sessions(now_ms())?;
+    let root = data_dir()?;
+    let Some(metadata) =
+        read_launcher_metadata(&launcher_metadata_path_from_data_dir(&root, profile_name))?
+    else {
+        return Ok(None);
+    };
+    live_session_for_metadata(&metadata)
+}
+
+pub fn annotate_session_profile_names(sessions: &mut [SessionInfo]) -> Result<()> {
+    annotate_session_profile_names_from_data_dir(&data_dir()?, sessions)
+}
+
+fn annotate_session_profile_names_from_data_dir(
+    root: &Path,
+    sessions: &mut [SessionInfo],
+) -> Result<()> {
+    let profiles_dir = root.join("profiles");
+    if !profiles_dir.exists() {
+        return Ok(());
+    }
+
+    let mut names_by_session_id = HashMap::new();
+    let mut names_by_profile_id = HashMap::new();
+    for entry in fs::read_dir(&profiles_dir)? {
+        let Ok(entry) = entry else {
+            continue;
+        };
+        let path = entry.path().join("launcher.json");
+        let Ok(Some(metadata)) = read_launcher_metadata(&path) else {
+            continue;
+        };
+        if let Some(session_id) = metadata.session_id.as_deref() {
+            names_by_session_id.insert(session_id.to_string(), metadata.profile_name.clone());
+        }
+        if let Some(profile_id) = metadata.profile_id.as_deref() {
+            names_by_profile_id.insert(profile_id.to_string(), metadata.profile_name.clone());
+        }
+    }
+
+    for session in sessions {
+        if let Some(name) = names_by_session_id
+            .get(&session.session_id)
+            .or_else(|| names_by_profile_id.get(&session.profile_id))
+        {
+            session.profile_name = Some(name.clone());
+        }
     }
     Ok(())
 }
@@ -283,20 +339,22 @@ fn live_session_for_metadata(metadata: &LauncherMetadata) -> Result<Option<Sessi
         .collect();
 
     if let Some(session_id) = metadata.session_id.as_deref() {
-        if let Some(session) = sessions
+        if let Some(mut session) = sessions
             .iter()
             .find(|session| session.session_id == session_id)
             .cloned()
         {
+            session.profile_name = Some(metadata.profile_name.clone());
             return Ok(Some(session));
         }
     }
 
     if let Some(profile_id) = metadata.profile_id.as_deref() {
-        if let Some(session) = sessions
+        if let Some(mut session) = sessions
             .into_iter()
             .find(|session| session.profile_id == profile_id)
         {
+            session.profile_name = Some(metadata.profile_name.clone());
             return Ok(Some(session));
         }
     }
@@ -337,9 +395,10 @@ fn npx_command() -> PathBuf {
     {
         let program_files = PathBuf::from(r"C:\Program Files\nodejs\npx.cmd");
         if program_files.exists() {
-            return program_files;
+            program_files
+        } else {
+            PathBuf::from("npx.cmd")
         }
-        return PathBuf::from("npx.cmd");
     }
 
     #[cfg(not(windows))]
@@ -544,9 +603,87 @@ mod tests {
 
     #[test]
     fn rejects_path_like_profile_names() {
-        assert!(validate_profile_name("Default").is_ok());
-        assert!(validate_profile_name("foo/bar").is_err());
-        assert!(validate_profile_name("..").is_err());
-        assert!(validate_profile_name("").is_err());
+        for name in [
+            "Default",
+            "my session",
+            "test_session_v2",
+            "my-project",
+            "my.profile",
+        ] {
+            assert!(validate_profile_name(name).is_ok(), "{name}");
+        }
+        for name in [
+            "", " ", " my", "my ", ".", "..", "foo/bar", r"foo\bar", "foo:bar", "../bad", "weird!",
+        ] {
+            assert!(validate_profile_name(name).is_err(), "{name}");
+        }
+    }
+
+    #[test]
+    fn annotates_sessions_from_launcher_metadata() {
+        let root = tempfile::tempdir().unwrap();
+        let alpha_path = launcher_metadata_path_from_data_dir(root.path(), "alpha");
+        let beta_path = launcher_metadata_path_from_data_dir(root.path(), "beta");
+        write_launcher_metadata_atomic(
+            &alpha_path,
+            &LauncherMetadata {
+                profile_name: "alpha".into(),
+                profile_path: managed_profile_dir_from_data_dir(root.path(), "alpha"),
+                firefox_path: PathBuf::from("firefox.exe"),
+                extension_source: PathBuf::from("extension"),
+                launcher_pid: 1,
+                started_at: 1,
+                last_launch_url: None,
+                session_id: Some("s-alpha".into()),
+                profile_id: Some("p-alpha".into()),
+            },
+        )
+        .unwrap();
+        write_launcher_metadata_atomic(
+            &beta_path,
+            &LauncherMetadata {
+                profile_name: "beta".into(),
+                profile_path: managed_profile_dir_from_data_dir(root.path(), "beta"),
+                firefox_path: PathBuf::from("firefox.exe"),
+                extension_source: PathBuf::from("extension"),
+                launcher_pid: 2,
+                started_at: 2,
+                last_launch_url: None,
+                session_id: None,
+                profile_id: Some("p-beta".into()),
+            },
+        )
+        .unwrap();
+
+        let mut sessions = vec![
+            SessionInfo {
+                session_id: "s-alpha".into(),
+                profile_name: None,
+                profile_id: "p-other".into(),
+                pipe_name: "pipe".into(),
+                extension_id: "ext".into(),
+                extension_version: "1".into(),
+                started_at: 1,
+                last_heartbeat_at: 10,
+                last_focused_at: 10,
+                active_page: None,
+            },
+            SessionInfo {
+                session_id: "s-beta".into(),
+                profile_name: None,
+                profile_id: "p-beta".into(),
+                pipe_name: "pipe".into(),
+                extension_id: "ext".into(),
+                extension_version: "1".into(),
+                started_at: 1,
+                last_heartbeat_at: 10,
+                last_focused_at: 10,
+                active_page: None,
+            },
+        ];
+
+        annotate_session_profile_names_from_data_dir(root.path(), &mut sessions).unwrap();
+        assert_eq!(sessions[0].profile_name.as_deref(), Some("alpha"));
+        assert_eq!(sessions[1].profile_name.as_deref(), Some("beta"));
     }
 }

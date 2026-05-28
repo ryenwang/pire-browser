@@ -196,6 +196,8 @@
                 return cookiesCommand(rest);
             case "storage":
                 return storageCommand(rest);
+            case "state":
+                return stateCommand(rest);
             case "clipboard":
                 return clipboardCommand(rest);
             case "install":
@@ -217,7 +219,6 @@
             case "auth":
             case "confirm":
             case "deny":
-            case "state":
             case "session":
             case "profiles":
             case "react":
@@ -588,6 +589,178 @@
                     : `Object.fromEntries(Array.from({length:${area}.length},(_,i)=>{const k=${area}.key(i);return [k,${area}.getItem(k)]}))`;
         const result = await evalCommand([expression]);
         return { ...result, warnings: mergeWarnings(result.warnings, [bestEffortWarning("storage", "Storage commands execute in the page context for the active origin.")]) };
+    }
+    async function stateCommand(args) {
+        const [subcommand, ...rest] = args;
+        if (subcommand === "export")
+            return stateExportCommand();
+        if (subcommand === "import")
+            return stateImportCommand(rest.join(" "));
+        return notAvailable("state", "Only `state save` and `state load` are implemented by the pire-browser CLI; other state commands are not available on the Firefox WebExtension backend yet.");
+    }
+    async function stateExportCommand() {
+        const tab = await targetTab();
+        const context = activeOriginContext(tab);
+        if ("error" in context)
+            return context;
+        await waitForTabComplete(tab.tabId, 10000).catch(() => undefined);
+        const cookies = await browser.cookies.getAll({ url: context.url });
+        const storage = await stateStorageForTab(tab.tabId);
+        if ("error" in storage)
+            return storage;
+        return {
+            text: `Exported active-origin state for ${context.origin}`,
+            source: context,
+            cookies,
+            localStorage: storage.localStorage,
+            sessionStorage: storage.sessionStorage,
+        };
+    }
+    async function stateImportCommand(payload) {
+        const parsed = parseStatePayload(payload);
+        if ("error" in parsed)
+            return parsed;
+        const state = parsed.state;
+        const tab = await targetTab();
+        const context = activeOriginContext(tab);
+        if ("error" in context)
+            return context;
+        if (context.origin !== state.source.origin) {
+            const displayUrl = displayUrlWithoutQueryOrFragment(state.source.url) || state.source.origin;
+            return {
+                error: {
+                    code: "InvalidArgumentError",
+                    message: `state load origin mismatch: active page is ${context.origin} but state file is for ${state.source.origin}; open ${displayUrl} first or load into a non-live --session-name profile`,
+                },
+            };
+        }
+        await waitForTabComplete(tab.tabId, 10000).catch(() => undefined);
+        const existingCookies = await browser.cookies.getAll({ url: context.url });
+        await Promise.all(existingCookies.map((cookie) => browser.cookies.remove({ url: cookieUrl(cookie), name: cookie.name })));
+        let cookiesSet = 0;
+        let cookiesSkipped = 0;
+        for (const cookie of state.cookies ?? []) {
+            if (await restoreCookie(context.url, cookie))
+                cookiesSet += 1;
+            else
+                cookiesSkipped += 1;
+        }
+        const storage = await importStateStorage(tab.tabId, state.localStorage ?? {}, state.sessionStorage ?? {});
+        if ("error" in storage)
+            return storage;
+        await browser.tabs.reload(tab.tabId);
+        await waitForTabComplete(tab.tabId, 10000);
+        const warnings = cookiesSkipped > 0
+            ? [bestEffortWarning("state load", `Skipped ${cookiesSkipped} cookie(s) whose metadata Firefox would not restore for the active origin.`)]
+            : [];
+        return {
+            text: `Imported active-origin state for ${context.origin}`,
+            source: context,
+            cookiesSet,
+            localStorageKeys: storage.localStorageKeys,
+            sessionStorageKeys: storage.sessionStorageKeys,
+            reloaded: true,
+            warnings,
+        };
+    }
+    function activeOriginContext(tab) {
+        try {
+            const url = new URL(tab.url ?? "");
+            if (url.protocol !== "http:" && url.protocol !== "https:") {
+                return { error: { code: "InvalidArgumentError", message: "state save/load requires an active http(s) page" } };
+            }
+            return { url: tab.url ?? url.href, origin: url.origin };
+        }
+        catch {
+            return { error: { code: "InvalidArgumentError", message: "state save/load requires an active page with a valid URL" } };
+        }
+    }
+    function parseStatePayload(payload) {
+        let state;
+        try {
+            state = JSON.parse(payload);
+        }
+        catch {
+            return { error: { code: "InvalidArgumentError", message: "state load requires a valid JSON state file" } };
+        }
+        if (state.schemaVersion !== 1 || state.tool !== "pire-browser" || state.kind !== "active-origin-state") {
+            return { error: { code: "InvalidArgumentError", message: "state load requires a pire-browser active-origin-state schemaVersion 1 file" } };
+        }
+        if (!state.source?.url || !state.source?.origin) {
+            return { error: { code: "InvalidArgumentError", message: "state load requires source.url and source.origin" } };
+        }
+        if (!/^https?:\/\//.test(state.source.url) || !/^https?:\/\//.test(state.source.origin)) {
+            return { error: { code: "InvalidArgumentError", message: "state load requires an http(s) source URL and origin" } };
+        }
+        return { state };
+    }
+    function displayUrlWithoutQueryOrFragment(url) {
+        const index = url.search(/[?#]/);
+        return index >= 0 ? url.slice(0, index) : url;
+    }
+    async function stateStorageForTab(tabId) {
+        try {
+            const response = await sendFrame(tabId, 0, { type: "state_export_storage" });
+            return {
+                localStorage: response.localStorage ?? {},
+                sessionStorage: response.sessionStorage ?? {},
+            };
+        }
+        catch (error) {
+            return { error: { code: "command_failed", message: `Failed to read active-origin storage: ${error instanceof Error ? error.message : String(error)}` } };
+        }
+    }
+    async function importStateStorage(tabId, localStorage, sessionStorage) {
+        try {
+            const response = await sendFrame(tabId, 0, {
+                type: "state_import_storage",
+                localStorage,
+                sessionStorage,
+            });
+            if (response?.error)
+                return { error: response.error };
+            return {
+                localStorageKeys: response.localStorageKeys ?? Object.keys(localStorage).length,
+                sessionStorageKeys: response.sessionStorageKeys ?? Object.keys(sessionStorage).length,
+            };
+        }
+        catch (error) {
+            return { error: { code: "command_failed", message: `Failed to write active-origin storage: ${error instanceof Error ? error.message : String(error)}` } };
+        }
+    }
+    async function restoreCookie(url, cookie) {
+        if (!cookie || typeof cookie.name !== "string")
+            return false;
+        const base = {
+            url,
+            name: cookie.name,
+            value: typeof cookie.value === "string" ? cookie.value : "",
+        };
+        const withMetadata = { ...base };
+        if (typeof cookie.path === "string")
+            withMetadata.path = cookie.path;
+        if (typeof cookie.secure === "boolean")
+            withMetadata.secure = cookie.secure;
+        if (typeof cookie.httpOnly === "boolean")
+            withMetadata.httpOnly = cookie.httpOnly;
+        if (typeof cookie.sameSite === "string" && cookie.sameSite !== "unspecified")
+            withMetadata.sameSite = cookie.sameSite;
+        if (typeof cookie.expirationDate === "number")
+            withMetadata.expirationDate = cookie.expirationDate;
+        if (typeof cookie.storeId === "string")
+            withMetadata.storeId = cookie.storeId;
+        if (cookie.hostOnly === false && typeof cookie.domain === "string")
+            withMetadata.domain = cookie.domain;
+        for (const details of [withMetadata, base]) {
+            try {
+                await browser.cookies.set(details);
+                return true;
+            }
+            catch {
+                // Retry with less metadata; some cookie attributes are Firefox/profile dependent.
+            }
+        }
+        return false;
     }
     async function clipboardCommand(args) {
         const [subcommand, ...rest] = args;

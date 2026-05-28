@@ -250,6 +250,7 @@ pub fn run_native_host() -> Result<()> {
     let now = now_ms();
     let session = SessionInfo {
         session_id: session_id.clone(),
+        profile_name: None,
         profile_id: "pending".into(),
         pipe_name: pipe_name.clone(),
         extension_id: EXTENSION_ID.into(),
@@ -314,7 +315,7 @@ pub fn run_native_host() -> Result<()> {
 }
 
 fn handle_pipe_line(bridge: &NativeBridge, line: &str) -> String {
-    log_host(&format!("pipe request: {line}"));
+    log_host(&format!("pipe request received bytes={}", line.len()));
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         handle_pipe_line_inner(bridge, line)
     }));
@@ -446,6 +447,7 @@ mod tests {
         };
         let session = SessionInfo {
             session_id: "session-1".into(),
+            profile_name: None,
             profile_id: "profile-1".into(),
             pipe_name: "pipe".into(),
             extension_id: "ext".into(),
@@ -472,6 +474,7 @@ mod tests {
     fn session_events_update_active_page_metadata() {
         let mut session = SessionInfo {
             session_id: "session-1".into(),
+            profile_name: None,
             profile_id: "pending".into(),
             pipe_name: "pipe".into(),
             extension_id: "ext".into(),

@@ -1220,12 +1220,14 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: `pire-browser state save <path>` writes plaintext active-origin cookies/Web Storage only, strips query/fragment from `source.url`, and reports `displayUrl` instead of raw URLs.
 - [ ] `agent-browser state load <path>` - Load auth state from file
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: `pire-browser state load --require-inspected <path>` is a backend-specific guard that requires a fresh local `state inspect --record` receipt before applying plaintext state.
 - [ ] `agent-browser state list` - List saved state files
   - Extension Compatibility: True
   - Priority: Medium
@@ -1238,6 +1240,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Upstream `agent-browser state show` returns parsed state content, so it remains unavailable. Use backend-specific `pire-browser state inspect <path>` for metadata-only review of plaintext state files.
 - [ ] `agent-browser state rename <old> <new>` - Rename state file
   - Extension Compatibility: True
   - Priority: Medium

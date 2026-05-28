@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pire-browser state fixture</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: max-content minmax(12rem, 1fr);
+        gap: 0.5rem 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>State fixture</h1>
+    <dl>
+      <dt>localStorage</dt>
+      <dd id="local"></dd>
+      <dt>sessionStorage</dt>
+      <dd id="session"></dd>
+      <dt>cookie</dt>
+      <dd id="cookie"></dd>
+    </dl>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const value = params.get("value");
+      if (params.has("clear")) {
+        localStorage.removeItem("pireStateLocal");
+        sessionStorage.removeItem("pireStateSession");
+        document.cookie = "pireStateCookie=; Max-Age=0; path=/; SameSite=Lax";
+      }
+      if (value !== null) {
+        localStorage.setItem("pireStateLocal", value);
+        sessionStorage.setItem("pireStateSession", value);
+        document.cookie = `pireStateCookie=${encodeURIComponent(value)}; path=/; SameSite=Lax`;
+      }
+
+      const cookieValue = document.cookie
+        .split(";")
+        .map((item) => item.trim())
+        .find((item) => item.startsWith("pireStateCookie="))
+        ?.slice("pireStateCookie=".length);
+
+      document.getElementById("local").textContent = localStorage.getItem("pireStateLocal") || "EMPTY";
+      document.getElementById("session").textContent = sessionStorage.getItem("pireStateSession") || "EMPTY";
+      document.getElementById("cookie").textContent = cookieValue ? decodeURIComponent(cookieValue) : "EMPTY";
+    </script>
+  </body>
+</html>

@@ -18,6 +18,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: `PIRE_BROWSER_REQUIRE_INSPECTED_STATE=1` is implemented as a `pire-browser`-specific cooperative state-load guardrail. It makes normal `state load` require a fresh `state inspect --record` receipt, supports an audited `--no-require-inspected` override, and is not a sandbox or auth vault.
 
 ## Threat Model
 

@@ -12,6 +12,7 @@ use crate::launch::{default_profile_status, firefox_startup_policy_status, DEFAU
 use crate::protocol::{EXTENSION_ID, NATIVE_HOST_NAME};
 use crate::session::{cleanup_stale_sessions, list_sessions, now_ms, SessionInfo};
 use crate::setup::{native_manifest_path, sibling_host_path};
+use crate::state_policy::{collect_state_policy, state_policy_text, StatePolicyDiagnostic};
 
 #[cfg(windows)]
 use winreg::enums::HKEY_CURRENT_USER;
@@ -34,6 +35,7 @@ pub struct InstallStatusReport {
     pub default_profile_launcher: CheckStatus,
     pub firefox_startup_policy: CheckStatus,
     pub auth_handoff: AuthHandoffInfo,
+    pub state_policy: StatePolicyDiagnostic,
     pub live_sessions: Vec<SessionInfo>,
 }
 
@@ -80,6 +82,7 @@ pub fn collect_install_status() -> Result<InstallStatusReport> {
     let (default_profile, default_profile_launcher) = check_default_profile();
     let firefox_startup_policy = check_firefox_startup_policy();
     let auth_handoff = collect_default_auth_handoff()?;
+    let state_policy = collect_state_policy();
 
     cleanup_stale_sessions(now_ms())?;
     let live_sessions = list_sessions()?;
@@ -105,6 +108,7 @@ pub fn collect_install_status() -> Result<InstallStatusReport> {
         default_profile_launcher,
         firefox_startup_policy,
         auth_handoff,
+        state_policy,
         live_sessions,
     })
 }
@@ -135,6 +139,7 @@ pub fn install_status_text(report: &InstallStatusReport) -> String {
     lines.push(format_check_status(&report.default_profile_launcher));
     lines.push(format_check_status(&report.firefox_startup_policy));
     lines.push(auth_handoff_text(&report.auth_handoff));
+    lines.push(state_policy_text(&report.state_policy));
     lines.push(format!(
         "{} live Firefox session(s)",
         report.live_sessions.len()
@@ -283,12 +288,13 @@ fn check_native_registry() -> CheckStatus {
     let Ok(actual) = key.get_value::<String, _>("") else {
         return CheckStatus::fail("Native registry", None, "default registry value is missing");
     };
-    if PathBuf::from(&actual) == expected {
+    let actual = PathBuf::from(actual);
+    if actual == expected {
         CheckStatus::ok("Native registry", Some(expected), None)
     } else {
         CheckStatus::fail(
             "Native registry",
-            Some(PathBuf::from(actual)),
+            Some(actual),
             format!("expected {}", expected.display()),
         )
     }
@@ -438,6 +444,7 @@ mod tests {
                 &PathBuf::from(r"C:\Users\me\AppData\Local\pire-browser"),
                 DEFAULT_PROFILE_NAME,
             ),
+            state_policy: crate::state_policy::state_policy_from_env_value(None),
             live_sessions: Vec::new(),
         };
         let text = install_status_text(&report);
@@ -445,6 +452,7 @@ mod tests {
         assert!(text.contains("CLI executable"));
         assert!(text.contains("CLI on PATH"));
         assert!(text.contains("Auth handoff"));
+        assert!(text.contains("State policy"));
     }
 
     #[test]

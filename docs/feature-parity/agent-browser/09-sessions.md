@@ -30,7 +30,8 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-  - GPT-5.5 review: Implemented as `pire-browser session list`, sharing the same live-session metadata model as `status`; compatibility remains partial until multi-session isolation has fixture-backed coverage.
+  - GPT-5.5 review: Implemented as `pire-browser session list`, sharing the same live-session metadata model as `status`; compatibility remains partial because multi-session isolation is smoke-covered rather than oracle-matrix covered.
+  - GPT-5.5 implementation note: `status` and `session list --json` now include optional `profileName` when a live session matches managed launcher metadata.
 - [P] `agent-browser session`
   - Extension Compatibility: True
   - Priority: Medium
@@ -158,12 +159,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser state load ./my-auth.json`
+- [P] `agent-browser state load ./my-auth.json`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: `pire-browser state load <path>` restores plaintext active-origin cookies, localStorage, and sessionStorage into the current page origin and reloads; broader auth vault and cross-origin browser import remain out of scope.
 - [F] `agent-browser open https://app.example.com/dashboard`
   - Oracle Coverage: covered (open-fixture)
   - Extension Compatibility: True
@@ -171,28 +173,31 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: High
   - Testing: Start the dashboard against a live smoke session and run Playwright/browser checks for session list, screenshots, logs, and controls.
   - Gemini feedback: Confirmed this feature is fully implemented in /pire-browser or is highly compatible. The specified testing strategy is appropriate and should ensure stability.
-- [ ] `agent-browser --session-name myapp state load ./my-auth.json`
+- [P] `agent-browser --session-name myapp state load ./my-auth.json`
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: `pire-browser --session-name <name> state load <path>` reuses a live managed profile session or launches the named profile at the saved URL before restoring active-origin cookies and Web Storage.
 
 ## Session persistence
 
-- [ ] `agent-browser --session-name twitter open twitter.com`
+- [P] `agent-browser --session-name twitter open twitter.com`
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser --session-name twitter click "#login"`
+  - GPT-5.5 implementation note: `pire-browser --session-name <name> open <url>` reuses or launches a same-named managed Firefox profile; compatibility remains partial because env-var session names, state import/export, and profile cleanup are out of scope.
+- [P] `agent-browser --session-name twitter click "#login"`
   - Oracle Coverage: covered (click-css)
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Follow-up commands with `--session-name <name>` dispatch to an existing live named profile session or launch one for eligible browser commands; `close` remains strict and does not launch.
 - [ ] Support documented usage: `export AGENT_BROWSER_SESSION_NAME=twitter`
   - Extension Compatibility: True
   - Priority: Low
@@ -209,36 +214,41 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
 
 ## Session name rules
 
-- [ ] `agent-browser --session-name my-project open example.com`
+- [P] `agent-browser --session-name my-project open example.com`
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser --session-name test_session_v2 open example.com`
+  - GPT-5.5 implementation note: Accepted as a simple managed Firefox profile name and smoke-tested through profile-backed lifecycle behavior.
+- [P] `agent-browser --session-name test_session_v2 open example.com`
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser --session-name "../bad" open example.com` - path traversal
+  - GPT-5.5 implementation note: Accepted as a simple managed Firefox profile name and covered by Rust profile-name validation.
+- [P] `agent-browser --session-name "../bad" open example.com` - path traversal
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser --session-name "my session" open example.com` - spaces
+  - GPT-5.5 implementation note: Rejected before launch by `pire-browser --session-name` validation because managed profile names cannot contain path traversal.
+- [P] `agent-browser --session-name "my session" open example.com` - spaces
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser --session-name "foo/bar" open example.com` - slashes
+  - GPT-5.5 implementation note: Accepted and preserved exactly; command-prefix help quotes names with spaces.
+- [P] `agent-browser --session-name "foo/bar" open example.com` - slashes
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Rejected before launch by `pire-browser --session-name` validation because managed profile names cannot contain path separators.
 
 ## State encryption
 
@@ -284,6 +294,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Upstream `agent-browser state show` returns parsed state content, so it remains unavailable. Use backend-specific `pire-browser state inspect <path>` for metadata-only review of plaintext state files.
 - [ ] `agent-browser state rename old-name new-name`
   - Extension Compatibility: True
   - Priority: Medium
@@ -302,18 +313,20 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser state save ./backup.json`
+- [P] `agent-browser state save ./backup.json`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser state load ./backup.json`
+  - GPT-5.5 implementation note: `pire-browser state save <path>` writes a plaintext schemaVersion 1 active-origin state file with cookies, localStorage, and sessionStorage for the live targeted page only; new files strip query/fragment from `source.url`.
+- [P] `agent-browser state load ./backup.json`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Run two isolated Firefox profiles/sessions against a cookie/storage fixture; assert persistence within a profile and isolation across profiles.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: `pire-browser state load <path>` validates the state schema, rejects wrong-origin live pages, applies active-origin cookies and Web Storage, and reloads. `--require-inspected` adds an opt-in local receipt gate from `state inspect --record`; other state management commands remain unavailable.
 
 ## Authenticated sessions
 

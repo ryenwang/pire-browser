@@ -31,7 +31,9 @@
     "oracle:ci": "npm run oracle:test && npm run oracle:wrapper && npm run oracle:doctor && npm run oracle:compare && npm run oracle:report",
     "oracle:visible": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/oracle/visible-compare.ps1",
     "oracle:visible:pi": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/oracle/visible-bing-side-by-side.ps1",
-    "oracle:visible:compare": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/oracle/visible-compare.ps1"
+    "oracle:visible:compare": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/oracle/visible-compare.ps1",
+    "smoke:named-sessions": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-named-sessions.ps1",
+    "smoke:state": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-state.ps1"
   },
   "pi": {
     "extensions": ["pi/extensions/pire-browser.ts"]
