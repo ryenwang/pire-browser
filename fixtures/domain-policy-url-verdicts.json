@@ -19,6 +19,12 @@
       "verdict": "allowed"
     },
     {
+      "name": "userinfo ignored for host match",
+      "patterns": ["example.com"],
+      "input": "https://user@example.com/path",
+      "verdict": "allowed"
+    },
+    {
       "name": "trailing dot host",
       "patterns": ["example.com"],
       "input": "https://example.com./path",
@@ -46,6 +52,12 @@
       "name": "wildcard does not match apex",
       "patterns": ["*.example.com"],
       "input": "https://example.com/dashboard",
+      "verdict": "denied"
+    },
+    {
+      "name": "wildcard does not match suffix lookalike",
+      "patterns": ["*.example.com"],
+      "input": "https://example.com.evil.net/dashboard",
       "verdict": "denied"
     },
     {

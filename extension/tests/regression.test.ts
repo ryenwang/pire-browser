@@ -45,6 +45,8 @@ function loadClosePlanner(): ClosePlanner {
 
 function loadDomainPolicyErrorForUrl(): DomainPolicyErrorForUrl {
   const body = backgroundSource();
+  // Keep domainPolicyErrorForUrl and its helper functions contiguous in background.ts;
+  // this extraction intentionally tests the same helper block the extension uses.
   const start = body.indexOf("function domainPolicyErrorForUrl(");
   const end = body.indexOf("\n// Maintainer note: update this list", start);
   expect(start).toBeGreaterThanOrEqual(0);
