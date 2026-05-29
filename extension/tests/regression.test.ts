@@ -10,8 +10,17 @@ type ClosePlanner = (
   fallbackTabId?: number
 ) => { windowIds: number[]; tabIds: number[] };
 
+type DomainPolicyErrorForUrl = (
+  input: string,
+  policy: { enabled: boolean; patterns: string[] }
+) => { code: string; message: string } | null;
+
 function extensionFile(path: string) {
   return readFileSync(resolve(import.meta.dirname, "..", path), "utf8");
+}
+
+function repoFile(path: string) {
+  return readFileSync(resolve(import.meta.dirname, "..", "..", path), "utf8");
 }
 
 function backgroundSource() {
@@ -32,6 +41,22 @@ function loadClosePlanner(): ClosePlanner {
   runInNewContext(js, sandbox);
   if (!sandbox.__planControlledClose) throw new Error("planControlledClose did not load");
   return sandbox.__planControlledClose;
+}
+
+function loadDomainPolicyErrorForUrl(): DomainPolicyErrorForUrl {
+  const body = backgroundSource();
+  const start = body.indexOf("function domainPolicyErrorForUrl(");
+  const end = body.indexOf("\n// Maintainer note: update this list", start);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  const source = body.slice(start, end);
+  const js = transpileModule(`${source}\nthis.__domainPolicyErrorForUrl = domainPolicyErrorForUrl;`, {
+    compilerOptions: { module: ModuleKind.ES2020, target: ScriptTarget.ES2020 },
+  }).outputText;
+  const sandbox: { __domainPolicyErrorForUrl?: DomainPolicyErrorForUrl; URL: typeof URL } = { URL };
+  runInNewContext(js, sandbox);
+  if (!sandbox.__domainPolicyErrorForUrl) throw new Error("domainPolicyErrorForUrl did not load");
+  return sandbox.__domainPolicyErrorForUrl;
 }
 
 describe("compiled MV2 scripts", () => {
@@ -280,6 +305,25 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain("function normalizePolicyHost");
     expect(body).toContain("batchCommand(rest, domainPolicy)");
     expect(body).toContain("executeCommandWithDomainPolicy(splitCommand(commandText), domainPolicy)");
+    expect(body).toContain("Maintainer note: update this list whenever a command reads");
+  });
+
+  it("matches shared domain policy URL verdict fixtures", () => {
+    const check = loadDomainPolicyErrorForUrl();
+    const fixture = JSON.parse(repoFile("fixtures/domain-policy-url-verdicts.json")) as {
+      cases: { name: string; patterns: string[]; input: string; verdict: string }[];
+    };
+    for (const testCase of fixture.cases) {
+      const error = check(testCase.input, { enabled: true, patterns: testCase.patterns });
+      const actual = !error
+        ? "allowed"
+        : error.message.includes("URLs are not allowed")
+          ? "non_http"
+          : error.message.includes("invalid URL") || error.message.includes("empty URL")
+            ? "invalid"
+            : "denied";
+      expect(actual, testCase.name).toBe(testCase.verdict);
+    }
   });
 
   it("extracts selections and pastes only into focused editable text targets", () => {

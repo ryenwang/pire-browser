@@ -422,7 +422,21 @@ fn pattern_texts(patterns: &[DomainPattern]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
     use serde_json::json;
+
+    #[derive(Debug, Deserialize)]
+    struct UrlVerdictFixture {
+        cases: Vec<UrlVerdictCase>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct UrlVerdictCase {
+        name: String,
+        patterns: Vec<String>,
+        input: String,
+        verdict: String,
+    }
 
     fn args(value: Option<&str>, no_allowed_domains: bool) -> DomainPolicyArgs {
         DomainPolicyArgs {
@@ -529,6 +543,27 @@ mod tests {
             check_url_allowed(&decision, "about:blank"),
             UrlPolicyCheck::NonHttp { .. }
         ));
+    }
+
+    #[test]
+    fn shared_url_verdict_fixture_matches_rust_policy() {
+        let fixture: UrlVerdictFixture = serde_json::from_str(include_str!(
+            "../../../fixtures/domain-policy-url-verdicts.json"
+        ))
+        .unwrap();
+        for case in fixture.cases {
+            let raw_patterns = case.patterns.join(",");
+            let decision =
+                resolve_domain_policy_from_env_value(None, &args(Some(&raw_patterns), false))
+                    .unwrap_or_else(|error| panic!("{}: {error:#}", case.name));
+            let actual = match check_url_allowed(&decision, &case.input) {
+                UrlPolicyCheck::Allowed => "allowed",
+                UrlPolicyCheck::Denied { .. } => "denied",
+                UrlPolicyCheck::NonHttp { .. } => "non_http",
+                UrlPolicyCheck::Invalid(_) => "invalid",
+            };
+            assert_eq!(actual, case.verdict, "{}", case.name);
+        }
     }
 
     #[test]

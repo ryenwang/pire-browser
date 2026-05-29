@@ -230,6 +230,10 @@
         }
         return normalizedHost === normalizedPattern;
     }
+    // Maintainer note: update this list whenever a command reads, mutates, captures,
+    // navigates within, or otherwise acts on the active page. Destination-bearing
+    // commands such as open/goto/navigate and tabs new are handled separately by
+    // domainPolicyDestinationUrl.
     function commandNeedsActivePageDomainCheck(args) {
         const [command, subcommand] = args;
         if ([
