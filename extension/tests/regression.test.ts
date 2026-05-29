@@ -261,6 +261,27 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain("browser.tabs.reload(tab.tabId)");
   });
 
+  it("checks active-page domain policy before content actions", () => {
+    const body = background();
+    expect(body).toContain("type DomainPolicyContext = {");
+    expect(body).toContain("executeCommandWithDomainPolicy(args, domainPolicy)");
+    expect(body).toContain("domainPolicyErrorForCommand(args, policy)");
+    expect(body).toContain("domainPolicyDestinationUrl(args)");
+    expect(body).toContain("function commandNeedsActivePageDomainCheck");
+    expect(body).toContain("await targetTab().catch(() => undefined)");
+    expect(body).toContain('"DomainPolicyError"');
+    expect(body).toContain('"snapshot"');
+    expect(body).toContain('command === "clipboard"');
+    expect(body).toContain('command === "state"');
+    expect(body).toContain('command === "tab" || command === "tabs"');
+    expect(body).toContain('subcommand === "new"');
+    expect(body).toContain('"--load"');
+    expect(body).toContain("function explicitNonHttpScheme");
+    expect(body).toContain("function normalizePolicyHost");
+    expect(body).toContain("batchCommand(rest, domainPolicy)");
+    expect(body).toContain("executeCommandWithDomainPolicy(splitCommand(commandText), domainPolicy)");
+  });
+
   it("extracts selections and pastes only into focused editable text targets", () => {
     const body = content();
     expect(body).toContain("function clipboardSelection()");

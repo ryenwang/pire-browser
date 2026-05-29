@@ -2,6 +2,7 @@ use anyhow::{bail, Result};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+use crate::domain_policy::DomainPolicyArgs;
 use crate::protocol::RpcRequest;
 use crate::state_policy::StateLoadPolicyFlag;
 
@@ -30,15 +31,18 @@ pub enum LocalCommand {
         profile: String,
         url: Option<String>,
         firefox_path: Option<String>,
+        domain_policy: DomainPolicyArgs,
     },
     InstallStatus {
         json: bool,
+        domain_policy: DomainPolicyArgs,
     },
     DoctorFix {
         json: bool,
     },
     Status {
         json: bool,
+        domain_policy: DomainPolicyArgs,
     },
     SessionList {
         json: bool,
@@ -54,12 +58,14 @@ pub enum LocalCommand {
         target: SessionTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
+        domain_policy: DomainPolicyArgs,
         path: String,
     },
     StateLoad {
         target: SessionTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
+        domain_policy: DomainPolicyArgs,
         path: String,
         policy_flag: StateLoadPolicyFlag,
     },
@@ -73,6 +79,7 @@ pub enum LocalCommand {
         target: SessionTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
+        domain_policy: DomainPolicyArgs,
         args: Vec<String>,
     },
 }
@@ -95,6 +102,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     let mut session_name = None;
     let mut json_output = false;
     let mut ignored_global_flags = Vec::new();
+    let mut domain_policy = DomainPolicyArgs::default();
     const GLOBAL_VALUE_FLAGS: &[&str] = &[
         "--session",
         "--session-name",
@@ -120,6 +128,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         "--allow-file-access",
         "--auto-connect",
         "--confirm-interactive",
+        "--no-allowed-domains",
         "-q",
         "-v",
     ];
@@ -134,6 +143,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             match flag.as_str() {
                 "--session" => set_session_id(&mut session_id, &session_name, value)?,
                 "--session-name" => set_session_name(&session_id, &mut session_name, value)?,
+                "--allowed-domains" => set_allowed_domains(&mut domain_policy, value)?,
                 _ => {}
             }
             if ignored_with_warning_global_flag(&flag) {
@@ -145,6 +155,9 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             args.remove(0);
             if first == "--json" {
                 json_output = true;
+            }
+            if first == "--no-allowed-domains" {
+                set_no_allowed_domains(&mut domain_policy)?;
             }
             if ignored_with_warning_global_flag(&first) {
                 ignored_global_flags.push(GlobalFlagWarning { flag: first });
@@ -255,6 +268,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             profile,
             url,
             firefox_path,
+            domain_policy,
         });
     }
 
@@ -281,7 +295,10 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         if fix {
             return Ok(LocalCommand::DoctorFix { json: json_output });
         }
-        return Ok(LocalCommand::InstallStatus { json: json_output });
+        return Ok(LocalCommand::InstallStatus {
+            json: json_output,
+            domain_policy,
+        });
     }
 
     if command == "session" || command == "sessions" {
@@ -339,7 +356,10 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 other => bail!("unsupported status option: {other}"),
             }
         }
-        return Ok(LocalCommand::Status { json: json_output });
+        return Ok(LocalCommand::Status {
+            json: json_output,
+            domain_policy,
+        });
     }
 
     if command == "state" {
@@ -391,6 +411,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                     target: session_target,
                     json: json_output,
                     ignored_global_flags,
+                    domain_policy,
                     path,
                 });
             }
@@ -413,6 +434,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 target: session_target,
                 json: json_output,
                 ignored_global_flags,
+                domain_policy,
                 path,
                 policy_flag,
             });
@@ -429,6 +451,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         target: session_target,
         json: json_output,
         ignored_global_flags,
+        domain_policy,
         args,
     })
 }
@@ -474,6 +497,28 @@ fn session_target_from_flags(
     } else {
         SessionTarget::Default
     }
+}
+
+fn set_allowed_domains(policy: &mut DomainPolicyArgs, value: String) -> Result<()> {
+    if policy.no_allowed_domains {
+        bail!("invalid_args: cannot use --allowed-domains and --no-allowed-domains together");
+    }
+    if policy.allowed_domains.is_some() {
+        bail!("--allowed-domains was provided more than once");
+    }
+    policy.allowed_domains = Some(value);
+    Ok(())
+}
+
+fn set_no_allowed_domains(policy: &mut DomainPolicyArgs) -> Result<()> {
+    if policy.allowed_domains.is_some() {
+        bail!("invalid_args: cannot use --allowed-domains and --no-allowed-domains together");
+    }
+    if policy.no_allowed_domains {
+        bail!("--no-allowed-domains was provided more than once");
+    }
+    policy.no_allowed_domains = true;
+    Ok(())
 }
 
 fn is_help_flag(arg: &str) -> bool {
@@ -540,6 +585,7 @@ Common commands:
   state save .pire-state/app.json Save active-origin cookies and web storage
   state inspect .pire-state/app.json
   state inspect --record .pire-state/app.json
+  --allowed-domains "example.com" open <url>
   --session-name work open <url>  Reuse or launch a named Firefox profile
   session list                    List live Firefox sessions
   screenshot out.png              Capture the visible viewport
@@ -554,7 +600,7 @@ Usage:
   pire-browser status [--json]
 
 Shows live Firefox extension sessions, the session default commands will target,
-and the active page when Firefox has reported one.
+the active page when Firefox has reported one, and advisory policy diagnostics.
 "##;
 
 const DOCTOR_HELP: &str = r##"
@@ -564,7 +610,8 @@ Usage:
 
 Checks Firefox discovery, native messaging setup, extension build files, managed
 profile state, live sessions, and CLI/PATH advisories. --offline and --quick are
-accepted as no-op compatibility flags. --fix is not implemented yet.
+accepted as no-op compatibility flags. Domain allowlist and state policy entries
+are advisory diagnostics. --fix is not implemented yet.
 "##;
 
 const OPEN_HELP: &str = r##"
@@ -575,7 +622,8 @@ Usage:
 
 Opens a page in the default session, auto-launching managed Firefox when needed.
 Use `--session-name <name>` before the command to reuse or launch a named
-managed Firefox profile.
+managed Firefox profile. Use `--allowed-domains "example.com,*.example.com"` or
+AGENT_BROWSER_ALLOWED_DOMAINS for a cooperative wrong-site guardrail.
 "##;
 
 const SNAPSHOT_HELP: &str = r##"
@@ -655,7 +703,7 @@ that receipt; use `--no-require-inspected` only as an explicit cooperative
 operator override.
 `--session <id>` is strict and never launches; `--session-name <name> state load`
 can launch that managed profile at the saved display URL when no live named
-session exists.
+session exists. Active domain allowlists also check the saved state origin.
 "##;
 
 const SESSION_HELP: &str = r##"
@@ -744,6 +792,10 @@ mod tests {
         values.iter().map(|v| v.to_string()).collect()
     }
 
+    fn default_domain_policy() -> DomainPolicyArgs {
+        DomainPolicyArgs::default()
+    }
+
     #[test]
     fn parses_setup() {
         let parsed = parse_cli_args(&s(&[
@@ -808,6 +860,7 @@ mod tests {
                 target: SessionTarget::Id("abc".to_string()),
                 json: false,
                 ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
                 args: s(&["find", "label", "Email", "fill", "x"])
             }
         );
@@ -822,6 +875,7 @@ mod tests {
                 target: SessionTarget::Default,
                 json: true,
                 ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
                 args: s(&["snapshot"])
             }
         );
@@ -853,6 +907,7 @@ mod tests {
                         flag: "--color-scheme".to_string()
                     }
                 ],
+                domain_policy: default_domain_policy(),
                 args: s(&["snapshot", "-i"])
             }
         );
@@ -884,9 +939,58 @@ mod tests {
                         flag: "--color-scheme".to_string()
                     }
                 ],
+                domain_policy: default_domain_policy(),
                 args: s(&["get", "title"])
             }
         );
+    }
+
+    #[test]
+    fn parses_domain_allowlist_global_flags() {
+        let parsed = parse_cli_args(&s(&[
+            "--allowed-domains",
+            "example.com,*.example.org",
+            "open",
+            "example.com",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: DomainPolicyArgs {
+                    allowed_domains: Some("example.com,*.example.org".to_string()),
+                    no_allowed_domains: false,
+                },
+                args: s(&["open", "example.com"])
+            }
+        );
+
+        let parsed = parse_cli_args(&s(&["--no-allowed-domains", "snapshot"])).unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: DomainPolicyArgs {
+                    allowed_domains: None,
+                    no_allowed_domains: true,
+                },
+                args: s(&["snapshot"])
+            }
+        );
+
+        assert!(parse_cli_args(&s(&[
+            "--allowed-domains",
+            "example.com",
+            "--no-allowed-domains",
+            "snapshot"
+        ]))
+        .is_err());
     }
 
     #[test]
@@ -901,21 +1005,45 @@ mod tests {
     #[test]
     fn parses_install_status_json() {
         let parsed = parse_cli_args(&s(&["install-status", "--json"])).unwrap();
-        assert_eq!(parsed, LocalCommand::InstallStatus { json: true });
+        assert_eq!(
+            parsed,
+            LocalCommand::InstallStatus {
+                json: true,
+                domain_policy: default_domain_policy()
+            }
+        );
     }
 
     #[test]
     fn parses_doctor_as_install_status() {
         let parsed = parse_cli_args(&s(&["doctor", "--json"])).unwrap();
-        assert_eq!(parsed, LocalCommand::InstallStatus { json: true });
+        assert_eq!(
+            parsed,
+            LocalCommand::InstallStatus {
+                json: true,
+                domain_policy: default_domain_policy()
+            }
+        );
     }
 
     #[test]
     fn parses_status_json() {
         let parsed = parse_cli_args(&s(&["status", "--json"])).unwrap();
-        assert_eq!(parsed, LocalCommand::Status { json: true });
+        assert_eq!(
+            parsed,
+            LocalCommand::Status {
+                json: true,
+                domain_policy: default_domain_policy()
+            }
+        );
         let parsed = parse_cli_args(&s(&["--json", "status"])).unwrap();
-        assert_eq!(parsed, LocalCommand::Status { json: true });
+        assert_eq!(
+            parsed,
+            LocalCommand::Status {
+                json: true,
+                domain_policy: default_domain_policy()
+            }
+        );
     }
 
     #[test]
@@ -970,6 +1098,7 @@ mod tests {
                 target: SessionTarget::Default,
                 json: true,
                 ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
                 path: "state.json".to_string()
             }
         );
@@ -990,6 +1119,7 @@ mod tests {
                 ignored_global_flags: vec![GlobalFlagWarning {
                     flag: "--headless".to_string()
                 }],
+                domain_policy: default_domain_policy(),
                 path: "work-state.json".to_string(),
                 policy_flag: StateLoadPolicyFlag::Unspecified
             }
@@ -1000,6 +1130,7 @@ mod tests {
                 target: SessionTarget::Id("abc".to_string()),
                 json: false,
                 ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
                 path: "state.json".to_string(),
                 policy_flag: StateLoadPolicyFlag::Unspecified
             }
@@ -1017,6 +1148,7 @@ mod tests {
                 target: SessionTarget::Default,
                 json: true,
                 ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
                 path: "state.json".to_string(),
                 policy_flag: StateLoadPolicyFlag::RequireInspected
             }
@@ -1034,6 +1166,7 @@ mod tests {
                 target: SessionTarget::Default,
                 json: true,
                 ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
                 path: "state.json".to_string(),
                 policy_flag: StateLoadPolicyFlag::NoRequireInspected
             }
@@ -1094,6 +1227,7 @@ mod tests {
                 target: SessionTarget::Default,
                 json: false,
                 ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
                 args: s(&["state", "list"])
             }
         );
@@ -1103,6 +1237,7 @@ mod tests {
                 target: SessionTarget::Default,
                 json: true,
                 ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
                 args: s(&["state", "show", "state.json"])
             }
         );
@@ -1111,7 +1246,13 @@ mod tests {
     #[test]
     fn parses_doctor_noop_flags_and_fix() {
         let parsed = parse_cli_args(&s(&["doctor", "--offline", "--quick", "--json"])).unwrap();
-        assert_eq!(parsed, LocalCommand::InstallStatus { json: true });
+        assert_eq!(
+            parsed,
+            LocalCommand::InstallStatus {
+                json: true,
+                domain_policy: default_domain_policy()
+            }
+        );
         let parsed = parse_cli_args(&s(&["doctor", "--fix", "--json"])).unwrap();
         assert_eq!(parsed, LocalCommand::DoctorFix { json: true });
     }
@@ -1139,7 +1280,8 @@ mod tests {
             LocalCommand::Launch {
                 profile: "Default".to_string(),
                 url: None,
-                firefox_path: None
+                firefox_path: None,
+                domain_policy: default_domain_policy()
             }
         );
     }
@@ -1161,7 +1303,8 @@ mod tests {
             LocalCommand::Launch {
                 profile: "Default".to_string(),
                 url: Some("https://discord.com/login".to_string()),
-                firefox_path: Some("C:/Firefox/firefox.exe".to_string())
+                firefox_path: Some("C:/Firefox/firefox.exe".to_string()),
+                domain_policy: default_domain_policy()
             }
         );
     }

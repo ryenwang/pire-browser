@@ -4,6 +4,10 @@ use pire_browser_core::cli::{
     build_command_request, format_cli_result, help_text, parse_cli_args, GlobalFlagWarning,
     LocalCommand, SessionTarget,
 };
+use pire_browser_core::domain_policy::{
+    domain_policy_diagnostic_from_args, domain_policy_text, ensure_url_allowed, request_context,
+    resolve_domain_policy, DomainPolicyArgs, DomainPolicyDecision, DomainPolicyWarning,
+};
 use pire_browser_core::install_status::{
     collect_install_status, install_status_json, install_status_text,
 };
@@ -74,11 +78,15 @@ fn run() -> Result<()> {
             let result = setup_windows(firefox_path)?;
             println!("{}", setup_result_text(&result));
         }
-        LocalCommand::Status { json } => {
+        LocalCommand::Status {
+            json,
+            domain_policy,
+        } => {
             cleanup_stale_sessions(now_ms())?;
             let mut sessions = list_sessions()?;
             annotate_session_profile_names(&mut sessions)?;
             let auth_handoff = collect_default_auth_handoff()?;
+            let domain_policy = domain_policy_diagnostic_from_args(&domain_policy);
             let state_policy = collect_state_policy();
             if json {
                 let mut value = session_status_value(&sessions);
@@ -86,6 +94,10 @@ fn run() -> Result<()> {
                     object.insert(
                         "authHandoff".to_string(),
                         serde_json::to_value(auth_handoff)?,
+                    );
+                    object.insert(
+                        "domainPolicy".to_string(),
+                        serde_json::to_value(domain_policy)?,
                     );
                     object.insert(
                         "statePolicy".to_string(),
@@ -96,6 +108,7 @@ fn run() -> Result<()> {
             } else {
                 println!("{}", session_status_text(&sessions));
                 println!("{}", auth_handoff_text(&auth_handoff));
+                println!("{}", domain_policy_text(&domain_policy));
                 println!("{}", state_policy_text(&state_policy));
             }
         }
@@ -148,14 +161,22 @@ fn run() -> Result<()> {
             target,
             json,
             ignored_global_flags,
+            domain_policy,
             path,
         } => {
-            handle_state_save(target, json, ignored_global_flags, PathBuf::from(path))?;
+            handle_state_save(
+                target,
+                json,
+                ignored_global_flags,
+                domain_policy,
+                PathBuf::from(path),
+            )?;
         }
         LocalCommand::StateLoad {
             target,
             json,
             ignored_global_flags,
+            domain_policy,
             path,
             policy_flag,
         } => {
@@ -163,6 +184,7 @@ fn run() -> Result<()> {
                 target,
                 json,
                 ignored_global_flags,
+                domain_policy,
                 PathBuf::from(path),
                 policy_flag,
             )?;
@@ -179,16 +201,32 @@ fn run() -> Result<()> {
             profile,
             url,
             firefox_path,
+            domain_policy,
         } => {
+            let domain_decision = resolve_domain_policy_or_exit(&domain_policy, false, &[])?;
+            if let Some(url) = &url {
+                ensure_url_allowed(&domain_decision, url)?;
+            }
             let result = launch_firefox(LaunchOptions {
                 profile,
                 url,
                 firefox_path,
             })?;
-            println!("{}", launch_result_text(&result));
+            let mut text = launch_result_text(&result);
+            for warning in &domain_decision.warnings {
+                text.push_str(&format!(
+                    "\nWarning [{}]: {}",
+                    warning.code, warning.message
+                ));
+            }
+            println!("{text}");
         }
-        LocalCommand::InstallStatus { json } => {
-            let report = collect_install_status()?;
+        LocalCommand::InstallStatus {
+            json,
+            domain_policy,
+        } => {
+            let mut report = collect_install_status()?;
+            report.domain_policy = domain_policy_diagnostic_from_args(&domain_policy);
             if json {
                 let value: serde_json::Value =
                     serde_json::from_str(&install_status_json(&report)?)?;
@@ -208,6 +246,7 @@ fn run() -> Result<()> {
             target,
             json,
             ignored_global_flags,
+            domain_policy,
             args,
         } => {
             if let Some(result) = local_not_available_result(&args, json, &ignored_global_flags)? {
@@ -224,16 +263,40 @@ fn run() -> Result<()> {
                 }
                 std::process::exit(exit_code_for_error("unsupported_command"));
             }
-            let request = build_command_request(args.clone());
+            let domain_decision =
+                resolve_domain_policy_or_exit(&domain_policy, json, &ignored_global_flags)?;
+            if let Some(url) = navigation_url_for_remote_args(&args) {
+                if let Err(err) = ensure_url_allowed(&domain_decision, &url) {
+                    exit_with_anyhow_error_with_domain_policy(
+                        err,
+                        json,
+                        &ignored_global_flags,
+                        &domain_decision.warnings,
+                    )?;
+                    unreachable!();
+                }
+            }
+            let request = build_command_request_with_domain_policy(args.clone(), &domain_decision)?;
             let dispatch_result = match target {
                 SessionTarget::Id(session_id) => send_to_session(Some(&session_id), &request),
                 SessionTarget::Name(profile_name) => {
-                    send_to_named_session(&profile_name, &args, &request)
+                    send_to_named_session(&profile_name, &args, &request, &domain_decision)
                 }
                 SessionTarget::Default => match send_to_session(None, &request) {
                     Ok(result) => Ok(result),
                     Err(err) if should_auto_launch_remote(None, &args, &err) => {
                         cleanup_stale_sessions(now_ms())?;
+                        if let Some(url) = launch_url_for_remote_args(&args) {
+                            if let Err(err) = ensure_url_allowed(&domain_decision, &url) {
+                                exit_with_anyhow_error_with_domain_policy(
+                                    err,
+                                    json,
+                                    &ignored_global_flags,
+                                    &domain_decision.warnings,
+                                )?;
+                                unreachable!();
+                            }
+                        }
                         let _result = match launch_firefox(LaunchOptions {
                             profile: "Default".to_string(),
                             url: launch_url_for_remote_args(&args),
@@ -241,20 +304,35 @@ fn run() -> Result<()> {
                         }) {
                             Ok(result) => result,
                             Err(err) => {
-                                exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                                exit_with_anyhow_error_with_domain_policy(
+                                    err,
+                                    json,
+                                    &ignored_global_flags,
+                                    &domain_decision.warnings,
+                                )?;
                                 unreachable!();
                             }
                         };
                         match send_to_session(None, &request) {
                             Ok(result) => Ok(result),
                             Err(err) => {
-                                exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                                exit_with_anyhow_error_with_domain_policy(
+                                    err,
+                                    json,
+                                    &ignored_global_flags,
+                                    &domain_decision.warnings,
+                                )?;
                                 unreachable!();
                             }
                         }
                     }
                     Err(err) => {
-                        exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                        exit_with_anyhow_error_with_domain_policy(
+                            err,
+                            json,
+                            &ignored_global_flags,
+                            &domain_decision.warnings,
+                        )?;
                         unreachable!();
                     }
                 },
@@ -262,7 +340,12 @@ fn run() -> Result<()> {
             let (response, response_session_id) = match dispatch_result {
                 Ok(result) => result,
                 Err(err) => {
-                    exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                    exit_with_anyhow_error_with_domain_policy(
+                        err,
+                        json,
+                        &ignored_global_flags,
+                        &domain_decision.warnings,
+                    )?;
                     unreachable!();
                 }
             };
@@ -276,14 +359,25 @@ fn run() -> Result<()> {
                     });
                 if json {
                     let exit_code = exit_code_for_error(&error.code);
-                    print_json_error(&error, &ignored_global_flags)?;
+                    print_json_error_with_domain_policy(
+                        &error,
+                        &ignored_global_flags,
+                        &domain_decision.warnings,
+                    )?;
                     std::process::exit(exit_code);
                 }
-                let err = plain_error_message(&error);
+                let mut err = plain_error_message(&error);
+                for warning in &domain_decision.warnings {
+                    err.push_str(&format!(
+                        "\nWarning [{}]: {}",
+                        warning.code, warning.message
+                    ));
+                }
                 eprintln!("{err}");
                 std::process::exit(exit_code_for_error(&error.code));
             }
             let mut result = response.result.unwrap_or_else(|| json!({ "text": "ok" }));
+            append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
             append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
             println!("{}", format_cli_result(&result, json)?);
             if is_controlled_close_command(&args) {
@@ -310,17 +404,51 @@ fn exit_with_anyhow_error_with_policy(
     ignored_global_flags: &[GlobalFlagWarning],
     policy_warnings: &[StatePolicyWarning],
 ) -> Result<()> {
+    let warning_values = warning_values(policy_warnings, &[])?;
+    exit_with_anyhow_error_with_warning_values(
+        err,
+        json_output,
+        ignored_global_flags,
+        &warning_values,
+    )
+}
+
+fn exit_with_anyhow_error_with_domain_policy(
+    err: anyhow::Error,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    policy_warnings: &[DomainPolicyWarning],
+) -> Result<()> {
+    let warning_values = warning_values(&[], policy_warnings)?;
+    exit_with_anyhow_error_with_warning_values(
+        err,
+        json_output,
+        ignored_global_flags,
+        &warning_values,
+    )
+}
+
+fn exit_with_anyhow_error_with_warning_values(
+    err: anyhow::Error,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    warning_values: &[Value],
+) -> Result<()> {
     if json_output {
         let error = rpc_error_from_anyhow(&err);
-        print_json_error_with_policy(&error, ignored_global_flags, policy_warnings)?;
+        print_json_error_with_warning_values(&error, ignored_global_flags, warning_values)?;
         std::process::exit(exit_code_for_error(&error.code));
     }
-    if !policy_warnings.is_empty() {
+    if !warning_values.is_empty() {
         let mut message = format!("{err:#}");
-        for warning in policy_warnings {
+        for warning in warning_values {
             message.push_str(&format!(
                 "\nWarning [{}]: {}",
-                warning.code, warning.message
+                warning
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .unwrap_or("POLICY_WARNING"),
+                warning.get("message").and_then(Value::as_str).unwrap_or("")
             ));
         }
         return Err(anyhow::anyhow!(message));
@@ -332,40 +460,72 @@ fn handle_state_save(
     target: SessionTarget,
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
+    domain_policy: DomainPolicyArgs,
     path: PathBuf,
 ) -> Result<()> {
-    let request = build_command_request(vec!["state".to_string(), "export".to_string()]);
+    let domain_decision =
+        resolve_domain_policy_or_exit(&domain_policy, json_output, &ignored_global_flags)?;
+    let request = build_command_request_with_domain_policy(
+        vec!["state".to_string(), "export".to_string()],
+        &domain_decision,
+    )?;
     let (response, session_id) = match send_state_save_request(&target, &request) {
         Ok(result) => result,
         Err(err) => {
-            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            exit_with_anyhow_error_with_domain_policy(
+                err,
+                json_output,
+                &ignored_global_flags,
+                &domain_decision.warnings,
+            )?;
             unreachable!();
         }
     };
-    let export = response_result_or_exit(response, json_output, &ignored_global_flags)?;
+    let export = response_result_or_exit_with_domain_policy(
+        response,
+        json_output,
+        &ignored_global_flags,
+        &domain_decision.warnings,
+    )?;
     let profile_name = match profile_name_for_state_source(&target, &session_id) {
         Ok(profile_name) => profile_name,
         Err(err) => {
-            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            exit_with_anyhow_error_with_domain_policy(
+                err,
+                json_output,
+                &ignored_global_flags,
+                &domain_decision.warnings,
+            )?;
             unreachable!();
         }
     };
     let state = match state_from_extension_export(export, session_id, profile_name) {
         Ok(state) => state,
         Err(err) => {
-            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            exit_with_anyhow_error_with_domain_policy(
+                err,
+                json_output,
+                &ignored_global_flags,
+                &domain_decision.warnings,
+            )?;
             unreachable!();
         }
     };
     let bytes_written = match write_state_file(&path, &state) {
         Ok(bytes_written) => bytes_written,
         Err(err) => {
-            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            exit_with_anyhow_error_with_domain_policy(
+                err,
+                json_output,
+                &ignored_global_flags,
+                &domain_decision.warnings,
+            )?;
             unreachable!();
         }
     };
     let mut value = state_save_value(&state, &path, bytes_written);
     append_state_save_path_warning(&mut value, &path);
+    append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
     append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
     println!("{}", format_cli_result(&value, json_output)?);
     Ok(())
@@ -375,6 +535,7 @@ fn handle_state_load(
     target: SessionTarget,
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
+    domain_policy: DomainPolicyArgs,
     path: PathBuf,
     policy_flag: StateLoadPolicyFlag,
 ) -> Result<()> {
@@ -385,36 +546,49 @@ fn handle_state_load(
             unreachable!();
         }
     };
+    let domain_decision =
+        resolve_domain_policy_or_exit(&domain_policy, json_output, &ignored_global_flags)?;
+    let combined_policy_warnings =
+        warning_values(&policy_decision.warnings, &domain_decision.warnings)?;
     let read = match read_state_file_with_metadata(&path) {
         Ok(read) => read,
         Err(err) => {
-            exit_with_anyhow_error_with_policy(
+            exit_with_anyhow_error_with_warning_values(
                 err,
                 json_output,
                 &ignored_global_flags,
-                &policy_decision.warnings,
+                &combined_policy_warnings,
             )?;
             unreachable!();
         }
     };
+    if let Err(err) = ensure_url_allowed(&domain_decision, &read.state.source.origin) {
+        exit_with_anyhow_error_with_domain_policy(
+            err,
+            json_output,
+            &ignored_global_flags,
+            &domain_decision.warnings,
+        )?;
+        unreachable!();
+    }
     let tool_version_mismatch = if policy_decision.require_inspected {
         if let Err(err) = sweep_expired_state_receipts(now_ms()) {
-            exit_with_anyhow_error_with_policy(
+            exit_with_anyhow_error_with_warning_values(
                 err,
                 json_output,
                 &ignored_global_flags,
-                &policy_decision.warnings,
+                &combined_policy_warnings,
             )?;
             unreachable!();
         }
         match validate_state_inspection_receipt(&read, now_ms(), CLI_VERSION) {
             Ok(validation) => validation.tool_version_mismatch,
             Err(err) => {
-                exit_with_anyhow_error_with_policy(
+                exit_with_anyhow_error_with_warning_values(
                     err,
                     json_output,
                     &ignored_global_flags,
-                    &policy_decision.warnings,
+                    &combined_policy_warnings,
                 )?;
                 unreachable!();
             }
@@ -424,28 +598,32 @@ fn handle_state_load(
     };
     let state = read.state.clone();
     let payload = serde_json::to_string(&state)?;
-    let request = build_command_request(vec!["state".to_string(), "import".to_string(), payload]);
+    let request = build_command_request_with_domain_policy(
+        vec!["state".to_string(), "import".to_string(), payload],
+        &domain_decision,
+    )?;
     let (response, _session_id) = match send_state_load_request(&target, &state, &request) {
         Ok(result) => result,
         Err(err) => {
-            exit_with_anyhow_error_with_policy(
+            exit_with_anyhow_error_with_warning_values(
                 err,
                 json_output,
                 &ignored_global_flags,
-                &policy_decision.warnings,
+                &combined_policy_warnings,
             )?;
             unreachable!();
         }
     };
-    let import_result = response_result_or_exit_with_policy(
+    let import_result = response_result_or_exit_with_warning_values(
         response,
         json_output,
         &ignored_global_flags,
-        &policy_decision.warnings,
+        &combined_policy_warnings,
     )?;
     let mut value = state_load_value(&state, &path, &import_result);
     append_state_policy_diagnostic(&mut value, &policy_decision)?;
     append_state_policy_warnings(&mut value, &policy_decision.warnings, !json_output)?;
+    append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
     if let Some(receipt_version) = tool_version_mismatch {
         append_warning_value(
             &mut value,
@@ -568,19 +746,11 @@ fn launch_state_target(profile: &str, url: &str) -> Result<String> {
     Ok(session_id)
 }
 
-fn response_result_or_exit(
+fn response_result_or_exit_with_domain_policy(
     response: RpcResponse,
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
-) -> Result<Value> {
-    response_result_or_exit_with_policy(response, json_output, ignored_global_flags, &[])
-}
-
-fn response_result_or_exit_with_policy(
-    response: RpcResponse,
-    json_output: bool,
-    ignored_global_flags: &[GlobalFlagWarning],
-    policy_warnings: &[StatePolicyWarning],
+    policy_warnings: &[DomainPolicyWarning],
 ) -> Result<Value> {
     if !response.ok {
         let error = response
@@ -592,7 +762,7 @@ fn response_result_or_exit_with_policy(
             });
         if json_output {
             let exit_code = exit_code_for_error(&error.code);
-            print_json_error_with_policy(&error, ignored_global_flags, policy_warnings)?;
+            print_json_error_with_domain_policy(&error, ignored_global_flags, policy_warnings)?;
             std::process::exit(exit_code);
         }
         let mut err = plain_error_message(&error);
@@ -600,6 +770,42 @@ fn response_result_or_exit_with_policy(
             err.push_str(&format!(
                 "\nWarning [{}]: {}",
                 warning.code, warning.message
+            ));
+        }
+        eprintln!("{err}");
+        std::process::exit(exit_code_for_error(&error.code));
+    }
+    Ok(response.result.unwrap_or_else(|| json!({ "text": "ok" })))
+}
+
+fn response_result_or_exit_with_warning_values(
+    response: RpcResponse,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    warning_values: &[Value],
+) -> Result<Value> {
+    if !response.ok {
+        let error = response
+            .error
+            .unwrap_or(pire_browser_core::protocol::RpcError {
+                code: "unknown_error".into(),
+                message: "unknown extension error".into(),
+                data: None,
+            });
+        if json_output {
+            let exit_code = exit_code_for_error(&error.code);
+            print_json_error_with_warning_values(&error, ignored_global_flags, warning_values)?;
+            std::process::exit(exit_code);
+        }
+        let mut err = plain_error_message(&error);
+        for warning in warning_values {
+            err.push_str(&format!(
+                "\nWarning [{}]: {}",
+                warning
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .unwrap_or("POLICY_WARNING"),
+                warning.get("message").and_then(Value::as_str).unwrap_or("")
             ));
         }
         eprintln!("{err}");
@@ -621,6 +827,33 @@ fn profile_name_for_state_source(
         .into_iter()
         .find(|session| session.session_id == session_id)
         .and_then(|session| session.profile_name))
+}
+
+fn resolve_domain_policy_or_exit(
+    args: &DomainPolicyArgs,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+) -> Result<DomainPolicyDecision> {
+    match resolve_domain_policy(args) {
+        Ok(decision) => Ok(decision),
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, ignored_global_flags)?;
+            unreachable!();
+        }
+    }
+}
+
+fn build_command_request_with_domain_policy(
+    args: Vec<String>,
+    decision: &DomainPolicyDecision,
+) -> Result<RpcRequest> {
+    let mut request = build_command_request(args);
+    if let Some(context) = request_context(decision) {
+        if let Some(object) = request.params.as_object_mut() {
+            object.insert("domainPolicy".to_string(), serde_json::to_value(context)?);
+        }
+    }
+    Ok(request)
 }
 
 fn state_save_value(state: &ActiveOriginStateFile, path: &Path, bytes_written: u64) -> Value {
@@ -789,19 +1022,22 @@ fn append_state_save_path_warning(result: &mut Value, path: &Path) {
     );
 }
 
-fn print_json_error(
+fn print_json_error_with_domain_policy(
     error: &pire_browser_core::protocol::RpcError,
     ignored_global_flags: &[GlobalFlagWarning],
+    policy_warnings: &[DomainPolicyWarning],
 ) -> Result<()> {
-    print_json_error_with_policy(error, ignored_global_flags, &[])
+    let policy_warnings = warning_values(&[], policy_warnings)?;
+    print_json_error_with_warning_values(error, ignored_global_flags, &policy_warnings)
 }
 
-fn print_json_error_with_policy(
+fn print_json_error_with_warning_values(
     error: &pire_browser_core::protocol::RpcError,
     ignored_global_flags: &[GlobalFlagWarning],
-    policy_warnings: &[StatePolicyWarning],
+    warning_values: &[Value],
 ) -> Result<()> {
-    let warnings = combined_warning_values(ignored_global_flags, policy_warnings)?;
+    let mut warnings = ignored_global_flag_warnings(ignored_global_flags);
+    warnings.extend(warning_values.iter().cloned());
     let mut data = error.data.clone().unwrap_or(Value::Null);
     redact_json_value(&mut data);
     println!(
@@ -833,6 +1069,8 @@ fn rpc_error_from_anyhow(err: &anyhow::Error) -> pire_browser_core::protocol::Rp
         ("session_not_found", "session")
     } else if message.contains("invalid_args:") {
         ("invalid_args", "parse")
+    } else if message.contains("DomainPolicyError:") {
+        ("DomainPolicyError", "policy")
     } else if message.contains("web-ext exited before pire-browser connected")
         || message.contains("failed to start web-ext")
         || message.contains("could not discover Firefox")
@@ -986,7 +1224,25 @@ fn append_state_policy_warnings(
     Ok(())
 }
 
+fn append_domain_policy_warnings(
+    result: &mut Value,
+    warnings: &[DomainPolicyWarning],
+    include_text: bool,
+) -> Result<()> {
+    for warning in warnings {
+        if include_text {
+            append_warning_text_value(result, &warning.code, &warning.message);
+        }
+        append_warning_value(result, serde_json::to_value(warning)?);
+    }
+    Ok(())
+}
+
 fn append_warning_text(result: &mut Value, warning: &StatePolicyWarning) {
+    append_warning_text_value(result, &warning.code, &warning.message)
+}
+
+fn append_warning_text_value(result: &mut Value, code: &str, message: &str) {
     let Some(text) = result
         .get("text")
         .and_then(Value::as_str)
@@ -994,10 +1250,7 @@ fn append_warning_text(result: &mut Value, warning: &StatePolicyWarning) {
     else {
         return;
     };
-    result["text"] = json!(format!(
-        "{text}\nWarning [{}]: {}",
-        warning.code, warning.message
-    ));
+    result["text"] = json!(format!("{text}\nWarning [{}]: {}", code, message));
 }
 
 fn append_warning_value(result: &mut Value, warning: Value) {
@@ -1029,12 +1282,15 @@ fn ignored_global_flag_warnings(ignored_global_flags: &[GlobalFlagWarning]) -> V
         .collect()
 }
 
-fn combined_warning_values(
-    ignored_global_flags: &[GlobalFlagWarning],
-    policy_warnings: &[StatePolicyWarning],
+fn warning_values(
+    state_warnings: &[StatePolicyWarning],
+    domain_warnings: &[DomainPolicyWarning],
 ) -> Result<Vec<Value>> {
-    let mut warnings = ignored_global_flag_warnings(ignored_global_flags);
-    for warning in policy_warnings {
+    let mut warnings = Vec::new();
+    for warning in state_warnings {
+        warnings.push(serde_json::to_value(warning)?);
+    }
+    for warning in domain_warnings {
         warnings.push(serde_json::to_value(warning)?);
     }
     Ok(warnings)
@@ -1077,6 +1333,7 @@ fn exit_code_for_error(code: &str) -> i32 {
         "TimeoutError" | "timeout" => 124,
         "ElementNotFound" | "not_found" | "ref_stale" | "ambiguous_locator" | "not_enabled" => 44,
         "InvalidArgumentError" | "invalid_args" => 2,
+        "DomainPolicyError" => 2,
         "NotAvailableError" => 78,
         "unsupported_command" => 1,
         "session_not_found" => 1,
@@ -1107,6 +1364,7 @@ fn send_to_named_session(
     profile_name: &str,
     args: &[String],
     request: &RpcRequest,
+    domain_policy: &DomainPolicyDecision,
 ) -> Result<(RpcResponse, String)> {
     validate_profile_name(profile_name)?;
     cleanup_stale_sessions(now_ms())?;
@@ -1126,6 +1384,9 @@ fn send_to_named_session(
         );
     }
 
+    if let Some(url) = launch_url_for_remote_args(args) {
+        ensure_url_allowed(domain_policy, &url)?;
+    }
     let result = launch_firefox(LaunchOptions {
         profile: profile_name.to_string(),
         url: launch_url_for_remote_args(args),
@@ -1282,6 +1543,16 @@ fn launch_url_for_remote_args(args: &[String]) -> Option<String> {
     }
     match args.first().map(String::as_str) {
         Some("open" | "goto" | "navigate") => first_positional_arg(&args[1..], &["--label"]),
+        _ => None,
+    }
+}
+
+fn navigation_url_for_remote_args(args: &[String]) -> Option<String> {
+    match args.first().map(String::as_str) {
+        Some("open" | "goto" | "navigate") => first_positional_arg(&args[1..], &["--label"]),
+        Some("tab" | "tabs") if args.get(1).map(String::as_str) == Some("new") => {
+            first_positional_arg(&args[2..], &["--label"])
+        }
         _ => None,
     }
 }
@@ -1512,6 +1783,28 @@ mod tests {
             launch_url_for_remote_args(&s(&["open", "--new", "https://example.com"])),
             None
         );
+        assert_eq!(
+            navigation_url_for_remote_args(&s(&["open", "--new", "https://example.com"])),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            navigation_url_for_remote_args(&s(&["tabs", "new", "https://example.com"])),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            navigation_url_for_remote_args(&s(&[
+                "tab",
+                "new",
+                "--label",
+                "docs",
+                "https://example.com"
+            ])),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            launch_url_for_remote_args(&s(&["tabs", "new", "https://example.com"])),
+            None
+        );
     }
 
     #[test]
@@ -1573,6 +1866,13 @@ mod tests {
             "web-ext exited before pire-browser connected (status: 1)"
         ));
         assert_eq!(launch.code, "browser_launch_failed");
+
+        let domain = rpc_error_from_anyhow(&anyhow::anyhow!(
+            "DomainPolicyError: host `example.net` is outside the active domain allowlist (example.com)"
+        ));
+        assert_eq!(domain.code, "DomainPolicyError");
+        assert_eq!(domain.data, Some(json!({ "phase": "policy" })));
+        assert_eq!(exit_code_for_error(&domain.code), 2);
     }
 
     #[test]
