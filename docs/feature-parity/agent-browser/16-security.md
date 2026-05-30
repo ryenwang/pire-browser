@@ -150,12 +150,14 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: `pire-browser --action-policy <path>` is implemented as a cooperative action-category guardrail for upstream-shaped policy files with `default`, `allow`, and `deny`. It enforces CLI-local categories and extension-side `batch` / chained `find` classification, but does not implement confirmation queues, audit logs, or a sandbox boundary.
 - [ ] Support documented usage: `export AGENT_BROWSER_ACTION_POLICY=./policy.json`
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Low
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: `AGENT_BROWSER_ACTION_POLICY` is implemented as the env-backed policy-file source. An explicit `--action-policy` flag wins over the env var, and malformed policies are diagnostic-only for `status`/`doctor` but fail strict command execution.
 
 ## Action Confirmation
 

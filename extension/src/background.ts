@@ -11,6 +11,13 @@ type DomainPolicyContext = {
   patterns?: string[];
 };
 
+type ActionPolicyContext = {
+  enabled?: boolean;
+  default?: "allow" | "deny";
+  allow?: string[];
+  deny?: string[];
+};
+
 type RpcResponse = {
   type: "response";
   id: string;
@@ -127,6 +134,7 @@ type ActiveOriginStatePayload = {
 const HOST_NAME = "dev.pi.pire_browser";
 const CHUNK_SIZE = 700_000;
 const CLOSE_TEARDOWN_DELAY_MS = 0;
+const TAB_READY_POLL_INTERVAL_MS = 100;
 
 let port: any;
 let profileId = "";
@@ -233,7 +241,8 @@ async function executeRequest(request: RpcRequest): Promise<RpcResponse> {
     }
     const args = Array.isArray(request.params?.args) ? (request.params?.args as string[]) : [];
     const domainPolicy = domainPolicyFromParams(request.params?.domainPolicy);
-    const result = await executeCommandWithDomainPolicy(args, domainPolicy);
+    const actionPolicy = actionPolicyFromParams(request.params?.actionPolicy);
+    const result = await executeCommandWithPolicies(args, domainPolicy, actionPolicy);
     if ("error" in result) {
       return {
         type: "response",
@@ -257,10 +266,16 @@ function errorResponse(id: string, code: string, message: string): RpcResponse {
   return { type: "response", id, ok: false, error: { code, message } };
 }
 
-async function executeCommandWithDomainPolicy(args: string[], policy: DomainPolicyContext | null): Promise<Record<string, unknown>> {
-  const domainError = await domainPolicyErrorForCommand(args, policy);
+async function executeCommandWithPolicies(
+  args: string[],
+  domainPolicy: DomainPolicyContext | null,
+  actionPolicy: ActionPolicyContext | null
+): Promise<Record<string, unknown>> {
+  const domainError = await domainPolicyErrorForCommand(args, domainPolicy);
   if (domainError) return { error: domainError };
-  return prepareLargeResult(await executeCommand(args, policy));
+  const actionError = actionPolicyErrorForCommand(args, actionPolicy);
+  if (actionError) return { error: actionError };
+  return prepareLargeResult(await executeCommand(args, domainPolicy, actionPolicy));
 }
 
 function domainPolicyFromParams(value: unknown): DomainPolicyContext | null {
@@ -274,6 +289,20 @@ function domainPolicyFromParams(value: unknown): DomainPolicyContext | null {
   return { enabled: true, patterns };
 }
 
+function actionPolicyFromParams(value: unknown): ActionPolicyContext | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.enabled !== true) return null;
+  const defaultValue = candidate.default === "deny" ? "deny" : "allow";
+  const allow = Array.isArray(candidate.allow)
+    ? candidate.allow.filter((category): category is string => typeof category === "string")
+    : [];
+  const deny = Array.isArray(candidate.deny)
+    ? candidate.deny.filter((category): category is string => typeof category === "string")
+    : [];
+  return { enabled: true, default: defaultValue, allow, deny };
+}
+
 async function domainPolicyErrorForCommand(args: string[], policy: DomainPolicyContext | null): Promise<RpcResponse["error"] | null> {
   if (!policy?.enabled || !policy.patterns?.length) return null;
   const [command] = args;
@@ -285,10 +314,180 @@ async function domainPolicyErrorForCommand(args: string[], policy: DomainPolicyC
   if (!url) {
     return {
       code: "DomainPolicyError",
+      data: { phase: "policy" },
       message: `domain allowlist requires an active http(s) page for ${command || "command"}`,
     };
   }
   return domainPolicyErrorForUrl(url, policy);
+}
+
+function actionPolicyErrorForCommand(args: string[], policy: ActionPolicyContext | null): RpcResponse["error"] | null {
+  if (!policy?.enabled) return null;
+  const verdict = actionPolicyVerdictForCommand(args, policy);
+  if (verdict.decision !== "deny") return null;
+  return {
+    code: "ActionPolicyError",
+    data: { phase: "policy" },
+    message: `action category \`${verdict.category ?? "unknown"}\` is denied by the active action policy`,
+  };
+}
+
+function actionPolicyVerdictForCommand(args: string[], policy: ActionPolicyContext): {
+  category: string | null;
+  decision: "allow" | "deny" | "meta" | "not_available" | "unsupported";
+} {
+  const resolution = actionPolicyCategoryForCommand(args);
+  if (resolution.kind !== "category") {
+    return { category: null, decision: resolution.kind };
+  }
+  const category = resolution.category;
+  if (policy.deny?.includes(category)) return { category, decision: "deny" };
+  if (policy.allow?.includes(category)) return { category, decision: "allow" };
+  return { category, decision: policy.default === "deny" ? "deny" : "allow" };
+}
+
+function actionPolicyCategoryForCommand(args: string[]):
+  | { kind: "category"; category: string }
+  | { kind: "meta" | "not_available" | "unsupported" | "allow" } {
+  const [command, subcommand] = args;
+  if (!command) return { kind: "unsupported" };
+  if (
+    ["status", "doctor", "install-status", "help", "setup", "session", "sessions", "close", "quit", "exit"].includes(command)
+  ) {
+    return { kind: "meta" };
+  }
+  if (command === "launch" && !args.includes("--url")) return { kind: "meta" };
+  if (command === "state" && subcommand === "inspect") return { kind: "meta" };
+  if ((command === "tab" || command === "tabs") && subcommand === "label") return { kind: "meta" };
+  if (command === "batch") return { kind: "allow" };
+  if (notAvailableActionPolicyRoot(command)) return { kind: "not_available" };
+
+  const category = actionPolicyCategoryName(args);
+  return category ? { kind: "category", category } : { kind: "unsupported" };
+}
+
+function actionPolicyCategoryName(args: string[]): string | null {
+  const [command, subcommand] = args;
+  switch (command) {
+    case "open":
+    case "goto":
+    case "navigate":
+    case "launch":
+    case "back":
+    case "forward":
+    case "reload":
+      return "navigate";
+    case "tab":
+    case "tabs":
+      if (!subcommand || subcommand === "list") return "get";
+      if (["new", "select", "close"].includes(subcommand)) return "navigate";
+      return null;
+    case "window":
+      return subcommand === "new" ? "navigate" : null;
+    case "click":
+    case "dblclick":
+      return "click";
+    case "fill":
+    case "type":
+    case "select":
+    case "check":
+    case "uncheck":
+      return "fill";
+    case "keyboard":
+      return subcommand === "type" || subcommand === "inserttext" ? "fill" : null;
+    case "eval":
+      return "eval";
+    case "snapshot":
+    case "screenshot":
+      return "snapshot";
+    case "scroll":
+    case "scrollintoview":
+      return "scroll";
+    case "wait":
+      return "wait";
+    case "find":
+      return findActionPolicyCategory(args);
+    case "get":
+    case "is":
+    case "frame":
+      return "get";
+    case "cookies":
+      return subcommand === "set" || subcommand === "clear" ? "state" : "get";
+    case "storage":
+      return (subcommand === "local" || subcommand === "session") && ["set", "clear"].includes(args[2] ?? "")
+        ? "state"
+        : "get";
+    case "dialog":
+      return subcommand === "accept" || subcommand === "dismiss" ? "interact" : "get";
+    case "hover":
+    case "focus":
+    case "press":
+    case "key":
+    case "keydown":
+    case "keyup":
+      return "interact";
+    case "clipboard":
+      if (subcommand === "paste") return "fill";
+      if (subcommand === "read") return "get";
+      if (subcommand === "write" || subcommand === "copy") return "state";
+      return null;
+    case "state":
+      if (subcommand === "save" || subcommand === "load") return "state";
+      return null;
+    default:
+      return null;
+  }
+}
+
+function findActionPolicyCategory(args: string[]) {
+  const parsed = parseFind(args.slice(1));
+  if ("error" in parsed || !parsed.action) return "get";
+  const action = parsed.action;
+  if (action === "click" || action === "dblclick") return "click";
+  if (["fill", "type", "select", "check", "uncheck"].includes(action)) return "fill";
+  if (["text", "html", "value", "attr", "box", "styles"].includes(action)) return "get";
+  if (action === "scroll" || action === "scrollintoview") return "scroll";
+  if (["press", "key", "hover", "focus"].includes(action)) return "interact";
+  if (action === "eval") return "eval";
+  return "interact";
+}
+
+function notAvailableActionPolicyRoot(command: string) {
+  return [
+    "addinitscript",
+    "auth",
+    "confirm",
+    "connect",
+    "console",
+    "dashboard",
+    "deny",
+    "device",
+    "diff",
+    "download",
+    "drag",
+    "errors",
+    "highlight",
+    "install",
+    "mouse",
+    "network",
+    "pdf",
+    "profiler",
+    "profiles",
+    "pushstate",
+    "react",
+    "record",
+    "removeinitscript",
+    "set",
+    "skill",
+    "skills",
+    "stream",
+    "swipe",
+    "tap",
+    "trace",
+    "upgrade",
+    "upload",
+    "vitals",
+  ].includes(command);
 }
 
 function domainPolicyDestinationUrl(args: string[]): string | undefined {
@@ -305,17 +504,19 @@ function domainPolicyDestinationUrl(args: string[]): string | undefined {
 function domainPolicyErrorForUrl(input: string, policy: DomainPolicyContext): RpcResponse["error"] | null {
   const parsed = parsePolicyUrl(input);
   if (!parsed.ok) {
-    return { code: "DomainPolicyError", message: parsed.message };
+    return { code: "DomainPolicyError", data: { phase: "policy" }, message: parsed.message };
   }
   if (parsed.scheme !== "http" && parsed.scheme !== "https") {
     return {
       code: "DomainPolicyError",
+      data: { phase: "policy" },
       message: `${parsed.scheme}: URLs are not allowed when a domain allowlist is active`,
     };
   }
   if (policy.patterns?.some((pattern) => domainPatternMatches(pattern, parsed.host))) return null;
   return {
     code: "DomainPolicyError",
+    data: { phase: "policy" },
     message: `host \`${parsed.host}\` is outside the active domain allowlist (${policy.patterns?.join(", ")})`,
   };
 }
@@ -407,7 +608,11 @@ function waitCommandTouchesActivePage(args: string[]) {
   return Boolean(first && Number.isNaN(Number(first)));
 }
 
-async function executeCommand(args: string[], domainPolicy: DomainPolicyContext | null = null): Promise<Record<string, unknown>> {
+async function executeCommand(
+  args: string[],
+  domainPolicy: DomainPolicyContext | null = null,
+  actionPolicy: ActionPolicyContext | null = null
+): Promise<Record<string, unknown>> {
   const [command, ...rest] = args;
   switch (command) {
     case "status":
@@ -471,7 +676,7 @@ async function executeCommand(args: string[], domainPolicy: DomainPolicyContext 
     case "dialog":
       return dialogCommand(rest);
     case "batch":
-      return batchCommand(rest, domainPolicy);
+      return batchCommand(rest, domainPolicy, actionPolicy);
     case "cookies":
       return cookiesCommand(rest);
     case "storage":
@@ -834,14 +1039,19 @@ async function dialogCommand(args: string[]) {
   );
 }
 
-async function batchCommand(args: string[], domainPolicy: DomainPolicyContext | null) {
+async function batchCommand(
+  args: string[],
+  domainPolicy: DomainPolicyContext | null,
+  actionPolicy: ActionPolicyContext | null
+) {
   const bailOnError = args.includes("--bail");
   const commands = args.filter((arg) => arg !== "--bail");
   const results: Record<string, unknown>[] = [];
   for (const commandText of commands) {
-    const result = await executeCommandWithDomainPolicy(splitCommand(commandText), domainPolicy);
+    const result = await executeCommandWithPolicies(splitCommand(commandText), domainPolicy, actionPolicy);
     results.push(result);
-    if ("error" in result && (result.error as RpcResponse["error"])?.code === "DomainPolicyError") {
+    const errorCode = (result.error as RpcResponse["error"])?.code;
+    if ("error" in result && (errorCode === "DomainPolicyError" || errorCode === "ActionPolicyError")) {
       return { error: result.error, text: `Ran ${results.length} batch command(s)`, results };
     }
     if (bailOnError && "error" in result) break;
@@ -1615,45 +1825,56 @@ function registerBrowserListeners() {
 }
 
 async function waitForTabComplete(tabId: number, timeout: number) {
-  const tab = await browser.tabs.get(tabId);
-  if (tab.status === "complete") return;
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      browser.tabs.onUpdated.removeListener(listener);
-      reject(new Error("timeout waiting for page load"));
-    }, timeout);
-    const listener = (updatedTabId: number, changeInfo: any) => {
-      if (updatedTabId === tabId && changeInfo.status === "complete") {
-        clearTimeout(timer);
-        browser.tabs.onUpdated.removeListener(listener);
-        resolve();
-      }
-    };
-    browser.tabs.onUpdated.addListener(listener);
-  });
+  await waitForTabState(tabId, timeout, (tab) => tab.status === "complete");
 }
 
 async function waitForTabReady(tabId: number, expectedUrl: string, previousUrl: string | undefined, timeout: number) {
-  const isReady = (tab: any) => {
+  await waitForTabState(tabId, timeout, (tab) => {
     if (tab.status !== "complete" || !tab.url || tab.url === "about:blank" || tab.url === "about:newtab") return false;
     if (tab.url === expectedUrl || tab.url.startsWith(`${expectedUrl}#`)) return true;
     return previousUrl ? tab.url !== previousUrl : true;
-  };
-  const tab = await browser.tabs.get(tabId);
-  if (isReady(tab)) return;
+  });
+}
+
+async function waitForTabState(tabId: number, timeout: number, isReady: (tab: any) => boolean) {
   await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
+    let settled = false;
+    let timeoutTimer = 0;
+    let pollTimer = 0;
+
+    const cleanup = () => {
+      clearTimeout(timeoutTimer);
+      clearInterval(pollTimer);
       browser.tabs.onUpdated.removeListener(listener);
-      reject(new Error("timeout waiting for page load"));
-    }, timeout);
-    const listener = (updatedTabId: number, _changeInfo: any, updatedTab: any) => {
-      if (updatedTabId === tabId && isReady(updatedTab)) {
-        clearTimeout(timer);
-        browser.tabs.onUpdated.removeListener(listener);
-        resolve();
+    };
+    const succeed = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const checkCurrent = async () => {
+      try {
+        const tab = await browser.tabs.get(tabId);
+        if (isReady(tab)) succeed();
+      } catch (error) {
+        fail(error instanceof Error ? error : new Error(String(error)));
       }
     };
+    const listener = (updatedTabId: number, _changeInfo: any, updatedTab: any) => {
+      if (updatedTabId === tabId && isReady(updatedTab)) succeed();
+    };
+
+    timeoutTimer = setTimeout(() => fail(new Error("timeout waiting for page load")), timeout);
     browser.tabs.onUpdated.addListener(listener);
+    pollTimer = setInterval(() => void checkCurrent(), TAB_READY_POLL_INTERVAL_MS);
+    void checkCurrent();
   });
 }
 

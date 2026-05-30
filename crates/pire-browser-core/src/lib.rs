@@ -1,3 +1,4 @@
+pub mod action_policy;
 pub mod auth_handoff;
 pub mod cli;
 pub mod domain_policy;

@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "description": "Shared action-policy command resolution verdicts for Rust and Firefox extension tests.",
+  "cases": [
+    {
+      "name": "open allowed by navigate allowlist",
+      "args": ["open", "https://example.com"],
+      "policy": { "default": "deny", "allow": ["navigate"] },
+      "expectedCategory": "navigate",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "click denied by default deny",
+      "args": ["click", "@e1"],
+      "policy": { "default": "deny", "allow": ["navigate", "snapshot"] },
+      "expectedCategory": "click",
+      "expectedDecision": "deny"
+    },
+    {
+      "name": "eval denied by explicit deny",
+      "args": ["eval", "document.title"],
+      "policy": { "default": "allow", "deny": ["eval"] },
+      "expectedCategory": "eval",
+      "expectedDecision": "deny"
+    },
+    {
+      "name": "snapshot allowed by default deny allowlist",
+      "args": ["snapshot", "-i"],
+      "policy": { "default": "deny", "allow": ["snapshot"] },
+      "expectedCategory": "snapshot",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "launch without url bypasses as meta",
+      "args": ["launch"],
+      "policy": { "default": "deny" },
+      "expectedCategory": null,
+      "expectedDecision": "meta"
+    },
+    {
+      "name": "launch with url maps to navigate",
+      "args": ["launch", "--url", "https://example.com"],
+      "policy": { "default": "deny", "allow": ["navigate"] },
+      "expectedCategory": "navigate",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "tabs label bypasses as meta",
+      "args": ["tabs", "label", "t1", "docs"],
+      "policy": { "default": "deny" },
+      "expectedCategory": null,
+      "expectedDecision": "meta"
+    },
+    {
+      "name": "tab alias list maps to get",
+      "args": ["tab", "list"],
+      "policy": { "default": "deny", "allow": ["get"] },
+      "expectedCategory": "get",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "tabs new maps to navigate",
+      "args": ["tabs", "new", "https://example.com"],
+      "policy": { "default": "deny", "allow": ["navigate"] },
+      "expectedCategory": "navigate",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "storage local set maps to state",
+      "args": ["storage", "local", "set", "token", "value"],
+      "policy": { "default": "deny", "allow": ["state"] },
+      "expectedCategory": "state",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "storage session read maps to get",
+      "args": ["storage", "session", "token"],
+      "policy": { "default": "deny", "allow": ["get"] },
+      "expectedCategory": "get",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "read-only find maps to get",
+      "args": ["find", "label", "Email"],
+      "policy": { "default": "deny", "allow": ["get"] },
+      "expectedCategory": "get",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "chained find click maps to click",
+      "args": ["find", "label", "Email", "click"],
+      "policy": { "default": "deny", "allow": ["click"] },
+      "expectedCategory": "click",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "chained find fill maps to fill",
+      "args": ["find", "role", "textbox", "--name", "Email", "fill", "hello"],
+      "policy": { "default": "deny", "allow": ["fill"] },
+      "expectedCategory": "fill",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "chained find text maps to get",
+      "args": ["find", "text", "Welcome", "text"],
+      "policy": { "default": "deny", "allow": ["get"] },
+      "expectedCategory": "get",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "chained find first maps to click",
+      "args": ["find", "first", "button", "click"],
+      "policy": { "default": "deny", "allow": ["click"] },
+      "expectedCategory": "click",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "chained find last maps to get",
+      "args": ["find", "last", ".item", "text"],
+      "policy": { "default": "deny", "allow": ["get"] },
+      "expectedCategory": "get",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "chained find nth maps to fill",
+      "args": ["find", "nth", "2", "input", "fill", "hello"],
+      "policy": { "default": "deny", "allow": ["fill"] },
+      "expectedCategory": "fill",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "state save maps to state",
+      "args": ["state", "save", "state.json"],
+      "policy": { "default": "deny", "allow": ["state"] },
+      "expectedCategory": "state",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "state inspect bypasses as meta",
+      "args": ["state", "inspect", "state.json"],
+      "policy": { "default": "deny" },
+      "expectedCategory": null,
+      "expectedDecision": "meta"
+    },
+    {
+      "name": "clipboard paste maps to fill",
+      "args": ["clipboard", "paste"],
+      "policy": { "default": "deny", "allow": ["fill"] },
+      "expectedCategory": "fill",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "clipboard write maps to state",
+      "args": ["clipboard", "write", "hello"],
+      "policy": { "default": "deny", "allow": ["state"] },
+      "expectedCategory": "state",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "dialog accept maps to interact",
+      "args": ["dialog", "accept"],
+      "policy": { "default": "deny", "allow": ["interact"] },
+      "expectedCategory": "interact",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "batch root is compound and allowed for per-subcommand enforcement",
+      "args": ["batch", "get url", "eval document.title"],
+      "policy": { "default": "deny" },
+      "expectedCategory": null,
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "download remains not available before policy",
+      "args": ["download", "#link", "out.zip"],
+      "policy": { "default": "deny" },
+      "expectedCategory": null,
+      "expectedDecision": "not_available"
+    },
+    {
+      "name": "unknown command remains unsupported before policy",
+      "args": ["stats"],
+      "policy": { "default": "deny" },
+      "expectedCategory": null,
+      "expectedDecision": "unsupported"
+    }
+  ]
+}

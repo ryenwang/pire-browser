@@ -6,6 +6,7 @@ use anyhow::Result;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::action_policy::{action_policy_text, collect_action_policy, ActionPolicyDiagnostic};
 use crate::auth_handoff::{auth_handoff_text, collect_default_auth_handoff, AuthHandoffInfo};
 use crate::domain_policy::{collect_domain_policy, domain_policy_text, DomainPolicyDiagnostic};
 use crate::firefox::discover_firefox;
@@ -36,6 +37,7 @@ pub struct InstallStatusReport {
     pub default_profile_launcher: CheckStatus,
     pub firefox_startup_policy: CheckStatus,
     pub auth_handoff: AuthHandoffInfo,
+    pub action_policy: ActionPolicyDiagnostic,
     pub domain_policy: DomainPolicyDiagnostic,
     pub state_policy: StatePolicyDiagnostic,
     pub live_sessions: Vec<SessionInfo>,
@@ -84,6 +86,7 @@ pub fn collect_install_status() -> Result<InstallStatusReport> {
     let (default_profile, default_profile_launcher) = check_default_profile();
     let firefox_startup_policy = check_firefox_startup_policy();
     let auth_handoff = collect_default_auth_handoff()?;
+    let action_policy = collect_action_policy();
     let domain_policy = collect_domain_policy();
     let state_policy = collect_state_policy();
 
@@ -111,6 +114,7 @@ pub fn collect_install_status() -> Result<InstallStatusReport> {
         default_profile_launcher,
         firefox_startup_policy,
         auth_handoff,
+        action_policy,
         domain_policy,
         state_policy,
         live_sessions,
@@ -143,6 +147,7 @@ pub fn install_status_text(report: &InstallStatusReport) -> String {
     lines.push(format_check_status(&report.default_profile_launcher));
     lines.push(format_check_status(&report.firefox_startup_policy));
     lines.push(auth_handoff_text(&report.auth_handoff));
+    lines.push(action_policy_text(&report.action_policy));
     lines.push(domain_policy_text(&report.domain_policy));
     lines.push(state_policy_text(&report.state_policy));
     lines.push(format!(
@@ -449,6 +454,7 @@ mod tests {
                 &PathBuf::from(r"C:\Users\me\AppData\Local\pire-browser"),
                 DEFAULT_PROFILE_NAME,
             ),
+            action_policy: crate::action_policy::action_policy_from_env_value(None),
             domain_policy: crate::domain_policy::domain_policy_from_env_value(None),
             state_policy: crate::state_policy::state_policy_from_env_value(None),
             live_sessions: Vec::new(),
@@ -458,6 +464,7 @@ mod tests {
         assert!(text.contains("CLI executable"));
         assert!(text.contains("CLI on PATH"));
         assert!(text.contains("Auth handoff"));
+        assert!(text.contains("Action policy"));
         assert!(text.contains("Domain policy"));
         assert!(text.contains("State policy"));
     }

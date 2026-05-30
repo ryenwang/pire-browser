@@ -1,6 +1,6 @@
 # Source Inventory
 
-Last reviewed: 2026-05-29
+Last reviewed: 2026-05-30
 
 This inventory records which source sets are authoritative for `pire-browser`, which artifacts are generated or runtime-only, and where historical context or ambiguity lives. It is intentionally not a file-by-file listing.
 
@@ -8,13 +8,13 @@ This inventory records which source sets are authoritative for `pire-browser`, w
 
 | Source set | Role | Notes |
 | --- | --- | --- |
-| `crates/pire-browser-core/` | Core Rust implementation | CLI parsing, launch/session lifecycle, IPC, install/status, state and domain policy guardrails, Firefox integration, and shared protocol behavior. |
+| `crates/pire-browser-core/` | Core Rust implementation | CLI parsing, launch/session lifecycle, IPC, install/status, state, domain, and action policy guardrails, Firefox integration, and shared protocol behavior. |
 | `crates/pire-browser-cli/` | User-facing executable | Thin CLI entrypoint and command/error presentation over the core crate. |
 | `crates/pire-browser-host/` | Native Messaging host | Firefox extension bridge to the Rust core and Windows named-pipe session handling. |
 | `extension/src/` | Firefox WebExtension source | Browser-side command handling, DOM inspection/actions, dialogs, refs, frame handling, and screenshot capture. |
 | `pi/extensions/` | Pi extension adapters | Pi-facing wrappers for `pire-browser` and the `agent-browser` oracle adapter. |
 | `scripts/` | Maintainer automation | Install, package, smoke, state/named-session/domain-policy lifecycle, RBXLX download, and oracle comparison workflows. |
-| `fixtures/` | Test fixtures | Local HTML state/session fixtures, oracle fixture data, and shared policy contract fixtures such as domain URL verdicts and action-policy command maps. |
+| `fixtures/` | Test fixtures | Local HTML state/session fixtures, oracle fixture data, and shared policy contract fixtures such as domain URL verdicts, action-policy command maps, and action-policy verdicts. |
 | `docs/` | Project documentation | Architecture, compatibility matrix, unsupported-root metadata, oracle workflow, and feature-parity notes. |
 | `docs/CONTEXT.md` | Agent work contract | Functional-boundary labels, session-review requirements, redaction rules, and canonical source pointers. |
 | `docs/workflows/` | Process workflows | Human-reviewable staged workflows for session review, roadmap mapping, and follow-up artifact decisions. |

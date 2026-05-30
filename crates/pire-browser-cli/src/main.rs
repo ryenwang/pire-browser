@@ -1,12 +1,18 @@
 use anyhow::{bail, Context, Result};
+use pire_browser_core::action_policy::{
+    action_policy_diagnostic_from_args, action_policy_text, ensure_action_allowed,
+    is_cli_action_precheckable, request_context as action_policy_request_context,
+    resolve_action_policy, ActionPolicyArgs, ActionPolicyDecision,
+};
 use pire_browser_core::auth_handoff::{auth_handoff_text, collect_default_auth_handoff};
 use pire_browser_core::cli::{
     build_command_request, format_cli_result, help_text, parse_cli_args, GlobalFlagWarning,
     LocalCommand, SessionTarget,
 };
 use pire_browser_core::domain_policy::{
-    domain_policy_diagnostic_from_args, domain_policy_text, ensure_url_allowed, request_context,
-    resolve_domain_policy, DomainPolicyArgs, DomainPolicyDecision, DomainPolicyWarning,
+    domain_policy_diagnostic_from_args, domain_policy_text, ensure_url_allowed,
+    request_context as domain_policy_request_context, resolve_domain_policy, DomainPolicyArgs,
+    DomainPolicyDecision, DomainPolicyWarning,
 };
 use pire_browser_core::install_status::{
     collect_install_status, install_status_json, install_status_text,
@@ -81,11 +87,13 @@ fn run() -> Result<()> {
         LocalCommand::Status {
             json,
             domain_policy,
+            action_policy,
         } => {
             cleanup_stale_sessions(now_ms())?;
             let mut sessions = list_sessions()?;
             annotate_session_profile_names(&mut sessions)?;
             let auth_handoff = collect_default_auth_handoff()?;
+            let action_policy = action_policy_diagnostic_from_args(&action_policy);
             let domain_policy = domain_policy_diagnostic_from_args(&domain_policy);
             let state_policy = collect_state_policy();
             if json {
@@ -100,6 +108,10 @@ fn run() -> Result<()> {
                         serde_json::to_value(domain_policy)?,
                     );
                     object.insert(
+                        "actionPolicy".to_string(),
+                        serde_json::to_value(action_policy)?,
+                    );
+                    object.insert(
                         "statePolicy".to_string(),
                         serde_json::to_value(state_policy)?,
                     );
@@ -108,6 +120,7 @@ fn run() -> Result<()> {
             } else {
                 println!("{}", session_status_text(&sessions));
                 println!("{}", auth_handoff_text(&auth_handoff));
+                println!("{}", action_policy_text(&action_policy));
                 println!("{}", domain_policy_text(&domain_policy));
                 println!("{}", state_policy_text(&state_policy));
             }
@@ -162,6 +175,7 @@ fn run() -> Result<()> {
             json,
             ignored_global_flags,
             domain_policy,
+            action_policy,
             path,
         } => {
             handle_state_save(
@@ -169,6 +183,7 @@ fn run() -> Result<()> {
                 json,
                 ignored_global_flags,
                 domain_policy,
+                action_policy,
                 PathBuf::from(path),
             )?;
         }
@@ -177,6 +192,7 @@ fn run() -> Result<()> {
             json,
             ignored_global_flags,
             domain_policy,
+            action_policy,
             path,
             policy_flag,
         } => {
@@ -185,6 +201,7 @@ fn run() -> Result<()> {
                 json,
                 ignored_global_flags,
                 domain_policy,
+                action_policy,
                 PathBuf::from(path),
                 policy_flag,
             )?;
@@ -202,10 +219,15 @@ fn run() -> Result<()> {
             url,
             firefox_path,
             domain_policy,
+            action_policy,
         } => {
             let domain_decision = resolve_domain_policy_or_exit(&domain_policy, false, &[])?;
             if let Some(url) = &url {
                 ensure_url_allowed(&domain_decision, url)?;
+            }
+            let action_decision = resolve_action_policy_or_exit(&action_policy, false, &[])?;
+            if url.is_some() {
+                ensure_action_allowed(&action_decision, &launch_args_for_action_policy(&url))?;
             }
             let result = launch_firefox(LaunchOptions {
                 profile,
@@ -224,9 +246,11 @@ fn run() -> Result<()> {
         LocalCommand::InstallStatus {
             json,
             domain_policy,
+            action_policy,
         } => {
             let mut report = collect_install_status()?;
             report.domain_policy = domain_policy_diagnostic_from_args(&domain_policy);
+            report.action_policy = action_policy_diagnostic_from_args(&action_policy);
             if json {
                 let value: serde_json::Value =
                     serde_json::from_str(&install_status_json(&report)?)?;
@@ -247,6 +271,7 @@ fn run() -> Result<()> {
             json,
             ignored_global_flags,
             domain_policy,
+            action_policy,
             args,
         } => {
             if let Some(result) = local_not_available_result(&args, json, &ignored_global_flags)? {
@@ -276,7 +301,19 @@ fn run() -> Result<()> {
                     unreachable!();
                 }
             }
-            let request = build_command_request_with_domain_policy(args.clone(), &domain_decision)?;
+            let action_decision =
+                resolve_action_policy_or_exit(&action_policy, json, &ignored_global_flags)?;
+            if is_cli_action_precheckable(&args) {
+                if let Err(err) = ensure_action_allowed(&action_decision, &args) {
+                    exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                    unreachable!();
+                }
+            }
+            let request = build_command_request_with_policies(
+                args.clone(),
+                &domain_decision,
+                &action_decision,
+            )?;
             let dispatch_result = match target {
                 SessionTarget::Id(session_id) => send_to_session(Some(&session_id), &request),
                 SessionTarget::Name(profile_name) => {
@@ -461,10 +498,24 @@ fn handle_state_save(
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
     domain_policy: DomainPolicyArgs,
+    action_policy: ActionPolicyArgs,
     path: PathBuf,
 ) -> Result<()> {
     let domain_decision =
         resolve_domain_policy_or_exit(&domain_policy, json_output, &ignored_global_flags)?;
+    let action_decision =
+        resolve_action_policy_or_exit(&action_policy, json_output, &ignored_global_flags)?;
+    if let Err(err) = ensure_action_allowed(
+        &action_decision,
+        &[
+            "state".to_string(),
+            "save".to_string(),
+            path.display().to_string(),
+        ],
+    ) {
+        exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+        unreachable!();
+    }
     let request = build_command_request_with_domain_policy(
         vec!["state".to_string(), "export".to_string()],
         &domain_decision,
@@ -536,6 +587,7 @@ fn handle_state_load(
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
     domain_policy: DomainPolicyArgs,
+    action_policy: ActionPolicyArgs,
     path: PathBuf,
     policy_flag: StateLoadPolicyFlag,
 ) -> Result<()> {
@@ -548,6 +600,8 @@ fn handle_state_load(
     };
     let domain_decision =
         resolve_domain_policy_or_exit(&domain_policy, json_output, &ignored_global_flags)?;
+    let action_decision =
+        resolve_action_policy_or_exit(&action_policy, json_output, &ignored_global_flags)?;
     let combined_policy_warnings =
         warning_values(&policy_decision.warnings, &domain_decision.warnings)?;
     let read = match read_state_file_with_metadata(&path) {
@@ -568,6 +622,22 @@ fn handle_state_load(
             json_output,
             &ignored_global_flags,
             &domain_decision.warnings,
+        )?;
+        unreachable!();
+    }
+    if let Err(err) = ensure_action_allowed(
+        &action_decision,
+        &[
+            "state".to_string(),
+            "load".to_string(),
+            path.display().to_string(),
+        ],
+    ) {
+        exit_with_anyhow_error_with_warning_values(
+            err,
+            json_output,
+            &ignored_global_flags,
+            &combined_policy_warnings,
         )?;
         unreachable!();
     }
@@ -843,17 +913,54 @@ fn resolve_domain_policy_or_exit(
     }
 }
 
+fn resolve_action_policy_or_exit(
+    args: &ActionPolicyArgs,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+) -> Result<ActionPolicyDecision> {
+    match resolve_action_policy(args) {
+        Ok(decision) => Ok(decision),
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, ignored_global_flags)?;
+            unreachable!();
+        }
+    }
+}
+
 fn build_command_request_with_domain_policy(
     args: Vec<String>,
     decision: &DomainPolicyDecision,
 ) -> Result<RpcRequest> {
     let mut request = build_command_request(args);
-    if let Some(context) = request_context(decision) {
+    if let Some(context) = domain_policy_request_context(decision) {
         if let Some(object) = request.params.as_object_mut() {
             object.insert("domainPolicy".to_string(), serde_json::to_value(context)?);
         }
     }
     Ok(request)
+}
+
+fn build_command_request_with_policies(
+    args: Vec<String>,
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+) -> Result<RpcRequest> {
+    let mut request = build_command_request_with_domain_policy(args, domain_decision)?;
+    if let Some(context) = action_policy_request_context(action_decision) {
+        if let Some(object) = request.params.as_object_mut() {
+            object.insert("actionPolicy".to_string(), serde_json::to_value(context)?);
+        }
+    }
+    Ok(request)
+}
+
+fn launch_args_for_action_policy(url: &Option<String>) -> Vec<String> {
+    let mut args = vec!["launch".to_string()];
+    if let Some(url) = url {
+        args.push("--url".to_string());
+        args.push(url.clone());
+    }
+    args
 }
 
 fn state_save_value(state: &ActiveOriginStateFile, path: &Path, bytes_written: u64) -> Value {
@@ -1071,6 +1178,8 @@ fn rpc_error_from_anyhow(err: &anyhow::Error) -> pire_browser_core::protocol::Rp
         ("invalid_args", "parse")
     } else if message.contains("DomainPolicyError:") {
         ("DomainPolicyError", "policy")
+    } else if message.contains("ActionPolicyError:") {
+        ("ActionPolicyError", "policy")
     } else if message.contains("web-ext exited before pire-browser connected")
         || message.contains("failed to start web-ext")
         || message.contains("could not discover Firefox")
@@ -1334,6 +1443,7 @@ fn exit_code_for_error(code: &str) -> i32 {
         "ElementNotFound" | "not_found" | "ref_stale" | "ambiguous_locator" | "not_enabled" => 44,
         "InvalidArgumentError" | "invalid_args" => 2,
         "DomainPolicyError" => 2,
+        "ActionPolicyError" => 2,
         "NotAvailableError" => 78,
         "unsupported_command" => 1,
         "session_not_found" => 1,
@@ -1873,6 +1983,13 @@ mod tests {
         assert_eq!(domain.code, "DomainPolicyError");
         assert_eq!(domain.data, Some(json!({ "phase": "policy" })));
         assert_eq!(exit_code_for_error(&domain.code), 2);
+
+        let action = rpc_error_from_anyhow(&anyhow::anyhow!(
+            "ActionPolicyError: action category `eval` is denied by the active action policy"
+        ));
+        assert_eq!(action.code, "ActionPolicyError");
+        assert_eq!(action.data, Some(json!({ "phase": "policy" })));
+        assert_eq!(exit_code_for_error(&action.code), 2);
     }
 
     #[test]

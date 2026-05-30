@@ -15,6 +15,11 @@ type DomainPolicyErrorForUrl = (
   policy: { enabled: boolean; patterns: string[] }
 ) => { code: string; message: string } | null;
 
+type ActionPolicyVerdictForCommand = (
+  args: string[],
+  policy: { enabled: boolean; default?: "allow" | "deny"; allow?: string[]; deny?: string[] }
+) => { category: string | null; decision: string };
+
 function extensionFile(path: string) {
   return readFileSync(resolve(import.meta.dirname, "..", path), "utf8");
 }
@@ -59,6 +64,30 @@ function loadDomainPolicyErrorForUrl(): DomainPolicyErrorForUrl {
   runInNewContext(js, sandbox);
   if (!sandbox.__domainPolicyErrorForUrl) throw new Error("domainPolicyErrorForUrl did not load");
   return sandbox.__domainPolicyErrorForUrl;
+}
+
+function loadActionPolicyVerdictForCommand(): ActionPolicyVerdictForCommand {
+  const body = backgroundSource();
+  const actionStart = body.indexOf("function actionPolicyFromParams(");
+  const actionEnd = body.indexOf("\nfunction domainPolicyDestinationUrl", actionStart);
+  const parseStart = body.indexOf("function parseFind(");
+  const parseEnd = body.indexOf("\nfunction normalizeContentResponse", parseStart);
+  const helperStart = body.indexOf("function valueAfter(");
+  const helperEnd = body.indexOf("\nfunction truncate", helperStart);
+  expect(actionStart).toBeGreaterThanOrEqual(0);
+  expect(actionEnd).toBeGreaterThan(actionStart);
+  expect(parseStart).toBeGreaterThanOrEqual(0);
+  expect(parseEnd).toBeGreaterThan(parseStart);
+  expect(helperStart).toBeGreaterThanOrEqual(0);
+  expect(helperEnd).toBeGreaterThan(helperStart);
+  const source = [body.slice(actionStart, actionEnd), body.slice(parseStart, parseEnd), body.slice(helperStart, helperEnd)].join("\n");
+  const js = transpileModule(`${source}\nthis.__actionPolicyVerdictForCommand = actionPolicyVerdictForCommand;`, {
+    compilerOptions: { module: ModuleKind.ES2020, target: ScriptTarget.ES2020 },
+  }).outputText;
+  const sandbox: { __actionPolicyVerdictForCommand?: ActionPolicyVerdictForCommand } = {};
+  runInNewContext(js, sandbox);
+  if (!sandbox.__actionPolicyVerdictForCommand) throw new Error("actionPolicyVerdictForCommand did not load");
+  return sandbox.__actionPolicyVerdictForCommand;
 }
 
 describe("compiled MV2 scripts", () => {
@@ -291,8 +320,8 @@ describe("agent-browser compatibility foundations", () => {
   it("checks active-page domain policy before content actions", () => {
     const body = background();
     expect(body).toContain("type DomainPolicyContext = {");
-    expect(body).toContain("executeCommandWithDomainPolicy(args, domainPolicy)");
-    expect(body).toContain("domainPolicyErrorForCommand(args, policy)");
+    expect(body).toContain("executeCommandWithPolicies(args, domainPolicy, actionPolicy)");
+    expect(body).toContain("domainPolicyErrorForCommand(args, domainPolicy)");
     expect(body).toContain("domainPolicyDestinationUrl(args)");
     expect(body).toContain("function commandNeedsActivePageDomainCheck");
     expect(body).toContain("await targetTab().catch(() => undefined)");
@@ -305,9 +334,90 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain('"--load"');
     expect(body).toContain("function explicitNonHttpScheme");
     expect(body).toContain("function normalizePolicyHost");
-    expect(body).toContain("batchCommand(rest, domainPolicy)");
-    expect(body).toContain("executeCommandWithDomainPolicy(splitCommand(commandText), domainPolicy)");
+    expect(body).toContain("batchCommand(rest, domainPolicy, actionPolicy)");
+    expect(body).toContain("executeCommandWithPolicies(splitCommand(commandText), domainPolicy, actionPolicy)");
     expect(body).toContain("Maintainer note: update this list whenever a command reads");
+  });
+
+  it("routes action policy through shared request and batch gates", () => {
+    const body = background();
+    expect(body).toContain("type ActionPolicyContext = {");
+    expect(body).toContain("actionPolicyFromParams(request.params?.actionPolicy)");
+    expect(body).toContain("actionPolicyErrorForCommand(args, actionPolicy)");
+    expect(body).toContain("function actionPolicyVerdictForCommand");
+    expect(body).toContain("function actionPolicyCategoryForCommand");
+    expect(body).toContain('"ActionPolicyError"');
+    expect(body).toContain('data: { phase: "policy" }');
+    expect(body).toContain('errorCode === "DomainPolicyError" || errorCode === "ActionPolicyError"');
+    expect(body).toContain("findActionPolicyCategory(args)");
+  });
+
+  it("matches shared action policy command verdict fixtures", () => {
+    const verdict = loadActionPolicyVerdictForCommand();
+    const fixture = JSON.parse(repoFile("fixtures/action-policy-command-verdicts.json")) as {
+      cases: {
+        name: string;
+        args: string[];
+        policy: { default?: "allow" | "deny"; allow?: string[]; deny?: string[] };
+        expectedCategory: string | null;
+        expectedDecision: string;
+      }[];
+    };
+    for (const testCase of fixture.cases) {
+      const actual = verdict(testCase.args, { enabled: true, ...testCase.policy });
+      expect(actual.category, testCase.name).toBe(testCase.expectedCategory);
+      expect(actual.decision, testCase.name).toBe(testCase.expectedDecision);
+    }
+  });
+
+  it("classifies every executable extension command root for action policy", () => {
+    const verdict = loadActionPolicyVerdictForCommand();
+    for (const args of [
+      ["status"],
+      ["open", "https://example.com"],
+      ["goto", "https://example.com"],
+      ["navigate", "https://example.com"],
+      ["snapshot"],
+      ["find", "label", "Email"],
+      ["click", "@e1"],
+      ["dblclick", "@e1"],
+      ["fill", "@e1", "x"],
+      ["type", "@e1", "x"],
+      ["press", "Enter"],
+      ["key", "Enter"],
+      ["keyboard", "type", "x"],
+      ["keydown", "Enter"],
+      ["keyup", "Enter"],
+      ["hover", "@e1"],
+      ["focus", "@e1"],
+      ["select", "@e1", "x"],
+      ["check", "@e1"],
+      ["uncheck", "@e1"],
+      ["scroll"],
+      ["scrollintoview", "@e1"],
+      ["wait"],
+      ["screenshot"],
+      ["get", "title"],
+      ["is", "visible", "@e1"],
+      ["eval", "document.title"],
+      ["tab"],
+      ["tabs"],
+      ["back"],
+      ["forward"],
+      ["reload"],
+      ["window", "new"],
+      ["frame"],
+      ["dialog"],
+      ["batch", "get url"],
+      ["cookies"],
+      ["storage", "local"],
+      ["clipboard", "read"],
+      ["close"],
+      ["quit"],
+      ["exit"],
+    ]) {
+      expect(verdict(args, { enabled: true, default: "allow" }).decision, args.join(" ")).not.toBe("unsupported");
+    }
   });
 
   it("matches shared domain policy URL verdict fixtures", () => {
@@ -391,5 +501,22 @@ describe("command shape parity", () => {
     expect(body).toContain("ms <= 0");
     expect(body).not.toContain("Math.min(timeout, 1000)");
     expect(body).not.toContain("Wait complete");
+  });
+
+  it("uses listener-plus-polling waits for Firefox tab load readiness", () => {
+    const body = background();
+    expect(body).toContain("const TAB_READY_POLL_INTERVAL_MS = 100");
+    expect(body).toContain("async function waitForTabState");
+    expect(body).toContain("await waitForTabState(tabId, timeout, (tab) => tab.status === \"complete\")");
+    expect(body).toContain("browser.tabs.onUpdated.addListener(listener)");
+    expect(body).toContain("browser.tabs.onUpdated.removeListener(listener)");
+    expect(body).toContain("setInterval(() => void checkCurrent(), TAB_READY_POLL_INTERVAL_MS)");
+    expect(body).toContain("void checkCurrent();");
+
+    const helperBlock = body.match(/async function waitForTabState[\s\S]*?async function sendScreenshotChunks/)?.[0] ?? "";
+    expect(helperBlock.indexOf("browser.tabs.onUpdated.addListener(listener)")).toBeGreaterThan(-1);
+    expect(helperBlock.indexOf("void checkCurrent();")).toBeGreaterThan(
+      helperBlock.indexOf("browser.tabs.onUpdated.addListener(listener)")
+    );
   });
 });
