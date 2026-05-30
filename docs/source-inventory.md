@@ -1,6 +1,6 @@
 # Source Inventory
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-05-29
 
 This inventory records which source sets are authoritative for `pire-browser`, which artifacts are generated or runtime-only, and where historical context or ambiguity lives. It is intentionally not a file-by-file listing.
 
@@ -14,11 +14,11 @@ This inventory records which source sets are authoritative for `pire-browser`, w
 | `extension/src/` | Firefox WebExtension source | Browser-side command handling, DOM inspection/actions, dialogs, refs, frame handling, and screenshot capture. |
 | `pi/extensions/` | Pi extension adapters | Pi-facing wrappers for `pire-browser` and the `agent-browser` oracle adapter. |
 | `scripts/` | Maintainer automation | Install, package, smoke, state/named-session/domain-policy lifecycle, RBXLX download, and oracle comparison workflows. |
-| `fixtures/` | Test fixtures | Local HTML state/session fixtures and oracle fixture data used by smoke/oracle tests. |
+| `fixtures/` | Test fixtures | Local HTML state/session fixtures, oracle fixture data, and shared policy contract fixtures such as domain URL verdicts and action-policy command maps. |
 | `docs/` | Project documentation | Architecture, compatibility matrix, unsupported-root metadata, oracle workflow, and feature-parity notes. |
 | `docs/CONTEXT.md` | Agent work contract | Functional-boundary labels, session-review requirements, redaction rules, and canonical source pointers. |
 | `docs/workflows/` | Process workflows | Human-reviewable staged workflows for session review, roadmap mapping, and follow-up artifact decisions. |
-| `plans/` | Planning record | Current and historical implementation plans, compatibility epic slices, and roadmap-visible operational backlog notes. |
+| `plans/` | Planning record | Current and historical implementation plans, implementation-ready parity mapping contracts, compatibility epic slices, and roadmap-visible operational backlog notes. |
 | `plans/Operational Gap Backlog - 2026-05-26.md` | Session-derived backlog | First operational gap note created from the May 26, 2026 session review. |
 | `mvp.md`, `README.md`, `package.json`, `Cargo.toml`, `.gitattributes` | Entry points | Product scope, usage, package scripts, Rust workspace shape, and repository line-ending/binary policy. |
 
