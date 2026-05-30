@@ -15,9 +15,10 @@ use pire_browser_core::confirmation_policy::{
     consume_pending_confirmation, decision_from_context as confirmation_decision_from_context,
     deny_pending_confirmation, new_confirmation_id,
     request_context as confirmation_policy_request_context, request_context_with_approval,
-    resolve_confirmation_policy, sweep_expired_confirmations, write_pending_confirmation,
-    ConfirmationPolicyArgs, ConfirmationPolicyDecision, PendingConfirmation,
-    PendingConfirmationTarget, CONFIRMATION_REQUIRED_EXIT_CODE, CONFIRMATION_TTL_MS,
+    request_context_with_approval_id, resolve_confirmation_policy, sweep_expired_confirmations,
+    write_pending_confirmation, ConfirmationPolicyArgs, ConfirmationPolicyDecision,
+    PendingConfirmation, PendingConfirmationTarget, CONFIRMATION_REQUIRED_EXIT_CODE,
+    CONFIRMATION_TTL_MS, INTERACTIVE_CONFIRMATION_APPROVAL_ID,
 };
 use pire_browser_core::domain_policy::{
     decision_from_request_context as domain_decision_from_request_context,
@@ -380,7 +381,7 @@ fn run() -> Result<()> {
                 json,
                 &ignored_global_flags,
             )?;
-            if let Err(err) = require_confirmation_for_sequences_or_exit(
+            let interactively_approved = match require_confirmation_for_sequences_or_exit(
                 &args,
                 ConfirmationGate {
                     confirmation_decision: &confirmation_decision,
@@ -391,14 +392,18 @@ fn run() -> Result<()> {
                     ignored_global_flags: &ignored_global_flags,
                 },
             ) {
-                exit_with_anyhow_error(err, json, &ignored_global_flags)?;
-                unreachable!();
-            }
+                Ok(interactively_approved) => interactively_approved,
+                Err(err) => {
+                    exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                    unreachable!();
+                }
+            };
             let request = build_command_request_with_policies(
                 args.clone(),
                 &domain_decision,
                 &action_decision,
                 &confirmation_decision,
+                interactively_approved,
             )?;
             let dispatch_result = match target {
                 SessionTarget::Id(session_id) => send_to_session(Some(&session_id), &request),
@@ -1325,6 +1330,7 @@ fn build_command_request_with_policies(
     domain_decision: &DomainPolicyDecision,
     action_decision: &ActionPolicyDecision,
     confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
 ) -> Result<RpcRequest> {
     let mut request = build_command_request_with_domain_policy(args, domain_decision)?;
     if let Some(context) = action_policy_request_context(action_decision) {
@@ -1332,7 +1338,15 @@ fn build_command_request_with_policies(
             object.insert("actionPolicy".to_string(), serde_json::to_value(context)?);
         }
     }
-    if let Some(context) = confirmation_policy_request_context(confirmation_decision) {
+    let confirmation_context = if interactively_approved {
+        request_context_with_approval_id(
+            confirmation_decision,
+            INTERACTIVE_CONFIRMATION_APPROVAL_ID,
+        )
+    } else {
+        confirmation_policy_request_context(confirmation_decision)
+    };
+    if let Some(context) = confirmation_context {
         if let Some(object) = request.params.as_object_mut() {
             object.insert(
                 "confirmationPolicy".to_string(),
@@ -1382,7 +1396,7 @@ fn ensure_policy_sequences_allowed(
 fn require_confirmation_for_sequences_or_exit(
     args: &[String],
     gate: ConfirmationGate<'_>,
-) -> Result<()> {
+) -> Result<bool> {
     for sequence in policy_command_sequences(args)? {
         let evaluation = evaluate_action(gate.action_decision, &sequence);
         if let Some(category) = evaluation.category.as_deref() {
@@ -1391,16 +1405,16 @@ fn require_confirmation_for_sequences_or_exit(
             }
         }
     }
-    Ok(())
+    Ok(false)
 }
 
-fn require_confirmation_or_exit(args: &[String], gate: ConfirmationGate<'_>) -> Result<()> {
+fn require_confirmation_or_exit(args: &[String], gate: ConfirmationGate<'_>) -> Result<bool> {
     let evaluation = evaluate_action(gate.action_decision, args);
     let Some(category) = evaluation.category.as_deref() else {
-        return Ok(());
+        return Ok(false);
     };
     if !gate.confirmation_decision.requires(category) {
-        return Ok(());
+        return Ok(false);
     }
     require_confirmation_for_category_or_exit(category, args, gate)
 }
@@ -1409,7 +1423,7 @@ fn require_confirmation_for_category_or_exit(
     category: &str,
     args: &[String],
     gate: ConfirmationGate<'_>,
-) -> Result<()> {
+) -> Result<bool> {
     if gate.confirmation_decision.interactive {
         if io::stdin().is_terminal() {
             eprint!("Confirm action category `{category}`? [y/N] ");
@@ -1417,7 +1431,7 @@ fn require_confirmation_for_category_or_exit(
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
             if matches!(input.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
-                return Ok(());
+                return Ok(true);
             }
         }
         bail!("ConfirmationDenied: action category `{category}` was not approved");
@@ -2336,6 +2350,32 @@ mod tests {
         assert!(can_auto_launch_for_remote_args(&s(&["tabs", "list"])));
         assert!(!can_auto_launch_for_remote_args(&s(&["close"])));
         assert!(!can_auto_launch_for_remote_args(&s(&["unknown"])));
+    }
+
+    #[test]
+    fn interactive_confirmation_approval_marks_remote_request_context() {
+        let domain_decision = domain_decision_from_request_context(None).unwrap();
+        let action_decision = action_decision_from_request_context(None).unwrap();
+        let confirmation_context =
+            pire_browser_core::confirmation_policy::ConfirmationPolicyRequestContext {
+                enabled: true,
+                categories: vec!["eval".to_string()],
+                approved_confirmation_id: None,
+            };
+        let confirmation_decision = confirmation_decision_from_context(Some(&confirmation_context));
+        let request = build_command_request_with_policies(
+            s(&["eval", "document.title"]),
+            &domain_decision,
+            &action_decision,
+            &confirmation_decision,
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(
+            request.params["confirmationPolicy"]["approvedConfirmationId"],
+            INTERACTIVE_CONFIRMATION_APPROVAL_ID
+        );
     }
 
     #[test]

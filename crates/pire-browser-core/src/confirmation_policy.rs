@@ -14,6 +14,7 @@ pub const CONFIRM_ACTIONS_ENV_VAR: &str = "AGENT_BROWSER_CONFIRM_ACTIONS";
 pub const CONFIRM_INTERACTIVE_ENV_VAR: &str = "AGENT_BROWSER_CONFIRM_INTERACTIVE";
 pub const CONFIRMATION_TTL_MS: u64 = 60_000;
 pub const CONFIRMATION_REQUIRED_EXIT_CODE: i32 = 75;
+pub const INTERACTIVE_CONFIRMATION_APPROVAL_ID: &str = "interactive";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ConfirmationPolicyArgs {
@@ -175,6 +176,15 @@ pub fn request_context(
             categories: decision.categories.iter().cloned().collect(),
             approved_confirmation_id: None,
         })
+}
+
+pub fn request_context_with_approval_id(
+    decision: &ConfirmationPolicyDecision,
+    approval_id: impl Into<String>,
+) -> Option<ConfirmationPolicyRequestContext> {
+    let mut context = request_context(decision)?;
+    context.approved_confirmation_id = Some(approval_id.into());
+    Some(context)
 }
 
 pub fn request_context_with_approval(
@@ -537,5 +547,21 @@ mod tests {
         let mut bad = record("c_1234abcd", 0);
         bad.category = "unknown".to_string();
         assert!(validate_pending_confirmation(&bad).is_err());
+    }
+
+    #[test]
+    fn request_context_with_approval_id_marks_interactive_approval() {
+        let decision = decision_from_context(Some(&ConfirmationPolicyRequestContext {
+            enabled: true,
+            categories: vec!["eval".to_string()],
+            approved_confirmation_id: None,
+        }));
+        let context =
+            request_context_with_approval_id(&decision, INTERACTIVE_CONFIRMATION_APPROVAL_ID)
+                .unwrap();
+        assert_eq!(
+            context.approved_confirmation_id.as_deref(),
+            Some(INTERACTIVE_CONFIRMATION_APPROVAL_ID)
+        );
     }
 }
