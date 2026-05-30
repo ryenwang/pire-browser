@@ -502,4 +502,21 @@ describe("command shape parity", () => {
     expect(body).not.toContain("Math.min(timeout, 1000)");
     expect(body).not.toContain("Wait complete");
   });
+
+  it("uses listener-plus-polling waits for Firefox tab load readiness", () => {
+    const body = background();
+    expect(body).toContain("const TAB_READY_POLL_INTERVAL_MS = 100");
+    expect(body).toContain("async function waitForTabState");
+    expect(body).toContain("await waitForTabState(tabId, timeout, (tab) => tab.status === \"complete\")");
+    expect(body).toContain("browser.tabs.onUpdated.addListener(listener)");
+    expect(body).toContain("browser.tabs.onUpdated.removeListener(listener)");
+    expect(body).toContain("setInterval(() => void checkCurrent(), TAB_READY_POLL_INTERVAL_MS)");
+    expect(body).toContain("void checkCurrent();");
+
+    const helperBlock = body.match(/async function waitForTabState[\s\S]*?async function sendScreenshotChunks/)?.[0] ?? "";
+    expect(helperBlock.indexOf("browser.tabs.onUpdated.addListener(listener)")).toBeGreaterThan(-1);
+    expect(helperBlock.indexOf("void checkCurrent();")).toBeGreaterThan(
+      helperBlock.indexOf("browser.tabs.onUpdated.addListener(listener)")
+    );
+  });
 });

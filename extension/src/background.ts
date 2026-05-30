@@ -134,6 +134,7 @@ type ActiveOriginStatePayload = {
 const HOST_NAME = "dev.pi.pire_browser";
 const CHUNK_SIZE = 700_000;
 const CLOSE_TEARDOWN_DELAY_MS = 0;
+const TAB_READY_POLL_INTERVAL_MS = 100;
 
 let port: any;
 let profileId = "";
@@ -1824,45 +1825,56 @@ function registerBrowserListeners() {
 }
 
 async function waitForTabComplete(tabId: number, timeout: number) {
-  const tab = await browser.tabs.get(tabId);
-  if (tab.status === "complete") return;
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      browser.tabs.onUpdated.removeListener(listener);
-      reject(new Error("timeout waiting for page load"));
-    }, timeout);
-    const listener = (updatedTabId: number, changeInfo: any) => {
-      if (updatedTabId === tabId && changeInfo.status === "complete") {
-        clearTimeout(timer);
-        browser.tabs.onUpdated.removeListener(listener);
-        resolve();
-      }
-    };
-    browser.tabs.onUpdated.addListener(listener);
-  });
+  await waitForTabState(tabId, timeout, (tab) => tab.status === "complete");
 }
 
 async function waitForTabReady(tabId: number, expectedUrl: string, previousUrl: string | undefined, timeout: number) {
-  const isReady = (tab: any) => {
+  await waitForTabState(tabId, timeout, (tab) => {
     if (tab.status !== "complete" || !tab.url || tab.url === "about:blank" || tab.url === "about:newtab") return false;
     if (tab.url === expectedUrl || tab.url.startsWith(`${expectedUrl}#`)) return true;
     return previousUrl ? tab.url !== previousUrl : true;
-  };
-  const tab = await browser.tabs.get(tabId);
-  if (isReady(tab)) return;
+  });
+}
+
+async function waitForTabState(tabId: number, timeout: number, isReady: (tab: any) => boolean) {
   await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
+    let settled = false;
+    let timeoutTimer = 0;
+    let pollTimer = 0;
+
+    const cleanup = () => {
+      clearTimeout(timeoutTimer);
+      clearInterval(pollTimer);
       browser.tabs.onUpdated.removeListener(listener);
-      reject(new Error("timeout waiting for page load"));
-    }, timeout);
-    const listener = (updatedTabId: number, _changeInfo: any, updatedTab: any) => {
-      if (updatedTabId === tabId && isReady(updatedTab)) {
-        clearTimeout(timer);
-        browser.tabs.onUpdated.removeListener(listener);
-        resolve();
+    };
+    const succeed = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const checkCurrent = async () => {
+      try {
+        const tab = await browser.tabs.get(tabId);
+        if (isReady(tab)) succeed();
+      } catch (error) {
+        fail(error instanceof Error ? error : new Error(String(error)));
       }
     };
+    const listener = (updatedTabId: number, _changeInfo: any, updatedTab: any) => {
+      if (updatedTabId === tabId && isReady(updatedTab)) succeed();
+    };
+
+    timeoutTimer = setTimeout(() => fail(new Error("timeout waiting for page load")), timeout);
     browser.tabs.onUpdated.addListener(listener);
+    pollTimer = setInterval(() => void checkCurrent(), TAB_READY_POLL_INTERVAL_MS);
+    void checkCurrent();
   });
 }
 
