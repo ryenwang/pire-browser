@@ -15,6 +15,7 @@ pire-browser setup --windows
 pire-browser launch
 pire-browser launch --url https://discord.com/login
 pire-browser open https://example.com --label docs
+pire-browser --allowed-domains "example.com,*.example.com" open https://example.com
 pire-browser snapshot -i
 pire-browser find label "Email" fill "hello@example.com"
 pire-browser find role button --name "Submit" click
@@ -183,6 +184,21 @@ For login-required sites, use the persistent Firefox profile rather than passing
 
 `status --json` and `doctor --json` include an `authHandoff` advisory for the `Default` profile. It reports whether the profile folder exists and confirms that login state is `not_inspected`; `pire-browser` does not read cookies, saved passwords, session tokens, or one-time codes for this diagnostic.
 
+### Domain Allowlist Guardrails
+
+Use `--allowed-domains` or `AGENT_BROWSER_ALLOWED_DOMAINS` when an operator wants a cooperative wrong-site guardrail:
+
+```powershell
+.\target\debug\pire-browser.exe --allowed-domains "app.example.com,*.example.com" open https://app.example.com/dashboard
+$env:AGENT_BROWSER_ALLOWED_DOMAINS = "app.example.com,*.example.com"
+.\target\debug\pire-browser.exe snapshot -i
+.\target\debug\pire-browser.exe --no-allowed-domains open https://example.net
+```
+
+The allowlist accepts host patterns such as `example.com`, `*.example.com`, `localhost`, and `127.0.0.1`. Scheme-less navigation inputs like `example.com` are checked as `https://example.com`. `--no-allowed-domains` is an explicit one-command override and emits a `DOMAIN_POLICY_OVERRIDDEN` warning when it bypasses an active env allowlist.
+
+This is a cooperative guardrail, not a browser sandbox. It checks navigation targets before dispatch where possible and asks the extension to reject active-page commands on disallowed `http`/`https` hosts. Active-page commands with an allowlist require an active `http`/`https` target; `about:blank` and `about:newtab` fail until an allowed URL is opened. It does not block redirects, subresources, WebSockets, EventSource, or races where a page navigates between the check and action. Domain patterns are shown in diagnostics; secret-shaped values are still redacted.
+
 ### Session Targeting
 
 Use `session list` when more than one Firefox extension session may be live:
@@ -235,6 +251,12 @@ Run the state handoff smoke to verify active-origin save/load across named profi
 
 ```powershell
 npm run smoke:state
+```
+
+Run the domain allowlist smoke to verify allowed navigation, denied navigation, batch/tab-new denial, active-page denial, state-origin denial, and audited override behavior:
+
+```powershell
+npm run smoke:domain-policy
 ```
 
 Create the Windows release package locally:

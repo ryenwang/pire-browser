@@ -19,6 +19,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
   - GPT-5.5 implementation note: `PIRE_BROWSER_REQUIRE_INSPECTED_STATE=1` is implemented as a `pire-browser`-specific cooperative state-load guardrail. It makes normal `state load` require a fresh `state inspect --record` receipt, supports an audited `--no-require-inspected` override, and is not a sandbox or auth vault.
+  - GPT-5.5 implementation note: `--allowed-domains` and `AGENT_BROWSER_ALLOWED_DOMAINS` are implemented as `pire-browser` cooperative wrong-site guardrails. They check URL-bearing commands, active-page actions, named/default launches, and state-load origins, but they do not provide upstream-equivalent subresource, redirect, WebSocket, EventSource, or TOCTOU-safe enforcement.
 
 ## Threat Model
 
@@ -132,12 +133,14 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: `pire-browser --allowed-domains` is implemented for exact and wildcard host patterns, scheme-less navigation normalization, launch/open/navigation checks, active-page checks, and `state load` origin checks. It is intentionally best-effort and does not claim upstream-equivalent request/redirect containment.
 - [ ] Support documented usage: `export AGENT_BROWSER_ALLOWED_DOMAINS="example.com,*.example.com"`
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Low
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: `AGENT_BROWSER_ALLOWED_DOMAINS` is implemented with the same comma-separated pattern syntax as the flag. Explicit CLI flags win over the env setting, and `--no-allowed-domains` emits a `DOMAIN_POLICY_OVERRIDDEN` warning when bypassing an active env allowlist.
 
 ## Action Policy
 

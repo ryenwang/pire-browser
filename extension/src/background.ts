@@ -6,6 +6,11 @@ type RpcRequest = {
   params?: Record<string, any>;
 };
 
+type DomainPolicyContext = {
+  enabled?: boolean;
+  patterns?: string[];
+};
+
 type RpcResponse = {
   type: "response";
   id: string;
@@ -227,7 +232,8 @@ async function executeRequest(request: RpcRequest): Promise<RpcResponse> {
       return errorResponse(request.id, "unsupported_method", `Unsupported method: ${request.method}`);
     }
     const args = Array.isArray(request.params?.args) ? (request.params?.args as string[]) : [];
-    const result = await prepareLargeResult(await executeCommand(args));
+    const domainPolicy = domainPolicyFromParams(request.params?.domainPolicy);
+    const result = await executeCommandWithDomainPolicy(args, domainPolicy);
     if ("error" in result) {
       return {
         type: "response",
@@ -251,7 +257,157 @@ function errorResponse(id: string, code: string, message: string): RpcResponse {
   return { type: "response", id, ok: false, error: { code, message } };
 }
 
-async function executeCommand(args: string[]): Promise<Record<string, unknown>> {
+async function executeCommandWithDomainPolicy(args: string[], policy: DomainPolicyContext | null): Promise<Record<string, unknown>> {
+  const domainError = await domainPolicyErrorForCommand(args, policy);
+  if (domainError) return { error: domainError };
+  return prepareLargeResult(await executeCommand(args, policy));
+}
+
+function domainPolicyFromParams(value: unknown): DomainPolicyContext | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.enabled !== true) return null;
+  const patterns = Array.isArray(candidate.patterns)
+    ? candidate.patterns.filter((pattern): pattern is string => typeof pattern === "string")
+    : [];
+  if (patterns.length === 0) return null;
+  return { enabled: true, patterns };
+}
+
+async function domainPolicyErrorForCommand(args: string[], policy: DomainPolicyContext | null): Promise<RpcResponse["error"] | null> {
+  if (!policy?.enabled || !policy.patterns?.length) return null;
+  const [command] = args;
+  const destinationUrl = domainPolicyDestinationUrl(args);
+  if (destinationUrl) return domainPolicyErrorForUrl(destinationUrl, policy);
+  if (!commandNeedsActivePageDomainCheck(args)) return null;
+  const tab = await targetTab().catch(() => undefined);
+  const url = tab?.url;
+  if (!url) {
+    return {
+      code: "DomainPolicyError",
+      message: `domain allowlist requires an active http(s) page for ${command || "command"}`,
+    };
+  }
+  return domainPolicyErrorForUrl(url, policy);
+}
+
+function domainPolicyDestinationUrl(args: string[]): string | undefined {
+  const [command, subcommand, ...rest] = args;
+  if (["open", "goto", "navigate"].includes(command ?? "")) {
+    return firstPositionalArg(args.slice(1), ["--label"]);
+  }
+  if ((command === "tab" || command === "tabs") && subcommand === "new") {
+    return firstPositionalArg(rest, ["--label"]);
+  }
+  return undefined;
+}
+
+function domainPolicyErrorForUrl(input: string, policy: DomainPolicyContext): RpcResponse["error"] | null {
+  const parsed = parsePolicyUrl(input);
+  if (!parsed.ok) {
+    return { code: "DomainPolicyError", message: parsed.message };
+  }
+  if (parsed.scheme !== "http" && parsed.scheme !== "https") {
+    return {
+      code: "DomainPolicyError",
+      message: `${parsed.scheme}: URLs are not allowed when a domain allowlist is active`,
+    };
+  }
+  if (policy.patterns?.some((pattern) => domainPatternMatches(pattern, parsed.host))) return null;
+  return {
+    code: "DomainPolicyError",
+    message: `host \`${parsed.host}\` is outside the active domain allowlist (${policy.patterns?.join(", ")})`,
+  };
+}
+
+function parsePolicyUrl(input: string): { ok: true; scheme: string; host: string } | { ok: false; message: string } {
+  const trimmed = input.trim();
+  if (!trimmed) return { ok: false, message: "empty URL cannot be checked against domain allowlist" };
+  const explicitScheme = explicitNonHttpScheme(trimmed);
+  if (explicitScheme) return { ok: true, scheme: explicitScheme, host: "" };
+  const normalized = trimmed.includes("://") ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(normalized);
+    return { ok: true, scheme: url.protocol.replace(":", "").toLowerCase(), host: normalizePolicyHost(url.hostname) };
+  } catch {
+    return { ok: false, message: `invalid URL \`${trimmed}\` for domain allowlist` };
+  }
+}
+
+function explicitNonHttpScheme(input: string) {
+  const lower = input.toLowerCase();
+  const match = lower.match(/^([a-z][a-z0-9+.-]*):/);
+  if (!match || lower.includes("://")) return "";
+  const scheme = match[1];
+  return ["about", "blob", "chrome", "data", "file", "javascript", "mailto", "moz-extension", "resource"].includes(scheme) ? scheme : "";
+}
+
+function normalizePolicyHost(host: string) {
+  return host.toLowerCase().replace(/\.+$/, "");
+}
+
+function domainPatternMatches(pattern: string, host: string) {
+  const normalizedPattern = normalizePolicyHost(pattern);
+  const normalizedHost = normalizePolicyHost(host);
+  if (normalizedPattern.startsWith("*.")) {
+    const suffix = normalizedPattern.slice(2);
+    return normalizedHost !== suffix && normalizedHost.endsWith(`.${suffix}`);
+  }
+  return normalizedHost === normalizedPattern;
+}
+
+// Maintainer note: update this list whenever a command reads, mutates, captures,
+// navigates within, or otherwise acts on the active page. Destination-bearing
+// commands such as open/goto/navigate and tabs new are handled separately by
+// domainPolicyDestinationUrl.
+function commandNeedsActivePageDomainCheck(args: string[]) {
+  const [command, subcommand] = args;
+  if (
+    [
+      "snapshot",
+      "find",
+      "click",
+      "dblclick",
+      "fill",
+      "type",
+      "press",
+      "key",
+      "keyboard",
+      "keydown",
+      "keyup",
+      "hover",
+      "focus",
+      "select",
+      "check",
+      "uncheck",
+      "scroll",
+      "scrollintoview",
+      "screenshot",
+      "get",
+      "is",
+      "eval",
+      "back",
+      "forward",
+      "reload",
+      "cookies",
+      "storage",
+    ].includes(command ?? "")
+  ) {
+    return true;
+  }
+  if (command === "wait") return waitCommandTouchesActivePage(args.slice(1));
+  if (command === "clipboard") return subcommand === "copy" || subcommand === "paste";
+  if (command === "state") return subcommand === "export" || subcommand === "import";
+  return false;
+}
+
+function waitCommandTouchesActivePage(args: string[]) {
+  if (args.some((arg) => ["--load", "--selector", "--text", "--url", "--fn"].includes(arg))) return true;
+  const first = args.find((arg) => !arg.startsWith("--"));
+  return Boolean(first && Number.isNaN(Number(first)));
+}
+
+async function executeCommand(args: string[], domainPolicy: DomainPolicyContext | null = null): Promise<Record<string, unknown>> {
   const [command, ...rest] = args;
   switch (command) {
     case "status":
@@ -315,7 +471,7 @@ async function executeCommand(args: string[]): Promise<Record<string, unknown>> 
     case "dialog":
       return dialogCommand(rest);
     case "batch":
-      return batchCommand(rest);
+      return batchCommand(rest, domainPolicy);
     case "cookies":
       return cookiesCommand(rest);
     case "storage":
@@ -678,13 +834,16 @@ async function dialogCommand(args: string[]) {
   );
 }
 
-async function batchCommand(args: string[]) {
+async function batchCommand(args: string[], domainPolicy: DomainPolicyContext | null) {
   const bailOnError = args.includes("--bail");
   const commands = args.filter((arg) => arg !== "--bail");
   const results: Record<string, unknown>[] = [];
   for (const commandText of commands) {
-    const result = await executeCommand(splitCommand(commandText));
+    const result = await executeCommandWithDomainPolicy(splitCommand(commandText), domainPolicy);
     results.push(result);
+    if ("error" in result && (result.error as RpcResponse["error"])?.code === "DomainPolicyError") {
+      return { error: result.error, text: `Ran ${results.length} batch command(s)`, results };
+    }
     if (bailOnError && "error" in result) break;
   }
   return { text: `Ran ${results.length} batch command(s)`, results };

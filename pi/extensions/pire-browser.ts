@@ -32,6 +32,7 @@ export default function (pi: ExtensionAPI) {
         "Use `clipboard read|write|copy|paste` for text clipboard workflows; copy/paste are Firefox best-effort page-selection/focused-editable operations.",
         "Use `state inspect <path>` for read-only metadata review of plaintext state files; use `state inspect --record <path>` before `state load --require-inspected <path>` when a load must be gated by a fresh local receipt.",
         "When PIRE_BROWSER_REQUIRE_INSPECTED_STATE=1 is set, normal `state load <path>` requires a fresh recorded inspection receipt; `--no-require-inspected` is an explicit cooperative override and should be called out if used.",
+        "Use `--allowed-domains <hosts>` or AGENT_BROWSER_ALLOWED_DOMAINS for cooperative wrong-site guardrails; `--no-allowed-domains` is an explicit override and should be called out if used.",
         "It is valid for the first browser action to be `pire-browser open <url>`; the CLI auto-launches Firefox when no live session exists.",
         "After a successful or recovered open/goto/navigate result, use `pire-browser snapshot -i` to inspect the page before interacting with it.",
         "Prefer agent-browser-compatible command shapes: `tab`, `get`, `is`, `type`, `find role ...`, CSS selectors, and fresh quoted `@eN` refs from `snapshot -i`, such as `click '@e4'`.",

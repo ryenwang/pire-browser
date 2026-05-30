@@ -104,7 +104,8 @@
                 return errorResponse(request.id, "unsupported_method", `Unsupported method: ${request.method}`);
             }
             const args = Array.isArray(request.params?.args) ? request.params?.args : [];
-            const result = await prepareLargeResult(await executeCommand(args));
+            const domainPolicy = domainPolicyFromParams(request.params?.domainPolicy);
+            const result = await executeCommandWithDomainPolicy(args, domainPolicy);
             if ("error" in result) {
                 return {
                     type: "response",
@@ -127,7 +128,160 @@
     function errorResponse(id, code, message) {
         return { type: "response", id, ok: false, error: { code, message } };
     }
-    async function executeCommand(args) {
+    async function executeCommandWithDomainPolicy(args, policy) {
+        const domainError = await domainPolicyErrorForCommand(args, policy);
+        if (domainError)
+            return { error: domainError };
+        return prepareLargeResult(await executeCommand(args, policy));
+    }
+    function domainPolicyFromParams(value) {
+        if (!value || typeof value !== "object")
+            return null;
+        const candidate = value;
+        if (candidate.enabled !== true)
+            return null;
+        const patterns = Array.isArray(candidate.patterns)
+            ? candidate.patterns.filter((pattern) => typeof pattern === "string")
+            : [];
+        if (patterns.length === 0)
+            return null;
+        return { enabled: true, patterns };
+    }
+    async function domainPolicyErrorForCommand(args, policy) {
+        if (!policy?.enabled || !policy.patterns?.length)
+            return null;
+        const [command] = args;
+        const destinationUrl = domainPolicyDestinationUrl(args);
+        if (destinationUrl)
+            return domainPolicyErrorForUrl(destinationUrl, policy);
+        if (!commandNeedsActivePageDomainCheck(args))
+            return null;
+        const tab = await targetTab().catch(() => undefined);
+        const url = tab?.url;
+        if (!url) {
+            return {
+                code: "DomainPolicyError",
+                message: `domain allowlist requires an active http(s) page for ${command || "command"}`,
+            };
+        }
+        return domainPolicyErrorForUrl(url, policy);
+    }
+    function domainPolicyDestinationUrl(args) {
+        const [command, subcommand, ...rest] = args;
+        if (["open", "goto", "navigate"].includes(command ?? "")) {
+            return firstPositionalArg(args.slice(1), ["--label"]);
+        }
+        if ((command === "tab" || command === "tabs") && subcommand === "new") {
+            return firstPositionalArg(rest, ["--label"]);
+        }
+        return undefined;
+    }
+    function domainPolicyErrorForUrl(input, policy) {
+        const parsed = parsePolicyUrl(input);
+        if (!parsed.ok) {
+            return { code: "DomainPolicyError", message: parsed.message };
+        }
+        if (parsed.scheme !== "http" && parsed.scheme !== "https") {
+            return {
+                code: "DomainPolicyError",
+                message: `${parsed.scheme}: URLs are not allowed when a domain allowlist is active`,
+            };
+        }
+        if (policy.patterns?.some((pattern) => domainPatternMatches(pattern, parsed.host)))
+            return null;
+        return {
+            code: "DomainPolicyError",
+            message: `host \`${parsed.host}\` is outside the active domain allowlist (${policy.patterns?.join(", ")})`,
+        };
+    }
+    function parsePolicyUrl(input) {
+        const trimmed = input.trim();
+        if (!trimmed)
+            return { ok: false, message: "empty URL cannot be checked against domain allowlist" };
+        const explicitScheme = explicitNonHttpScheme(trimmed);
+        if (explicitScheme)
+            return { ok: true, scheme: explicitScheme, host: "" };
+        const normalized = trimmed.includes("://") ? trimmed : `https://${trimmed}`;
+        try {
+            const url = new URL(normalized);
+            return { ok: true, scheme: url.protocol.replace(":", "").toLowerCase(), host: normalizePolicyHost(url.hostname) };
+        }
+        catch {
+            return { ok: false, message: `invalid URL \`${trimmed}\` for domain allowlist` };
+        }
+    }
+    function explicitNonHttpScheme(input) {
+        const lower = input.toLowerCase();
+        const match = lower.match(/^([a-z][a-z0-9+.-]*):/);
+        if (!match || lower.includes("://"))
+            return "";
+        const scheme = match[1];
+        return ["about", "blob", "chrome", "data", "file", "javascript", "mailto", "moz-extension", "resource"].includes(scheme) ? scheme : "";
+    }
+    function normalizePolicyHost(host) {
+        return host.toLowerCase().replace(/\.+$/, "");
+    }
+    function domainPatternMatches(pattern, host) {
+        const normalizedPattern = normalizePolicyHost(pattern);
+        const normalizedHost = normalizePolicyHost(host);
+        if (normalizedPattern.startsWith("*.")) {
+            const suffix = normalizedPattern.slice(2);
+            return normalizedHost !== suffix && normalizedHost.endsWith(`.${suffix}`);
+        }
+        return normalizedHost === normalizedPattern;
+    }
+    // Maintainer note: update this list whenever a command reads, mutates, captures,
+    // navigates within, or otherwise acts on the active page. Destination-bearing
+    // commands such as open/goto/navigate and tabs new are handled separately by
+    // domainPolicyDestinationUrl.
+    function commandNeedsActivePageDomainCheck(args) {
+        const [command, subcommand] = args;
+        if ([
+            "snapshot",
+            "find",
+            "click",
+            "dblclick",
+            "fill",
+            "type",
+            "press",
+            "key",
+            "keyboard",
+            "keydown",
+            "keyup",
+            "hover",
+            "focus",
+            "select",
+            "check",
+            "uncheck",
+            "scroll",
+            "scrollintoview",
+            "screenshot",
+            "get",
+            "is",
+            "eval",
+            "back",
+            "forward",
+            "reload",
+            "cookies",
+            "storage",
+        ].includes(command ?? "")) {
+            return true;
+        }
+        if (command === "wait")
+            return waitCommandTouchesActivePage(args.slice(1));
+        if (command === "clipboard")
+            return subcommand === "copy" || subcommand === "paste";
+        if (command === "state")
+            return subcommand === "export" || subcommand === "import";
+        return false;
+    }
+    function waitCommandTouchesActivePage(args) {
+        if (args.some((arg) => ["--load", "--selector", "--text", "--url", "--fn"].includes(arg)))
+            return true;
+        const first = args.find((arg) => !arg.startsWith("--"));
+        return Boolean(first && Number.isNaN(Number(first)));
+    }
+    async function executeCommand(args, domainPolicy = null) {
         const [command, ...rest] = args;
         switch (command) {
             case "status":
@@ -191,7 +345,7 @@
             case "dialog":
                 return dialogCommand(rest);
             case "batch":
-                return batchCommand(rest);
+                return batchCommand(rest, domainPolicy);
             case "cookies":
                 return cookiesCommand(rest);
             case "storage":
@@ -546,13 +700,16 @@
     async function dialogCommand(args) {
         return bestEffortResult(`Dialog ${args[0] ?? "status"} requested`, "dialog", "Dialogs are captured by the page shim when injection is allowed; active modal control is best-effort in Firefox WebExtensions.");
     }
-    async function batchCommand(args) {
+    async function batchCommand(args, domainPolicy) {
         const bailOnError = args.includes("--bail");
         const commands = args.filter((arg) => arg !== "--bail");
         const results = [];
         for (const commandText of commands) {
-            const result = await executeCommand(splitCommand(commandText));
+            const result = await executeCommandWithDomainPolicy(splitCommand(commandText), domainPolicy);
             results.push(result);
+            if ("error" in result && result.error?.code === "DomainPolicyError") {
+                return { error: result.error, text: `Ran ${results.length} batch command(s)`, results };
+            }
             if (bailOnError && "error" in result)
                 break;
         }
