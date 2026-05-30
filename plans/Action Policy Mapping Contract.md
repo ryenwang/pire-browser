@@ -3,7 +3,7 @@
 ## Summary
 This contract defines how future `pire-browser --action-policy` support should map commands to upstream `agent-browser` action categories. It is a planning and fixture slice only; it does not change runtime behavior.
 
-The machine-readable source of truth is `fixtures/action-policy-command-map.json`. Implementation code and tests should consume or validate against that fixture so Rust and extension policy checks do not drift.
+The machine-readable source of truth is `fixtures/action-policy-command-map.json`. Implementation code and tests should consume or validate against that fixture so Rust and extension policy checks do not drift. Shared command verdict tests should use `fixtures/action-policy-command-verdicts.json`, whose cases include command args, a sample policy, expected category, and expected decision.
 
 ## Policy Shape
 Future action policy support should load upstream-shaped JSON from `--action-policy <path>` or `AGENT_BROWSER_ACTION_POLICY`:
@@ -12,12 +12,11 @@ Future action policy support should load upstream-shaped JSON from `--action-pol
 {
   "default": "allow",
   "allow": ["navigate", "snapshot"],
-  "deny": ["eval"],
-  "confirm": ["download"]
+  "deny": ["eval"]
 }
 ```
 
-Precedence is `deny`, then `confirm`, then `allow`, then `default`. `default: "deny"` blocks any executable non-meta command not explicitly allowed. Until confirmation queues exist, any matching `confirm` entry must fail closed with `ActionPolicyError: confirmation is not yet supported`; it must not silently allow the command.
+Precedence is `deny`, then `allow`, then `default`. `default: "deny"` blocks any executable non-meta command not explicitly allowed. Policy-file `confirm` is not supported in v1; confirmation remains a future `--confirm-actions`, `AGENT_BROWSER_CONFIRM_ACTIONS`, `confirm`, and `deny` slice.
 
 ## Categories
 The 13 categories match the captured upstream security docs exactly:
@@ -44,4 +43,4 @@ CLI-side checks should cover commands that are local, launch before dispatch, or
 Meta/local commands bypass action policy: `status`, `doctor`, `help`, `setup`, no-URL `launch`, `session` management, `close`, `quit`, `exit`, and `state inspect`.
 
 ## Implementation Follow-Up
-The implementation slice should add parser capture for `--action-policy`, `AGENT_BROWSER_ACTION_POLICY`, diagnostics in `status`/`doctor`, `ActionPolicyError` envelopes, fixture-backed Rust and extension tests, and smoke coverage. It must include exhaustiveness tests proving every executable command root is policy-mapped, compound, meta-bypassed, reserved, unsupported, or not-available. Compatibility status should remain unchanged until oracle-backed coverage is added through the existing compatibility process.
+The implementation slice should add parser capture for `--action-policy`, `AGENT_BROWSER_ACTION_POLICY`, diagnostics in `status`/`doctor`, `ActionPolicyError` envelopes, fixture-backed Rust and extension tests, and smoke coverage. It must include exhaustiveness tests proving every executable command root is policy-mapped, compound, meta-bypassed, reserved, unsupported, or not-available. If a command also has domain policy checks, domain policy should run before action policy so wrong-site failures surface before category denial. Compatibility status should remain unchanged until oracle-backed coverage is added through the existing compatibility process.

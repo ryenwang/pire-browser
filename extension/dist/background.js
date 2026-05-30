@@ -105,7 +105,8 @@
             }
             const args = Array.isArray(request.params?.args) ? request.params?.args : [];
             const domainPolicy = domainPolicyFromParams(request.params?.domainPolicy);
-            const result = await executeCommandWithDomainPolicy(args, domainPolicy);
+            const actionPolicy = actionPolicyFromParams(request.params?.actionPolicy);
+            const result = await executeCommandWithPolicies(args, domainPolicy, actionPolicy);
             if ("error" in result) {
                 return {
                     type: "response",
@@ -128,11 +129,14 @@
     function errorResponse(id, code, message) {
         return { type: "response", id, ok: false, error: { code, message } };
     }
-    async function executeCommandWithDomainPolicy(args, policy) {
-        const domainError = await domainPolicyErrorForCommand(args, policy);
+    async function executeCommandWithPolicies(args, domainPolicy, actionPolicy) {
+        const domainError = await domainPolicyErrorForCommand(args, domainPolicy);
         if (domainError)
             return { error: domainError };
-        return prepareLargeResult(await executeCommand(args, policy));
+        const actionError = actionPolicyErrorForCommand(args, actionPolicy);
+        if (actionError)
+            return { error: actionError };
+        return prepareLargeResult(await executeCommand(args, domainPolicy, actionPolicy));
     }
     function domainPolicyFromParams(value) {
         if (!value || typeof value !== "object")
@@ -146,6 +150,21 @@
         if (patterns.length === 0)
             return null;
         return { enabled: true, patterns };
+    }
+    function actionPolicyFromParams(value) {
+        if (!value || typeof value !== "object")
+            return null;
+        const candidate = value;
+        if (candidate.enabled !== true)
+            return null;
+        const defaultValue = candidate.default === "deny" ? "deny" : "allow";
+        const allow = Array.isArray(candidate.allow)
+            ? candidate.allow.filter((category) => typeof category === "string")
+            : [];
+        const deny = Array.isArray(candidate.deny)
+            ? candidate.deny.filter((category) => typeof category === "string")
+            : [];
+        return { enabled: true, default: defaultValue, allow, deny };
     }
     async function domainPolicyErrorForCommand(args, policy) {
         if (!policy?.enabled || !policy.patterns?.length)
@@ -161,10 +180,189 @@
         if (!url) {
             return {
                 code: "DomainPolicyError",
+                data: { phase: "policy" },
                 message: `domain allowlist requires an active http(s) page for ${command || "command"}`,
             };
         }
         return domainPolicyErrorForUrl(url, policy);
+    }
+    function actionPolicyErrorForCommand(args, policy) {
+        if (!policy?.enabled)
+            return null;
+        const verdict = actionPolicyVerdictForCommand(args, policy);
+        if (verdict.decision !== "deny")
+            return null;
+        return {
+            code: "ActionPolicyError",
+            data: { phase: "policy" },
+            message: `action category \`${verdict.category ?? "unknown"}\` is denied by the active action policy`,
+        };
+    }
+    function actionPolicyVerdictForCommand(args, policy) {
+        const resolution = actionPolicyCategoryForCommand(args);
+        if (resolution.kind !== "category") {
+            return { category: null, decision: resolution.kind };
+        }
+        const category = resolution.category;
+        if (policy.deny?.includes(category))
+            return { category, decision: "deny" };
+        if (policy.allow?.includes(category))
+            return { category, decision: "allow" };
+        return { category, decision: policy.default === "deny" ? "deny" : "allow" };
+    }
+    function actionPolicyCategoryForCommand(args) {
+        const [command, subcommand] = args;
+        if (!command)
+            return { kind: "unsupported" };
+        if (["status", "doctor", "install-status", "help", "setup", "session", "sessions", "close", "quit", "exit"].includes(command)) {
+            return { kind: "meta" };
+        }
+        if (command === "launch" && !args.includes("--url"))
+            return { kind: "meta" };
+        if (command === "state" && subcommand === "inspect")
+            return { kind: "meta" };
+        if ((command === "tab" || command === "tabs") && subcommand === "label")
+            return { kind: "meta" };
+        if (command === "batch")
+            return { kind: "allow" };
+        if (notAvailableActionPolicyRoot(command))
+            return { kind: "not_available" };
+        const category = actionPolicyCategoryName(args);
+        return category ? { kind: "category", category } : { kind: "unsupported" };
+    }
+    function actionPolicyCategoryName(args) {
+        const [command, subcommand] = args;
+        switch (command) {
+            case "open":
+            case "goto":
+            case "navigate":
+            case "launch":
+            case "back":
+            case "forward":
+            case "reload":
+                return "navigate";
+            case "tab":
+            case "tabs":
+                if (!subcommand || subcommand === "list")
+                    return "get";
+                if (["new", "select", "close"].includes(subcommand))
+                    return "navigate";
+                return null;
+            case "window":
+                return subcommand === "new" ? "navigate" : null;
+            case "click":
+            case "dblclick":
+                return "click";
+            case "fill":
+            case "type":
+            case "select":
+            case "check":
+            case "uncheck":
+                return "fill";
+            case "keyboard":
+                return subcommand === "type" || subcommand === "inserttext" ? "fill" : null;
+            case "eval":
+                return "eval";
+            case "snapshot":
+            case "screenshot":
+                return "snapshot";
+            case "scroll":
+            case "scrollintoview":
+                return "scroll";
+            case "wait":
+                return "wait";
+            case "find":
+                return findActionPolicyCategory(args);
+            case "get":
+            case "is":
+            case "frame":
+                return "get";
+            case "cookies":
+                return subcommand === "set" || subcommand === "clear" ? "state" : "get";
+            case "storage":
+                return (subcommand === "local" || subcommand === "session") && ["set", "clear"].includes(args[2] ?? "")
+                    ? "state"
+                    : "get";
+            case "dialog":
+                return subcommand === "accept" || subcommand === "dismiss" ? "interact" : "get";
+            case "hover":
+            case "focus":
+            case "press":
+            case "key":
+            case "keydown":
+            case "keyup":
+                return "interact";
+            case "clipboard":
+                if (subcommand === "paste")
+                    return "fill";
+                if (subcommand === "read")
+                    return "get";
+                if (subcommand === "write" || subcommand === "copy")
+                    return "state";
+                return null;
+            case "state":
+                if (subcommand === "save" || subcommand === "load")
+                    return "state";
+                return null;
+            default:
+                return null;
+        }
+    }
+    function findActionPolicyCategory(args) {
+        const parsed = parseFind(args.slice(1));
+        if ("error" in parsed || !parsed.action)
+            return "get";
+        const action = parsed.action;
+        if (action === "click" || action === "dblclick")
+            return "click";
+        if (["fill", "type", "select", "check", "uncheck"].includes(action))
+            return "fill";
+        if (["text", "html", "value", "attr", "box", "styles"].includes(action))
+            return "get";
+        if (action === "scroll" || action === "scrollintoview")
+            return "scroll";
+        if (["press", "key", "hover", "focus"].includes(action))
+            return "interact";
+        if (action === "eval")
+            return "eval";
+        return "interact";
+    }
+    function notAvailableActionPolicyRoot(command) {
+        return [
+            "addinitscript",
+            "auth",
+            "confirm",
+            "connect",
+            "console",
+            "dashboard",
+            "deny",
+            "device",
+            "diff",
+            "download",
+            "drag",
+            "errors",
+            "highlight",
+            "install",
+            "mouse",
+            "network",
+            "pdf",
+            "profiler",
+            "profiles",
+            "pushstate",
+            "react",
+            "record",
+            "removeinitscript",
+            "set",
+            "skill",
+            "skills",
+            "stream",
+            "swipe",
+            "tap",
+            "trace",
+            "upgrade",
+            "upload",
+            "vitals",
+        ].includes(command);
     }
     function domainPolicyDestinationUrl(args) {
         const [command, subcommand, ...rest] = args;
@@ -179,11 +377,12 @@
     function domainPolicyErrorForUrl(input, policy) {
         const parsed = parsePolicyUrl(input);
         if (!parsed.ok) {
-            return { code: "DomainPolicyError", message: parsed.message };
+            return { code: "DomainPolicyError", data: { phase: "policy" }, message: parsed.message };
         }
         if (parsed.scheme !== "http" && parsed.scheme !== "https") {
             return {
                 code: "DomainPolicyError",
+                data: { phase: "policy" },
                 message: `${parsed.scheme}: URLs are not allowed when a domain allowlist is active`,
             };
         }
@@ -191,6 +390,7 @@
             return null;
         return {
             code: "DomainPolicyError",
+            data: { phase: "policy" },
             message: `host \`${parsed.host}\` is outside the active domain allowlist (${policy.patterns?.join(", ")})`,
         };
     }
@@ -281,7 +481,7 @@
         const first = args.find((arg) => !arg.startsWith("--"));
         return Boolean(first && Number.isNaN(Number(first)));
     }
-    async function executeCommand(args, domainPolicy = null) {
+    async function executeCommand(args, domainPolicy = null, actionPolicy = null) {
         const [command, ...rest] = args;
         switch (command) {
             case "status":
@@ -345,7 +545,7 @@
             case "dialog":
                 return dialogCommand(rest);
             case "batch":
-                return batchCommand(rest, domainPolicy);
+                return batchCommand(rest, domainPolicy, actionPolicy);
             case "cookies":
                 return cookiesCommand(rest);
             case "storage":
@@ -700,14 +900,15 @@
     async function dialogCommand(args) {
         return bestEffortResult(`Dialog ${args[0] ?? "status"} requested`, "dialog", "Dialogs are captured by the page shim when injection is allowed; active modal control is best-effort in Firefox WebExtensions.");
     }
-    async function batchCommand(args, domainPolicy) {
+    async function batchCommand(args, domainPolicy, actionPolicy) {
         const bailOnError = args.includes("--bail");
         const commands = args.filter((arg) => arg !== "--bail");
         const results = [];
         for (const commandText of commands) {
-            const result = await executeCommandWithDomainPolicy(splitCommand(commandText), domainPolicy);
+            const result = await executeCommandWithPolicies(splitCommand(commandText), domainPolicy, actionPolicy);
             results.push(result);
-            if ("error" in result && result.error?.code === "DomainPolicyError") {
+            const errorCode = result.error?.code;
+            if ("error" in result && (errorCode === "DomainPolicyError" || errorCode === "ActionPolicyError")) {
                 return { error: result.error, text: `Ran ${results.length} batch command(s)`, results };
             }
             if (bailOnError && "error" in result)

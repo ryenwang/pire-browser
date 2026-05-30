@@ -17,9 +17,9 @@
     "upload"
   ],
   "policyShape": {
-    "fields": ["default", "allow", "deny", "confirm"],
-    "precedence": ["deny", "confirm", "allow", "default"],
-    "confirmInterimBehavior": "Until confirmation queues are implemented, matching confirm entries fail closed with ActionPolicyError: confirmation is not yet supported."
+    "fields": ["default", "allow", "deny"],
+    "precedence": ["deny", "allow", "default"],
+    "confirmation": "Confirmation is not part of the policy file in v1. It remains deferred to --confirm-actions, AGENT_BROWSER_CONFIRM_ACTIONS, confirm, and deny."
   },
   "resolution": {
     "order": ["compoundEntries", "metaBypasses", "commandEntries", "reservedFutureEntries"],

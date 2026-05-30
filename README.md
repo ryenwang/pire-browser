@@ -16,6 +16,7 @@ pire-browser launch
 pire-browser launch --url https://discord.com/login
 pire-browser open https://example.com --label docs
 pire-browser --allowed-domains "example.com,*.example.com" open https://example.com
+pire-browser --action-policy ./policy.json snapshot -i
 pire-browser snapshot -i
 pire-browser find label "Email" fill "hello@example.com"
 pire-browser find role button --name "Submit" click
@@ -198,6 +199,28 @@ $env:AGENT_BROWSER_ALLOWED_DOMAINS = "app.example.com,*.example.com"
 The allowlist accepts host patterns such as `example.com`, `*.example.com`, `localhost`, and `127.0.0.1`. Scheme-less navigation inputs like `example.com` are checked as `https://example.com`. `--no-allowed-domains` is an explicit one-command override and emits a `DOMAIN_POLICY_OVERRIDDEN` warning when it bypasses an active env allowlist.
 
 This is a cooperative guardrail, not a browser sandbox. It checks navigation targets before dispatch where possible and asks the extension to reject active-page commands on disallowed `http`/`https` hosts. Active-page commands with an allowlist require an active `http`/`https` target; `about:blank` and `about:newtab` fail until an allowed URL is opened. It does not block redirects, subresources, WebSockets, EventSource, or races where a page navigates between the check and action. Domain patterns are shown in diagnostics; secret-shaped values are still redacted.
+
+### Action Policy Guardrails
+
+Use `--action-policy` or `AGENT_BROWSER_ACTION_POLICY` when an operator wants a cooperative action-category guardrail:
+
+```powershell
+@'
+{ "default": "allow", "deny": ["eval"] }
+'@ | Set-Content .\policy-deny-eval.json
+.\target\debug\pire-browser.exe --action-policy .\policy-deny-eval.json eval "document.title"
+
+@'
+{ "default": "deny", "allow": ["navigate", "snapshot", "get"] }
+'@ | Set-Content .\policy-review.json
+$env:AGENT_BROWSER_ACTION_POLICY = ".\policy-review.json"
+.\target\debug\pire-browser.exe open https://example.com
+.\target\debug\pire-browser.exe snapshot -i
+```
+
+Policy files use the upstream v1 shape: optional `default`, `allow`, and `deny`. The categories are `navigate`, `click`, `fill`, `eval`, `snapshot`, `scroll`, `wait`, `get`, `interact`, `state`, `network`, `download`, and `upload`. `deny` wins over `allow`, and missing `default` means `allow`. Unknown keys fail closed so misspelled policy fields cannot silently weaken the guardrail. File-level `confirm` is not supported; confirmation remains future `--confirm-actions` work.
+
+`status --json` and `doctor --json` include an `actionPolicy` diagnostic. Existing unavailable commands still return `NotAvailableError` before action policy checks. `batch` stops immediately on an `ActionPolicyError`, and chained `find ... click/fill/...` commands are classified by the chained action.
 
 ### Session Targeting
 

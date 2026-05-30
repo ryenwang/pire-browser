@@ -32,6 +32,7 @@
     "oracle:visible": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/oracle/visible-compare.ps1",
     "oracle:visible:pi": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/oracle/visible-bing-side-by-side.ps1",
     "oracle:visible:compare": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/oracle/visible-compare.ps1",
+    "smoke:action-policy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-action-policy.ps1",
     "smoke:domain-policy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-domain-policy.ps1",
     "smoke:named-sessions": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-named-sessions.ps1",
     "smoke:state": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-state.ps1"
