@@ -107,7 +107,8 @@
             const args = Array.isArray(request.params?.args) ? request.params?.args : [];
             const domainPolicy = domainPolicyFromParams(request.params?.domainPolicy);
             const actionPolicy = actionPolicyFromParams(request.params?.actionPolicy);
-            const result = await executeCommandWithPolicies(args, domainPolicy, actionPolicy);
+            const confirmationPolicy = confirmationPolicyFromParams(request.params?.confirmationPolicy);
+            const result = await executeCommandWithPolicies(args, domainPolicy, actionPolicy, confirmationPolicy);
             if ("error" in result) {
                 return {
                     type: "response",
@@ -130,14 +131,17 @@
     function errorResponse(id, code, message) {
         return { type: "response", id, ok: false, error: { code, message } };
     }
-    async function executeCommandWithPolicies(args, domainPolicy, actionPolicy) {
+    async function executeCommandWithPolicies(args, domainPolicy, actionPolicy, confirmationPolicy) {
         const domainError = await domainPolicyErrorForCommand(args, domainPolicy);
         if (domainError)
             return { error: domainError };
         const actionError = actionPolicyErrorForCommand(args, actionPolicy);
         if (actionError)
             return { error: actionError };
-        return prepareLargeResult(await executeCommand(args, domainPolicy, actionPolicy));
+        const confirmationError = confirmationPolicyErrorForCommand(args, actionPolicy, confirmationPolicy);
+        if (confirmationError)
+            return { error: confirmationError };
+        return prepareLargeResult(await executeCommand(args, domainPolicy, actionPolicy, confirmationPolicy));
     }
     function domainPolicyFromParams(value) {
         if (!value || typeof value !== "object")
@@ -166,6 +170,20 @@
             ? candidate.deny.filter((category) => typeof category === "string")
             : [];
         return { enabled: true, default: defaultValue, allow, deny };
+    }
+    function confirmationPolicyFromParams(value) {
+        if (!value || typeof value !== "object")
+            return null;
+        const candidate = value;
+        if (candidate.enabled !== true)
+            return null;
+        const categories = Array.isArray(candidate.categories)
+            ? candidate.categories.filter((category) => typeof category === "string")
+            : [];
+        if (categories.length === 0)
+            return null;
+        const approvedConfirmationId = typeof candidate.approvedConfirmationId === "string" ? candidate.approvedConfirmationId : undefined;
+        return { enabled: true, categories, approvedConfirmationId };
     }
     async function domainPolicyErrorForCommand(args, policy) {
         if (!policy?.enabled || !policy.patterns?.length)
@@ -199,6 +217,18 @@
             message: `action category \`${verdict.category ?? "unknown"}\` is denied by the active action policy`,
         };
     }
+    function confirmationPolicyErrorForCommand(args, actionPolicy, policy) {
+        if (!policy?.enabled || !policy.categories?.length || policy.approvedConfirmationId)
+            return null;
+        const verdict = actionPolicyVerdictForCommand(args, actionPolicy ?? { enabled: false });
+        if (!verdict.category || !policy.categories.includes(verdict.category))
+            return null;
+        return {
+            code: "ConfirmationRequired",
+            data: { phase: "policy", category: verdict.category },
+            message: `action category \`${verdict.category}\` requires confirmation`,
+        };
+    }
     function actionPolicyVerdictForCommand(args, policy) {
         const resolution = actionPolicyCategoryForCommand(args);
         if (resolution.kind !== "category") {
@@ -215,7 +245,7 @@
         const [command, subcommand] = args;
         if (!command)
             return { kind: "unsupported" };
-        if (["status", "doctor", "install-status", "help", "setup", "session", "sessions", "close", "quit", "exit"].includes(command)) {
+        if (["status", "doctor", "install-status", "help", "setup", "session", "sessions", "confirm", "deny", "close", "quit", "exit"].includes(command)) {
             return { kind: "meta" };
         }
         if (command === "launch" && !args.includes("--url"))
@@ -332,11 +362,9 @@
         return [
             "addinitscript",
             "auth",
-            "confirm",
             "connect",
             "console",
             "dashboard",
-            "deny",
             "device",
             "diff",
             "download",
@@ -482,7 +510,7 @@
         const first = args.find((arg) => !arg.startsWith("--"));
         return Boolean(first && Number.isNaN(Number(first)));
     }
-    async function executeCommand(args, domainPolicy = null, actionPolicy = null) {
+    async function executeCommand(args, domainPolicy = null, actionPolicy = null, confirmationPolicy = null) {
         const [command, ...rest] = args;
         switch (command) {
             case "status":
@@ -546,7 +574,7 @@
             case "dialog":
                 return dialogCommand(rest);
             case "batch":
-                return batchCommand(rest, domainPolicy, actionPolicy);
+                return batchCommand(rest, domainPolicy, actionPolicy, confirmationPolicy);
             case "cookies":
                 return cookiesCommand(rest);
             case "storage":
@@ -901,15 +929,15 @@
     async function dialogCommand(args) {
         return bestEffortResult(`Dialog ${args[0] ?? "status"} requested`, "dialog", "Dialogs are captured by the page shim when injection is allowed; active modal control is best-effort in Firefox WebExtensions.");
     }
-    async function batchCommand(args, domainPolicy, actionPolicy) {
+    async function batchCommand(args, domainPolicy, actionPolicy, confirmationPolicy) {
         const bailOnError = args.includes("--bail");
         const commands = args.filter((arg) => arg !== "--bail");
         const results = [];
         for (const commandText of commands) {
-            const result = await executeCommandWithPolicies(splitCommand(commandText), domainPolicy, actionPolicy);
+            const result = await executeCommandWithPolicies(splitCommand(commandText), domainPolicy, actionPolicy, confirmationPolicy);
             results.push(result);
             const errorCode = result.error?.code;
-            if ("error" in result && (errorCode === "DomainPolicyError" || errorCode === "ActionPolicyError")) {
+            if ("error" in result && (errorCode === "DomainPolicyError" || errorCode === "ActionPolicyError" || errorCode === "ConfirmationRequired")) {
                 return { error: result.error, text: `Ran ${results.length} batch command(s)`, results };
             }
             if (bailOnError && "error" in result)

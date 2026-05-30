@@ -18,11 +18,9 @@ const ACTION_CATEGORIES: &[&str] = &[
 const RESERVED_NOT_AVAILABLE_ROOTS: &[&str] = &[
     "addinitscript",
     "auth",
-    "confirm",
     "connect",
     "console",
     "dashboard",
-    "deny",
     "device",
     "diff",
     "download",
@@ -71,7 +69,7 @@ pub struct ActionPolicyDiagnostic {
     pub message: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionPolicyRequestContext {
     pub enabled: bool,
@@ -201,6 +199,35 @@ pub fn request_context(decision: &ActionPolicyDecision) -> Option<ActionPolicyRe
     })
 }
 
+pub fn decision_from_request_context(
+    context: Option<&ActionPolicyRequestContext>,
+) -> Result<ActionPolicyDecision> {
+    let Some(context) = context.filter(|context| context.enabled) else {
+        return Ok(ActionPolicyDecision {
+            diagnostic: disabled_diagnostic(
+                "record",
+                None,
+                "action policy was disabled when this confirmation was recorded",
+            ),
+            policy: None,
+        });
+    };
+    let default = match context.default.as_str() {
+        "allow" => PolicyDefault::Allow,
+        "deny" => PolicyDefault::Deny,
+        other => bail!("invalid_args: stored action policy default is invalid: `{other}`"),
+    };
+    let policy = ActionPolicy {
+        default,
+        allow: parse_category_list(context.allow.clone(), "allow")?,
+        deny: parse_category_list(context.deny.clone(), "deny")?,
+    };
+    Ok(ActionPolicyDecision {
+        diagnostic: enabled_diagnostic("record", "<confirmation-record>", &policy),
+        policy: Some(policy),
+    })
+}
+
 pub fn ensure_action_allowed(decision: &ActionPolicyDecision, args: &[String]) -> Result<()> {
     let evaluation = evaluate_action(decision, args);
     if evaluation.decision == "deny" {
@@ -245,7 +272,7 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
 
     match root {
         "status" | "doctor" | "install-status" | "help" | "setup" | "session" | "sessions"
-        | "close" | "quit" | "exit" => return CommandPolicyResolution::Meta,
+        | "confirm" | "deny" | "close" | "quit" | "exit" => return CommandPolicyResolution::Meta,
         "launch" if !args.iter().any(|arg| arg == "--url") => return CommandPolicyResolution::Meta,
         "state" if subcommand == Some("inspect") => return CommandPolicyResolution::Meta,
         "tab" | "tabs" if subcommand == Some("label") => return CommandPolicyResolution::Meta,
@@ -306,6 +333,71 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
 
 pub fn is_cli_action_precheckable(args: &[String]) -> bool {
     !matches!(args.first().map(String::as_str), Some("find" | "batch"))
+}
+
+pub fn policy_command_sequences(args: &[String]) -> Result<Vec<Vec<String>>> {
+    if args.first().map(String::as_str) != Some("batch") {
+        return Ok(vec![args.to_vec()]);
+    }
+    let mut sequences = Vec::new();
+    for item in &args[1..] {
+        if item == "--bail" {
+            continue;
+        }
+        sequences.push(split_command_text(item)?);
+    }
+    Ok(sequences)
+}
+
+pub fn split_command_text(command: &str) -> Result<Vec<String>> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+
+    for ch in command.chars() {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if ch == active_quote {
+                quote = None;
+            } else {
+                current.push(ch);
+            }
+            continue;
+        }
+        if ch == '"' || ch == '\'' {
+            quote = Some(ch);
+            continue;
+        }
+        if ch.is_whitespace() {
+            if !current.is_empty() {
+                args.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+        current.push(ch);
+    }
+    if escaped {
+        current.push('\\');
+    }
+    if let Some(active_quote) = quote {
+        bail!("invalid_args: unterminated {active_quote} quote in batch subcommand");
+    }
+    if !current.is_empty() {
+        args.push(current);
+    }
+    if args.is_empty() {
+        bail!("invalid_args: batch subcommand cannot be empty");
+    }
+    Ok(args)
 }
 
 fn resolve_find_policy(args: &[String]) -> CommandPolicyResolution {
@@ -714,6 +806,8 @@ mod tests {
             vec!["storage", "local"],
             vec!["clipboard", "read"],
             vec!["session"],
+            vec!["confirm", "c_1234abcd"],
+            vec!["deny", "c_1234abcd"],
             vec!["close"],
             vec!["quit"],
             vec!["exit"],
@@ -728,5 +822,26 @@ mod tests {
                 "{args:?}"
             );
         }
+    }
+
+    #[test]
+    fn batch_policy_sequences_split_subcommands_for_preflight() {
+        let sequences = policy_command_sequences(&[
+            "batch".to_string(),
+            "--bail".to_string(),
+            "get url".to_string(),
+            "eval \"document.title\"".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(
+            sequences,
+            vec![
+                vec!["get".to_string(), "url".to_string()],
+                vec!["eval".to_string(), "document.title".to_string()]
+            ]
+        );
+        assert!(
+            policy_command_sequences(&["batch".to_string(), "\"unterminated".to_string()]).is_err()
+        );
     }
 }

@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
+import { isConfirmationRequiredResult } from "./pire-browser";
 import { run } from "./pire-browser-runner";
 
 type FakeSpawnCall = {
@@ -39,6 +40,17 @@ function createSpawn(handler?: (call: FakeSpawnCall) => void) {
 }
 
 describe("pire-browser Pi runner", () => {
+  it("classifies confirmation-required output as approval-needed", () => {
+    expect(isConfirmationRequiredResult("ConfirmationRequired: action category `eval` requires approval", { exitCode: 75 })).toBe(true);
+    expect(
+      isConfirmationRequiredResult(
+        JSON.stringify({ success: false, error: { code: "ConfirmationRequired" } }),
+        { exitCode: 75 }
+      )
+    ).toBe(true);
+    expect(isConfirmationRequiredResult("ActionPolicyError", { exitCode: 2 })).toBe(false);
+  });
+
   it("settles on exit if close never arrives", async () => {
     const controller = new AbortController();
     const { calls, spawnCommand } = createSpawn((call) => {

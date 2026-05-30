@@ -320,7 +320,7 @@ describe("agent-browser compatibility foundations", () => {
   it("checks active-page domain policy before content actions", () => {
     const body = background();
     expect(body).toContain("type DomainPolicyContext = {");
-    expect(body).toContain("executeCommandWithPolicies(args, domainPolicy, actionPolicy)");
+    expect(body).toContain("executeCommandWithPolicies(args, domainPolicy, actionPolicy, confirmationPolicy)");
     expect(body).toContain("domainPolicyErrorForCommand(args, domainPolicy)");
     expect(body).toContain("domainPolicyDestinationUrl(args)");
     expect(body).toContain("function commandNeedsActivePageDomainCheck");
@@ -334,8 +334,8 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain('"--load"');
     expect(body).toContain("function explicitNonHttpScheme");
     expect(body).toContain("function normalizePolicyHost");
-    expect(body).toContain("batchCommand(rest, domainPolicy, actionPolicy)");
-    expect(body).toContain("executeCommandWithPolicies(splitCommand(commandText), domainPolicy, actionPolicy)");
+    expect(body).toContain("batchCommand(rest, domainPolicy, actionPolicy, confirmationPolicy)");
+    expect(body).toContain("executeCommandWithPolicies(splitCommand(commandText), domainPolicy, actionPolicy, confirmationPolicy)");
     expect(body).toContain("Maintainer note: update this list whenever a command reads");
   });
 
@@ -348,8 +348,17 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain("function actionPolicyCategoryForCommand");
     expect(body).toContain('"ActionPolicyError"');
     expect(body).toContain('data: { phase: "policy" }');
-    expect(body).toContain('errorCode === "DomainPolicyError" || errorCode === "ActionPolicyError"');
+    expect(body).toContain('errorCode === "DomainPolicyError" || errorCode === "ActionPolicyError" || errorCode === "ConfirmationRequired"');
     expect(body).toContain("findActionPolicyCategory(args)");
+  });
+
+  it("routes confirmation policy through request and batch gates", () => {
+    const body = background();
+    expect(body).toContain("type ConfirmationPolicyContext = {");
+    expect(body).toContain("confirmationPolicyFromParams(request.params?.confirmationPolicy)");
+    expect(body).toContain("confirmationPolicyErrorForCommand(args, actionPolicy, confirmationPolicy)");
+    expect(body).toContain('"ConfirmationRequired"');
+    expect(body).toContain("approvedConfirmationId");
   });
 
   it("matches shared action policy command verdict fixtures", () => {
@@ -412,6 +421,8 @@ describe("agent-browser compatibility foundations", () => {
       ["cookies"],
       ["storage", "local"],
       ["clipboard", "read"],
+      ["confirm", "c_1234abcd"],
+      ["deny", "c_1234abcd"],
       ["close"],
       ["quit"],
       ["exit"],

@@ -14211,17 +14211,17 @@
     {
       "id": "doc-commands-172-agent-browser-confirm-confirmation-id-approve-a-pending-action",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Confirmation",
         "anchor": "confirmation",
         "checklist": "`agent-browser confirm <confirmation-id>` - Approve a pending action",
-        "docStatus": "blank"
+        "docStatus": "partial"
       },
       "command": {
         "primary": "confirm",
@@ -14229,44 +14229,46 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Approves a fresh pending confirmation id and executes the stored command after re-checking captured policy context; missing or expired ids fail cleanly.",
+        "json": "Success envelope includes confirmation metadata only; failures use policy-phase errors without echoing stored command args.",
         "exitCode": [
-          78
+          0,
+          2
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "confirmation_not_found or ConfirmationExpired for missing/expired records.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke-confirm-actions"
+        ],
+        "reason": "Covered by the confirm-actions smoke flow for required confirmation, approval, denial, non-TTY auto-deny, action-policy precedence, batch preflight, and env-backed policy."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
+        "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
+        "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
+        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
       ],
-      "contractReviewed": false,
-      "runtime": {
-        "unsupportedRoots": [
-          "confirm"
-        ]
-      }
+      "contractReviewed": true,
+      "runtime": {}
     },
     {
       "id": "doc-commands-173-agent-browser-deny-confirmation-id-deny-a-pending-action",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Confirmation",
         "anchor": "confirmation",
         "checklist": "`agent-browser deny <confirmation-id>` - Deny a pending action",
-        "docStatus": "blank"
+        "docStatus": "partial"
       },
       "command": {
         "primary": "deny",
@@ -14274,44 +14276,46 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Denies a fresh pending confirmation id by consuming it without executing the stored command.",
+        "json": "Success envelope includes confirmationId, category, and denied=true; failures use policy-phase errors without echoing stored command args.",
         "exitCode": [
-          78
+          0,
+          2
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "confirmation_not_found or ConfirmationExpired for missing/expired records.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke-confirm-actions"
+        ],
+        "reason": "Covered by the confirm-actions smoke flow for required confirmation, approval, denial, non-TTY auto-deny, action-policy precedence, batch preflight, and env-backed policy."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
+        "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
+        "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
+        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
       ],
-      "contractReviewed": false,
-      "runtime": {
-        "unsupportedRoots": [
-          "deny"
-        ]
-      }
+      "contractReviewed": true,
+      "runtime": {}
     },
     {
       "id": "doc-commands-174-agent-browser-confirm-actions-eval-download-eval-document-title",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Confirmation",
         "anchor": "confirmation",
         "checklist": "`agent-browser --confirm-actions eval,download eval \"document.title\"`",
-        "docStatus": "blank"
+        "docStatus": "partial"
       },
       "command": {
         "primary": "--confirm-actions",
@@ -14321,39 +14325,45 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Returns ConfirmationRequired for matching action categories with approval and denial commands; --confirm-interactive prompts only on TTY and auto-denies on non-TTY.",
+        "json": "Error envelope uses error.code=ConfirmationRequired, error.data.phase=policy, confirmationId, category, expiresAt, approveCommand, and denyCommand.",
         "exitCode": [
-          78
+          75,
+          2
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "ConfirmationRequired for pending approval; ConfirmationDenied for non-TTY interactive denial.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke-confirm-actions"
+        ],
+        "reason": "Covered by the confirm-actions smoke flow for required confirmation, approval, denial, non-TTY auto-deny, action-policy precedence, batch preflight, and env-backed policy."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
+        "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
+        "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
+        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
       ],
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "doc-commands-175-agent-browser-confirm-c-8f3a1234",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Confirmation",
         "anchor": "confirmation",
         "checklist": "`agent-browser confirm c_8f3a1234`",
-        "docStatus": "blank"
+        "docStatus": "partial"
       },
       "command": {
         "primary": "confirm",
@@ -14361,29 +14371,31 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Approves a fresh pending confirmation id and executes the stored command after re-checking captured policy context; missing or expired ids fail cleanly.",
+        "json": "Success envelope includes confirmation metadata only; failures use policy-phase errors without echoing stored command args.",
         "exitCode": [
-          78
+          0,
+          2
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "confirmation_not_found or ConfirmationExpired for missing/expired records.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke-confirm-actions"
+        ],
+        "reason": "Covered by the confirm-actions smoke flow for required confirmation, approval, denial, non-TTY auto-deny, action-policy precedence, batch preflight, and env-backed policy."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
+        "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
+        "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
+        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
       ],
-      "contractReviewed": false,
-      "runtime": {
-        "unsupportedRoots": [
-          "confirm"
-        ]
-      }
+      "contractReviewed": true,
+      "runtime": {}
     },
     {
       "id": "doc-commands-176-agent-browser-state-save-path-save-auth-state-to-file",
@@ -27691,17 +27703,17 @@
     {
       "id": "doc-security-005-unauthorized-destructive-actions-action-policy-action-policy-and-confirm",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
         "heading": "Threat Model",
         "anchor": "threat-model",
         "checklist": "Unauthorized destructive actions -- Action policy (--action-policy) and confirmation gating (--confirm-actions) prevent the agent from performing dangerous operations (eval, downloads, uploads) without explicit approval.",
-        "docStatus": "blank"
+        "docStatus": "partial"
       },
       "command": {
         "primary": null,
@@ -27712,24 +27724,31 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Action policy and confirmation are implemented as cooperative operator guardrails for executable categories; unsupported commands keep existing unavailable errors.",
+        "json": "Diagnostics expose actionPolicy and confirmationPolicy; required approvals use policy-phase ConfirmationRequired envelopes.",
         "exitCode": [
-          78
+          0,
+          2,
+          75
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "ActionPolicyError, ConfirmationRequired, ConfirmationDenied, or existing command errors depending on the flow.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke-confirm-actions"
+        ],
+        "reason": "Covered by the confirm-actions smoke flow for required confirmation, approval, denial, non-TTY auto-deny, action-policy precedence, batch preflight, and env-backed policy."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
+        "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
+        "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
+        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
       ],
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "doc-security-006-context-flooding-large-page-outputs-can-overwhelm-an-llm-s-context-windo",
@@ -27776,17 +27795,17 @@
     {
       "id": "doc-security-007-confirmation-timeout-pending-confirmations-auto-deny-after-60-seconds-or",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
         "heading": "Known limitations",
         "anchor": "known-limitations",
         "checklist": "Confirmation timeout. Pending confirmations auto-deny after 60 seconds. Orchestrators must respond within that window.",
-        "docStatus": "blank"
+        "docStatus": "partial"
       },
       "command": {
         "primary": null,
@@ -27794,39 +27813,46 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Action policy and confirmation are implemented as cooperative operator guardrails for executable categories; unsupported commands keep existing unavailable errors.",
+        "json": "Diagnostics expose actionPolicy and confirmationPolicy; required approvals use policy-phase ConfirmationRequired envelopes.",
         "exitCode": [
-          78
+          0,
+          2,
+          75
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "ActionPolicyError, ConfirmationRequired, ConfirmationDenied, or existing command errors depending on the flow.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke-confirm-actions"
+        ],
+        "reason": "Covered by the confirm-actions smoke flow for required confirmation, approval, denial, non-TTY auto-deny, action-policy precedence, batch preflight, and env-backed policy."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
+        "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
+        "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
+        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
       ],
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "doc-security-008-non-tty-auto-deny-when-confirm-interactive-is-set-but-stdin-is-not-a-ter",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
         "heading": "Known limitations",
         "anchor": "known-limitations",
         "checklist": "Non-TTY auto-deny. When --confirm-interactive is set but stdin is not a terminal (e.g., piped input), actions are automatically denied to prevent accidental approval in non-interactive contexts.",
-        "docStatus": "blank"
+        "docStatus": "partial"
       },
       "command": {
         "primary": null,
@@ -27836,24 +27862,31 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Action policy and confirmation are implemented as cooperative operator guardrails for executable categories; unsupported commands keep existing unavailable errors.",
+        "json": "Diagnostics expose actionPolicy and confirmationPolicy; required approvals use policy-phase ConfirmationRequired envelopes.",
         "exitCode": [
-          78
+          0,
+          2,
+          75
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "ActionPolicyError, ConfirmationRequired, ConfirmationDenied, or existing command errors depending on the flow.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke-confirm-actions"
+        ],
+        "reason": "Covered by the confirm-actions smoke flow for required confirmation, approval, denial, non-TTY auto-deny, action-policy precedence, batch preflight, and env-backed policy."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
+        "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
+        "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
+        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
       ],
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "doc-security-009-agent-browser-auth-save-github-url-https-github-com-login-username-user-",
@@ -28388,17 +28421,17 @@
     {
       "id": "doc-security-022-agent-browser-confirm-actions-eval-download-eval-document-title",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
         "heading": "Action Confirmation",
         "anchor": "action-confirmation",
         "checklist": "`agent-browser --confirm-actions eval,download eval \"document.title\"`",
-        "docStatus": "blank"
+        "docStatus": "partial"
       },
       "command": {
         "primary": "--confirm-actions",
@@ -28408,39 +28441,45 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Returns ConfirmationRequired for matching action categories with approval and denial commands; --confirm-interactive prompts only on TTY and auto-denies on non-TTY.",
+        "json": "Error envelope uses error.code=ConfirmationRequired, error.data.phase=policy, confirmationId, category, expiresAt, approveCommand, and denyCommand.",
         "exitCode": [
-          78
+          75,
+          2
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "ConfirmationRequired for pending approval; ConfirmationDenied for non-TTY interactive denial.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke-confirm-actions"
+        ],
+        "reason": "Covered by the confirm-actions smoke flow for required confirmation, approval, denial, non-TTY auto-deny, action-policy precedence, batch preflight, and env-backed policy."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
+        "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
+        "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
+        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
       ],
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "doc-security-023-agent-browser-confirm-c-8f3a1234",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
         "heading": "Action Confirmation",
         "anchor": "action-confirmation",
         "checklist": "`agent-browser confirm c_8f3a1234`",
-        "docStatus": "blank"
+        "docStatus": "partial"
       },
       "command": {
         "primary": "confirm",
@@ -28448,44 +28487,46 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Approves a fresh pending confirmation id and executes the stored command after re-checking captured policy context; missing or expired ids fail cleanly.",
+        "json": "Success envelope includes confirmation metadata only; failures use policy-phase errors without echoing stored command args.",
         "exitCode": [
-          78
+          0,
+          2
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "confirmation_not_found or ConfirmationExpired for missing/expired records.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke-confirm-actions"
+        ],
+        "reason": "Covered by the confirm-actions smoke flow for required confirmation, approval, denial, non-TTY auto-deny, action-policy precedence, batch preflight, and env-backed policy."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
+        "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
+        "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
+        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
       ],
-      "contractReviewed": false,
-      "runtime": {
-        "unsupportedRoots": [
-          "confirm"
-        ]
-      }
+      "contractReviewed": true,
+      "runtime": {}
     },
     {
       "id": "doc-security-024-agent-browser-deny-c-8f3a1234",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
         "heading": "Action Confirmation",
         "anchor": "action-confirmation",
         "checklist": "`agent-browser deny c_8f3a1234`",
-        "docStatus": "blank"
+        "docStatus": "partial"
       },
       "command": {
         "primary": "deny",
@@ -28493,44 +28534,46 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Denies a fresh pending confirmation id by consuming it without executing the stored command.",
+        "json": "Success envelope includes confirmationId, category, and denied=true; failures use policy-phase errors without echoing stored command args.",
         "exitCode": [
-          78
+          0,
+          2
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "confirmation_not_found or ConfirmationExpired for missing/expired records.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke-confirm-actions"
+        ],
+        "reason": "Covered by the confirm-actions smoke flow for required confirmation, approval, denial, non-TTY auto-deny, action-policy precedence, batch preflight, and env-backed policy."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
+        "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
+        "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
+        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
       ],
-      "contractReviewed": false,
-      "runtime": {
-        "unsupportedRoots": [
-          "deny"
-        ]
-      }
+      "contractReviewed": true,
+      "runtime": {}
     },
     {
       "id": "doc-security-025-agent-browser-confirm-actions-eval-download-confirm-interactive-eval-doc",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
         "heading": "Action Confirmation",
         "anchor": "action-confirmation",
         "checklist": "`agent-browser --confirm-actions eval,download --confirm-interactive eval \"document.title\"`",
-        "docStatus": "blank"
+        "docStatus": "partial"
       },
       "command": {
         "primary": "--confirm-actions",
@@ -28541,24 +28584,30 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Returns ConfirmationRequired for matching action categories with approval and denial commands; --confirm-interactive prompts only on TTY and auto-denies on non-TTY.",
+        "json": "Error envelope uses error.code=ConfirmationRequired, error.data.phase=policy, confirmationId, category, expiresAt, approveCommand, and denyCommand.",
         "exitCode": [
-          78
+          75,
+          2
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "ConfirmationRequired for pending approval; ConfirmationDenied for non-TTY interactive denial.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke-confirm-actions"
+        ],
+        "reason": "Covered by the confirm-actions smoke flow for required confirmation, approval, denial, non-TTY auto-deny, action-policy precedence, batch preflight, and env-backed policy."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
+        "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
+        "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
+        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
       ],
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "doc-security-026-agent-browser-max-output-50000-get-text-body",
@@ -32112,8 +32161,8 @@
       "rationale": "Domain allowlist policy belongs to Epic 7."
     },
     "--confirm-actions": {
-      "behavior": "deferred",
-      "rationale": "Action confirmation policy belongs to Epic 7."
+      "behavior": "honored",
+      "rationale": "Enables cooperative action confirmation categories through pending confirmation records."
     },
     "--action-policy": {
       "behavior": "deferred",
@@ -32152,8 +32201,8 @@
       "rationale": "CDP auto-connect belongs to Epic 8 backend work."
     },
     "--confirm-interactive": {
-      "behavior": "deferred",
-      "rationale": "Interactive confirmation policy belongs to Epic 7."
+      "behavior": "honored",
+      "rationale": "Requests an interactive TTY prompt for confirmation-required actions; non-TTY runs auto-deny."
     },
     "-q": {
       "behavior": "deferred",

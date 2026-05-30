@@ -36,12 +36,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] Unauthorized destructive actions -- Action policy (--action-policy) and confirmation gating (--confirm-actions) prevent the agent from performing dangerous operations (eval, downloads, uploads) without explicit approval.
+- [P] Unauthorized destructive actions -- Action policy (--action-policy) and confirmation gating (--confirm-actions) prevent the agent from performing dangerous operations (eval, downloads, uploads) without explicit approval.
   - Extension Compatibility: True
   - Priority: High
   - Complexity: High
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Cooperative action policy and confirmation records are implemented for executable categories, with `ConfirmationRequired` as an approval-pending outcome. This is not a sandbox or audit log, and unavailable downloads/uploads remain unavailable.
 - [ ] Context flooding -- Large page outputs can overwhelm an LLM's context window. Output truncation (--max-output) caps the size of page-sourced content.
   - Extension Compatibility: True
   - Priority: High
@@ -161,30 +162,34 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
 
 ## Action Confirmation
 
-- [ ] `agent-browser --confirm-actions eval,download eval "document.title"`
+- [P] `agent-browser --confirm-actions eval,download eval "document.title"`
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Low
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser confirm c_8f3a1234`
+  - GPT-5.5 implementation note: `--confirm-actions` and `AGENT_BROWSER_CONFIRM_ACTIONS` create short-lived pending confirmations for matching action categories; hard action-policy deny still wins before confirmation.
+- [P] `agent-browser confirm c_8f3a1234`
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser deny c_8f3a1234`
+  - GPT-5.5 implementation note: Approves a fresh pending record, re-checks captured policy context, bypasses only the confirmation gate, and executes the stored command.
+- [P] `agent-browser deny c_8f3a1234`
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser --confirm-actions eval,download --confirm-interactive eval "document.title"`
+  - GPT-5.5 implementation note: Denies a fresh pending record by consuming it without execution.
+- [P] `agent-browser --confirm-actions eval,download --confirm-interactive eval "document.title"`
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Low
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Interactive mode prompts only on a TTY. Non-TTY runs auto-deny instead of creating an approval record or silently approving.
 
 ## Output Length Limits
 

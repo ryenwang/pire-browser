@@ -18,6 +18,12 @@ type ActionPolicyContext = {
   deny?: string[];
 };
 
+type ConfirmationPolicyContext = {
+  enabled?: boolean;
+  categories?: string[];
+  approvedConfirmationId?: string;
+};
+
 type RpcResponse = {
   type: "response";
   id: string;
@@ -242,7 +248,8 @@ async function executeRequest(request: RpcRequest): Promise<RpcResponse> {
     const args = Array.isArray(request.params?.args) ? (request.params?.args as string[]) : [];
     const domainPolicy = domainPolicyFromParams(request.params?.domainPolicy);
     const actionPolicy = actionPolicyFromParams(request.params?.actionPolicy);
-    const result = await executeCommandWithPolicies(args, domainPolicy, actionPolicy);
+    const confirmationPolicy = confirmationPolicyFromParams(request.params?.confirmationPolicy);
+    const result = await executeCommandWithPolicies(args, domainPolicy, actionPolicy, confirmationPolicy);
     if ("error" in result) {
       return {
         type: "response",
@@ -269,13 +276,16 @@ function errorResponse(id: string, code: string, message: string): RpcResponse {
 async function executeCommandWithPolicies(
   args: string[],
   domainPolicy: DomainPolicyContext | null,
-  actionPolicy: ActionPolicyContext | null
+  actionPolicy: ActionPolicyContext | null,
+  confirmationPolicy: ConfirmationPolicyContext | null
 ): Promise<Record<string, unknown>> {
   const domainError = await domainPolicyErrorForCommand(args, domainPolicy);
   if (domainError) return { error: domainError };
   const actionError = actionPolicyErrorForCommand(args, actionPolicy);
   if (actionError) return { error: actionError };
-  return prepareLargeResult(await executeCommand(args, domainPolicy, actionPolicy));
+  const confirmationError = confirmationPolicyErrorForCommand(args, actionPolicy, confirmationPolicy);
+  if (confirmationError) return { error: confirmationError };
+  return prepareLargeResult(await executeCommand(args, domainPolicy, actionPolicy, confirmationPolicy));
 }
 
 function domainPolicyFromParams(value: unknown): DomainPolicyContext | null {
@@ -301,6 +311,19 @@ function actionPolicyFromParams(value: unknown): ActionPolicyContext | null {
     ? candidate.deny.filter((category): category is string => typeof category === "string")
     : [];
   return { enabled: true, default: defaultValue, allow, deny };
+}
+
+function confirmationPolicyFromParams(value: unknown): ConfirmationPolicyContext | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.enabled !== true) return null;
+  const categories = Array.isArray(candidate.categories)
+    ? candidate.categories.filter((category): category is string => typeof category === "string")
+    : [];
+  if (categories.length === 0) return null;
+  const approvedConfirmationId =
+    typeof candidate.approvedConfirmationId === "string" ? candidate.approvedConfirmationId : undefined;
+  return { enabled: true, categories, approvedConfirmationId };
 }
 
 async function domainPolicyErrorForCommand(args: string[], policy: DomainPolicyContext | null): Promise<RpcResponse["error"] | null> {
@@ -332,6 +355,21 @@ function actionPolicyErrorForCommand(args: string[], policy: ActionPolicyContext
   };
 }
 
+function confirmationPolicyErrorForCommand(
+  args: string[],
+  actionPolicy: ActionPolicyContext | null,
+  policy: ConfirmationPolicyContext | null
+): RpcResponse["error"] | null {
+  if (!policy?.enabled || !policy.categories?.length || policy.approvedConfirmationId) return null;
+  const verdict = actionPolicyVerdictForCommand(args, actionPolicy ?? { enabled: false });
+  if (!verdict.category || !policy.categories.includes(verdict.category)) return null;
+  return {
+    code: "ConfirmationRequired",
+    data: { phase: "policy", category: verdict.category },
+    message: `action category \`${verdict.category}\` requires confirmation`,
+  };
+}
+
 function actionPolicyVerdictForCommand(args: string[], policy: ActionPolicyContext): {
   category: string | null;
   decision: "allow" | "deny" | "meta" | "not_available" | "unsupported";
@@ -352,7 +390,7 @@ function actionPolicyCategoryForCommand(args: string[]):
   const [command, subcommand] = args;
   if (!command) return { kind: "unsupported" };
   if (
-    ["status", "doctor", "install-status", "help", "setup", "session", "sessions", "close", "quit", "exit"].includes(command)
+    ["status", "doctor", "install-status", "help", "setup", "session", "sessions", "confirm", "deny", "close", "quit", "exit"].includes(command)
   ) {
     return { kind: "meta" };
   }
@@ -456,11 +494,9 @@ function notAvailableActionPolicyRoot(command: string) {
   return [
     "addinitscript",
     "auth",
-    "confirm",
     "connect",
     "console",
     "dashboard",
-    "deny",
     "device",
     "diff",
     "download",
@@ -611,7 +647,8 @@ function waitCommandTouchesActivePage(args: string[]) {
 async function executeCommand(
   args: string[],
   domainPolicy: DomainPolicyContext | null = null,
-  actionPolicy: ActionPolicyContext | null = null
+  actionPolicy: ActionPolicyContext | null = null,
+  confirmationPolicy: ConfirmationPolicyContext | null = null
 ): Promise<Record<string, unknown>> {
   const [command, ...rest] = args;
   switch (command) {
@@ -676,7 +713,7 @@ async function executeCommand(
     case "dialog":
       return dialogCommand(rest);
     case "batch":
-      return batchCommand(rest, domainPolicy, actionPolicy);
+      return batchCommand(rest, domainPolicy, actionPolicy, confirmationPolicy);
     case "cookies":
       return cookiesCommand(rest);
     case "storage":
@@ -1042,16 +1079,17 @@ async function dialogCommand(args: string[]) {
 async function batchCommand(
   args: string[],
   domainPolicy: DomainPolicyContext | null,
-  actionPolicy: ActionPolicyContext | null
+  actionPolicy: ActionPolicyContext | null,
+  confirmationPolicy: ConfirmationPolicyContext | null
 ) {
   const bailOnError = args.includes("--bail");
   const commands = args.filter((arg) => arg !== "--bail");
   const results: Record<string, unknown>[] = [];
   for (const commandText of commands) {
-    const result = await executeCommandWithPolicies(splitCommand(commandText), domainPolicy, actionPolicy);
+    const result = await executeCommandWithPolicies(splitCommand(commandText), domainPolicy, actionPolicy, confirmationPolicy);
     results.push(result);
     const errorCode = (result.error as RpcResponse["error"])?.code;
-    if ("error" in result && (errorCode === "DomainPolicyError" || errorCode === "ActionPolicyError")) {
+    if ("error" in result && (errorCode === "DomainPolicyError" || errorCode === "ActionPolicyError" || errorCode === "ConfirmationRequired")) {
       return { error: result.error, text: `Ran ${results.length} batch command(s)`, results };
     }
     if (bailOnError && "error" in result) break;

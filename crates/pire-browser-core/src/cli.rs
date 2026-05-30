@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::action_policy::ActionPolicyArgs;
+use crate::confirmation_policy::ConfirmationPolicyArgs;
 use crate::domain_policy::DomainPolicyArgs;
 use crate::protocol::RpcRequest;
 use crate::state_policy::StateLoadPolicyFlag;
@@ -34,11 +35,13 @@ pub enum LocalCommand {
         firefox_path: Option<String>,
         domain_policy: DomainPolicyArgs,
         action_policy: ActionPolicyArgs,
+        confirmation_policy: ConfirmationPolicyArgs,
     },
     InstallStatus {
         json: bool,
         domain_policy: DomainPolicyArgs,
         action_policy: ActionPolicyArgs,
+        confirmation_policy: ConfirmationPolicyArgs,
     },
     DoctorFix {
         json: bool,
@@ -47,6 +50,7 @@ pub enum LocalCommand {
         json: bool,
         domain_policy: DomainPolicyArgs,
         action_policy: ActionPolicyArgs,
+        confirmation_policy: ConfirmationPolicyArgs,
     },
     SessionList {
         json: bool,
@@ -64,6 +68,7 @@ pub enum LocalCommand {
         ignored_global_flags: Vec<GlobalFlagWarning>,
         domain_policy: DomainPolicyArgs,
         action_policy: ActionPolicyArgs,
+        confirmation_policy: ConfirmationPolicyArgs,
         path: String,
     },
     StateLoad {
@@ -72,6 +77,7 @@ pub enum LocalCommand {
         ignored_global_flags: Vec<GlobalFlagWarning>,
         domain_policy: DomainPolicyArgs,
         action_policy: ActionPolicyArgs,
+        confirmation_policy: ConfirmationPolicyArgs,
         path: String,
         policy_flag: StateLoadPolicyFlag,
     },
@@ -81,12 +87,21 @@ pub enum LocalCommand {
         path: String,
         record: bool,
     },
+    Confirm {
+        id: String,
+        json: bool,
+    },
+    Deny {
+        id: String,
+        json: bool,
+    },
     Remote {
         target: SessionTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
         domain_policy: DomainPolicyArgs,
         action_policy: ActionPolicyArgs,
+        confirmation_policy: ConfirmationPolicyArgs,
         args: Vec<String>,
     },
 }
@@ -111,6 +126,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     let mut ignored_global_flags = Vec::new();
     let mut domain_policy = DomainPolicyArgs::default();
     let mut action_policy = ActionPolicyArgs::default();
+    let mut confirmation_policy = ConfirmationPolicyArgs::default();
     const GLOBAL_VALUE_FLAGS: &[&str] = &[
         "--session",
         "--session-name",
@@ -153,6 +169,9 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 "--session-name" => set_session_name(&session_id, &mut session_name, value)?,
                 "--allowed-domains" => set_allowed_domains(&mut domain_policy, value)?,
                 "--action-policy" => set_action_policy(&mut action_policy, value)?,
+                "--confirm-actions" => {
+                    set_confirm_actions(&mut confirmation_policy, value)?;
+                }
                 _ => {}
             }
             if ignored_with_warning_global_flag(&flag) {
@@ -167,6 +186,9 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             }
             if first == "--no-allowed-domains" {
                 set_no_allowed_domains(&mut domain_policy)?;
+            }
+            if first == "--confirm-interactive" {
+                confirmation_policy.confirm_interactive = true;
             }
             if ignored_with_warning_global_flag(&first) {
                 ignored_global_flags.push(GlobalFlagWarning { flag: first });
@@ -279,6 +301,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             firefox_path,
             domain_policy,
             action_policy,
+            confirmation_policy,
         });
     }
 
@@ -309,6 +332,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             json: json_output,
             domain_policy,
             action_policy,
+            confirmation_policy,
         });
     }
 
@@ -371,6 +395,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             json: json_output,
             domain_policy,
             action_policy,
+            confirmation_policy,
         });
     }
 
@@ -425,6 +450,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                     ignored_global_flags,
                     domain_policy,
                     action_policy,
+                    confirmation_policy,
                     path,
                 });
             }
@@ -449,11 +475,36 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 ignored_global_flags,
                 domain_policy,
                 action_policy,
+                confirmation_policy,
                 path,
                 policy_flag,
             });
         }
         args = original_args;
+    }
+
+    if command == "confirm" || command == "deny" {
+        args.remove(0);
+        remove_json_flags(&mut args, &mut json_output);
+        let Some(id) = args.first().cloned() else {
+            bail!("invalid_args: {command} requires <confirmation-id>");
+        };
+        args.remove(0);
+        remove_json_flags(&mut args, &mut json_output);
+        if let Some(extra) = args.first() {
+            bail!("unsupported {command} option: {extra}");
+        }
+        return if command == "confirm" {
+            Ok(LocalCommand::Confirm {
+                id,
+                json: json_output,
+            })
+        } else {
+            Ok(LocalCommand::Deny {
+                id,
+                json: json_output,
+            })
+        };
     }
 
     if let Some(index) = args.iter().position(|arg| arg == "--json") {
@@ -467,6 +518,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         ignored_global_flags,
         domain_policy,
         action_policy,
+        confirmation_policy,
         args,
     })
 }
@@ -544,6 +596,14 @@ fn set_action_policy(policy: &mut ActionPolicyArgs, value: String) -> Result<()>
     Ok(())
 }
 
+fn set_confirm_actions(policy: &mut ConfirmationPolicyArgs, value: String) -> Result<()> {
+    if policy.confirm_actions.is_some() {
+        bail!("--confirm-actions was provided more than once");
+    }
+    policy.confirm_actions = Some(value);
+    Ok(())
+}
+
 fn is_help_flag(arg: &str) -> bool {
     arg == "--help" || arg == "-h"
 }
@@ -578,6 +638,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "clipboard" => CLIPBOARD_HELP,
         "state" => STATE_HELP,
         "action-policy" => ACTION_POLICY_HELP,
+        "confirmation" | "confirm" | "deny" | "confirm-actions" => CONFIRMATION_HELP,
         "session" | "sessions" => SESSION_HELP,
         "screenshot" => SCREENSHOT_HELP,
         "tabs" | "tab" => TABS_HELP,
@@ -610,6 +671,9 @@ Common commands:
   state inspect .pire-state/app.json
   state inspect --record .pire-state/app.json
   --action-policy ./policy.json snapshot
+  --confirm-actions eval eval "document.title"
+  confirm c_8f3a1234             Approve a pending confirmation
+  deny c_8f3a1234                Deny a pending confirmation
   --allowed-domains "example.com" open <url>
   --session-name work open <url>  Reuse or launch a named Firefox profile
   session list                    List live Firefox sessions
@@ -635,8 +699,9 @@ Usage:
 
 Checks Firefox discovery, native messaging setup, extension build files, managed
 profile state, live sessions, and CLI/PATH advisories. --offline and --quick are
-accepted as no-op compatibility flags. Domain allowlist and state policy entries
-are advisory diagnostics. --fix is not implemented yet.
+accepted as no-op compatibility flags. Domain allowlist, action policy,
+confirmation policy, and state policy entries are advisory diagnostics. --fix is
+not implemented yet.
 "##;
 
 const OPEN_HELP: &str = r##"
@@ -740,9 +805,22 @@ Action policy files use the upstream v1 shape:
   { "default": "deny", "allow": ["navigate", "snapshot", "get"] }
 
 Supported fields are default, allow, and deny. Confirmation is not part of the
-policy file; future confirmation support belongs to --confirm-actions.
+policy file; use --confirm-actions or AGENT_BROWSER_CONFIRM_ACTIONS for V1
+confirmation prompts/records.
 AGENT_BROWSER_ACTION_POLICY can point at a policy file for all commands in the
 current environment.
+"##;
+
+const CONFIRMATION_HELP: &str = r##"
+Usage:
+  pire-browser --confirm-actions eval eval "document.title"
+  pire-browser confirm c_8f3a1234
+  pire-browser deny c_8f3a1234
+  AGENT_BROWSER_CONFIRM_ACTIONS=eval pire-browser eval "document.title"
+
+Confirmation records are short-lived, plaintext local metadata under the
+user's pire-browser data directory. They expire after about 60 seconds. Use
+--confirm-interactive only from a TTY; non-interactive runs auto-deny.
 "##;
 
 const SESSION_HELP: &str = r##"
@@ -839,6 +917,10 @@ mod tests {
         ActionPolicyArgs::default()
     }
 
+    fn default_confirmation_policy() -> ConfirmationPolicyArgs {
+        ConfirmationPolicyArgs::default()
+    }
+
     #[test]
     fn parses_setup() {
         let parsed = parse_cli_args(&s(&[
@@ -905,6 +987,7 @@ mod tests {
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 args: s(&["find", "label", "Email", "fill", "x"])
             }
         );
@@ -921,6 +1004,7 @@ mod tests {
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 args: s(&["snapshot"])
             }
         );
@@ -954,6 +1038,7 @@ mod tests {
                 ],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 args: s(&["snapshot", "-i"])
             }
         );
@@ -987,6 +1072,7 @@ mod tests {
                 ],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 args: s(&["get", "title"])
             }
         );
@@ -1013,6 +1099,7 @@ mod tests {
                     no_allowed_domains: false,
                 },
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 args: s(&["open", "example.com"])
             }
         );
@@ -1029,6 +1116,7 @@ mod tests {
                     no_allowed_domains: true,
                 },
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 args: s(&["snapshot"])
             }
         );
@@ -1061,6 +1149,7 @@ mod tests {
                 action_policy: ActionPolicyArgs {
                     action_policy_path: Some("./policy.json".to_string()),
                 },
+                confirmation_policy: default_confirmation_policy(),
                 args: s(&["snapshot"])
             }
         );
@@ -1076,6 +1165,61 @@ mod tests {
         assert!(err
             .to_string()
             .contains("--action-policy was provided more than once"));
+    }
+
+    #[test]
+    fn parses_confirmation_global_flags_and_commands() {
+        let parsed = parse_cli_args(&s(&[
+            "--confirm-actions",
+            "eval,download",
+            "--confirm-interactive",
+            "eval",
+            "document.title",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: ConfirmationPolicyArgs {
+                    confirm_actions: Some("eval,download".to_string()),
+                    confirm_interactive: true,
+                },
+                args: s(&["eval", "document.title"])
+            }
+        );
+
+        assert_eq!(
+            parse_cli_args(&s(&["confirm", "c_1234abcd", "--json"])).unwrap(),
+            LocalCommand::Confirm {
+                id: "c_1234abcd".to_string(),
+                json: true
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["deny", "c_1234abcd"])).unwrap(),
+            LocalCommand::Deny {
+                id: "c_1234abcd".to_string(),
+                json: false
+            }
+        );
+
+        let err = parse_cli_args(&s(&[
+            "--confirm-actions",
+            "eval",
+            "--confirm-actions",
+            "download",
+            "snapshot",
+        ]))
+        .unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("--confirm-actions was provided more than once"));
     }
 
     #[test]
@@ -1095,7 +1239,8 @@ mod tests {
             LocalCommand::InstallStatus {
                 json: true,
                 domain_policy: default_domain_policy(),
-                action_policy: default_action_policy()
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy()
             }
         );
     }
@@ -1108,7 +1253,8 @@ mod tests {
             LocalCommand::InstallStatus {
                 json: true,
                 domain_policy: default_domain_policy(),
-                action_policy: default_action_policy()
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy()
             }
         );
     }
@@ -1121,7 +1267,8 @@ mod tests {
             LocalCommand::Status {
                 json: true,
                 domain_policy: default_domain_policy(),
-                action_policy: default_action_policy()
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy()
             }
         );
         let parsed = parse_cli_args(&s(&["--json", "status"])).unwrap();
@@ -1130,7 +1277,8 @@ mod tests {
             LocalCommand::Status {
                 json: true,
                 domain_policy: default_domain_policy(),
-                action_policy: default_action_policy()
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy()
             }
         );
     }
@@ -1189,6 +1337,7 @@ mod tests {
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 path: "state.json".to_string()
             }
         );
@@ -1211,6 +1360,7 @@ mod tests {
                 }],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 path: "work-state.json".to_string(),
                 policy_flag: StateLoadPolicyFlag::Unspecified
             }
@@ -1223,6 +1373,7 @@ mod tests {
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 path: "state.json".to_string(),
                 policy_flag: StateLoadPolicyFlag::Unspecified
             }
@@ -1242,6 +1393,7 @@ mod tests {
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 path: "state.json".to_string(),
                 policy_flag: StateLoadPolicyFlag::RequireInspected
             }
@@ -1261,6 +1413,7 @@ mod tests {
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 path: "state.json".to_string(),
                 policy_flag: StateLoadPolicyFlag::NoRequireInspected
             }
@@ -1323,6 +1476,7 @@ mod tests {
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 args: s(&["state", "list"])
             }
         );
@@ -1334,6 +1488,7 @@ mod tests {
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
                 args: s(&["state", "show", "state.json"])
             }
         );
@@ -1347,7 +1502,8 @@ mod tests {
             LocalCommand::InstallStatus {
                 json: true,
                 domain_policy: default_domain_policy(),
-                action_policy: default_action_policy()
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy()
             }
         );
         let parsed = parse_cli_args(&s(&["doctor", "--fix", "--json"])).unwrap();
@@ -1382,7 +1538,8 @@ mod tests {
                 url: None,
                 firefox_path: None,
                 domain_policy: default_domain_policy(),
-                action_policy: default_action_policy()
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy()
             }
         );
     }
@@ -1406,7 +1563,8 @@ mod tests {
                 url: Some("https://discord.com/login".to_string()),
                 firefox_path: Some("C:/Firefox/firefox.exe".to_string()),
                 domain_policy: default_domain_policy(),
-                action_policy: default_action_policy()
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy()
             }
         );
     }

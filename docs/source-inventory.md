@@ -8,7 +8,7 @@ This inventory records which source sets are authoritative for `pire-browser`, w
 
 | Source set | Role | Notes |
 | --- | --- | --- |
-| `crates/pire-browser-core/` | Core Rust implementation | CLI parsing, launch/session lifecycle, IPC, install/status, state, domain, and action policy guardrails, Firefox integration, and shared protocol behavior. |
+| `crates/pire-browser-core/` | Core Rust implementation | CLI parsing, launch/session lifecycle, IPC, install/status, state, domain/action/confirmation policy guardrails, Firefox integration, and shared protocol behavior. |
 | `crates/pire-browser-cli/` | User-facing executable | Thin CLI entrypoint and command/error presentation over the core crate. |
 | `crates/pire-browser-host/` | Native Messaging host | Firefox extension bridge to the Rust core and Windows named-pipe session handling. |
 | `extension/src/` | Firefox WebExtension source | Browser-side command handling, DOM inspection/actions, dialogs, refs, frame handling, and screenshot capture. |
@@ -32,6 +32,7 @@ This inventory records which source sets are authoritative for `pire-browser`, w
 | `bin/win32-x64/` | Packaged binaries | Prebuilt distributable binaries; source remains in `crates/` and `extension/src/`. |
 | `.pire-state/` | Local sensitive runtime state | Gitignored plaintext cookies/Web Storage state files created by operator workflows; inspect metadata only and do not commit contents. |
 | `%LOCALAPPDATA%\pire-browser\state-receipts\` | Local runtime metadata | Per-user 24-hour receipts written by `state inspect --record` for opt-in `state load --require-inspected` checks; not portable source. |
+| `%LOCALAPPDATA%\pire-browser\confirmations\` | Local sensitive runtime metadata | Per-user short-lived plaintext pending action-confirmation records for `--confirm-actions`; may contain original command args and must not be committed, logged, or treated as an audit log. |
 | Root `discord-*`, `gofile-*`, `rbxlx-*`, `web-ext*.log`, screenshots, and CSV captures | Runtime/background artifacts | Historical scraping/download evidence and manual-session outputs, not authoritative implementation source. |
 
 ## Historical And Background Material

@@ -1,7 +1,8 @@
 use anyhow::{bail, Context, Result};
 use pire_browser_core::action_policy::{
-    action_policy_diagnostic_from_args, action_policy_text, ensure_action_allowed,
-    is_cli_action_precheckable, request_context as action_policy_request_context,
+    action_policy_diagnostic_from_args, action_policy_text,
+    decision_from_request_context as action_decision_from_request_context, ensure_action_allowed,
+    evaluate_action, policy_command_sequences, request_context as action_policy_request_context,
     resolve_action_policy, ActionPolicyArgs, ActionPolicyDecision,
 };
 use pire_browser_core::auth_handoff::{auth_handoff_text, collect_default_auth_handoff};
@@ -9,7 +10,17 @@ use pire_browser_core::cli::{
     build_command_request, format_cli_result, help_text, parse_cli_args, GlobalFlagWarning,
     LocalCommand, SessionTarget,
 };
+use pire_browser_core::confirmation_policy::{
+    confirmation_policy_diagnostic_from_args, confirmation_policy_text,
+    consume_pending_confirmation, decision_from_context as confirmation_decision_from_context,
+    deny_pending_confirmation, new_confirmation_id,
+    request_context as confirmation_policy_request_context, request_context_with_approval,
+    resolve_confirmation_policy, sweep_expired_confirmations, write_pending_confirmation,
+    ConfirmationPolicyArgs, ConfirmationPolicyDecision, PendingConfirmation,
+    PendingConfirmationTarget, CONFIRMATION_REQUIRED_EXIT_CODE, CONFIRMATION_TTL_MS,
+};
 use pire_browser_core::domain_policy::{
+    decision_from_request_context as domain_decision_from_request_context,
     domain_policy_diagnostic_from_args, domain_policy_text, ensure_url_allowed,
     request_context as domain_policy_request_context, resolve_domain_policy, DomainPolicyArgs,
     DomainPolicyDecision, DomainPolicyWarning,
@@ -42,7 +53,7 @@ use pire_browser_core::state_policy::{
 };
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
@@ -51,6 +62,21 @@ use uuid::Uuid;
 const UNSUPPORTED_ROOTS_JSON: &str =
     include_str!("../../../docs/agent-browser-unsupported-roots.json");
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+struct PolicyArgsBundle {
+    domain_policy: DomainPolicyArgs,
+    action_policy: ActionPolicyArgs,
+    confirmation_policy: ConfirmationPolicyArgs,
+}
+
+struct ConfirmationGate<'a> {
+    confirmation_decision: &'a ConfirmationPolicyDecision,
+    target: PendingConfirmationTarget,
+    domain_decision: &'a DomainPolicyDecision,
+    action_decision: &'a ActionPolicyDecision,
+    json_output: bool,
+    ignored_global_flags: &'a [GlobalFlagWarning],
+}
 
 fn main() {
     if let Err(err) = run() {
@@ -88,6 +114,7 @@ fn run() -> Result<()> {
             json,
             domain_policy,
             action_policy,
+            confirmation_policy,
         } => {
             cleanup_stale_sessions(now_ms())?;
             let mut sessions = list_sessions()?;
@@ -95,6 +122,8 @@ fn run() -> Result<()> {
             let auth_handoff = collect_default_auth_handoff()?;
             let action_policy = action_policy_diagnostic_from_args(&action_policy);
             let domain_policy = domain_policy_diagnostic_from_args(&domain_policy);
+            let confirmation_policy =
+                confirmation_policy_diagnostic_from_args(&confirmation_policy);
             let state_policy = collect_state_policy();
             if json {
                 let mut value = session_status_value(&sessions);
@@ -112,6 +141,10 @@ fn run() -> Result<()> {
                         serde_json::to_value(action_policy)?,
                     );
                     object.insert(
+                        "confirmationPolicy".to_string(),
+                        serde_json::to_value(confirmation_policy)?,
+                    );
+                    object.insert(
                         "statePolicy".to_string(),
                         serde_json::to_value(state_policy)?,
                     );
@@ -121,6 +154,7 @@ fn run() -> Result<()> {
                 println!("{}", session_status_text(&sessions));
                 println!("{}", auth_handoff_text(&auth_handoff));
                 println!("{}", action_policy_text(&action_policy));
+                println!("{}", confirmation_policy_text(&confirmation_policy));
                 println!("{}", domain_policy_text(&domain_policy));
                 println!("{}", state_policy_text(&state_policy));
             }
@@ -176,14 +210,18 @@ fn run() -> Result<()> {
             ignored_global_flags,
             domain_policy,
             action_policy,
+            confirmation_policy,
             path,
         } => {
             handle_state_save(
                 target,
                 json,
                 ignored_global_flags,
-                domain_policy,
-                action_policy,
+                PolicyArgsBundle {
+                    domain_policy,
+                    action_policy,
+                    confirmation_policy,
+                },
                 PathBuf::from(path),
             )?;
         }
@@ -193,6 +231,7 @@ fn run() -> Result<()> {
             ignored_global_flags,
             domain_policy,
             action_policy,
+            confirmation_policy,
             path,
             policy_flag,
         } => {
@@ -200,8 +239,11 @@ fn run() -> Result<()> {
                 target,
                 json,
                 ignored_global_flags,
-                domain_policy,
-                action_policy,
+                PolicyArgsBundle {
+                    domain_policy,
+                    action_policy,
+                    confirmation_policy,
+                },
                 PathBuf::from(path),
                 policy_flag,
             )?;
@@ -220,6 +262,7 @@ fn run() -> Result<()> {
             firefox_path,
             domain_policy,
             action_policy,
+            confirmation_policy,
         } => {
             let domain_decision = resolve_domain_policy_or_exit(&domain_policy, false, &[])?;
             if let Some(url) = &url {
@@ -228,6 +271,21 @@ fn run() -> Result<()> {
             let action_decision = resolve_action_policy_or_exit(&action_policy, false, &[])?;
             if url.is_some() {
                 ensure_action_allowed(&action_decision, &launch_args_for_action_policy(&url))?;
+            }
+            let confirmation_decision =
+                resolve_confirmation_policy_or_exit(&confirmation_policy, false, &[])?;
+            if url.is_some() {
+                require_confirmation_or_exit(
+                    &launch_args_for_confirmation(&profile, &url, &firefox_path),
+                    ConfirmationGate {
+                        confirmation_decision: &confirmation_decision,
+                        target: PendingConfirmationTarget::Default,
+                        domain_decision: &domain_decision,
+                        action_decision: &action_decision,
+                        json_output: false,
+                        ignored_global_flags: &[],
+                    },
+                )?;
             }
             let result = launch_firefox(LaunchOptions {
                 profile,
@@ -247,10 +305,13 @@ fn run() -> Result<()> {
             json,
             domain_policy,
             action_policy,
+            confirmation_policy,
         } => {
             let mut report = collect_install_status()?;
             report.domain_policy = domain_policy_diagnostic_from_args(&domain_policy);
             report.action_policy = action_policy_diagnostic_from_args(&action_policy);
+            report.confirmation_policy =
+                confirmation_policy_diagnostic_from_args(&confirmation_policy);
             if json {
                 let value: serde_json::Value =
                     serde_json::from_str(&install_status_json(&report)?)?;
@@ -266,12 +327,19 @@ fn run() -> Result<()> {
             println!("{result}");
             std::process::exit(exit_code_for_error("NotAvailableError"));
         }
+        LocalCommand::Confirm { id, json } => {
+            handle_confirm(id, json)?;
+        }
+        LocalCommand::Deny { id, json } => {
+            handle_deny(id, json)?;
+        }
         LocalCommand::Remote {
             target,
             json,
             ignored_global_flags,
             domain_policy,
             action_policy,
+            confirmation_policy,
             args,
         } => {
             if let Some(result) = local_not_available_result(&args, json, &ignored_global_flags)? {
@@ -303,16 +371,34 @@ fn run() -> Result<()> {
             }
             let action_decision =
                 resolve_action_policy_or_exit(&action_policy, json, &ignored_global_flags)?;
-            if is_cli_action_precheckable(&args) {
-                if let Err(err) = ensure_action_allowed(&action_decision, &args) {
-                    exit_with_anyhow_error(err, json, &ignored_global_flags)?;
-                    unreachable!();
-                }
+            if let Err(err) = ensure_policy_sequences_allowed(&action_decision, &args) {
+                exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                unreachable!();
+            }
+            let confirmation_decision = resolve_confirmation_policy_or_exit(
+                &confirmation_policy,
+                json,
+                &ignored_global_flags,
+            )?;
+            if let Err(err) = require_confirmation_for_sequences_or_exit(
+                &args,
+                ConfirmationGate {
+                    confirmation_decision: &confirmation_decision,
+                    target: pending_target_from_session_target(&target),
+                    domain_decision: &domain_decision,
+                    action_decision: &action_decision,
+                    json_output: json,
+                    ignored_global_flags: &ignored_global_flags,
+                },
+            ) {
+                exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                unreachable!();
             }
             let request = build_command_request_with_policies(
                 args.clone(),
                 &domain_decision,
                 &action_decision,
+                &confirmation_decision,
             )?;
             let dispatch_result = match target {
                 SessionTarget::Id(session_id) => send_to_session(Some(&session_id), &request),
@@ -497,14 +583,13 @@ fn handle_state_save(
     target: SessionTarget,
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
-    domain_policy: DomainPolicyArgs,
-    action_policy: ActionPolicyArgs,
+    policies: PolicyArgsBundle,
     path: PathBuf,
 ) -> Result<()> {
     let domain_decision =
-        resolve_domain_policy_or_exit(&domain_policy, json_output, &ignored_global_flags)?;
+        resolve_domain_policy_or_exit(&policies.domain_policy, json_output, &ignored_global_flags)?;
     let action_decision =
-        resolve_action_policy_or_exit(&action_policy, json_output, &ignored_global_flags)?;
+        resolve_action_policy_or_exit(&policies.action_policy, json_output, &ignored_global_flags)?;
     if let Err(err) = ensure_action_allowed(
         &action_decision,
         &[
@@ -516,6 +601,26 @@ fn handle_state_save(
         exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
         unreachable!();
     }
+    let confirmation_decision = resolve_confirmation_policy_or_exit(
+        &policies.confirmation_policy,
+        json_output,
+        &ignored_global_flags,
+    )?;
+    require_confirmation_or_exit(
+        &[
+            "state".to_string(),
+            "save".to_string(),
+            path.display().to_string(),
+        ],
+        ConfirmationGate {
+            confirmation_decision: &confirmation_decision,
+            target: pending_target_from_session_target(&target),
+            domain_decision: &domain_decision,
+            action_decision: &action_decision,
+            json_output,
+            ignored_global_flags: &ignored_global_flags,
+        },
+    )?;
     let request = build_command_request_with_domain_policy(
         vec!["state".to_string(), "export".to_string()],
         &domain_decision,
@@ -586,8 +691,7 @@ fn handle_state_load(
     target: SessionTarget,
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
-    domain_policy: DomainPolicyArgs,
-    action_policy: ActionPolicyArgs,
+    policies: PolicyArgsBundle,
     path: PathBuf,
     policy_flag: StateLoadPolicyFlag,
 ) -> Result<()> {
@@ -599,9 +703,9 @@ fn handle_state_load(
         }
     };
     let domain_decision =
-        resolve_domain_policy_or_exit(&domain_policy, json_output, &ignored_global_flags)?;
+        resolve_domain_policy_or_exit(&policies.domain_policy, json_output, &ignored_global_flags)?;
     let action_decision =
-        resolve_action_policy_or_exit(&action_policy, json_output, &ignored_global_flags)?;
+        resolve_action_policy_or_exit(&policies.action_policy, json_output, &ignored_global_flags)?;
     let combined_policy_warnings =
         warning_values(&policy_decision.warnings, &domain_decision.warnings)?;
     let read = match read_state_file_with_metadata(&path) {
@@ -641,6 +745,26 @@ fn handle_state_load(
         )?;
         unreachable!();
     }
+    let confirmation_decision = resolve_confirmation_policy_or_exit(
+        &policies.confirmation_policy,
+        json_output,
+        &ignored_global_flags,
+    )?;
+    require_confirmation_or_exit(
+        &[
+            "state".to_string(),
+            "load".to_string(),
+            path.display().to_string(),
+        ],
+        ConfirmationGate {
+            confirmation_decision: &confirmation_decision,
+            target: pending_target_from_session_target(&target),
+            domain_decision: &domain_decision,
+            action_decision: &action_decision,
+            json_output,
+            ignored_global_flags: &ignored_global_flags,
+        },
+    )?;
     let tool_version_mismatch = if policy_decision.require_inspected {
         if let Err(err) = sweep_expired_state_receipts(now_ms()) {
             exit_with_anyhow_error_with_warning_values(
@@ -739,6 +863,248 @@ fn handle_state_inspect(
         append_state_receipt_info(&mut value, &receipt, &receipt_path);
     }
     append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
+fn handle_confirm(id: String, json_output: bool) -> Result<()> {
+    let now = now_ms();
+    let _ = sweep_expired_confirmations(now);
+    let record = match consume_pending_confirmation(&id, now) {
+        Ok(record) => record,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &[])?;
+            unreachable!();
+        }
+    };
+    execute_confirmed_record(record, json_output)
+}
+
+fn handle_deny(id: String, json_output: bool) -> Result<()> {
+    let now = now_ms();
+    let _ = sweep_expired_confirmations(now);
+    let record = match deny_pending_confirmation(&id, now) {
+        Ok(record) => record,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &[])?;
+            unreachable!();
+        }
+    };
+    let value = json!({
+        "text": format!("Denied confirmation {} for action category `{}`", record.id, record.category),
+        "confirmationId": record.id,
+        "category": record.category,
+        "denied": true
+    });
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
+fn execute_confirmed_record(record: PendingConfirmation, json_output: bool) -> Result<()> {
+    let domain_decision = domain_decision_from_request_context(record.domain_policy.as_ref())?;
+    let action_decision = action_decision_from_request_context(record.action_policy.as_ref())?;
+    let _confirmation_decision =
+        confirmation_decision_from_context(record.confirmation_policy.as_ref());
+    ensure_policy_sequences_allowed(&action_decision, &record.args)?;
+    if let Some(url) = navigation_url_for_remote_args(&record.args) {
+        ensure_url_allowed(&domain_decision, &url)?;
+    }
+    let target = session_target_from_pending(&record.target);
+    match record.args.first().map(String::as_str) {
+        Some("launch") => execute_confirmed_launch(&record, &domain_decision, &action_decision),
+        Some("state") if record.args.get(1).map(String::as_str) == Some("save") => {
+            let path = confirmed_state_path(&record)?;
+            execute_confirmed_state_save(
+                target,
+                json_output,
+                domain_decision,
+                action_decision,
+                path,
+            )
+        }
+        Some("state") if record.args.get(1).map(String::as_str) == Some("load") => {
+            let path = confirmed_state_path(&record)?;
+            execute_confirmed_state_load(
+                target,
+                json_output,
+                domain_decision,
+                action_decision,
+                path,
+            )
+        }
+        _ => execute_confirmed_remote(
+            record,
+            target,
+            domain_decision,
+            action_decision,
+            json_output,
+        ),
+    }
+}
+
+fn confirmed_state_path(record: &PendingConfirmation) -> Result<PathBuf> {
+    let Some(path) = record.args.get(2) else {
+        bail!("invalid_args: pending confirmation record is missing state path");
+    };
+    Ok(PathBuf::from(path))
+}
+
+fn execute_confirmed_launch(
+    record: &PendingConfirmation,
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+) -> Result<()> {
+    ensure_action_allowed(action_decision, &record.args)?;
+    let mut profile = "Default".to_string();
+    let mut url = None;
+    let mut firefox_path = None;
+    let mut i = 1;
+    while i < record.args.len() {
+        match record.args[i].as_str() {
+            "--profile" => {
+                i += 1;
+                profile = record
+                    .args
+                    .get(i)
+                    .cloned()
+                    .context("invalid_args: --profile requires a value")?;
+            }
+            "--url" => {
+                i += 1;
+                let value = record
+                    .args
+                    .get(i)
+                    .cloned()
+                    .context("invalid_args: --url requires a value")?;
+                ensure_url_allowed(domain_decision, &value)?;
+                url = Some(value);
+            }
+            "--firefox-path" => {
+                i += 1;
+                firefox_path = Some(
+                    record
+                        .args
+                        .get(i)
+                        .cloned()
+                        .context("invalid_args: --firefox-path requires a value")?,
+                );
+            }
+            other => bail!("unsupported launch option in confirmation record: {other}"),
+        }
+        i += 1;
+    }
+    let result = launch_firefox(LaunchOptions {
+        profile,
+        url,
+        firefox_path,
+    })?;
+    println!("{}", launch_result_text(&result));
+    Ok(())
+}
+
+fn execute_confirmed_remote(
+    record: PendingConfirmation,
+    target: SessionTarget,
+    domain_decision: DomainPolicyDecision,
+    action_decision: ActionPolicyDecision,
+    json_output: bool,
+) -> Result<()> {
+    let request = build_command_request_with_captured_policies(
+        record.args.clone(),
+        record.domain_policy.clone(),
+        record.action_policy.clone(),
+        request_context_with_approval(&record),
+    )?;
+    let dispatch_result = match target {
+        SessionTarget::Id(session_id) => send_to_session(Some(&session_id), &request),
+        SessionTarget::Name(profile_name) => {
+            send_to_named_session(&profile_name, &record.args, &request, &domain_decision)
+        }
+        SessionTarget::Default => match send_to_session(None, &request) {
+            Ok(result) => Ok(result),
+            Err(err) if should_auto_launch_remote(None, &record.args, &err) => {
+                cleanup_stale_sessions(now_ms())?;
+                let _result = launch_firefox(LaunchOptions {
+                    profile: "Default".to_string(),
+                    url: launch_url_for_remote_args(&record.args),
+                    firefox_path: None,
+                })?;
+                send_to_session(None, &request)
+            }
+            Err(err) => Err(err),
+        },
+    };
+    let (response, response_session_id) = dispatch_result?;
+    let result = response_result_or_exit_with_domain_policy(
+        response,
+        json_output,
+        &[],
+        &domain_decision.warnings,
+    )?;
+    let mut result = result;
+    append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json_output)?;
+    println!("{}", format_cli_result(&result, json_output)?);
+    if is_controlled_close_command(&record.args) {
+        let _ = remove_session(&response_session_id);
+        let _ = io::stdout().flush();
+        thread::sleep(Duration::from_millis(1000));
+    }
+    let _ = action_decision;
+    Ok(())
+}
+
+fn execute_confirmed_state_save(
+    target: SessionTarget,
+    json_output: bool,
+    domain_decision: DomainPolicyDecision,
+    _action_decision: ActionPolicyDecision,
+    path: PathBuf,
+) -> Result<()> {
+    let request = build_command_request_with_domain_policy(
+        vec!["state".to_string(), "export".to_string()],
+        &domain_decision,
+    )?;
+    let (response, session_id) = send_state_save_request(&target, &request)?;
+    let export = response_result_or_exit_with_domain_policy(
+        response,
+        json_output,
+        &[],
+        &domain_decision.warnings,
+    )?;
+    let profile_name = profile_name_for_state_source(&target, &session_id)?;
+    let state = state_from_extension_export(export, session_id, profile_name)?;
+    let bytes_written = write_state_file(&path, &state)?;
+    let mut value = state_save_value(&state, &path, bytes_written);
+    append_state_save_path_warning(&mut value, &path);
+    append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
+fn execute_confirmed_state_load(
+    target: SessionTarget,
+    json_output: bool,
+    domain_decision: DomainPolicyDecision,
+    _action_decision: ActionPolicyDecision,
+    path: PathBuf,
+) -> Result<()> {
+    let read = read_state_file_with_metadata(&path)?;
+    ensure_url_allowed(&domain_decision, &read.state.source.origin)?;
+    let state = read.state.clone();
+    let payload = serde_json::to_string(&state)?;
+    let request = build_command_request_with_domain_policy(
+        vec!["state".to_string(), "import".to_string(), payload],
+        &domain_decision,
+    )?;
+    let (response, _session_id) = send_state_load_request(&target, &state, &request)?;
+    let import_result = response_result_or_exit_with_domain_policy(
+        response,
+        json_output,
+        &[],
+        &domain_decision.warnings,
+    )?;
+    let mut value = state_load_value(&state, &path, &import_result);
+    append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
     println!("{}", format_cli_result(&value, json_output)?);
     Ok(())
 }
@@ -927,6 +1293,20 @@ fn resolve_action_policy_or_exit(
     }
 }
 
+fn resolve_confirmation_policy_or_exit(
+    args: &ConfirmationPolicyArgs,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+) -> Result<ConfirmationPolicyDecision> {
+    match resolve_confirmation_policy(args) {
+        Ok(decision) => Ok(decision),
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, ignored_global_flags)?;
+            unreachable!();
+        }
+    }
+}
+
 fn build_command_request_with_domain_policy(
     args: Vec<String>,
     decision: &DomainPolicyDecision,
@@ -944,6 +1324,7 @@ fn build_command_request_with_policies(
     args: Vec<String>,
     domain_decision: &DomainPolicyDecision,
     action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
 ) -> Result<RpcRequest> {
     let mut request = build_command_request_with_domain_policy(args, domain_decision)?;
     if let Some(context) = action_policy_request_context(action_decision) {
@@ -951,7 +1332,174 @@ fn build_command_request_with_policies(
             object.insert("actionPolicy".to_string(), serde_json::to_value(context)?);
         }
     }
+    if let Some(context) = confirmation_policy_request_context(confirmation_decision) {
+        if let Some(object) = request.params.as_object_mut() {
+            object.insert(
+                "confirmationPolicy".to_string(),
+                serde_json::to_value(context)?,
+            );
+        }
+    }
     Ok(request)
+}
+
+fn build_command_request_with_captured_policies(
+    args: Vec<String>,
+    domain_context: Option<pire_browser_core::domain_policy::DomainPolicyRequestContext>,
+    action_context: Option<pire_browser_core::action_policy::ActionPolicyRequestContext>,
+    confirmation_context: Option<
+        pire_browser_core::confirmation_policy::ConfirmationPolicyRequestContext,
+    >,
+) -> Result<RpcRequest> {
+    let mut request = build_command_request(args);
+    if let Some(object) = request.params.as_object_mut() {
+        if let Some(context) = domain_context {
+            object.insert("domainPolicy".to_string(), serde_json::to_value(context)?);
+        }
+        if let Some(context) = action_context {
+            object.insert("actionPolicy".to_string(), serde_json::to_value(context)?);
+        }
+        if let Some(context) = confirmation_context {
+            object.insert(
+                "confirmationPolicy".to_string(),
+                serde_json::to_value(context)?,
+            );
+        }
+    }
+    Ok(request)
+}
+
+fn ensure_policy_sequences_allowed(
+    action_decision: &ActionPolicyDecision,
+    args: &[String],
+) -> Result<()> {
+    for sequence in policy_command_sequences(args)? {
+        ensure_action_allowed(action_decision, &sequence)?;
+    }
+    Ok(())
+}
+
+fn require_confirmation_for_sequences_or_exit(
+    args: &[String],
+    gate: ConfirmationGate<'_>,
+) -> Result<()> {
+    for sequence in policy_command_sequences(args)? {
+        let evaluation = evaluate_action(gate.action_decision, &sequence);
+        if let Some(category) = evaluation.category.as_deref() {
+            if gate.confirmation_decision.requires(category) {
+                return require_confirmation_for_category_or_exit(category, args, gate);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn require_confirmation_or_exit(args: &[String], gate: ConfirmationGate<'_>) -> Result<()> {
+    let evaluation = evaluate_action(gate.action_decision, args);
+    let Some(category) = evaluation.category.as_deref() else {
+        return Ok(());
+    };
+    if !gate.confirmation_decision.requires(category) {
+        return Ok(());
+    }
+    require_confirmation_for_category_or_exit(category, args, gate)
+}
+
+fn require_confirmation_for_category_or_exit(
+    category: &str,
+    args: &[String],
+    gate: ConfirmationGate<'_>,
+) -> Result<()> {
+    if gate.confirmation_decision.interactive {
+        if io::stdin().is_terminal() {
+            eprint!("Confirm action category `{category}`? [y/N] ");
+            let _ = io::stderr().flush();
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            if matches!(input.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+                return Ok(());
+            }
+        }
+        bail!("ConfirmationDenied: action category `{category}` was not approved");
+    }
+
+    let now = now_ms();
+    let _ = sweep_expired_confirmations(now);
+    let id = new_confirmation_id();
+    let record = PendingConfirmation {
+        schema_version: 1,
+        kind: "action-confirmation".to_string(),
+        id: id.clone(),
+        created_at: now,
+        expires_at: now + CONFIRMATION_TTL_MS,
+        category: category.to_string(),
+        command_root: args.first().cloned().unwrap_or_default(),
+        target: gate.target,
+        args: args.to_vec(),
+        domain_policy: domain_policy_request_context(gate.domain_decision),
+        action_policy: action_policy_request_context(gate.action_decision),
+        confirmation_policy: confirmation_policy_request_context(gate.confirmation_decision),
+    };
+    write_pending_confirmation(&record)?;
+    print_confirmation_required(&record, gate.json_output, gate.ignored_global_flags)?;
+    std::process::exit(CONFIRMATION_REQUIRED_EXIT_CODE);
+}
+
+fn print_confirmation_required(
+    record: &PendingConfirmation,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+) -> Result<()> {
+    let approve_command = format!("pire-browser confirm {}", record.id);
+    let deny_command = format!("pire-browser deny {}", record.id);
+    if json_output {
+        let warnings = ignored_global_flag_warnings(ignored_global_flags);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "success": false,
+                "error": {
+                    "code": "ConfirmationRequired",
+                    "message": format!("Action category `{}` requires confirmation", record.category),
+                    "data": {
+                        "phase": "policy",
+                        "confirmationId": record.id,
+                        "category": record.category,
+                        "expiresAt": record.expires_at,
+                        "approveCommand": approve_command,
+                        "denyCommand": deny_command
+                    }
+                },
+                "warnings": warnings
+            }))?
+        );
+    } else {
+        println!(
+            "ConfirmationRequired: action category `{}` requires approval\nconfirmationId: {}\nexpiresAt: {}\napprove: {}\ndeny: {}",
+            record.category, record.id, record.expires_at, approve_command, deny_command
+        );
+    }
+    Ok(())
+}
+
+fn pending_target_from_session_target(target: &SessionTarget) -> PendingConfirmationTarget {
+    match target {
+        SessionTarget::Default => PendingConfirmationTarget::Default,
+        SessionTarget::Id(value) => PendingConfirmationTarget::SessionId {
+            value: value.clone(),
+        },
+        SessionTarget::Name(value) => PendingConfirmationTarget::SessionName {
+            value: value.clone(),
+        },
+    }
+}
+
+fn session_target_from_pending(target: &PendingConfirmationTarget) -> SessionTarget {
+    match target {
+        PendingConfirmationTarget::Default => SessionTarget::Default,
+        PendingConfirmationTarget::SessionId { value } => SessionTarget::Id(value.clone()),
+        PendingConfirmationTarget::SessionName { value } => SessionTarget::Name(value.clone()),
+    }
 }
 
 fn launch_args_for_action_policy(url: &Option<String>) -> Vec<String> {
@@ -959,6 +1507,27 @@ fn launch_args_for_action_policy(url: &Option<String>) -> Vec<String> {
     if let Some(url) = url {
         args.push("--url".to_string());
         args.push(url.clone());
+    }
+    args
+}
+
+fn launch_args_for_confirmation(
+    profile: &str,
+    url: &Option<String>,
+    firefox_path: &Option<String>,
+) -> Vec<String> {
+    let mut args = vec![
+        "launch".to_string(),
+        "--profile".to_string(),
+        profile.to_string(),
+    ];
+    if let Some(url) = url {
+        args.push("--url".to_string());
+        args.push(url.clone());
+    }
+    if let Some(firefox_path) = firefox_path {
+        args.push("--firefox-path".to_string());
+        args.push(firefox_path.clone());
     }
     args
 }
@@ -1180,6 +1749,14 @@ fn rpc_error_from_anyhow(err: &anyhow::Error) -> pire_browser_core::protocol::Rp
         ("DomainPolicyError", "policy")
     } else if message.contains("ActionPolicyError:") {
         ("ActionPolicyError", "policy")
+    } else if message.contains("ConfirmationRequired:") {
+        ("ConfirmationRequired", "policy")
+    } else if message.contains("ConfirmationDenied:") {
+        ("ConfirmationDenied", "policy")
+    } else if message.contains("ConfirmationExpired:") {
+        ("ConfirmationExpired", "policy")
+    } else if message.contains("confirmation_not_found:") {
+        ("confirmation_not_found", "policy")
     } else if message.contains("web-ext exited before pire-browser connected")
         || message.contains("failed to start web-ext")
         || message.contains("could not discover Firefox")
@@ -1444,9 +2021,12 @@ fn exit_code_for_error(code: &str) -> i32 {
         "InvalidArgumentError" | "invalid_args" => 2,
         "DomainPolicyError" => 2,
         "ActionPolicyError" => 2,
+        "ConfirmationRequired" => CONFIRMATION_REQUIRED_EXIT_CODE,
+        "ConfirmationDenied" | "ConfirmationExpired" => 2,
         "NotAvailableError" => 78,
         "unsupported_command" => 1,
         "session_not_found" => 1,
+        "confirmation_not_found" => 2,
         _ => 1,
     }
 }

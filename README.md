@@ -218,9 +218,26 @@ $env:AGENT_BROWSER_ACTION_POLICY = ".\policy-review.json"
 .\target\debug\pire-browser.exe snapshot -i
 ```
 
-Policy files use the upstream v1 shape: optional `default`, `allow`, and `deny`. The categories are `navigate`, `click`, `fill`, `eval`, `snapshot`, `scroll`, `wait`, `get`, `interact`, `state`, `network`, `download`, and `upload`. `deny` wins over `allow`, and missing `default` means `allow`. Unknown keys fail closed so misspelled policy fields cannot silently weaken the guardrail. File-level `confirm` is not supported; confirmation remains future `--confirm-actions` work.
+Policy files use the upstream v1 shape: optional `default`, `allow`, and `deny`. The categories are `navigate`, `click`, `fill`, `eval`, `snapshot`, `scroll`, `wait`, `get`, `interact`, `state`, `network`, `download`, and `upload`. `deny` wins over `allow`, and missing `default` means `allow`. Unknown keys fail closed so misspelled policy fields cannot silently weaken the guardrail. File-level `confirm` is not supported; confirmation uses the separate `--confirm-actions` surface.
 
 `status --json` and `doctor --json` include an `actionPolicy` diagnostic. Existing unavailable commands still return `NotAvailableError` before action policy checks. `batch` stops immediately on an `ActionPolicyError`, and chained `find ... click/fill/...` commands are classified by the chained action.
+
+### Action Confirmation
+
+Use `--confirm-actions` or `AGENT_BROWSER_CONFIRM_ACTIONS` when sensitive action categories should require an explicit second step:
+
+```powershell
+.\target\debug\pire-browser.exe --confirm-actions eval eval "document.title" --json
+.\target\debug\pire-browser.exe confirm c_8f3a1234
+.\target\debug\pire-browser.exe deny c_8f3a1234
+
+$env:AGENT_BROWSER_CONFIRM_ACTIONS = "eval,download"
+.\target\debug\pire-browser.exe eval "document.title" --json
+```
+
+When confirmation is required, the command returns `ConfirmationRequired` with a short-lived id, `confirm <id>`, and `deny <id>`. Pending confirmations expire after about 60 seconds. `confirm <id>` re-checks the captured domain and action policy context, bypasses only the already-approved confirmation gate, and then runs the stored command. `deny <id>` consumes the record without running it.
+
+Confirmation records live under `%LOCALAPPDATA%\pire-browser\confirmations`. They are plaintext, user-scoped, short-lived runtime metadata and may contain the original command arguments, so do not treat them as portable artifacts or audit logs. This is a cooperative operator guardrail, not a sandbox: local code that can run the CLI can choose different env vars or policy flags. `--confirm-interactive` prompts only on a TTY; non-TTY runs auto-deny rather than approving silently.
 
 ### Session Targeting
 

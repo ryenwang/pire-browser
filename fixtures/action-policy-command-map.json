@@ -19,7 +19,7 @@
   "policyShape": {
     "fields": ["default", "allow", "deny"],
     "precedence": ["deny", "allow", "default"],
-    "confirmation": "Confirmation is not part of the policy file in v1. It remains deferred to --confirm-actions, AGENT_BROWSER_CONFIRM_ACTIONS, confirm, and deny."
+    "confirmation": "Confirmation is not part of the policy file in v1. It is implemented through the separate --confirm-actions, AGENT_BROWSER_CONFIRM_ACTIONS, confirm, and deny surfaces."
   },
   "resolution": {
     "order": ["compoundEntries", "metaBypasses", "commandEntries", "reservedFutureEntries"],
@@ -663,6 +663,24 @@
       "enforcementLocus": "meta",
       "source": "pire-extension",
       "reason": "local metadata-only file inspection"
+    },
+    {
+      "root": "confirm",
+      "signature": "confirm <confirmation-id>",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "upstream",
+      "reason": "approval of a pending action confirmation record"
+    },
+    {
+      "root": "deny",
+      "signature": "deny <confirmation-id>",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "upstream",
+      "reason": "denial of a pending action confirmation record"
     }
   ],
   "reservedFutureEntries": [
