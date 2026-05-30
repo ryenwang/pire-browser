@@ -20,6 +20,12 @@ type ActionPolicyVerdictForCommand = (
   policy: { enabled: boolean; default?: "allow" | "deny"; allow?: string[]; deny?: string[] }
 ) => { category: string | null; decision: string };
 
+type ConfirmationPolicyErrorForCommand = (
+  args: string[],
+  actionPolicy: { enabled: boolean; default?: "allow" | "deny"; allow?: string[]; deny?: string[] } | null,
+  policy: { enabled: boolean; categories: string[]; approvedConfirmationId?: string } | null
+) => { code: string; data?: { phase?: string; category?: string }; message: string } | null;
+
 function extensionFile(path: string) {
   return readFileSync(resolve(import.meta.dirname, "..", path), "utf8");
 }
@@ -88,6 +94,30 @@ function loadActionPolicyVerdictForCommand(): ActionPolicyVerdictForCommand {
   runInNewContext(js, sandbox);
   if (!sandbox.__actionPolicyVerdictForCommand) throw new Error("actionPolicyVerdictForCommand did not load");
   return sandbox.__actionPolicyVerdictForCommand;
+}
+
+function loadConfirmationPolicyErrorForCommand(): ConfirmationPolicyErrorForCommand {
+  const body = backgroundSource();
+  const actionStart = body.indexOf("function actionPolicyFromParams(");
+  const actionEnd = body.indexOf("\nfunction domainPolicyDestinationUrl", actionStart);
+  const parseStart = body.indexOf("function parseFind(");
+  const parseEnd = body.indexOf("\nfunction normalizeContentResponse", parseStart);
+  const helperStart = body.indexOf("function valueAfter(");
+  const helperEnd = body.indexOf("\nfunction truncate", helperStart);
+  expect(actionStart).toBeGreaterThanOrEqual(0);
+  expect(actionEnd).toBeGreaterThan(actionStart);
+  expect(parseStart).toBeGreaterThanOrEqual(0);
+  expect(parseEnd).toBeGreaterThan(parseStart);
+  expect(helperStart).toBeGreaterThanOrEqual(0);
+  expect(helperEnd).toBeGreaterThan(helperStart);
+  const source = [body.slice(actionStart, actionEnd), body.slice(parseStart, parseEnd), body.slice(helperStart, helperEnd)].join("\n");
+  const js = transpileModule(`${source}\nthis.__confirmationPolicyErrorForCommand = confirmationPolicyErrorForCommand;`, {
+    compilerOptions: { module: ModuleKind.ES2020, target: ScriptTarget.ES2020 },
+  }).outputText;
+  const sandbox: { __confirmationPolicyErrorForCommand?: ConfirmationPolicyErrorForCommand } = {};
+  runInNewContext(js, sandbox);
+  if (!sandbox.__confirmationPolicyErrorForCommand) throw new Error("confirmationPolicyErrorForCommand did not load");
+  return sandbox.__confirmationPolicyErrorForCommand;
 }
 
 describe("compiled MV2 scripts", () => {
@@ -359,6 +389,32 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain("confirmationPolicyErrorForCommand(args, actionPolicy, confirmationPolicy)");
     expect(body).toContain('"ConfirmationRequired"');
     expect(body).toContain("approvedConfirmationId");
+  });
+
+  it("honors approved confirmation ids including interactive approval", () => {
+    const errorForCommand = loadConfirmationPolicyErrorForCommand();
+    const actionPolicy = { enabled: false };
+    const pending = errorForCommand(["eval", "document.title"], actionPolicy, {
+      enabled: true,
+      categories: ["eval"],
+    });
+    expect(pending?.code).toBe("ConfirmationRequired");
+    expect(pending?.data?.category).toBe("eval");
+
+    expect(
+      errorForCommand(["eval", "document.title"], actionPolicy, {
+        enabled: true,
+        categories: ["eval"],
+        approvedConfirmationId: "interactive",
+      })
+    ).toBeNull();
+    expect(
+      errorForCommand(["eval", "document.title"], actionPolicy, {
+        enabled: true,
+        categories: ["eval"],
+        approvedConfirmationId: "c_1234abcd",
+      })
+    ).toBeNull();
   });
 
   it("matches shared action policy command verdict fixtures", () => {
