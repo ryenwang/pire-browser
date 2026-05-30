@@ -2760,10 +2760,10 @@
     {
       "id": "cmd-download",
       "kind": "compatibility_claim",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Migrated schema v2 compatibility claim: download.",
+      "rationale": "Reviewed Download Command V1: pire-browser implements controlled Firefox download staging and CLI finalization for `download <target> <path>`, with smoke-backed structural coverage and explicit Firefox matching/MIME limitations.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -2777,32 +2777,35 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Success reports the finalized path, staged Firefox path, byte count, and download id. Exact Firefox staging path, final URL, and simultaneous-download matching are best-effort.",
+        "json": "Success envelope data includes path, stagedPath, bytes, state, downloadId, and optional displayUrl with query/fragment stripped. Timeout, policy, confirmation, destination, and target failures use stable JSON error envelopes.",
         "exitCode": [
-          78
+          0,
+          2,
+          44,
+          124
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "TimeoutError, ActionPolicyError, ConfirmationRequired, invalid_args, or target-specific errors depending on failure phase.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "not_comparable",
+        "state": "smoke_only",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Not implemented in the Firefox WebExtension backend; excluded from deterministic parity coverage."
+        "cases": [
+          "smoke:downloads"
+        ],
+        "reason": "Covered by the Firefox-dependent download smoke, which verifies deterministic fixture bytes, JSON shape, policy denial, confirmation approve/deny, timeout, and existing-destination failure."
       },
       "limitations": [
-        "Feature is intentionally unavailable or not started on the Firefox WebExtension backend."
+        "Firefox download matching is best-effort: active profile/session and active-tab source/referrer are preferred when available, otherwise the newest eligible staged completion wins.",
+        "Unknown MIME/helper-app prompts can still stall or render in-page; command timeout is the safety boundary.",
+        "Domain allowlists gate the active page only and do not claim containment of final download URLs, redirects, subresources, WebSockets, or EventSource.",
+        "The checked-in oracle comparison remains structural; exact backend path or final-URL parity is not claimed."
       ],
       "migration": {
         "schemaV2Id": "download"
       },
-      "contractReviewed": false,
-      "runtime": {
-        "unsupportedRoots": [
-          "download"
-        ]
-      }
+      "contractReviewed": true
     },
     {
       "id": "cmd-drag",
@@ -10078,17 +10081,17 @@
     {
       "id": "doc-commands-071-agent-browser-wait-download-path-wait-for-download",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed Download Command V1: pire-browser implements `wait --download [path]` as best-effort recent/new Firefox download matching followed by CLI finalization, with smoke-backed structural coverage.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Wait",
         "anchor": "wait",
         "checklist": "`agent-browser wait --download [path]` - Wait for download",
-        "docStatus": "blank"
+        "docStatus": "P"
       },
       "command": {
         "primary": "wait",
@@ -10098,24 +10101,32 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Success reports the finalized path, staged Firefox path, byte count, and download id. Exact Firefox staging path, final URL, and simultaneous-download matching are best-effort.",
+        "json": "Success envelope data includes path, stagedPath, bytes, state, downloadId, and optional displayUrl with query/fragment stripped. Timeout, policy, confirmation, destination, and target failures use stable JSON error envelopes.",
         "exitCode": [
-          78
+          0,
+          2,
+          44,
+          124
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "TimeoutError, ActionPolicyError, ConfirmationRequired, invalid_args, or target-specific errors depending on failure phase.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "smoke_only",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke:downloads"
+        ],
+        "reason": "Covered by the Firefox-dependent download smoke, which verifies deterministic fixture bytes, JSON shape, policy denial, confirmation approve/deny, timeout, and existing-destination failure."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Firefox download matching is best-effort: active profile/session and active-tab source/referrer are preferred when available, otherwise the newest eligible staged completion wins.",
+        "Unknown MIME/helper-app prompts can still stall or render in-page; command timeout is the safety boundary.",
+        "Domain allowlists gate the active page only and do not claim containment of final download URLs, redirects, subresources, WebSockets, or EventSource.",
+        "The checked-in oracle comparison remains structural; exact backend path or final-URL parity is not claimed."
       ],
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "doc-commands-072-agent-browser-wait-fn-document-body-innertext-includes-loading-wait-for-",
@@ -10206,17 +10217,17 @@
     {
       "id": "doc-commands-074-agent-browser-download-sel-path-click-element-to-trigger-download",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed Download Command V1: pire-browser implements controlled Firefox download staging and CLI finalization for `download <target> <path>`, with smoke-backed structural coverage and explicit Firefox matching/MIME limitations.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Downloads",
         "anchor": "downloads",
         "checklist": "`agent-browser download <sel> <path>` - Click element to trigger download",
-        "docStatus": "blank"
+        "docStatus": "P"
       },
       "command": {
         "primary": "download",
@@ -10224,39 +10235,48 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Success reports the finalized path, staged Firefox path, byte count, and download id. Exact Firefox staging path, final URL, and simultaneous-download matching are best-effort.",
+        "json": "Success envelope data includes path, stagedPath, bytes, state, downloadId, and optional displayUrl with query/fragment stripped. Timeout, policy, confirmation, destination, and target failures use stable JSON error envelopes.",
         "exitCode": [
-          78
+          0,
+          2,
+          44,
+          124
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "TimeoutError, ActionPolicyError, ConfirmationRequired, invalid_args, or target-specific errors depending on failure phase.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "smoke_only",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke:downloads"
+        ],
+        "reason": "Covered by the Firefox-dependent download smoke, which verifies deterministic fixture bytes, JSON shape, policy denial, confirmation approve/deny, timeout, and existing-destination failure."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Firefox download matching is best-effort: active profile/session and active-tab source/referrer are preferred when available, otherwise the newest eligible staged completion wins.",
+        "Unknown MIME/helper-app prompts can still stall or render in-page; command timeout is the safety boundary.",
+        "Domain allowlists gate the active page only and do not claim containment of final download URLs, redirects, subresources, WebSockets, or EventSource.",
+        "The checked-in oracle comparison remains structural; exact backend path or final-URL parity is not claimed."
       ],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-download"
     },
     {
       "id": "doc-commands-075-agent-browser-wait-download-path-wait-for-any-download-to-complete",
       "kind": "documented_checklist_item",
-      "status": "not_available",
-      "disposition": "not_started",
+      "status": "best_effort",
+      "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed Download Command V1: pire-browser implements `wait --download [path]` as best-effort recent/new Firefox download matching followed by CLI finalization, with smoke-backed structural coverage.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Downloads",
         "anchor": "downloads",
         "checklist": "`agent-browser wait --download [path]` - Wait for any download to complete",
-        "docStatus": "blank"
+        "docStatus": "P"
       },
       "command": {
         "primary": "wait",
@@ -10266,24 +10286,32 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Success reports the finalized path, staged Firefox path, byte count, and download id. Exact Firefox staging path, final URL, and simultaneous-download matching are best-effort.",
+        "json": "Success envelope data includes path, stagedPath, bytes, state, downloadId, and optional displayUrl with query/fragment stripped. Timeout, policy, confirmation, destination, and target failures use stable JSON error envelopes.",
         "exitCode": [
-          78
+          0,
+          2,
+          44,
+          124
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "TimeoutError, ActionPolicyError, ConfirmationRequired, invalid_args, or target-specific errors depending on failure phase.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "uncovered",
+        "state": "smoke_only",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "Inventory row has not been promoted to fixture-covered compatibility yet."
+        "cases": [
+          "smoke:downloads"
+        ],
+        "reason": "Covered by the Firefox-dependent download smoke, which verifies deterministic fixture bytes, JSON shape, policy denial, confirmation approve/deny, timeout, and existing-destination failure."
       },
       "limitations": [
-        "Checklist row is not claimed as implemented by the compatibility contract."
+        "Firefox download matching is best-effort: active profile/session and active-tab source/referrer are preferred when available, otherwise the newest eligible staged completion wins.",
+        "Unknown MIME/helper-app prompts can still stall or render in-page; command timeout is the safety boundary.",
+        "Domain allowlists gate the active page only and do not claim containment of final download URLs, redirects, subresources, WebSockets, or EventSource.",
+        "The checked-in oracle comparison remains structural; exact backend path or final-URL parity is not claimed."
       ],
-      "contractReviewed": false
+      "contractReviewed": true
     },
     {
       "id": "doc-commands-076-agent-browser-mouse-move-x-y-move-mouse",
@@ -14214,7 +14242,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -14250,7 +14278,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
+        "Download action execution is best-effort in Firefox; upload remains unavailable."
       ],
       "contractReviewed": true,
       "runtime": {}
@@ -14261,7 +14289,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -14297,7 +14325,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
+        "Download action execution is best-effort in Firefox; upload remains unavailable."
       ],
       "contractReviewed": true,
       "runtime": {}
@@ -14308,7 +14336,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -14346,7 +14374,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
+        "Download action execution is best-effort in Firefox; upload remains unavailable."
       ],
       "contractReviewed": true
     },
@@ -14356,7 +14384,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -14392,7 +14420,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
+        "Download action execution is best-effort in Firefox; upload remains unavailable."
       ],
       "contractReviewed": true,
       "runtime": {}
@@ -27706,7 +27734,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -27746,7 +27774,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
+        "Download action execution is best-effort in Firefox; upload remains unavailable."
       ],
       "contractReviewed": true
     },
@@ -27798,7 +27826,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -27835,7 +27863,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
+        "Download action execution is best-effort in Firefox; upload remains unavailable."
       ],
       "contractReviewed": true
     },
@@ -27845,7 +27873,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -27884,7 +27912,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
+        "Download action execution is best-effort in Firefox; upload remains unavailable."
       ],
       "contractReviewed": true
     },
@@ -28424,7 +28452,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -28462,7 +28490,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
+        "Download action execution is best-effort in Firefox; upload remains unavailable."
       ],
       "contractReviewed": true
     },
@@ -28472,7 +28500,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -28508,7 +28536,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
+        "Download action execution is best-effort in Firefox; upload remains unavailable."
       ],
       "contractReviewed": true,
       "runtime": {}
@@ -28519,7 +28547,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -28555,7 +28583,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
+        "Download action execution is best-effort in Firefox; upload remains unavailable."
       ],
       "contractReviewed": true,
       "runtime": {}
@@ -28566,7 +28594,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and unavailable download/upload actions remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -28605,7 +28633,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download/upload action categories are accepted for policy shape parity but executable download/upload commands remain unavailable."
+        "Download action execution is best-effort in Firefox; upload remains unavailable."
       ],
       "contractReviewed": true
     },

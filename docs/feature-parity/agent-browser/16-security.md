@@ -42,7 +42,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: High
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-  - GPT-5.5 implementation note: Cooperative action policy and confirmation records are implemented for executable categories, with `ConfirmationRequired` as an approval-pending outcome. This is not a sandbox or audit log, and unavailable downloads/uploads remain unavailable.
+  - GPT-5.5 implementation note: Cooperative action policy and confirmation records are implemented for executable categories, including best-effort Firefox downloads, with `ConfirmationRequired` as an approval-pending outcome. This is not a sandbox or audit log, and uploads remain unavailable.
 - [ ] Context flooding -- Large page outputs can overwhelm an LLM's context window. Output truncation (--max-output) caps the size of page-sourced content.
   - Extension Compatibility: True
   - Priority: High

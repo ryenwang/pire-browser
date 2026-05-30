@@ -35,8 +35,8 @@
     },
     {
       "path": "05-commands.md",
-      "sha256": "f90209d5cf9ba1d3ff9cd2dc22461957e28ff62bcfd7333fec271eed0c364b82",
-      "normalizedBytes": 134671
+      "sha256": "2e2d22ec5aa9d55d6b44b35315bd3fb07e15c659bff98247587ccecb16f1e1bb",
+      "normalizedBytes": 135318
     },
     {
       "path": "06-configuration.md",
@@ -90,8 +90,8 @@
     },
     {
       "path": "16-security.md",
-      "sha256": "07e9cb32539db7ba6393bbb9b88ec086e1a4e03275e292920221f84e8bdf4951",
-      "normalizedBytes": 19095
+      "sha256": "8a6dd094b53a012a5dd3360a37e4f62566e3baf652dbbea028670ea9985dc068",
+      "normalizedBytes": 19114
     },
     {
       "path": "17-next.md",

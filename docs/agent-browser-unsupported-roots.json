@@ -14,7 +14,6 @@
     "dashboard",
     "device",
     "diff",
-    "download",
     "drag",
     "errors",
     "highlight",
@@ -148,21 +147,6 @@
       ],
       "sourcePaths": [
         "11-diffing.md"
-      ]
-    },
-    {
-      "root": "download",
-      "itemIds": [
-        "cmd-download"
-      ],
-      "ownerEpics": [
-        "Epic 5"
-      ],
-      "dispositions": [
-        "not_started"
-      ],
-      "sourcePaths": [
-        "README.md"
       ]
     },
     {

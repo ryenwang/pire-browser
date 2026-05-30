@@ -26,6 +26,9 @@ use pire_browser_core::domain_policy::{
     request_context as domain_policy_request_context, resolve_domain_policy, DomainPolicyArgs,
     DomainPolicyDecision, DomainPolicyWarning,
 };
+use pire_browser_core::download::{
+    display_download_url, finalize_download, sweep_old_downloads, DOWNLOAD_TIMEOUT_MS,
+};
 use pire_browser_core::install_status::{
     collect_install_status, install_status_json, install_status_text,
 };
@@ -54,6 +57,7 @@ use pire_browser_core::state_policy::{
 };
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
+use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -68,6 +72,12 @@ struct PolicyArgsBundle {
     domain_policy: DomainPolicyArgs,
     action_policy: ActionPolicyArgs,
     confirmation_policy: ConfirmationPolicyArgs,
+}
+
+struct DownloadCommandPlan {
+    public_args: Vec<String>,
+    extension_args: Vec<String>,
+    destination: Option<PathBuf>,
 }
 
 struct ConfirmationGate<'a> {
@@ -256,6 +266,54 @@ fn run() -> Result<()> {
             record,
         } => {
             handle_state_inspect(json, ignored_global_flags, PathBuf::from(path), record)?;
+        }
+        LocalCommand::Download {
+            target,
+            json,
+            ignored_global_flags,
+            domain_policy,
+            action_policy,
+            confirmation_policy,
+            selector,
+            path,
+            timeout_ms,
+        } => {
+            handle_download(
+                target,
+                json,
+                ignored_global_flags,
+                PolicyArgsBundle {
+                    domain_policy,
+                    action_policy,
+                    confirmation_policy,
+                },
+                selector,
+                Some(PathBuf::from(path)),
+                timeout_ms,
+            )?;
+        }
+        LocalCommand::WaitDownload {
+            target,
+            json,
+            ignored_global_flags,
+            domain_policy,
+            action_policy,
+            confirmation_policy,
+            path,
+            timeout_ms,
+        } => {
+            handle_wait_download(
+                target,
+                json,
+                ignored_global_flags,
+                PolicyArgsBundle {
+                    domain_policy,
+                    action_policy,
+                    confirmation_policy,
+                },
+                path.map(PathBuf::from),
+                timeout_ms,
+            )?;
         }
         LocalCommand::Launch {
             profile,
@@ -872,6 +930,291 @@ fn handle_state_inspect(
     Ok(())
 }
 
+fn handle_download(
+    target: SessionTarget,
+    json_output: bool,
+    ignored_global_flags: Vec<GlobalFlagWarning>,
+    policies: PolicyArgsBundle,
+    selector: String,
+    destination: Option<PathBuf>,
+    timeout_ms: u64,
+) -> Result<()> {
+    let mut public_args = vec![
+        "download".to_string(),
+        selector,
+        destination_display_arg(&destination)?,
+    ];
+    append_timeout_arg(&mut public_args, timeout_ms);
+    let selector = public_args
+        .get(1)
+        .cloned()
+        .context("invalid_args: download confirmation record is missing target")?;
+    execute_download_command(
+        target,
+        json_output,
+        ignored_global_flags,
+        policies,
+        DownloadCommandPlan {
+            public_args,
+            extension_args: download_extension_args(selector, timeout_ms),
+            destination,
+        },
+    )
+}
+
+fn handle_wait_download(
+    target: SessionTarget,
+    json_output: bool,
+    ignored_global_flags: Vec<GlobalFlagWarning>,
+    policies: PolicyArgsBundle,
+    destination: Option<PathBuf>,
+    timeout_ms: u64,
+) -> Result<()> {
+    let mut public_args = vec!["wait".to_string(), "--download".to_string()];
+    if let Some(path) = &destination {
+        public_args.push(path.display().to_string());
+    }
+    append_timeout_arg(&mut public_args, timeout_ms);
+    execute_download_command(
+        target,
+        json_output,
+        ignored_global_flags,
+        policies,
+        DownloadCommandPlan {
+            public_args,
+            extension_args: wait_download_extension_args(timeout_ms),
+            destination,
+        },
+    )
+}
+
+fn execute_download_command(
+    target: SessionTarget,
+    json_output: bool,
+    ignored_global_flags: Vec<GlobalFlagWarning>,
+    policies: PolicyArgsBundle,
+    plan: DownloadCommandPlan,
+) -> Result<()> {
+    let domain_decision =
+        resolve_domain_policy_or_exit(&policies.domain_policy, json_output, &ignored_global_flags)?;
+    let action_decision =
+        resolve_action_policy_or_exit(&policies.action_policy, json_output, &ignored_global_flags)?;
+    if let Err(err) = ensure_action_allowed(&action_decision, &plan.public_args) {
+        exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+        unreachable!();
+    }
+    if let Err(err) = preflight_download_destination(plan.destination.as_deref()) {
+        exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+        unreachable!();
+    }
+    let confirmation_decision = resolve_confirmation_policy_or_exit(
+        &policies.confirmation_policy,
+        json_output,
+        &ignored_global_flags,
+    )?;
+    let interactively_approved = match require_confirmation_or_exit(
+        &plan.public_args,
+        ConfirmationGate {
+            confirmation_decision: &confirmation_decision,
+            target: pending_target_from_session_target(&target),
+            domain_decision: &domain_decision,
+            action_decision: &action_decision,
+            json_output,
+            ignored_global_flags: &ignored_global_flags,
+        },
+    ) {
+        Ok(interactively_approved) => interactively_approved,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            unreachable!();
+        }
+    };
+
+    let request = build_command_request_with_policies(
+        plan.extension_args.clone(),
+        &domain_decision,
+        &action_decision,
+        &confirmation_decision,
+        interactively_approved,
+    )?;
+    run_download_dispatch(
+        target,
+        json_output,
+        &ignored_global_flags,
+        &domain_decision,
+        plan.extension_args,
+        &request,
+        plan.destination,
+    )
+}
+
+fn run_download_dispatch(
+    target: SessionTarget,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    extension_args: Vec<String>,
+    request: &RpcRequest,
+    destination: Option<PathBuf>,
+) -> Result<()> {
+    if let Err(err) = sweep_old_downloads(now_ms()) {
+        exit_with_anyhow_error_with_domain_policy(
+            err,
+            json_output,
+            ignored_global_flags,
+            &domain_decision.warnings,
+        )?;
+        unreachable!();
+    }
+    let (response, _) =
+        match send_download_request(&target, &extension_args, request, domain_decision) {
+            Ok(result) => result,
+            Err(err) => {
+                exit_with_anyhow_error_with_domain_policy(
+                    err,
+                    json_output,
+                    ignored_global_flags,
+                    &domain_decision.warnings,
+                )?;
+                unreachable!();
+            }
+        };
+    let result = response_result_or_exit_with_domain_policy(
+        response,
+        json_output,
+        ignored_global_flags,
+        &domain_decision.warnings,
+    )?;
+    let mut value = match finalize_download_value(&result, destination.as_deref()) {
+        Ok(value) => value,
+        Err(err) => {
+            exit_with_anyhow_error_with_domain_policy(
+                err,
+                json_output,
+                ignored_global_flags,
+                &domain_decision.warnings,
+            )?;
+            unreachable!();
+        }
+    };
+    append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
+    append_ignored_global_flag_warnings(&mut value, ignored_global_flags);
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
+fn finalize_download_value(result: &Value, destination: Option<&Path>) -> Result<Value> {
+    let staged_path = result
+        .get("stagedPath")
+        .and_then(Value::as_str)
+        .context("download extension response did not include stagedPath")?;
+    let finalization = finalize_download(Path::new(staged_path), destination)?;
+    let state = result
+        .get("state")
+        .and_then(Value::as_str)
+        .unwrap_or("complete")
+        .to_string();
+    let download_id = result.get("downloadId").cloned().unwrap_or(Value::Null);
+    let display_url = result
+        .get("url")
+        .and_then(Value::as_str)
+        .or_else(|| result.get("displayUrl").and_then(Value::as_str))
+        .and_then(|url| display_download_url(Some(url)));
+    let mut value = json!({
+        "text": format!(
+            "Downloaded to {} ({} byte(s); staged at {})",
+            finalization.path.display(),
+            finalization.bytes,
+            staged_path
+        ),
+        "path": finalization.path.display().to_string(),
+        "stagedPath": staged_path,
+        "bytes": finalization.bytes,
+        "state": state,
+        "downloadId": download_id,
+    });
+    if let Some(display_url) = display_url {
+        value["displayUrl"] = json!(display_url);
+    }
+    Ok(value)
+}
+
+fn preflight_download_destination(destination: Option<&Path>) -> Result<()> {
+    let Some(destination) = destination else {
+        return Ok(());
+    };
+    if destination.exists() {
+        bail!(
+            "invalid_args: download destination already exists: {}",
+            destination.display()
+        );
+    }
+    if let Some(parent) = destination.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+    }
+    Ok(())
+}
+
+fn send_download_request(
+    target: &SessionTarget,
+    args: &[String],
+    request: &RpcRequest,
+    domain_decision: &DomainPolicyDecision,
+) -> Result<(RpcResponse, String)> {
+    match target {
+        SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
+        SessionTarget::Name(profile_name) => {
+            send_to_named_session(profile_name, args, request, domain_decision)
+        }
+        SessionTarget::Default => match send_to_session(None, request) {
+            Ok(result) => Ok(result),
+            Err(err) if should_auto_launch_remote(None, args, &err) => {
+                cleanup_stale_sessions(now_ms())?;
+                let result = launch_firefox(LaunchOptions {
+                    profile: "Default".to_string(),
+                    url: launch_url_for_remote_args(args),
+                    firefox_path: None,
+                })?;
+                send_to_session(Some(&result.session.session_id), request)
+            }
+            Err(err) => Err(err),
+        },
+    }
+}
+
+fn destination_display_arg(destination: &Option<PathBuf>) -> Result<String> {
+    destination
+        .as_ref()
+        .map(|path| path.display().to_string())
+        .context("invalid_args: download requires <path>")
+}
+
+fn append_timeout_arg(args: &mut Vec<String>, timeout_ms: u64) {
+    if timeout_ms != DOWNLOAD_TIMEOUT_MS {
+        args.push("--timeout".to_string());
+        args.push(timeout_ms.to_string());
+    }
+}
+
+fn download_extension_args(selector: String, timeout_ms: u64) -> Vec<String> {
+    let mut args = vec!["download".to_string(), selector];
+    args.push("--timeout".to_string());
+    args.push(timeout_ms.to_string());
+    args
+}
+
+fn wait_download_extension_args(timeout_ms: u64) -> Vec<String> {
+    vec![
+        "wait".to_string(),
+        "--download".to_string(),
+        "--timeout".to_string(),
+        timeout_ms.to_string(),
+    ]
+}
+
 fn handle_confirm(id: String, json_output: bool) -> Result<()> {
     let now = now_ms();
     let _ = sweep_expired_confirmations(now);
@@ -917,6 +1260,22 @@ fn execute_confirmed_record(record: PendingConfirmation, json_output: bool) -> R
     let target = session_target_from_pending(&record.target);
     match record.args.first().map(String::as_str) {
         Some("launch") => execute_confirmed_launch(&record, &domain_decision, &action_decision),
+        Some("download") => execute_confirmed_download(
+            record,
+            target,
+            domain_decision,
+            action_decision,
+            json_output,
+        ),
+        Some("wait") if record.args.iter().any(|arg| arg == "--download") => {
+            execute_confirmed_download(
+                record,
+                target,
+                domain_decision,
+                action_decision,
+                json_output,
+            )
+        }
         Some("state") if record.args.get(1).map(String::as_str) == Some("save") => {
             let path = confirmed_state_path(&record)?;
             execute_confirmed_state_save(
@@ -1056,6 +1415,134 @@ fn execute_confirmed_remote(
     }
     let _ = action_decision;
     Ok(())
+}
+
+fn execute_confirmed_download(
+    record: PendingConfirmation,
+    target: SessionTarget,
+    domain_decision: DomainPolicyDecision,
+    action_decision: ActionPolicyDecision,
+    json_output: bool,
+) -> Result<()> {
+    ensure_action_allowed(&action_decision, &record.args)?;
+    let (extension_args, destination) = confirmed_download_request(&record.args)?;
+    preflight_download_destination(destination.as_deref())?;
+    let request = build_command_request_with_captured_policies(
+        extension_args.clone(),
+        record.domain_policy.clone(),
+        record.action_policy.clone(),
+        request_context_with_approval(&record),
+    )?;
+    let (response, _) =
+        send_download_request(&target, &extension_args, &request, &domain_decision)?;
+    let result = response_result_or_exit_with_domain_policy(
+        response,
+        json_output,
+        &[],
+        &domain_decision.warnings,
+    )?;
+    let mut value = finalize_download_value(&result, destination.as_deref())?;
+    append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
+fn confirmed_download_request(args: &[String]) -> Result<(Vec<String>, Option<PathBuf>)> {
+    match args.first().map(String::as_str) {
+        Some("download") => {
+            let (selector, destination, timeout_ms) = parse_download_public_args(args)?;
+            Ok((
+                download_extension_args(selector, timeout_ms),
+                Some(destination),
+            ))
+        }
+        Some("wait") if args.iter().any(|arg| arg == "--download") => {
+            let (destination, timeout_ms) = parse_wait_download_public_args(args)?;
+            Ok((wait_download_extension_args(timeout_ms), destination))
+        }
+        _ => bail!("invalid_args: pending confirmation record is not a download command"),
+    }
+}
+
+fn parse_download_public_args(args: &[String]) -> Result<(String, PathBuf, u64)> {
+    let mut selector = None;
+    let mut destination = None;
+    let mut timeout_ms = DOWNLOAD_TIMEOUT_MS;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--timeout" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .context("invalid_args: --timeout requires a value")?;
+                timeout_ms = value
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|value| *value > 0)
+                    .context("invalid_args: --timeout must be a positive integer")?;
+            }
+            other if other.starts_with('-') => {
+                bail!("invalid_args: unsupported download option in confirmation record: {other}")
+            }
+            _ => {
+                if selector.is_none() {
+                    selector = Some(args[index].clone());
+                } else if destination.is_none() {
+                    destination = Some(PathBuf::from(&args[index]));
+                } else {
+                    bail!(
+                        "invalid_args: unsupported download argument in confirmation record: {}",
+                        args[index]
+                    );
+                }
+            }
+        }
+        index += 1;
+    }
+    let selector = selector.context("invalid_args: pending download is missing target")?;
+    let destination = destination.context("invalid_args: pending download is missing path")?;
+    Ok((selector, destination, timeout_ms))
+}
+
+fn parse_wait_download_public_args(args: &[String]) -> Result<(Option<PathBuf>, u64)> {
+    let mut saw_download = false;
+    let mut destination = None;
+    let mut timeout_ms = DOWNLOAD_TIMEOUT_MS;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--download" => saw_download = true,
+            "--timeout" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .context("invalid_args: --timeout requires a value")?;
+                timeout_ms = value
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|value| *value > 0)
+                    .context("invalid_args: --timeout must be a positive integer")?;
+            }
+            other if other.starts_with('-') => {
+                bail!("invalid_args: unsupported wait --download option in confirmation record: {other}")
+            }
+            _ => {
+                if destination.is_some() {
+                    bail!(
+                        "invalid_args: unsupported wait --download argument in confirmation record: {}",
+                        args[index]
+                    );
+                }
+                destination = Some(PathBuf::from(&args[index]));
+            }
+        }
+        index += 1;
+    }
+    if !saw_download {
+        bail!("invalid_args: pending wait download is missing --download");
+    }
+    Ok((destination, timeout_ms))
 }
 
 fn execute_confirmed_state_save(
@@ -2142,6 +2629,7 @@ fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
                 | "cookies"
                 | "storage"
                 | "clipboard"
+                | "download"
         )
     )
 }
@@ -2188,6 +2676,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "cookies"
             | "storage"
             | "clipboard"
+            | "download"
             | "session"
             | "close"
             | "quit"
@@ -2348,6 +2837,7 @@ mod tests {
         ])));
         assert!(can_auto_launch_for_remote_args(&s(&["snapshot", "-i"])));
         assert!(can_auto_launch_for_remote_args(&s(&["tabs", "list"])));
+        assert!(can_auto_launch_for_remote_args(&s(&["download", "@e1"])));
         assert!(!can_auto_launch_for_remote_args(&s(&["close"])));
         assert!(!can_auto_launch_for_remote_args(&s(&["unknown"])));
     }
@@ -2391,7 +2881,7 @@ mod tests {
     fn loads_documented_not_available_roots_from_artifact() {
         let roots = unsupported_roots_from_json(UNSUPPORTED_ROOTS_JSON).unwrap();
         assert!(roots.contains("stream"));
-        assert!(roots.contains("download"));
+        assert!(!roots.contains("download"));
         assert!(!roots.contains("open"));
         assert!(!roots.contains("click"));
     }
@@ -2411,6 +2901,7 @@ mod tests {
     fn supported_roots_are_not_marked_not_available() {
         for root in [
             "open", "goto", "navigate", "click", "fill", "snapshot", "tab", "tabs", "find", "wait",
+            "download",
         ] {
             assert!(local_not_available_result(&s(&[root]), false, &[])
                 .unwrap()
@@ -2426,7 +2917,7 @@ mod tests {
 
     #[test]
     fn formats_documented_not_available_json() {
-        let result = local_not_available_result(&s(&["download", "#link", "out.zip"]), true, &[])
+        let result = local_not_available_result(&s(&["upload", "#input", "out.zip"]), true, &[])
             .unwrap()
             .unwrap();
         assert!(result.contains("\"success\": false"));
@@ -2471,6 +2962,7 @@ mod tests {
             "click",
             "tabs",
             "clipboard",
+            "download",
             "session",
             "close",
         ] {

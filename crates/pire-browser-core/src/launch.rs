@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::download::{download_user_js_prefs, ensure_profile_download_dir, sweep_old_downloads};
 use crate::firefox::discover_firefox;
 use crate::session::{
     cleanup_stale_sessions, data_dir, ensure_runtime_dirs, list_sessions, now_ms, SessionInfo,
@@ -62,7 +63,9 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
         .with_context(|| format!("failed to create {}", profile_path.display()))?;
     fs::create_dir_all(&metadata_dir)
         .with_context(|| format!("failed to create {}", metadata_dir.display()))?;
-    write_profile_startup_prefs(&profile_path)?;
+    let download_dir = ensure_profile_download_dir(&root, &options.profile)?;
+    let _ = sweep_old_downloads(now_ms());
+    write_profile_startup_prefs(&profile_path, &download_dir)?;
     restrict_current_user_dir_best_effort(&profile_path);
     restrict_current_user_dir_best_effort(&metadata_dir);
 
@@ -471,7 +474,7 @@ fn terminate_process_best_effort(_pid: u32) -> bool {
     false
 }
 
-fn write_profile_startup_prefs(profile_path: &Path) -> Result<()> {
+fn write_profile_startup_prefs(profile_path: &Path, download_dir: &Path) -> Result<()> {
     const BEGIN: &str = "// BEGIN pire-browser startup prefs";
     const END: &str = "// END pire-browser startup prefs";
 
@@ -488,8 +491,10 @@ user_pref("startup.homepage_welcome_url", "");
 user_pref("startup.homepage_welcome_url.additional", "");
 user_pref("browser.aboutwelcome.enabled", false);
 user_pref("browser.shell.checkDefaultBrowser", false);
+{}
 {END}
-"#
+"#,
+        download_user_js_prefs(download_dir)
     );
 
     let existing = fs::read_to_string(&user_js).unwrap_or_default();

@@ -295,6 +295,15 @@
       "source": "upstream"
     },
     {
+      "root": "wait",
+      "subcommand": "--download",
+      "signature": "wait --download [path]",
+      "category": "download",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
       "root": "find",
       "signature": "find <locator>",
       "category": "get",
@@ -529,6 +538,14 @@
       "implementationStatus": "implemented",
       "enforcementLocus": "extension",
       "source": "pire-extension"
+    },
+    {
+      "root": "download",
+      "signature": "download <target> <path>",
+      "category": "download",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
     }
   ],
   "compoundEntries": [
@@ -768,14 +785,6 @@
       "root": "network",
       "signature": "network <subcommand>",
       "category": "network",
-      "implementationStatus": "reserved",
-      "enforcementLocus": "extension",
-      "source": "upstream"
-    },
-    {
-      "root": "download",
-      "signature": "download <target> <path>",
-      "category": "download",
       "implementationStatus": "reserved",
       "enforcementLocus": "extension",
       "source": "upstream"

@@ -25,6 +25,7 @@
     "windows",
     "webNavigation",
     "cookies",
+    "downloads",
     "webRequest",
     "webRequestBlocking"
   ],

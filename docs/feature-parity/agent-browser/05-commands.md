@@ -519,12 +519,13 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Medium
   - Testing: Use fixtures with delayed DOM insertion, delayed text, URL changes, load events, hidden states, and downloads; assert timeout and success cases.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser wait --download [path]` - Wait for download
+- [P] `agent-browser wait --download [path]` - Wait for download
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Covered as best-effort Firefox download completion matching. The CLI waits for a staged Firefox download and finalizes it to the requested path; final URL/path parity is not claimed.
 - [F] `agent-browser wait --fn "!document.body.innerText.includes('Loading...')"` - Wait for text to disappear
   - Extension Compatibility: True
   - Priority: High
@@ -541,18 +542,20 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
 
 ## Downloads
 
-- [ ] `agent-browser download <sel> <path>` - Click element to trigger download
+- [P] `agent-browser download <sel> <path>` - Click element to trigger download
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Medium
   - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser wait --download [path]` - Wait for any download to complete
+  - GPT-5.5 implementation note: Covered for text/binary downloads that Firefox saves through the managed profile staging directory. Unknown MIME/helper-app prompts can still stall or render in-page; timeout is the safety boundary.
+- [P] `agent-browser wait --download [path]` - Wait for any download to complete
   - Extension Compatibility: True
   - Priority: High
   - Complexity: Medium
   - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Covered as best-effort recent/new Firefox download matching, then CLI finalization. Multiple simultaneous downloads are best-effort; newest eligible completion wins.
 
 ## Mouse
 

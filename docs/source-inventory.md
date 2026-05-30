@@ -13,7 +13,7 @@ This inventory records which source sets are authoritative for `pire-browser`, w
 | `crates/pire-browser-host/` | Native Messaging host | Firefox extension bridge to the Rust core and Windows named-pipe session handling. |
 | `extension/src/` | Firefox WebExtension source | Browser-side command handling, DOM inspection/actions, dialogs, refs, frame handling, and screenshot capture. |
 | `pi/extensions/` | Pi extension adapters | Pi-facing wrappers for `pire-browser` and the `agent-browser` oracle adapter. |
-| `scripts/` | Maintainer automation | Install, package, smoke, state/named-session/domain-policy lifecycle, RBXLX download, and oracle comparison workflows. |
+| `scripts/` | Maintainer automation | Install, package, smoke, state/named-session/domain-policy/download lifecycle, RBXLX download, and oracle comparison workflows. |
 | `fixtures/` | Test fixtures | Local HTML state/session fixtures, oracle fixture data, and shared policy contract fixtures such as domain URL verdicts, action-policy command maps, and action-policy verdicts. |
 | `docs/` | Project documentation | Architecture, compatibility matrix, unsupported-root metadata, oracle workflow, and feature-parity notes. |
 | `docs/CONTEXT.md` | Agent work contract | Functional-boundary labels, session-review requirements, redaction rules, and canonical source pointers. |
@@ -33,6 +33,7 @@ This inventory records which source sets are authoritative for `pire-browser`, w
 | `.pire-state/` | Local sensitive runtime state | Gitignored plaintext cookies/Web Storage state files created by operator workflows; inspect metadata only and do not commit contents. |
 | `%LOCALAPPDATA%\pire-browser\state-receipts\` | Local runtime metadata | Per-user 24-hour receipts written by `state inspect --record` for opt-in `state load --require-inspected` checks; not portable source. |
 | `%LOCALAPPDATA%\pire-browser\confirmations\` | Local sensitive runtime metadata | Per-user short-lived plaintext pending action-confirmation records for `--confirm-actions`; may contain original command args and must not be committed, logged, or treated as an audit log. |
+| `%LOCALAPPDATA%\pire-browser\downloads\` | Local runtime staging | Managed-profile Firefox download staging directories swept by launch/download commands; final user-requested files are moved elsewhere by the CLI. |
 | Root `discord-*`, `gofile-*`, `rbxlx-*`, `web-ext*.log`, screenshots, and CSV captures | Runtime/background artifacts | Historical scraping/download evidence and manual-session outputs, not authoritative implementation source. |
 
 ## Historical And Background Material

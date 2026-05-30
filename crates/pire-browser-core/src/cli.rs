@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::action_policy::ActionPolicyArgs;
 use crate::confirmation_policy::ConfirmationPolicyArgs;
 use crate::domain_policy::DomainPolicyArgs;
+use crate::download::DOWNLOAD_TIMEOUT_MS;
 use crate::protocol::RpcRequest;
 use crate::state_policy::StateLoadPolicyFlag;
 
@@ -86,6 +87,27 @@ pub enum LocalCommand {
         ignored_global_flags: Vec<GlobalFlagWarning>,
         path: String,
         record: bool,
+    },
+    Download {
+        target: SessionTarget,
+        json: bool,
+        ignored_global_flags: Vec<GlobalFlagWarning>,
+        domain_policy: DomainPolicyArgs,
+        action_policy: ActionPolicyArgs,
+        confirmation_policy: ConfirmationPolicyArgs,
+        selector: String,
+        path: String,
+        timeout_ms: u64,
+    },
+    WaitDownload {
+        target: SessionTarget,
+        json: bool,
+        ignored_global_flags: Vec<GlobalFlagWarning>,
+        domain_policy: DomainPolicyArgs,
+        action_policy: ActionPolicyArgs,
+        confirmation_policy: ConfirmationPolicyArgs,
+        path: Option<String>,
+        timeout_ms: u64,
     },
     Confirm {
         id: String,
@@ -483,6 +505,39 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         args = original_args;
     }
 
+    if command == "download" {
+        args.remove(0);
+        remove_json_flags(&mut args, &mut json_output);
+        let (selector, path, timeout_ms) = parse_download_args(&mut args)?;
+        return Ok(LocalCommand::Download {
+            target: session_target,
+            json: json_output,
+            ignored_global_flags,
+            domain_policy,
+            action_policy,
+            confirmation_policy,
+            selector,
+            path,
+            timeout_ms,
+        });
+    }
+
+    if command == "wait" && args.iter().any(|arg| arg == "--download") {
+        args.remove(0);
+        remove_json_flags(&mut args, &mut json_output);
+        let (path, timeout_ms) = parse_wait_download_args(&mut args)?;
+        return Ok(LocalCommand::WaitDownload {
+            target: session_target,
+            json: json_output,
+            ignored_global_flags,
+            domain_policy,
+            action_policy,
+            confirmation_policy,
+            path,
+            timeout_ms,
+        });
+    }
+
     if command == "confirm" || command == "deny" {
         args.remove(0);
         remove_json_flags(&mut args, &mut json_output);
@@ -620,6 +675,91 @@ fn remove_json_flags(args: &mut Vec<String>, json_output: &mut bool) {
     }
 }
 
+fn parse_download_args(args: &mut Vec<String>) -> Result<(String, String, u64)> {
+    let mut selector = None;
+    let mut path = None;
+    let mut timeout_ms = DOWNLOAD_TIMEOUT_MS;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--json" => {
+                args.remove(i);
+                continue;
+            }
+            "--timeout" => {
+                i += 1;
+                let Some(value) = args.get(i) else {
+                    bail!("--timeout requires a value");
+                };
+                timeout_ms = parse_positive_timeout(value)?;
+            }
+            other if other.starts_with('-') => bail!("unsupported download option: {other}"),
+            _ => {
+                if selector.is_none() {
+                    selector = Some(args[i].clone());
+                } else if path.is_none() {
+                    path = Some(args[i].clone());
+                } else {
+                    bail!("unsupported download option: {}", args[i]);
+                }
+            }
+        }
+        i += 1;
+    }
+    let Some(selector) = selector else {
+        bail!("invalid_args: download requires <target>");
+    };
+    let Some(path) = path else {
+        bail!("invalid_args: download requires <path>");
+    };
+    Ok((selector, path, timeout_ms))
+}
+
+fn parse_wait_download_args(args: &mut Vec<String>) -> Result<(Option<String>, u64)> {
+    let mut saw_download = false;
+    let mut path = None;
+    let mut timeout_ms = DOWNLOAD_TIMEOUT_MS;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--json" => {
+                args.remove(i);
+                continue;
+            }
+            "--download" => saw_download = true,
+            "--timeout" => {
+                i += 1;
+                let Some(value) = args.get(i) else {
+                    bail!("--timeout requires a value");
+                };
+                timeout_ms = parse_positive_timeout(value)?;
+            }
+            other if other.starts_with('-') => bail!("unsupported wait --download option: {other}"),
+            _ => {
+                if path.is_some() {
+                    bail!("unsupported wait --download option: {}", args[i]);
+                }
+                path = Some(args[i].clone());
+            }
+        }
+        i += 1;
+    }
+    if !saw_download {
+        bail!("invalid_args: wait download handler requires --download");
+    }
+    Ok((path, timeout_ms))
+}
+
+fn parse_positive_timeout(value: &str) -> Result<u64> {
+    let timeout = value
+        .parse::<u64>()
+        .map_err(|_| anyhow::anyhow!("invalid_args: --timeout must be a positive integer"))?;
+    if timeout == 0 {
+        bail!("invalid_args: --timeout must be a positive integer");
+    }
+    Ok(timeout)
+}
+
 fn ignored_with_warning_global_flag(flag: &str) -> bool {
     matches!(flag, "--headed" | "--headless" | "--color-scheme")
 }
@@ -635,6 +775,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "click" => CLICK_HELP,
         "fill" => FILL_HELP,
         "wait" => WAIT_HELP,
+        "download" => DOWNLOAD_HELP,
         "clipboard" => CLIPBOARD_HELP,
         "state" => STATE_HELP,
         "action-policy" => ACTION_POLICY_HELP,
@@ -666,6 +807,8 @@ Common commands:
   fill '@e2' "text"               Fill a ref from snapshot/find output
   find label "Email" fill "x@y"   Find by semantic locator and act
   wait --selector "#done"         Wait for page state
+  download '@e4' out.txt          Click a target and save a download
+  wait --download out.txt         Wait for a recent/new download and save it
   clipboard read                  Read text from the system clipboard
   state save .pire-state/app.json Save active-origin cookies and web storage
   state inspect .pire-state/app.json
@@ -757,6 +900,18 @@ Usage:
   pire-browser wait --selector "#done" --timeout 5000
   pire-browser wait --text "Saved"
   pire-browser wait --url "**/dashboard"
+  pire-browser wait --download out.txt --timeout 60000
+"##;
+
+const DOWNLOAD_HELP: &str = r##"
+Usage:
+  pire-browser download <target> <path> [--timeout <ms>]
+  pire-browser wait --download [path] [--timeout <ms>]
+
+Clicks a ref/selector to trigger a Firefox download, or waits for a recent/new
+download. The default timeout is 60000ms. Files are staged under the local
+pire-browser data directory before being finalized to the requested path.
+Unknown MIME/helper-app dialogs can still stall until timeout on Firefox.
 "##;
 
 const CLIPBOARD_HELP: &str = r##"
@@ -1220,6 +1375,70 @@ mod tests {
         assert!(err
             .to_string()
             .contains("--confirm-actions was provided more than once"));
+    }
+
+    #[test]
+    fn parses_download_commands() {
+        let parsed = parse_cli_args(&s(&[
+            "--session-name",
+            "work",
+            "--confirm-actions",
+            "download",
+            "download",
+            "@e4",
+            "out/report.txt",
+            "--timeout",
+            "5000",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Download {
+                target: SessionTarget::Name("work".to_string()),
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: ConfirmationPolicyArgs {
+                    confirm_actions: Some("download".to_string()),
+                    confirm_interactive: false,
+                },
+                selector: "@e4".to_string(),
+                path: "out/report.txt".to_string(),
+                timeout_ms: 5000,
+            }
+        );
+
+        let parsed = parse_cli_args(&s(&[
+            "--action-policy",
+            "policy.json",
+            "wait",
+            "--download",
+            "out/report.txt",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::WaitDownload {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: ActionPolicyArgs {
+                    action_policy_path: Some("policy.json".to_string()),
+                },
+                confirmation_policy: default_confirmation_policy(),
+                path: Some("out/report.txt".to_string()),
+                timeout_ms: DOWNLOAD_TIMEOUT_MS,
+            }
+        );
+
+        let err = parse_cli_args(&s(&["download", "@e4", "out.txt", "--timeout", "0"]))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("--timeout must be a positive integer"));
     }
 
     #[test]
