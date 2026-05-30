@@ -143,6 +143,20 @@
       "expectedDecision": "meta"
     },
     {
+      "name": "confirm approval bypasses as meta",
+      "args": ["confirm", "c_8f3a1234"],
+      "policy": { "default": "deny" },
+      "expectedCategory": null,
+      "expectedDecision": "meta"
+    },
+    {
+      "name": "deny approval bypasses as meta",
+      "args": ["deny", "c_8f3a1234"],
+      "policy": { "default": "deny" },
+      "expectedCategory": null,
+      "expectedDecision": "meta"
+    },
+    {
       "name": "clipboard paste maps to fill",
       "args": ["clipboard", "paste"],
       "policy": { "default": "deny", "allow": ["fill"] },

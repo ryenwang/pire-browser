@@ -9,11 +9,9 @@
   "unsupportedRoots": [
     "addinitscript",
     "auth",
-    "confirm",
     "connect",
     "console",
     "dashboard",
-    "deny",
     "device",
     "diff",
     "download",
@@ -74,24 +72,6 @@
       ]
     },
     {
-      "root": "confirm",
-      "itemIds": [
-        "doc-commands-172-agent-browser-confirm-confirmation-id-approve-a-pending-action",
-        "doc-commands-175-agent-browser-confirm-c-8f3a1234",
-        "doc-security-023-agent-browser-confirm-c-8f3a1234"
-      ],
-      "ownerEpics": [
-        "Epic 7"
-      ],
-      "dispositions": [
-        "not_started"
-      ],
-      "sourcePaths": [
-        "05-commands.md",
-        "16-security.md"
-      ]
-    },
-    {
       "root": "connect",
       "itemIds": [
         "cmd-connect"
@@ -138,23 +118,6 @@
       ],
       "sourcePaths": [
         "README.md"
-      ]
-    },
-    {
-      "root": "deny",
-      "itemIds": [
-        "doc-commands-173-agent-browser-deny-confirmation-id-deny-a-pending-action",
-        "doc-security-024-agent-browser-deny-c-8f3a1234"
-      ],
-      "ownerEpics": [
-        "Epic 7"
-      ],
-      "dispositions": [
-        "not_started"
-      ],
-      "sourcePaths": [
-        "05-commands.md",
-        "16-security.md"
       ]
     },
     {

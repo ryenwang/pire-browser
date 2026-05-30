@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const DOMAIN_POLICY_ENV_VAR: &str = "AGENT_BROWSER_ALLOWED_DOMAINS";
 pub const DOMAIN_POLICY_OVERRIDE_WARNING_CODE: &str = "DOMAIN_POLICY_OVERRIDDEN";
@@ -42,7 +42,7 @@ impl DomainPolicyDecision {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DomainPolicyRequestContext {
     pub enabled: bool,
@@ -223,6 +223,39 @@ pub fn request_context(decision: &DomainPolicyDecision) -> Option<DomainPolicyRe
     decision.enabled().then(|| DomainPolicyRequestContext {
         enabled: true,
         patterns: pattern_texts(&decision.patterns),
+    })
+}
+
+pub fn decision_from_request_context(
+    context: Option<&DomainPolicyRequestContext>,
+) -> Result<DomainPolicyDecision> {
+    let Some(context) = context.filter(|context| context.enabled) else {
+        return Ok(DomainPolicyDecision {
+            diagnostic: diagnostic(
+                false,
+                "record",
+                true,
+                Vec::new(),
+                "domain allowlist was disabled when this confirmation was recorded",
+            ),
+            patterns: Vec::new(),
+            warnings: Vec::new(),
+        });
+    };
+    let patterns = parse_domain_patterns(&context.patterns.join(","))?;
+    Ok(DomainPolicyDecision {
+        diagnostic: diagnostic(
+            true,
+            "record",
+            true,
+            pattern_texts(&patterns),
+            format!(
+                "domain allowlist restored from pending confirmation: {}",
+                pattern_texts(&patterns).join(", ")
+            ),
+        ),
+        patterns,
+        warnings: Vec::new(),
     })
 }
 

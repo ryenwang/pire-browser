@@ -1187,30 +1187,34 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
 
 ## Confirmation
 
-- [ ] `agent-browser confirm <confirmation-id>` - Approve a pending action
+- [P] `agent-browser confirm <confirmation-id>` - Approve a pending action
   - Extension Compatibility: True
   - Priority: High
   - Complexity: High
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser deny <confirmation-id>` - Deny a pending action
+  - GPT-5.5 implementation note: V1 consumes a short-lived local pending-confirmation record and replays the stored command after re-checking captured domain/action policy context. Records are plaintext local runtime metadata, not an audit log.
+- [P] `agent-browser deny <confirmation-id>` - Deny a pending action
   - Extension Compatibility: True
   - Priority: High
   - Complexity: High
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser --confirm-actions eval,download eval "document.title"`
+  - GPT-5.5 implementation note: V1 consumes the pending record without executing the stored command; expired or missing records fail cleanly.
+- [P] `agent-browser --confirm-actions eval,download eval "document.title"`
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: Low
   - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser confirm c_8f3a1234`
+  - GPT-5.5 implementation note: V1 supports comma-separated confirmation categories from `--confirm-actions` and `AGENT_BROWSER_CONFIRM_ACTIONS`, returns `ConfirmationRequired` with exit code 75, and stores a 60-second pending record. Downloads/uploads remain unavailable, so those categories are only meaningful once executable commands land.
+- [P] `agent-browser confirm c_8f3a1234`
   - Extension Compatibility: True
   - Priority: Low
   - Complexity: Medium
   - Testing: Use policy fixtures and CLI tests for allow/deny decisions, confirmation requirements, encrypted state round trips, and audit-log records.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Same V1 confirmation replay path as `confirm <confirmation-id>`; ids use the `c_8f3a1234` form and expire after about 60 seconds.
 
 ## State management
 

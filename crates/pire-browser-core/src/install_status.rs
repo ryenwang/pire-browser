@@ -8,6 +8,9 @@ use serde_json::Value;
 
 use crate::action_policy::{action_policy_text, collect_action_policy, ActionPolicyDiagnostic};
 use crate::auth_handoff::{auth_handoff_text, collect_default_auth_handoff, AuthHandoffInfo};
+use crate::confirmation_policy::{
+    collect_confirmation_policy, confirmation_policy_text, ConfirmationPolicyDiagnostic,
+};
 use crate::domain_policy::{collect_domain_policy, domain_policy_text, DomainPolicyDiagnostic};
 use crate::firefox::discover_firefox;
 use crate::launch::{default_profile_status, firefox_startup_policy_status, DEFAULT_PROFILE_NAME};
@@ -38,6 +41,7 @@ pub struct InstallStatusReport {
     pub firefox_startup_policy: CheckStatus,
     pub auth_handoff: AuthHandoffInfo,
     pub action_policy: ActionPolicyDiagnostic,
+    pub confirmation_policy: ConfirmationPolicyDiagnostic,
     pub domain_policy: DomainPolicyDiagnostic,
     pub state_policy: StatePolicyDiagnostic,
     pub live_sessions: Vec<SessionInfo>,
@@ -87,6 +91,7 @@ pub fn collect_install_status() -> Result<InstallStatusReport> {
     let firefox_startup_policy = check_firefox_startup_policy();
     let auth_handoff = collect_default_auth_handoff()?;
     let action_policy = collect_action_policy();
+    let confirmation_policy = collect_confirmation_policy();
     let domain_policy = collect_domain_policy();
     let state_policy = collect_state_policy();
 
@@ -115,6 +120,7 @@ pub fn collect_install_status() -> Result<InstallStatusReport> {
         firefox_startup_policy,
         auth_handoff,
         action_policy,
+        confirmation_policy,
         domain_policy,
         state_policy,
         live_sessions,
@@ -148,6 +154,7 @@ pub fn install_status_text(report: &InstallStatusReport) -> String {
     lines.push(format_check_status(&report.firefox_startup_policy));
     lines.push(auth_handoff_text(&report.auth_handoff));
     lines.push(action_policy_text(&report.action_policy));
+    lines.push(confirmation_policy_text(&report.confirmation_policy));
     lines.push(domain_policy_text(&report.domain_policy));
     lines.push(state_policy_text(&report.state_policy));
     lines.push(format!(
@@ -455,6 +462,9 @@ mod tests {
                 DEFAULT_PROFILE_NAME,
             ),
             action_policy: crate::action_policy::action_policy_from_env_value(None),
+            confirmation_policy: crate::confirmation_policy::confirmation_policy_from_env_values(
+                None, None,
+            ),
             domain_policy: crate::domain_policy::domain_policy_from_env_value(None),
             state_policy: crate::state_policy::state_policy_from_env_value(None),
             live_sessions: Vec::new(),
@@ -465,6 +475,7 @@ mod tests {
         assert!(text.contains("CLI on PATH"));
         assert!(text.contains("Auth handoff"));
         assert!(text.contains("Action policy"));
+        assert!(text.contains("Confirmation policy"));
         assert!(text.contains("Domain policy"));
         assert!(text.contains("State policy"));
     }
