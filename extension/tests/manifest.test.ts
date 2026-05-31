@@ -10,6 +10,7 @@ describe("manifest", () => {
     expect(manifest.browser_specific_settings.gecko.id).toBe("pire-browser@pi.local");
     expect(manifest.applications.gecko.id).toBe("pire-browser@pi.local");
     expect(manifest.permissions).toContain("nativeMessaging");
+    expect(manifest.permissions).toContain("downloads");
     expect(manifest.permissions).toContain("<all_urls>");
     expect(manifest.background.persistent).toBe(true);
     expect(manifest.content_scripts[0].all_frames).toBe(true);

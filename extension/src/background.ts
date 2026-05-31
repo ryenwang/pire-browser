@@ -141,6 +141,9 @@ const HOST_NAME = "dev.pi.pire_browser";
 const CHUNK_SIZE = 700_000;
 const CLOSE_TEARDOWN_DELAY_MS = 0;
 const TAB_READY_POLL_INTERVAL_MS = 100;
+const DOWNLOAD_TIMEOUT_MS = 60_000;
+const DOWNLOAD_RECENT_MS = 60_000;
+const DOWNLOAD_POLL_INTERVAL_MS = 200;
 
 let port: any;
 let profileId = "";
@@ -442,7 +445,7 @@ function actionPolicyCategoryName(args: string[]): string | null {
     case "scrollintoview":
       return "scroll";
     case "wait":
-      return "wait";
+      return args.includes("--download") ? "download" : "wait";
     case "find":
       return findActionPolicyCategory(args);
     case "get":
@@ -472,6 +475,8 @@ function actionPolicyCategoryName(args: string[]): string | null {
     case "state":
       if (subcommand === "save" || subcommand === "load") return "state";
       return null;
+    case "download":
+      return "download";
     default:
       return null;
   }
@@ -499,7 +504,6 @@ function notAvailableActionPolicyRoot(command: string) {
     "dashboard",
     "device",
     "diff",
-    "download",
     "drag",
     "errors",
     "highlight",
@@ -628,6 +632,7 @@ function commandNeedsActivePageDomainCheck(args: string[]) {
       "reload",
       "cookies",
       "storage",
+      "download",
     ].includes(command ?? "")
   ) {
     return true;
@@ -639,6 +644,7 @@ function commandNeedsActivePageDomainCheck(args: string[]) {
 }
 
 function waitCommandTouchesActivePage(args: string[]) {
+  if (args.includes("--download")) return true;
   if (args.some((arg) => ["--load", "--selector", "--text", "--url", "--fn"].includes(arg))) return true;
   const first = args.find((arg) => !arg.startsWith("--"));
   return Boolean(first && Number.isNaN(Number(first)));
@@ -722,9 +728,10 @@ async function executeCommand(
       return stateCommand(rest);
     case "clipboard":
       return clipboardCommand(rest);
+    case "download":
+      return downloadCommand(rest);
     case "install":
     case "upgrade":
-    case "download":
     case "drag":
     case "upload":
     case "mouse":
@@ -947,6 +954,7 @@ async function scrollCommand(args: string[]) {
 }
 
 async function waitCommand(args: string[]) {
+  if (args.includes("--download")) return waitDownloadCommand(args);
   const timeoutResult = parseTimeoutOption(args, 10000);
   if ("error" in timeoutResult) return timeoutResult;
   const timeout = timeoutResult.ms;
@@ -983,6 +991,184 @@ async function waitCommand(args: string[]) {
   if ("error" in waitResult) return waitResult;
   await delay(waitResult.ms);
   return { text: `Waited ${waitResult.ms}ms` };
+}
+
+async function downloadCommand(args: string[]) {
+  const parsed = parseDownloadCommand(args);
+  if ("error" in parsed) return parsed;
+  const tab = await targetTab();
+  await activatePage(tab);
+  const watcher = createDownloadWatcher({
+    timeout: parsed.timeout,
+    startedAfter: Date.now(),
+    activeUrl: tab.url,
+  });
+  const click = await clickCommand([parsed.target]);
+  if ("error" in click) {
+    watcher.cancel();
+    return click;
+  }
+  return watcher.promise;
+}
+
+async function waitDownloadCommand(args: string[]) {
+  const timeoutResult = parseTimeoutOption(args, DOWNLOAD_TIMEOUT_MS);
+  if ("error" in timeoutResult) return timeoutResult;
+  const tab = await targetTab().catch(() => undefined);
+  if (tab) await activatePage(tab);
+  const watcher = createDownloadWatcher({
+    timeout: timeoutResult.ms,
+    startedAfter: Date.now() - DOWNLOAD_RECENT_MS,
+    activeUrl: tab?.url,
+  });
+  return watcher.promise;
+}
+
+function parseDownloadCommand(args: string[]): { target: string; timeout: number } | { error: Record<string, unknown> } {
+  const timeoutResult = parseTimeoutOption(args, DOWNLOAD_TIMEOUT_MS);
+  if (timeoutResult.error) return { error: timeoutResult.error };
+  const target = firstPositionalArg(args, ["--timeout"]);
+  if (!target) {
+    return { error: { code: "invalid_args", message: "download requires <target> <path>" } };
+  }
+  return { target, timeout: timeoutResult.ms };
+}
+
+function createDownloadWatcher(options: {
+  timeout: number;
+  startedAfter: number;
+  activeUrl?: string;
+}): { promise: Promise<Record<string, unknown>>; cancel: () => void } {
+  let settled = false;
+  let timeoutTimer = 0;
+  let pollTimer = 0;
+  let wakeTimer = 0;
+  let cleanupWatcher = () => {};
+  const activeOrigin = safeOrigin(options.activeUrl);
+  const createdDownloadIds = new Set<number>();
+
+  const promise = new Promise<Record<string, unknown>>((resolve) => {
+    const cleanup = () => {
+      clearTimeout(timeoutTimer);
+      clearInterval(pollTimer);
+      clearTimeout(wakeTimer);
+      browser.downloads?.onChanged?.removeListener?.(listener);
+      browser.downloads?.onCreated?.removeListener?.(createdListener);
+    };
+    cleanupWatcher = cleanup;
+    const settle = (result: Record<string, unknown>) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+    const check = async () => {
+      const match = await newestEligibleDownload(options.startedAfter, activeOrigin, createdDownloadIds).catch((error: unknown) => ({
+        error: {
+          code: "DownloadError",
+          message: `Failed to inspect Firefox downloads: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      }));
+      if ("error" in match) {
+        settle(match);
+        return;
+      }
+      if (!match.item) return;
+      if (match.item.state === "complete") {
+        settle(downloadResult(match.item));
+      } else if (match.item.state === "interrupted") {
+        settle({
+          error: {
+            code: "DownloadError",
+            message: `Firefox download ${match.item.id} was interrupted`,
+          },
+        });
+      }
+    };
+    const wake = () => {
+      clearTimeout(wakeTimer);
+      wakeTimer = setTimeout(() => void check(), 50);
+    };
+    const listener = () => wake();
+    const createdListener = (item: any) => {
+      if (typeof item?.id === "number") createdDownloadIds.add(item.id);
+      wake();
+    };
+
+    if (!browser.downloads?.search) {
+      settle(notAvailable("download", "Firefox did not expose the downloads API to the extension context."));
+      return;
+    }
+    browser.downloads.onChanged?.addListener?.(listener);
+    browser.downloads.onCreated?.addListener?.(createdListener);
+    pollTimer = setInterval(() => void check(), DOWNLOAD_POLL_INTERVAL_MS);
+    timeoutTimer = setTimeout(
+      () => settle({ error: { code: "TimeoutError", message: `Timed out waiting for Firefox download after ${options.timeout}ms` } }),
+      options.timeout
+    );
+    void check();
+  });
+
+  return {
+    promise,
+    cancel: () => {
+      if (settled) return;
+      settled = true;
+      cleanupWatcher();
+    },
+  };
+}
+
+async function newestEligibleDownload(
+  startedAfter: number,
+  activeOrigin: string | undefined,
+  createdDownloadIds: Set<number>
+): Promise<{ item?: any } | { error: Record<string, unknown> }> {
+  const downloads = await browser.downloads.search({});
+  const eligible = downloads
+    .filter((item: any) => typeof item.id === "number" && typeof item.filename === "string" && item.filename.length > 0)
+    .filter((item: any) => downloadStartMs(item) >= startedAfter || createdDownloadIds.has(item.id))
+    .filter((item: any) => ["in_progress", "complete", "interrupted"].includes(item.state));
+  eligible.sort((left: any, right: any) => downloadScore(right, activeOrigin) - downloadScore(left, activeOrigin));
+  return { item: eligible[0] };
+}
+
+function downloadResult(item: any) {
+  const bytes = typeof item.fileSize === "number" && item.fileSize >= 0
+    ? item.fileSize
+    : typeof item.totalBytes === "number" && item.totalBytes >= 0
+      ? item.totalBytes
+      : 0;
+  return {
+    text: `Firefox download ${item.id} completed`,
+    stagedPath: item.filename,
+    bytes,
+    state: item.state ?? "complete",
+    downloadId: item.id,
+    url: item.url,
+    displayUrl: typeof item.url === "string" ? displayUrlWithoutQueryOrFragment(item.url) : undefined,
+  };
+}
+
+function downloadScore(item: any, activeOrigin?: string) {
+  const referrerOrigin = safeOrigin(item.referrer);
+  const sourceOrigin = safeOrigin(item.url);
+  const originBonus = activeOrigin && (referrerOrigin === activeOrigin || sourceOrigin === activeOrigin) ? 10_000_000_000_000 : 0;
+  return originBonus + downloadStartMs(item);
+}
+
+function downloadStartMs(item: any) {
+  const parsed = Date.parse(item.startTime ?? "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function safeOrigin(url?: string) {
+  if (!url) return undefined;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
+  }
 }
 
 async function getCommand(args: string[]) {

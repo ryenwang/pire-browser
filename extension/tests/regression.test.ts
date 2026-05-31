@@ -333,6 +333,17 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain('"clipboard paste"');
   });
 
+  it("routes downloads through the Firefox downloads API", () => {
+    const body = background();
+    expect(body).toContain('case "download":');
+    expect(body).toContain("return downloadCommand(rest);");
+    expect(body).toContain("async function downloadCommand");
+    expect(body).toContain("async function waitDownloadCommand");
+    expect(body).toContain("browser.downloads.search");
+    expect(body).toContain("browser.downloads.onChanged");
+    expect(body).toContain('"--download"');
+  });
+
   it("routes active-origin state export and import through focused helpers", () => {
     const body = background();
     expect(body).toContain('case "state":');
@@ -461,6 +472,7 @@ describe("agent-browser compatibility foundations", () => {
       ["scroll"],
       ["scrollintoview", "@e1"],
       ["wait"],
+      ["wait", "--download", "file.txt"],
       ["screenshot"],
       ["get", "title"],
       ["is", "visible", "@e1"],
@@ -477,6 +489,7 @@ describe("agent-browser compatibility foundations", () => {
       ["cookies"],
       ["storage", "local"],
       ["clipboard", "read"],
+      ["download", "@e1", "file.txt"],
       ["confirm", "c_1234abcd"],
       ["deny", "c_1234abcd"],
       ["close"],

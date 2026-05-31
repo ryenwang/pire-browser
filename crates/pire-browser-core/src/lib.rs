@@ -3,6 +3,7 @@ pub mod auth_handoff;
 pub mod cli;
 pub mod confirmation_policy;
 pub mod domain_policy;
+pub mod download;
 pub mod firefox;
 pub mod host;
 pub mod install_status;

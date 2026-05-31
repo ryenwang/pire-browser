@@ -185,11 +185,18 @@
       "expectedDecision": "allow"
     },
     {
-      "name": "download remains not available before policy",
+      "name": "download maps to download category",
       "args": ["download", "#link", "out.zip"],
-      "policy": { "default": "deny" },
-      "expectedCategory": null,
-      "expectedDecision": "not_available"
+      "policy": { "default": "deny", "allow": ["download"] },
+      "expectedCategory": "download",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "wait download maps to download category",
+      "args": ["wait", "--download", "out.zip"],
+      "policy": { "default": "deny", "allow": ["download"] },
+      "expectedCategory": "download",
+      "expectedDecision": "allow"
     },
     {
       "name": "unknown command remains unsupported before policy",

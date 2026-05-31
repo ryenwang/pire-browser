@@ -35,6 +35,7 @@
     "smoke:confirm-actions": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-confirm-actions.ps1",
     "smoke:action-policy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-action-policy.ps1",
     "smoke:domain-policy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-domain-policy.ps1",
+    "smoke:downloads": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-downloads.ps1",
     "smoke:named-sessions": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-named-sessions.ps1",
     "smoke:state": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-state.ps1"
   },

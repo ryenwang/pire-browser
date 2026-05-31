@@ -239,6 +239,21 @@ When confirmation is required, the command returns `ConfirmationRequired` with a
 
 Confirmation records live under `%LOCALAPPDATA%\pire-browser\confirmations`. They are plaintext, user-scoped, short-lived runtime metadata and may contain the original command arguments, so do not treat them as portable artifacts or audit logs. This is a cooperative operator guardrail, not a sandbox: local code that can run the CLI can choose different env vars or policy flags. `--confirm-interactive` prompts only on a TTY; non-TTY runs auto-deny rather than approving silently.
 
+### Downloads
+
+Use `download <target> <path>` when a page element triggers a file download, or `wait --download [path]` when the click already happened:
+
+```powershell
+.\target\debug\pire-browser.exe snapshot -i
+.\target\debug\pire-browser.exe download '@e4' .\downloads\report.txt
+.\target\debug\pire-browser.exe click '@e4'
+.\target\debug\pire-browser.exe wait --download .\downloads\report.txt --timeout 60000
+```
+
+Firefox downloads are staged under `%LOCALAPPDATA%\pire-browser\downloads\` for managed profiles, then the CLI moves the completed staged file to the requested destination. Destinations must not already exist; missing parent directories are created. The JSON result includes final path, staged path, byte count, download id, state, and a display URL with query strings/fragments stripped.
+
+This is best-effort Firefox download automation. Unknown MIME/helper-app dialogs may still stall or render in-page, PDF downloads may be forced to save in managed profiles, and multiple simultaneous downloads are matched by the newest eligible staged completion. Domain allowlists gate the active page only; they do not claim containment of redirects or final download URLs. Action policy and confirmation use the `download` category.
+
 ### Session Targeting
 
 Use `session list` when more than one Firefox extension session may be live:
