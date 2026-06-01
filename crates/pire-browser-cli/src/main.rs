@@ -55,6 +55,10 @@ use pire_browser_core::state_policy::{
     collect_state_policy, resolve_state_load_policy, state_policy_text, StateLoadPolicyDecision,
     StateLoadPolicyFlag, StatePolicyWarning,
 };
+use pire_browser_core::upload::{
+    prepare_upload_files, snapshot_upload_file_identities, verify_upload_file_identities,
+    PreparedUpload, UploadFileIdentity,
+};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::fs;
@@ -80,6 +84,11 @@ struct DownloadCommandPlan {
     destination: Option<PathBuf>,
 }
 
+struct UploadCommandPlan {
+    public_args: Vec<String>,
+    files: Vec<PathBuf>,
+}
+
 struct ConfirmationGate<'a> {
     confirmation_decision: &'a ConfirmationPolicyDecision,
     target: PendingConfirmationTarget,
@@ -87,6 +96,7 @@ struct ConfirmationGate<'a> {
     action_decision: &'a ActionPolicyDecision,
     json_output: bool,
     ignored_global_flags: &'a [GlobalFlagWarning],
+    metadata: Option<Value>,
 }
 
 fn main() {
@@ -315,6 +325,29 @@ fn run() -> Result<()> {
                 timeout_ms,
             )?;
         }
+        LocalCommand::Upload {
+            target,
+            json,
+            ignored_global_flags,
+            domain_policy,
+            action_policy,
+            confirmation_policy,
+            selector,
+            files,
+        } => {
+            handle_upload(
+                target,
+                json,
+                ignored_global_flags,
+                PolicyArgsBundle {
+                    domain_policy,
+                    action_policy,
+                    confirmation_policy,
+                },
+                selector,
+                files.into_iter().map(PathBuf::from).collect(),
+            )?;
+        }
         LocalCommand::Launch {
             profile,
             url,
@@ -343,6 +376,7 @@ fn run() -> Result<()> {
                         action_decision: &action_decision,
                         json_output: false,
                         ignored_global_flags: &[],
+                        metadata: None,
                     },
                 )?;
             }
@@ -448,6 +482,7 @@ fn run() -> Result<()> {
                     action_decision: &action_decision,
                     json_output: json,
                     ignored_global_flags: &ignored_global_flags,
+                    metadata: None,
                 },
             ) {
                 Ok(interactively_approved) => interactively_approved,
@@ -682,6 +717,7 @@ fn handle_state_save(
             action_decision: &action_decision,
             json_output,
             ignored_global_flags: &ignored_global_flags,
+            metadata: None,
         },
     )?;
     let request = build_command_request_with_domain_policy(
@@ -826,6 +862,7 @@ fn handle_state_load(
             action_decision: &action_decision,
             json_output,
             ignored_global_flags: &ignored_global_flags,
+            metadata: None,
         },
     )?;
     let tool_version_mismatch = if policy_decision.require_inspected {
@@ -1021,6 +1058,7 @@ fn execute_download_command(
             action_decision: &action_decision,
             json_output,
             ignored_global_flags: &ignored_global_flags,
+            metadata: None,
         },
     ) {
         Ok(interactively_approved) => interactively_approved,
@@ -1100,6 +1138,149 @@ fn run_download_dispatch(
     append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
     append_ignored_global_flag_warnings(&mut value, ignored_global_flags);
     println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
+fn handle_upload(
+    target: SessionTarget,
+    json_output: bool,
+    ignored_global_flags: Vec<GlobalFlagWarning>,
+    policies: PolicyArgsBundle,
+    selector: String,
+    files: Vec<PathBuf>,
+) -> Result<()> {
+    let mut public_args = vec!["upload".to_string(), selector];
+    public_args.extend(files.iter().map(|path| path.display().to_string()));
+    execute_upload_command(
+        target,
+        json_output,
+        ignored_global_flags,
+        policies,
+        UploadCommandPlan { public_args, files },
+    )
+}
+
+fn execute_upload_command(
+    target: SessionTarget,
+    json_output: bool,
+    ignored_global_flags: Vec<GlobalFlagWarning>,
+    policies: PolicyArgsBundle,
+    plan: UploadCommandPlan,
+) -> Result<()> {
+    let domain_decision =
+        resolve_domain_policy_or_exit(&policies.domain_policy, json_output, &ignored_global_flags)?;
+    let action_decision =
+        resolve_action_policy_or_exit(&policies.action_policy, json_output, &ignored_global_flags)?;
+    if let Err(err) = ensure_action_allowed(&action_decision, &plan.public_args) {
+        exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+        unreachable!();
+    }
+    let (session_id, active_url) = match select_live_upload_session(&target) {
+        Ok(result) => result,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            unreachable!();
+        }
+    };
+    if let Some(url) = active_url {
+        if let Err(err) = ensure_url_allowed(&domain_decision, &url) {
+            exit_with_anyhow_error_with_domain_policy(
+                err,
+                json_output,
+                &ignored_global_flags,
+                &domain_decision.warnings,
+            )?;
+            unreachable!();
+        }
+    }
+    let confirmation_decision = resolve_confirmation_policy_or_exit(
+        &policies.confirmation_policy,
+        json_output,
+        &ignored_global_flags,
+    )?;
+    let metadata = if confirmation_decision.requires("upload") && !confirmation_decision.interactive
+    {
+        let identities = match snapshot_upload_file_identities(&plan.files) {
+            Ok(identities) => identities,
+            Err(err) => {
+                exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+                unreachable!();
+            }
+        };
+        Some(json!({ "uploadFiles": identities }))
+    } else {
+        None
+    };
+    let interactively_approved = match require_confirmation_or_exit(
+        &plan.public_args,
+        ConfirmationGate {
+            confirmation_decision: &confirmation_decision,
+            target: pending_target_from_session_target(&target),
+            domain_decision: &domain_decision,
+            action_decision: &action_decision,
+            json_output,
+            ignored_global_flags: &ignored_global_flags,
+            metadata,
+        },
+    ) {
+        Ok(interactively_approved) => interactively_approved,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            unreachable!();
+        }
+    };
+    let prepared = match prepare_upload_files(&plan.files) {
+        Ok(prepared) => prepared,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            unreachable!();
+        }
+    };
+    let request = build_upload_request_with_policies(
+        plan.public_args,
+        &domain_decision,
+        &action_decision,
+        &confirmation_decision,
+        interactively_approved,
+        &prepared,
+    )?;
+    run_upload_dispatch(
+        &session_id,
+        json_output,
+        &ignored_global_flags,
+        &domain_decision,
+        &request,
+    )
+}
+
+fn run_upload_dispatch(
+    session_id: &str,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    request: &RpcRequest,
+) -> Result<()> {
+    let (response, _) = match send_to_session(Some(session_id), request) {
+        Ok(result) => result,
+        Err(err) => {
+            exit_with_anyhow_error_with_domain_policy(
+                err,
+                json_output,
+                ignored_global_flags,
+                &domain_decision.warnings,
+            )?;
+            unreachable!();
+        }
+    };
+    let mut result = response_result_or_exit_with_domain_policy(
+        response,
+        json_output,
+        ignored_global_flags,
+        &domain_decision.warnings,
+    )?;
+    append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json_output)?;
+    append_ignored_global_flag_warnings(&mut result, ignored_global_flags);
+    println!("{}", format_cli_result(&result, json_output)?);
     Ok(())
 }
 
@@ -1261,6 +1442,13 @@ fn execute_confirmed_record(record: PendingConfirmation, json_output: bool) -> R
     match record.args.first().map(String::as_str) {
         Some("launch") => execute_confirmed_launch(&record, &domain_decision, &action_decision),
         Some("download") => execute_confirmed_download(
+            record,
+            target,
+            domain_decision,
+            action_decision,
+            json_output,
+        ),
+        Some("upload") => execute_confirmed_upload(
             record,
             target,
             domain_decision,
@@ -1445,6 +1633,62 @@ fn execute_confirmed_download(
     append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
     println!("{}", format_cli_result(&value, json_output)?);
     Ok(())
+}
+
+fn execute_confirmed_upload(
+    record: PendingConfirmation,
+    target: SessionTarget,
+    domain_decision: DomainPolicyDecision,
+    action_decision: ActionPolicyDecision,
+    json_output: bool,
+) -> Result<()> {
+    ensure_action_allowed(&action_decision, &record.args)?;
+    let (selector, files) = parse_upload_public_args(&record.args)?;
+    let expected = upload_identities_from_record(&record)?;
+    let (session_id, active_url) = select_live_upload_session(&target)?;
+    if let Some(url) = active_url {
+        ensure_url_allowed(&domain_decision, &url)?;
+    }
+    let prepared = prepare_upload_files(&files)?;
+    verify_upload_file_identities(&expected, &prepared.identities)?;
+    let mut extension_args = vec!["upload".to_string(), selector];
+    extension_args.extend(files.iter().map(|path| path.display().to_string()));
+    let request = build_upload_request_with_captured_policies(
+        extension_args,
+        record.domain_policy.clone(),
+        record.action_policy.clone(),
+        request_context_with_approval(&record),
+        &prepared,
+    )?;
+    run_upload_dispatch(&session_id, json_output, &[], &domain_decision, &request)
+}
+
+fn upload_identities_from_record(record: &PendingConfirmation) -> Result<Vec<UploadFileIdentity>> {
+    let metadata = record
+        .metadata
+        .as_ref()
+        .context("invalid_args: pending upload confirmation is missing file metadata")?;
+    let files = metadata
+        .get("uploadFiles")
+        .cloned()
+        .context("invalid_args: pending upload confirmation is missing uploadFiles metadata")?;
+    serde_json::from_value(files)
+        .context("invalid_args: pending upload confirmation metadata is malformed")
+}
+
+fn parse_upload_public_args(args: &[String]) -> Result<(String, Vec<PathBuf>)> {
+    if args.first().map(String::as_str) != Some("upload") {
+        bail!("invalid_args: pending confirmation record is not an upload command");
+    }
+    let selector = args
+        .get(1)
+        .cloned()
+        .context("invalid_args: pending upload is missing target")?;
+    let files: Vec<PathBuf> = args.iter().skip(2).map(PathBuf::from).collect();
+    if files.is_empty() {
+        bail!("invalid_args: pending upload is missing file paths");
+    }
+    Ok((selector, files))
 }
 
 fn confirmed_download_request(args: &[String]) -> Result<(Vec<String>, Option<PathBuf>)> {
@@ -1655,6 +1899,24 @@ fn send_state_load_request(
     }
 }
 
+fn select_live_upload_session(target: &SessionTarget) -> Result<(String, Option<String>)> {
+    cleanup_stale_sessions(now_ms())?;
+    let session = match target {
+        SessionTarget::Id(session_id) => select_session(Some(session_id))?,
+        SessionTarget::Name(profile_name) => {
+            validate_profile_name(profile_name)?;
+            live_session_for_profile_name(profile_name)?.with_context(|| {
+                format!(
+                    "session_not_found: upload requires a live pire-browser session for profile name `{profile_name}`. Run `pire-browser --session-name {profile_name} open <url>` first."
+                )
+            })?
+        }
+        SessionTarget::Default => select_session(None)?,
+    };
+    let active_url = session.active_page.and_then(|active| active.url);
+    Ok((session.session_id, active_url))
+}
+
 fn launch_state_target(profile: &str, url: &str) -> Result<String> {
     let result = launch_firefox(LaunchOptions {
         profile: profile.to_string(),
@@ -1844,6 +2106,30 @@ fn build_command_request_with_policies(
     Ok(request)
 }
 
+fn build_upload_request_with_policies(
+    args: Vec<String>,
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
+    prepared: &PreparedUpload,
+) -> Result<RpcRequest> {
+    let mut request = build_command_request_with_policies(
+        args,
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+    )?;
+    if let Some(object) = request.params.as_object_mut() {
+        object.insert(
+            "uploadFiles".to_string(),
+            serde_json::to_value(&prepared.files)?,
+        );
+    }
+    Ok(request)
+}
+
 fn build_command_request_with_captured_policies(
     args: Vec<String>,
     domain_context: Option<pire_browser_core::domain_policy::DomainPolicyRequestContext>,
@@ -1866,6 +2152,30 @@ fn build_command_request_with_captured_policies(
                 serde_json::to_value(context)?,
             );
         }
+    }
+    Ok(request)
+}
+
+fn build_upload_request_with_captured_policies(
+    args: Vec<String>,
+    domain_context: Option<pire_browser_core::domain_policy::DomainPolicyRequestContext>,
+    action_context: Option<pire_browser_core::action_policy::ActionPolicyRequestContext>,
+    confirmation_context: Option<
+        pire_browser_core::confirmation_policy::ConfirmationPolicyRequestContext,
+    >,
+    prepared: &PreparedUpload,
+) -> Result<RpcRequest> {
+    let mut request = build_command_request_with_captured_policies(
+        args,
+        domain_context,
+        action_context,
+        confirmation_context,
+    )?;
+    if let Some(object) = request.params.as_object_mut() {
+        object.insert(
+            "uploadFiles".to_string(),
+            serde_json::to_value(&prepared.files)?,
+        );
     }
     Ok(request)
 }
@@ -1940,6 +2250,7 @@ fn require_confirmation_for_category_or_exit(
         domain_policy: domain_policy_request_context(gate.domain_decision),
         action_policy: action_policy_request_context(gate.action_decision),
         confirmation_policy: confirmation_policy_request_context(gate.confirmation_decision),
+        metadata: gate.metadata,
     };
     write_pending_confirmation(&record)?;
     print_confirmation_required(&record, gate.json_output, gate.ignored_global_flags)?;
@@ -2677,6 +2988,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "storage"
             | "clipboard"
             | "download"
+            | "upload"
             | "session"
             | "close"
             | "quit"
@@ -2694,6 +3006,7 @@ fn command_suggestions(command: &str) -> Vec<String> {
         "click",
         "fill",
         "wait",
+        "upload",
         "clipboard",
         "state",
         "session",
@@ -2901,7 +3214,7 @@ mod tests {
     fn supported_roots_are_not_marked_not_available() {
         for root in [
             "open", "goto", "navigate", "click", "fill", "snapshot", "tab", "tabs", "find", "wait",
-            "download",
+            "download", "upload",
         ] {
             assert!(local_not_available_result(&s(&[root]), false, &[])
                 .unwrap()
@@ -2917,7 +3230,7 @@ mod tests {
 
     #[test]
     fn formats_documented_not_available_json() {
-        let result = local_not_available_result(&s(&["upload", "#input", "out.zip"]), true, &[])
+        let result = local_not_available_result(&s(&["network", "requests"]), true, &[])
             .unwrap()
             .unwrap();
         assert!(result.contains("\"success\": false"));
@@ -2963,6 +3276,7 @@ mod tests {
             "tabs",
             "clipboard",
             "download",
+            "upload",
             "session",
             "close",
         ] {

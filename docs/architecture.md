@@ -40,7 +40,7 @@ When a locator cannot be re-resolved uniquely, commands return `ref_stale` or `a
 - Per-command flags that require a different browser process shape, such as headless mode or color scheme, are accepted for parser compatibility but reported as ignored warnings when JSON output is requested.
 - Headless is not a per-command mode for an already-running WebExtension session. If a future managed-launcher mode supports headless Firefox, it should be treated as a separate launch configuration with its own oracle lane because viewport size, focus behavior, and visible-tab screenshot APIs may differ from headed Firefox.
 - Robust network-idle waits require network instrumentation and are deferred to the browser data plane.
-- File upload automation is backend-specific; the Firefox WebExtension path does not claim local file input control.
+- File upload automation is backend-specific. V1 controls local file inputs by sending small CLI-read files to the extension and assigning in-page `File` objects; it does not claim native OS file picker control.
 
 ## Epic 2 Readiness Notes
 

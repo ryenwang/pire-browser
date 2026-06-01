@@ -163,13 +163,14 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Testing: Use a drag-and-drop fixture with dragstart/dragover/drop counters and payload capture; assert the target receives a drop event.
   - Claude feedback: Suggest [P] currently. Implementable but tricky: dispatch `dragstart`/`dragover`/`drop` synthetic events with a fabricated `DataTransfer`. HTML5 drag-and-drop in synthetic events does NOT work for many real apps (e.g., file-drop) because browsers gate file DataTransfer to user gestures. Document the limitation. ~80 LOC for the JS-only case.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-- [ ] `agent-browser upload <sel> <files>` - Upload files
+- [P] `agent-browser upload <sel> <files>` - Upload files
   - Extension Compatibility: True
   - Priority: Medium
   - Complexity: High
   - Testing: Create a temporary file, drive a file-input fixture, and assert the page receives the expected file name/size/content hash.
   - Claude feedback: Suggest [P] currently. WebExtensions cannot programmatically set `<input type=file>` files (browser security barrier). Workaround: ship a small companion script using `nsIFilePicker` via privileged code or push a bytes payload through the Native Host that fakes the file via clipboard + paste. Real path: open the file picker with `element.click()` and have the native host drive the OS-level file dialog (fragile cross-platform). High complexity, recommend [P] with a documented workaround using `state load` for stored auth scenarios.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
+  - GPT-5.5 implementation note: Upload Command V1 is implemented as small-file in-page `File` object assignment for targeted `input[type=file]` controls or associated labels. The CLI reads local files, caps total raw bytes at 512 KiB, sends basename metadata plus base64 bytes to the extension, and never echoes file contents in command output. Native OS file picker automation, drag/drop upload, directory upload, remote URL upload, and large-file chunking remain out of scope.
 - [P] `agent-browser screenshot [path]` - Screenshot (--full for full page)
   - Extension Compatibility: True
   - Priority: High
@@ -1210,7 +1211,7 @@ Use this checklist to track `pire-browser` feature parity with the documented `a
   - Complexity: Low
   - Testing: Serve a fixture download endpoint, trigger it from the CLI, then assert the downloaded file path, size, and content hash.
   - Gemini feedback: Feature not yet implemented in /pire-browser but Extension Compatibility is True. Priority and Complexity are reasonable. Testing strategy is well-defined and should be followed upon implementation.
-  - GPT-5.5 implementation note: V1 supports comma-separated confirmation categories from `--confirm-actions` and `AGENT_BROWSER_CONFIRM_ACTIONS`, returns `ConfirmationRequired` with exit code 75, and stores a 60-second pending record. Downloads/uploads remain unavailable, so those categories are only meaningful once executable commands land.
+  - GPT-5.5 implementation note: V1 supports comma-separated confirmation categories from `--confirm-actions` and `AGENT_BROWSER_CONFIRM_ACTIONS`, returns `ConfirmationRequired` with exit code 75, and stores a 60-second pending record. Downloads and small-file uploads are executable guarded categories; upload confirmation records store file identity metadata only and reread files on approval.
 - [P] `agent-browser confirm c_8f3a1234`
   - Extension Compatibility: True
   - Priority: Low

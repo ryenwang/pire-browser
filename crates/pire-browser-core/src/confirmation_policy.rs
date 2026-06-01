@@ -80,6 +80,8 @@ pub struct PendingConfirmation {
     pub action_policy: Option<ActionPolicyRequestContext>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub confirmation_policy: Option<ConfirmationPolicyRequestContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -468,6 +470,7 @@ mod tests {
                 categories: vec!["eval".to_string()],
                 approved_confirmation_id: None,
             }),
+            metadata: None,
         }
     }
 

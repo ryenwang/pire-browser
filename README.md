@@ -254,6 +254,19 @@ Firefox downloads are staged under `%LOCALAPPDATA%\pire-browser\downloads\` for 
 
 This is best-effort Firefox download automation. Unknown MIME/helper-app dialogs may still stall or render in-page, PDF downloads may be forced to save in managed profiles, and multiple simultaneous downloads are matched by the newest eligible staged completion. Domain allowlists gate the active page only; they do not claim containment of redirects or final download URLs. Action policy and confirmation use the `download` category.
 
+### Uploads
+
+Use `upload <target> <files...>` for small local files when the page exposes an `input[type=file]` or associated label:
+
+```powershell
+.\target\debug\pire-browser.exe upload '#file' .\fixtures\example.txt
+.\target\debug\pire-browser.exe upload '#multi-file' .\one.txt .\two.json --json
+```
+
+V1 reads the local files in the CLI, sends basename metadata plus base64 bytes to the Firefox extension, and assigns in-page `File` objects to the target input. Total raw file bytes are capped at 512 KiB. Successful output reports file count, basenames, sizes, total bytes, and target summary; it does not echo file contents.
+
+This is best-effort Firefox upload automation, not native OS file-picker control. Directory upload, drag/drop upload, remote URL upload, large-file chunking, and arbitrary file picker dialogs are out of scope. Multiple files require a file input with the `multiple` attribute. Action policy and confirmation use the `upload` category; confirmation records store file identity metadata and reread files on approval.
+
 ### Session Targeting
 
 Use `session list` when more than one Firefox extension session may be live:

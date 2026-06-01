@@ -24,6 +24,14 @@ type ConfirmationPolicyContext = {
   approvedConfirmationId?: string;
 };
 
+type UploadFilePayload = {
+  name: string;
+  mimeType?: string;
+  size: number;
+  sha256?: string;
+  bytesBase64: string;
+};
+
 type RpcResponse = {
   type: "response";
   id: string;
@@ -252,7 +260,7 @@ async function executeRequest(request: RpcRequest): Promise<RpcResponse> {
     const domainPolicy = domainPolicyFromParams(request.params?.domainPolicy);
     const actionPolicy = actionPolicyFromParams(request.params?.actionPolicy);
     const confirmationPolicy = confirmationPolicyFromParams(request.params?.confirmationPolicy);
-    const result = await executeCommandWithPolicies(args, domainPolicy, actionPolicy, confirmationPolicy);
+    const result = await executeCommandWithPolicies(args, domainPolicy, actionPolicy, confirmationPolicy, request.params ?? {});
     if ("error" in result) {
       return {
         type: "response",
@@ -280,7 +288,8 @@ async function executeCommandWithPolicies(
   args: string[],
   domainPolicy: DomainPolicyContext | null,
   actionPolicy: ActionPolicyContext | null,
-  confirmationPolicy: ConfirmationPolicyContext | null
+  confirmationPolicy: ConfirmationPolicyContext | null,
+  params: Record<string, any> = {}
 ): Promise<Record<string, unknown>> {
   const domainError = await domainPolicyErrorForCommand(args, domainPolicy);
   if (domainError) return { error: domainError };
@@ -288,7 +297,7 @@ async function executeCommandWithPolicies(
   if (actionError) return { error: actionError };
   const confirmationError = confirmationPolicyErrorForCommand(args, actionPolicy, confirmationPolicy);
   if (confirmationError) return { error: confirmationError };
-  return prepareLargeResult(await executeCommand(args, domainPolicy, actionPolicy, confirmationPolicy));
+  return prepareLargeResult(await executeCommand(args, domainPolicy, actionPolicy, confirmationPolicy, params));
 }
 
 function domainPolicyFromParams(value: unknown): DomainPolicyContext | null {
@@ -477,6 +486,8 @@ function actionPolicyCategoryName(args: string[]): string | null {
       return null;
     case "download":
       return "download";
+    case "upload":
+      return "upload";
     default:
       return null;
   }
@@ -525,7 +536,6 @@ function notAvailableActionPolicyRoot(command: string) {
     "tap",
     "trace",
     "upgrade",
-    "upload",
     "vitals",
   ].includes(command);
 }
@@ -633,6 +643,7 @@ function commandNeedsActivePageDomainCheck(args: string[]) {
       "cookies",
       "storage",
       "download",
+      "upload",
     ].includes(command ?? "")
   ) {
     return true;
@@ -654,7 +665,8 @@ async function executeCommand(
   args: string[],
   domainPolicy: DomainPolicyContext | null = null,
   actionPolicy: ActionPolicyContext | null = null,
-  confirmationPolicy: ConfirmationPolicyContext | null = null
+  confirmationPolicy: ConfirmationPolicyContext | null = null,
+  params: Record<string, any> = {}
 ): Promise<Record<string, unknown>> {
   const [command, ...rest] = args;
   switch (command) {
@@ -730,10 +742,11 @@ async function executeCommand(
       return clipboardCommand(rest);
     case "download":
       return downloadCommand(rest);
+    case "upload":
+      return uploadCommand(rest, params.uploadFiles);
     case "install":
     case "upgrade":
     case "drag":
-    case "upload":
     case "mouse":
     case "set":
     case "network":
@@ -1009,6 +1022,47 @@ async function downloadCommand(args: string[]) {
     return click;
   }
   return watcher.promise;
+}
+
+async function uploadCommand(args: string[], filesValue: unknown) {
+  const target = args[0];
+  if (!target) return { error: { code: "InvalidArgumentError", message: "upload requires <target> <files...>" } };
+  const files = uploadFilesFromParams(filesValue);
+  if ("error" in files) return files;
+  const locator = locatorFromTarget(target);
+  if ("error" in locator) return locator;
+  const tab = await targetTab();
+  const response = await sendFrame(
+    tab.tabId,
+    locator.frameId,
+    { type: "upload_files", locator: locator.locator, files: files.files },
+    { staleOnFrameRoutingError: true }
+  );
+  return normalizeContentResponse(response);
+}
+
+function uploadFilesFromParams(value: unknown): { files: UploadFilePayload[] } | { error: Record<string, unknown> } {
+  if (!Array.isArray(value) || value.length === 0) {
+    return { error: { code: "InvalidArgumentError", message: "upload requires file payloads from the pire-browser CLI" } };
+  }
+  const files: UploadFilePayload[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      return { error: { code: "InvalidArgumentError", message: "upload file payload is malformed" } };
+    }
+    const candidate = item as Record<string, unknown>;
+    if (typeof candidate.name !== "string" || typeof candidate.bytesBase64 !== "string" || typeof candidate.size !== "number") {
+      return { error: { code: "InvalidArgumentError", message: "upload file payload is missing name, size, or bytes" } };
+    }
+    files.push({
+      name: candidate.name,
+      mimeType: typeof candidate.mimeType === "string" ? candidate.mimeType : "application/octet-stream",
+      size: candidate.size,
+      sha256: typeof candidate.sha256 === "string" ? candidate.sha256 : undefined,
+      bytesBase64: candidate.bytesBase64,
+    });
+  }
+  return { files };
 }
 
 async function waitDownloadCommand(args: string[]) {
@@ -1776,8 +1830,8 @@ function selectorToLocator(target: string): Locator {
 function normalizeContentResponse(response: any) {
   if (response?.error) return { error: response.error, dialogs: response.dialogs ?? [] };
   return {
+    ...response,
     text: response?.text ?? "ok",
-    value: response?.value,
     warnings: response?.warnings ?? [],
     dialogs: response?.dialogs ?? [],
   };

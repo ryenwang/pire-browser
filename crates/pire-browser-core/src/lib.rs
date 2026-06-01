@@ -17,3 +17,4 @@ pub mod setup;
 pub mod state_file;
 pub mod state_policy;
 pub mod transfer;
+pub mod upload;

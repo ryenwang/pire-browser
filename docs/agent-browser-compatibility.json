@@ -2857,10 +2857,10 @@
     {
       "id": "cmd-upload",
       "kind": "compatibility_claim",
-      "status": "not_available",
+      "status": "best_effort",
       "disposition": "backend_specific",
       "ownerEpic": "Epic 8",
-      "rationale": "Migrated schema v2 compatibility claim: upload.",
+      "rationale": "Reviewed Upload Command V1: pire-browser implements small-file Firefox uploads by reading local files in the CLI and assigning in-page File objects to targeted input[type=file] elements, with smoke-backed coverage and explicit backend limitations.",
       "source": {
         "kind": "summary",
         "path": "README.md",
@@ -2874,32 +2874,31 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Success reports file count, basenames, total bytes, and target summary without echoing file contents.",
+        "json": "Success envelope data includes fileCount, files with basename/size/type metadata, totalBytes, and target; policy, confirmation, path, size-cap, and target failures use stable JSON error envelopes.",
         "exitCode": [
-          78
+          0
         ],
-        "errorName": "NotAvailableError",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "not_comparable",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "File upload parity is backend-specific; the Firefox WebExtension backend cannot set local file inputs safely per command."
+        "cases": [
+          "smoke:uploads"
+        ],
+        "reason": "Covered by the Firefox-dependent upload smoke, which verifies deterministic fixture files, single and multiple file inputs, label targeting, policy denial, confirmation approve/deny, domain-policy denial, and local file validation failures."
       },
       "limitations": [
-        "File upload automation requires a backend with browser-driver or OS dialog capabilities; the Firefox WebExtension path does not claim it."
+        "V1 reads local files in the CLI and sends them to the extension as base64 payloads, capped at 512 KiB total raw bytes.",
+        "Uploads are implemented by assigning in-page File objects to input[type=file] controls; native OS file picker automation, drag/drop upload, directory upload, remote URL upload, and large-file chunking are not implemented.",
+        "Multiple files require a target file input with the multiple attribute.",
+        "Domain allowlists gate the active page only and do not claim sandbox containment of page-side upload handling."
       ],
       "migration": {
         "schemaV2Id": "upload"
       },
-      "contractReviewed": false,
-      "runtime": {
-        "unsupportedRoots": [
-          "upload"
-        ]
-      }
+      "contractReviewed": true
     },
     {
       "id": "cmd-mouse",
@@ -8051,17 +8050,17 @@
     {
       "id": "doc-commands-020-agent-browser-upload-sel-files-upload-files",
       "kind": "documented_checklist_item",
-      "status": "not_available",
+      "status": "best_effort",
       "disposition": "backend_specific",
       "ownerEpic": "Epic 8",
-      "rationale": "Mirrored checklist inventory item with source status [ ]. Compatibility can improve only with fixture coverage.",
+      "rationale": "Reviewed Upload Command V1: pire-browser implements small-file Firefox uploads by reading local files in the CLI and assigning in-page File objects to targeted input[type=file] elements, with smoke-backed coverage and explicit backend limitations.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
         "heading": "Core",
         "anchor": "core",
         "checklist": "`agent-browser upload <sel> <files>` - Upload files",
-        "docStatus": "blank"
+        "docStatus": "P"
       },
       "command": {
         "primary": "upload",
@@ -8069,24 +8068,33 @@
       },
       "aliases": [],
       "contracts": {
-        "text": "Stable unsupported-feature message; exact prose may vary after normalization.",
-        "json": "Error envelope with error.code and error.data.compatibility.",
+        "text": "Success reports file count, basenames, total bytes, and target summary without echoing file contents.",
+        "json": "Success envelope data includes fileCount, files with basename/size/type metadata, totalBytes, and target; policy, confirmation, path, size-cap, and target failures use stable JSON error envelopes.",
         "exitCode": [
-          78
+          0,
+          2,
+          44,
+          75
         ],
-        "errorName": "NotAvailableError",
+        "errorName": "ActionPolicyError, ConfirmationRequired, invalid_args, or target-specific errors depending on failure phase.",
         "warningsContractual": false
       },
       "coverage": {
-        "state": "not_comparable",
+        "state": "covered",
         "tapeCovered": false,
-        "cases": [],
-        "reason": "File upload parity is backend-specific; the Firefox WebExtension backend cannot set local file inputs safely per command."
+        "cases": [
+          "smoke:uploads"
+        ],
+        "reason": "Covered by the Firefox-dependent upload smoke, which verifies deterministic fixture files, JSON shape, single and multiple file inputs, label targeting, policy denial, confirmation approve/deny, domain-policy denial, and local file validation failures."
       },
       "limitations": [
-        "File upload automation requires a backend with browser-driver or OS dialog capabilities; the Firefox WebExtension path does not claim it."
+        "V1 reads local files in the CLI and sends them to the extension as base64 payloads, capped at 512 KiB total raw bytes.",
+        "Uploads are implemented by assigning in-page File objects to input[type=file] controls; native OS file picker automation, drag/drop upload, directory upload, remote URL upload, and large-file chunking are not implemented.",
+        "Multiple files require a target file input with the multiple attribute.",
+        "Domain allowlists gate the active page only and do not claim sandbox containment of page-side upload handling."
       ],
-      "contractReviewed": false
+      "contractReviewed": true,
+      "canonicalItemId": "cmd-upload"
     },
     {
       "id": "doc-commands-021-agent-browser-screenshot-path-screenshot-full-for-full-page",
@@ -14242,7 +14250,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download and small-file upload support exists.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -14278,7 +14286,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download action execution is best-effort in Firefox; upload remains unavailable."
+        "Download and small-file upload action execution are best-effort in Firefox."
       ],
       "contractReviewed": true,
       "runtime": {}
@@ -14289,7 +14297,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download and small-file upload support exists.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -14325,7 +14333,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download action execution is best-effort in Firefox; upload remains unavailable."
+        "Download and small-file upload action execution are best-effort in Firefox."
       ],
       "contractReviewed": true,
       "runtime": {}
@@ -14336,7 +14344,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download and small-file upload support exists.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -14374,7 +14382,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download action execution is best-effort in Firefox; upload remains unavailable."
+        "Download and small-file upload action execution are best-effort in Firefox."
       ],
       "contractReviewed": true
     },
@@ -14384,7 +14392,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download and small-file upload support exists.",
       "source": {
         "kind": "docs",
         "path": "05-commands.md",
@@ -14420,7 +14428,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download action execution is best-effort in Firefox; upload remains unavailable."
+        "Download and small-file upload action execution are best-effort in Firefox."
       ],
       "contractReviewed": true,
       "runtime": {}
@@ -27734,7 +27742,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download and small-file upload support exists.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -27774,7 +27782,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download action execution is best-effort in Firefox; upload remains unavailable."
+        "Download and small-file upload action execution are best-effort in Firefox."
       ],
       "contractReviewed": true
     },
@@ -27826,7 +27834,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download and small-file upload support exists.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -27863,7 +27871,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download action execution is best-effort in Firefox; upload remains unavailable."
+        "Download and small-file upload action execution are best-effort in Firefox."
       ],
       "contractReviewed": true
     },
@@ -27873,7 +27881,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download and small-file upload support exists.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -27912,7 +27920,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download action execution is best-effort in Firefox; upload remains unavailable."
+        "Download and small-file upload action execution are best-effort in Firefox."
       ],
       "contractReviewed": true
     },
@@ -28452,7 +28460,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download and small-file upload support exists.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -28490,7 +28498,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download action execution is best-effort in Firefox; upload remains unavailable."
+        "Download and small-file upload action execution are best-effort in Firefox."
       ],
       "contractReviewed": true
     },
@@ -28500,7 +28508,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download and small-file upload support exists.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -28536,7 +28544,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download action execution is best-effort in Firefox; upload remains unavailable."
+        "Download and small-file upload action execution are best-effort in Firefox."
       ],
       "contractReviewed": true,
       "runtime": {}
@@ -28547,7 +28555,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 7",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download and small-file upload support exists.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -28583,7 +28591,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download action execution is best-effort in Firefox; upload remains unavailable."
+        "Download and small-file upload action execution are best-effort in Firefox."
       ],
       "contractReviewed": true,
       "runtime": {}
@@ -28594,7 +28602,7 @@
       "status": "best_effort",
       "disposition": "temporary_gap",
       "ownerEpic": "Epic 5",
-      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download support exists, while uploads remain out of scope.",
+      "rationale": "Reviewed V1 confirmation contract: pire-browser implements cooperative pending confirmations with local plaintext records, 60-second expiry, and explicit confirm/deny replay, while audit-log/sandbox guarantees and best-effort download and small-file upload support exists.",
       "source": {
         "kind": "docs",
         "path": "16-security.md",
@@ -28633,7 +28641,7 @@
         "Cooperative guardrail only; local code that can run the CLI can alter env vars, policy files, or pending records.",
         "Pending records are plaintext user-scoped runtime metadata and are not an audit log.",
         "Pending confirmations expire after about 60 seconds; model-loop approval may need to be reissued.",
-        "Download action execution is best-effort in Firefox; upload remains unavailable."
+        "Download and small-file upload action execution are best-effort in Firefox."
       ],
       "contractReviewed": true
     },

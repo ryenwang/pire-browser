@@ -199,6 +199,13 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "upload maps to upload category",
+      "args": ["upload", "#file", "fixture.txt"],
+      "policy": { "default": "deny", "allow": ["upload"] },
+      "expectedCategory": "upload",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "unknown command remains unsupported before policy",
       "args": ["stats"],
       "policy": { "default": "deny" },

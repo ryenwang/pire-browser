@@ -344,6 +344,21 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain('"--download"');
   });
 
+  it("routes uploads through file-input assignment without echoing payload bytes", () => {
+    const backgroundBody = background();
+    const contentBody = content();
+    expect(backgroundBody).toContain('case "upload":');
+    expect(backgroundBody).toContain("return uploadCommand(rest, params.uploadFiles);");
+    expect(backgroundBody).toContain("function uploadFilesFromParams");
+    expect(backgroundBody).toContain('return "upload";');
+    expect(contentBody).toContain('message.type === "upload_files"');
+    expect(contentBody).toContain("function uploadFilesLocator");
+    expect(contentBody).toContain("new DataTransfer()");
+    expect(contentBody).toContain("input.element.files = transfer.files");
+    expect(contentBody).toContain("element instanceof HTMLLabelElement");
+    expect(contentBody).not.toContain("bytesBase64, dialogs");
+  });
+
   it("routes active-origin state export and import through focused helpers", () => {
     const body = background();
     expect(body).toContain('case "state":');
@@ -361,7 +376,7 @@ describe("agent-browser compatibility foundations", () => {
   it("checks active-page domain policy before content actions", () => {
     const body = background();
     expect(body).toContain("type DomainPolicyContext = {");
-    expect(body).toContain("executeCommandWithPolicies(args, domainPolicy, actionPolicy, confirmationPolicy)");
+    expect(body).toContain("executeCommandWithPolicies(args, domainPolicy, actionPolicy, confirmationPolicy, request.params ?? {})");
     expect(body).toContain("domainPolicyErrorForCommand(args, domainPolicy)");
     expect(body).toContain("domainPolicyDestinationUrl(args)");
     expect(body).toContain("function commandNeedsActivePageDomainCheck");
@@ -373,6 +388,7 @@ describe("agent-browser compatibility foundations", () => {
     expect(body).toContain('command === "tab" || command === "tabs"');
     expect(body).toContain('subcommand === "new"');
     expect(body).toContain('"--load"');
+    expect(body).toContain('"upload"');
     expect(body).toContain("function explicitNonHttpScheme");
     expect(body).toContain("function normalizePolicyHost");
     expect(body).toContain("batchCommand(rest, domainPolicy, actionPolicy, confirmationPolicy)");
@@ -490,6 +506,7 @@ describe("agent-browser compatibility foundations", () => {
       ["storage", "local"],
       ["clipboard", "read"],
       ["download", "@e1", "file.txt"],
+      ["upload", "#file", "fixture.txt"],
       ["confirm", "c_1234abcd"],
       ["deny", "c_1234abcd"],
       ["close"],

@@ -109,6 +109,16 @@ pub enum LocalCommand {
         path: Option<String>,
         timeout_ms: u64,
     },
+    Upload {
+        target: SessionTarget,
+        json: bool,
+        ignored_global_flags: Vec<GlobalFlagWarning>,
+        domain_policy: DomainPolicyArgs,
+        action_policy: ActionPolicyArgs,
+        confirmation_policy: ConfirmationPolicyArgs,
+        selector: String,
+        files: Vec<String>,
+    },
     Confirm {
         id: String,
         json: bool,
@@ -538,6 +548,22 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         });
     }
 
+    if command == "upload" {
+        args.remove(0);
+        remove_json_flags(&mut args, &mut json_output);
+        let (selector, files) = parse_upload_args(&mut args)?;
+        return Ok(LocalCommand::Upload {
+            target: session_target,
+            json: json_output,
+            ignored_global_flags,
+            domain_policy,
+            action_policy,
+            confirmation_policy,
+            selector,
+            files,
+        });
+    }
+
     if command == "confirm" || command == "deny" {
         args.remove(0);
         remove_json_flags(&mut args, &mut json_output);
@@ -750,6 +776,36 @@ fn parse_wait_download_args(args: &mut Vec<String>) -> Result<(Option<String>, u
     Ok((path, timeout_ms))
 }
 
+fn parse_upload_args(args: &mut Vec<String>) -> Result<(String, Vec<String>)> {
+    let mut selector = None;
+    let mut files = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--json" => {
+                args.remove(i);
+                continue;
+            }
+            other if other.starts_with('-') => bail!("unsupported upload option: {other}"),
+            _ => {
+                if selector.is_none() {
+                    selector = Some(args[i].clone());
+                } else {
+                    files.push(args[i].clone());
+                }
+            }
+        }
+        i += 1;
+    }
+    let Some(selector) = selector else {
+        bail!("invalid_args: upload requires <target>");
+    };
+    if files.is_empty() {
+        bail!("invalid_args: upload requires at least one file");
+    }
+    Ok((selector, files))
+}
+
 fn parse_positive_timeout(value: &str) -> Result<u64> {
     let timeout = value
         .parse::<u64>()
@@ -776,6 +832,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "fill" => FILL_HELP,
         "wait" => WAIT_HELP,
         "download" => DOWNLOAD_HELP,
+        "upload" => UPLOAD_HELP,
         "clipboard" => CLIPBOARD_HELP,
         "state" => STATE_HELP,
         "action-policy" => ACTION_POLICY_HELP,
@@ -809,6 +866,7 @@ Common commands:
   wait --selector "#done"         Wait for page state
   download '@e4' out.txt          Click a target and save a download
   wait --download out.txt         Wait for a recent/new download and save it
+  upload '#file' ./fixture.txt    Assign a small local file to a file input
   clipboard read                  Read text from the system clipboard
   state save .pire-state/app.json Save active-origin cookies and web storage
   state inspect .pire-state/app.json
@@ -912,6 +970,17 @@ Clicks a ref/selector to trigger a Firefox download, or waits for a recent/new
 download. The default timeout is 60000ms. Files are staged under the local
 pire-browser data directory before being finalized to the requested path.
 Unknown MIME/helper-app dialogs can still stall until timeout on Firefox.
+"##;
+
+const UPLOAD_HELP: &str = r##"
+Usage:
+  pire-browser upload <target> <file> [more-files...] [--json]
+
+Assigns small local files to a targeted input[type=file] or associated label in
+the active Firefox page. V1 reads files in the CLI and sends them to the
+extension as text-safe payloads, capped at 512 KiB total raw bytes.
+No native OS file picker, directory upload, drag/drop upload, or large-file
+chunking is implemented.
 "##;
 
 const CLIPBOARD_HELP: &str = r##"
@@ -1439,6 +1508,48 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("--timeout must be a positive integer"));
+    }
+
+    #[test]
+    fn parses_upload_commands() {
+        let parsed = parse_cli_args(&s(&[
+            "--session",
+            "abc",
+            "--confirm-actions",
+            "upload",
+            "upload",
+            "#file",
+            "one.txt",
+            "two.json",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Upload {
+                target: SessionTarget::Id("abc".to_string()),
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: ConfirmationPolicyArgs {
+                    confirm_actions: Some("upload".to_string()),
+                    confirm_interactive: false,
+                },
+                selector: "#file".to_string(),
+                files: s(&["one.txt", "two.json"]),
+            }
+        );
+
+        let missing_file = parse_cli_args(&s(&["upload", "#file"]))
+            .unwrap_err()
+            .to_string();
+        assert!(missing_file.contains("upload requires at least one file"));
+
+        let unsupported = parse_cli_args(&s(&["upload", "#file", "one.txt", "--timeout", "10"]))
+            .unwrap_err()
+            .to_string();
+        assert!(unsupported.contains("unsupported upload option"));
     }
 
     #[test]

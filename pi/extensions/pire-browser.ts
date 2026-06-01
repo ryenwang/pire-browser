@@ -10,7 +10,7 @@ import { redactDiagnosticText, redactProbe } from "./redaction";
 const PireBrowserParams = Type.Object({
   command: Type.String({
     description:
-      "pire-browser command string, for example: status --json, doctor, clipboard read, clipboard write hello, state inspect ./.pire-state/app.json, state inspect --record ./.pire-state/app.json, state save ./.pire-state/app.json, open https://example.com, snapshot -i, click '@e4', or find label Email fill hello@example.com. The CLI auto-launches Firefox for browser commands when no live session exists.",
+      "pire-browser command string, for example: status --json, doctor, clipboard read, clipboard write hello, state inspect ./.pire-state/app.json, state inspect --record ./.pire-state/app.json, state save ./.pire-state/app.json, open https://example.com, snapshot -i, click '@e4', upload '#file' ./fixture.txt, or find label Email fill hello@example.com. The CLI auto-launches Firefox for browser commands when no live session exists.",
   }),
 });
 
@@ -25,11 +25,12 @@ export default function (pi: ExtensionAPI) {
       description:
         "Control the user's Firefox browser through the pire-browser Firefox extension and native host.",
       promptSnippet:
-        "pire-browser: control the user's Firefox browser with commands such as status --json, doctor, help <topic>, open <url>, snapshot -i, find, click, fill, clipboard read/write/copy/paste, state inspect/save/load, press, scroll, wait, screenshot, and tabs list/select/close.",
+        "pire-browser: control the user's Firefox browser with commands such as status --json, doctor, help <topic>, open <url>, snapshot -i, find, click, fill, clipboard read/write/copy/paste, state inspect/save/load, download, upload, press, scroll, wait, screenshot, and tabs list/select/close.",
       promptGuidelines: [
         "Use pire-browser when the user asks to open, inspect, or interact with web pages in Firefox.",
         "Use `pire-browser doctor` for setup/PATH diagnostics and `pire-browser status --json` when you need structured live-session and default-target information.",
         "Use `clipboard read|write|copy|paste` for text clipboard workflows; copy/paste are Firefox best-effort page-selection/focused-editable operations.",
+        "Use `download <target> <path>` / `wait --download [path]` for best-effort Firefox downloads, and `upload <target> <files...>` for small local files up to 512 KiB total when the page exposes an input[type=file] or associated label.",
         "Use `state inspect <path>` for read-only metadata review of plaintext state files; use `state inspect --record <path>` before `state load --require-inspected <path>` when a load must be gated by a fresh local receipt.",
         "When PIRE_BROWSER_REQUIRE_INSPECTED_STATE=1 is set, normal `state load <path>` requires a fresh recorded inspection receipt; `--no-require-inspected` is an explicit cooperative override and should be called out if used.",
         "Use `--allowed-domains <hosts>` or AGENT_BROWSER_ALLOWED_DOMAINS for cooperative wrong-site guardrails; `--no-allowed-domains` is an explicit override and should be called out if used.",

@@ -44,7 +44,6 @@ const RESERVED_NOT_AVAILABLE_ROOTS: &[&str] = &[
     "tap",
     "trace",
     "upgrade",
-    "upload",
     "vitals",
 ];
 
@@ -326,6 +325,7 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
             _ => return CommandPolicyResolution::Unsupported,
         },
         "download" => "download",
+        "upload" => "upload",
         "batch" => return CommandPolicyResolution::Compound,
         _ => return CommandPolicyResolution::Unsupported,
     };
@@ -808,6 +808,7 @@ mod tests {
             vec!["storage", "local"],
             vec!["clipboard", "read"],
             vec!["download", "@e1", "file.txt"],
+            vec!["upload", "#file", "fixture.txt"],
             vec!["session"],
             vec!["confirm", "c_1234abcd"],
             vec!["deny", "c_1234abcd"],

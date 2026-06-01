@@ -65,6 +65,7 @@ browser.runtime.onMessage.addListener((message: any) => {
   if (message.type === "click") return Promise.resolve(clickLocator(message.locator));
   if (message.type === "dblclick") return Promise.resolve(doubleClickLocator(message.locator));
   if (message.type === "fill") return Promise.resolve(fillLocator(message.locator, message.text ?? ""));
+  if (message.type === "upload_files") return Promise.resolve(uploadFilesLocator(message.locator, message.files));
   if (message.type === "type") return Promise.resolve(typeLocator(message.locator, message.text ?? ""));
   if (message.type === "focus") return Promise.resolve(focusLocator(message.locator));
   if (message.type === "hover") return Promise.resolve(hoverLocator(message.locator));
@@ -196,6 +197,130 @@ function fillLocator(locator: Locator, text: string) {
     text: `Filled ${describeElement(element)}`,
     dialogs: drainDialogs(),
   };
+}
+
+function uploadFilesLocator(locator: Locator, rawFiles: unknown) {
+  const resolved = resolveOne(locator);
+  if ("error" in resolved) return resolved;
+  const input = fileInputForUploadTarget(resolved.element);
+  if ("error" in input) return input;
+  if (input.element.disabled) {
+    return { error: { code: "not_enabled", message: `${describeElement(input.element)} is disabled` }, dialogs: drainDialogs() };
+  }
+  const parsed = parseUploadFiles(rawFiles);
+  if ("error" in parsed) return parsed;
+  if (parsed.files.length > 1 && !input.element.multiple) {
+    return {
+      error: {
+        code: "InvalidArgumentError",
+        message: `${describeElement(input.element)} does not accept multiple files`,
+      },
+      dialogs: drainDialogs(),
+    };
+  }
+
+  const transfer = new DataTransfer();
+  for (const file of parsed.files) {
+    transfer.items.add(file.file);
+  }
+  try {
+    input.element.files = transfer.files;
+  } catch (error) {
+    return {
+      error: {
+        code: "InvalidArgumentError",
+        message: `Firefox did not allow assigning files to ${describeElement(input.element)}: ${error instanceof Error ? error.message : String(error)}`,
+      },
+      dialogs: drainDialogs(),
+    };
+  }
+  input.element.dispatchEvent(new Event("input", { bubbles: true }));
+  input.element.dispatchEvent(new Event("change", { bubbles: true }));
+  const totalBytes = parsed.files.reduce((sum, item) => sum + item.size, 0);
+  const files = parsed.files.map((item) => ({ name: item.name, size: item.size, type: item.type }));
+  return {
+    text: `Uploaded ${files.length} file(s) to ${describeElement(input.element)} (${totalBytes} byte(s))`,
+    target: describeElement(input.element),
+    fileCount: files.length,
+    files,
+    totalBytes,
+    dialogs: drainDialogs(),
+  };
+}
+
+function fileInputForUploadTarget(element: Element): { element: HTMLInputElement } | { error: Record<string, string>; dialogs: DialogRecord[] } {
+  if (element instanceof HTMLInputElement && element.type === "file") {
+    return { element };
+  }
+  if (element instanceof HTMLLabelElement && element.control instanceof HTMLInputElement && element.control.type === "file") {
+    return { element: element.control };
+  }
+  if (element instanceof HTMLElement) {
+    const nested = element.querySelector("input[type=file]");
+    if (nested instanceof HTMLInputElement) return { element: nested };
+  }
+  return {
+    error: {
+      code: "InvalidArgumentError",
+      message: `Upload target must be an input[type=file] or associated label, got ${describeElement(element)}`,
+    },
+    dialogs: drainDialogs(),
+  };
+}
+
+function parseUploadFiles(rawFiles: unknown):
+  | { files: { file: File; name: string; size: number; type: string }[] }
+  | { error: Record<string, string>; dialogs: DialogRecord[] } {
+  if (!Array.isArray(rawFiles) || rawFiles.length === 0) {
+    return { error: { code: "InvalidArgumentError", message: "upload requires file payloads" }, dialogs: drainDialogs() };
+  }
+  const files = [];
+  for (const raw of rawFiles) {
+    if (!raw || typeof raw !== "object") {
+      return { error: { code: "InvalidArgumentError", message: "upload file payload is malformed" }, dialogs: drainDialogs() };
+    }
+    const item = raw as Record<string, unknown>;
+    const name = typeof item.name === "string" ? item.name : "";
+    const type = typeof item.mimeType === "string" ? item.mimeType : "application/octet-stream";
+    const bytesBase64 = typeof item.bytesBase64 === "string" ? item.bytesBase64 : "";
+    const expectedSize = typeof item.size === "number" ? item.size : -1;
+    if (!name || !bytesBase64 || expectedSize < 0) {
+      return { error: { code: "InvalidArgumentError", message: "upload file payload is missing name, bytes, or size" }, dialogs: drainDialogs() };
+    }
+    const bytes = decodeBase64Bytes(bytesBase64);
+    if ("error" in bytes) return bytes;
+    if (bytes.bytes.byteLength !== expectedSize) {
+      return { error: { code: "InvalidArgumentError", message: `upload file ${name} size did not match payload metadata` }, dialogs: drainDialogs() };
+    }
+    const arrayBuffer = new ArrayBuffer(bytes.bytes.byteLength);
+    new Uint8Array(arrayBuffer).set(bytes.bytes);
+    files.push({
+      file: new File([arrayBuffer], name, { type }),
+      name,
+      size: expectedSize,
+      type,
+    });
+  }
+  return { files };
+}
+
+function decodeBase64Bytes(value: string): { bytes: Uint8Array } | { error: Record<string, string>; dialogs: DialogRecord[] } {
+  try {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index++) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return { bytes };
+  } catch (error) {
+    return {
+      error: {
+        code: "InvalidArgumentError",
+        message: `upload file payload is not valid base64: ${error instanceof Error ? error.message : String(error)}`,
+      },
+      dialogs: drainDialogs(),
+    };
+  }
 }
 
 function typeLocator(locator: Locator, text: string) {

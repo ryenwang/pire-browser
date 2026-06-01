@@ -36,7 +36,6 @@
     "tap",
     "trace",
     "upgrade",
-    "upload",
     "vitals"
   ],
   "roots": [
@@ -489,21 +488,6 @@
       ],
       "sourcePaths": [
         "02-installation.md"
-      ]
-    },
-    {
-      "root": "upload",
-      "itemIds": [
-        "cmd-upload"
-      ],
-      "ownerEpics": [
-        "Epic 8"
-      ],
-      "dispositions": [
-        "backend_specific"
-      ],
-      "sourcePaths": [
-        "README.md"
       ]
     },
     {

@@ -13,7 +13,7 @@ This inventory records which source sets are authoritative for `pire-browser`, w
 | `crates/pire-browser-host/` | Native Messaging host | Firefox extension bridge to the Rust core and Windows named-pipe session handling. |
 | `extension/src/` | Firefox WebExtension source | Browser-side command handling, DOM inspection/actions, dialogs, refs, frame handling, and screenshot capture. |
 | `pi/extensions/` | Pi extension adapters | Pi-facing wrappers for `pire-browser` and the `agent-browser` oracle adapter. |
-| `scripts/` | Maintainer automation | Install, package, smoke, state/named-session/domain-policy/download lifecycle, RBXLX download, and oracle comparison workflows. |
+| `scripts/` | Maintainer automation | Install, package, smoke, state/named-session/domain-policy/download/upload lifecycle, RBXLX download, and oracle comparison workflows. |
 | `fixtures/` | Test fixtures | Local HTML state/session fixtures, oracle fixture data, and shared policy contract fixtures such as domain URL verdicts, action-policy command maps, and action-policy verdicts. |
 | `docs/` | Project documentation | Architecture, compatibility matrix, unsupported-root metadata, oracle workflow, and feature-parity notes. |
 | `docs/CONTEXT.md` | Agent work contract | Functional-boundary labels, session-review requirements, redaction rules, and canonical source pointers. |
