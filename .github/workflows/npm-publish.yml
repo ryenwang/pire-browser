@@ -1,0 +1,165 @@
+name: Publish npm Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      allow_existing:
+        description: "Skip package versions already present on npm; use only to resume a partial publish"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate-release-ref:
+    name: validate release ref
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Manual npm publish must run from main, got $GITHUB_REF" >&2
+            exit 1
+          fi
+          git fetch origin main --depth=1
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+  platform-native:
+    name: ${{ matrix.tuple }}
+    needs: validate-release-ref
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tuple: win32-x64
+            runner: windows-2022
+          - tuple: win32-ia32
+            runner: windows-2022
+          - tuple: win32-arm64
+            runner: windows-11-arm
+          - tuple: darwin-x64
+            runner: macos-15-intel
+          - tuple: darwin-arm64
+            runner: macos-15
+          - tuple: linux-x64
+            runner: ubuntu-24.04
+          - tuple: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm install --package-lock=false --no-audit --no-fund
+      - run: node scripts/build-platform.mjs ${{ matrix.tuple }}
+      - run: node scripts/package-platform.mjs ${{ matrix.tuple }} --pack --pack-destination dist/npm
+      - uses: actions/upload-artifact@v7
+        with:
+          name: platform-${{ matrix.tuple }}
+          path: dist/npm/*.tgz
+
+  root:
+    name: root package
+    needs: validate-release-ref
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - run: npm install --package-lock=false --no-audit --no-fund
+      - run: npm --prefix extension install
+      - run: npm --prefix extension run build
+      - run: mkdir -p dist/npm
+      - run: npm pack --pack-destination dist/npm --json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: root-package
+          path: dist/npm/*.tgz
+
+  publish:
+    name: publish to npm
+    needs:
+      - validate-release-ref
+      - platform-native
+      - root
+    runs-on: ubuntu-24.04
+    environment: npm-production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - run: npm install -g npm@^11.10.0
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist/npm
+          merge-multiple: true
+      - run: node scripts/verify-npm-artifacts.mjs dist/npm
+      - name: Publish verified npm artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(dist/npm)
+          if [ "${{ inputs.allow_existing || false }}" = "true" ]; then
+            args+=(--allow-existing)
+          fi
+          node scripts/publish-npm-artifacts.mjs "${args[@]}"
+
+  github-release:
+    name: create GitHub release
+    needs:
+      - validate-release-ref
+      - publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.validate-release-ref.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag release already exists"
+            exit 0
+          fi
+          if ! git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
+            git tag "$tag" "$GITHUB_SHA"
+            git push origin "$tag"
+          fi
+          gh release create "$tag" \
+            --target "$GITHUB_SHA" \
+            --title "$tag" \
+            --notes "pire-browser $VERSION published to npm through trusted publishing."

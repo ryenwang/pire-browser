@@ -1,0 +1,168 @@
+name: Platform Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      use_cross_fallback:
+        description: "Use cross-compile fallback lanes for Windows ARM64, Linux ARM64, and macOS x64"
+        required: false
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - ".github/workflows/platform-packages.yml"
+      - "cli/Cargo.toml"
+      - "cli/Cargo.lock"
+      - "cli/**"
+      - "bin/pire-browser.js"
+      - "scripts/**"
+      - "platform-packages/**"
+      - "package.json"
+      - "README.md"
+      - "LICENSE"
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  platform-native:
+    name: ${{ matrix.tuple }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tuple: win32-x64
+            runner: windows-2022
+          - tuple: win32-ia32
+            runner: windows-2022
+          - tuple: darwin-arm64
+            runner: macos-15
+          - tuple: linux-x64
+            runner: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm install
+      - run: node scripts/build-platform.mjs ${{ matrix.tuple }}
+      - run: node scripts/package-platform.mjs ${{ matrix.tuple }} --pack --pack-destination dist/npm
+      - uses: actions/upload-artifact@v7
+        with:
+          name: platform-${{ matrix.tuple }}
+          path: |
+            dist/npm/*.tgz
+            bin/${{ matrix.tuple }}/*
+
+  platform-native-optional:
+    name: native-${{ matrix.tuple }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.use_cross_fallback == true) }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tuple: win32-arm64
+            runner: windows-11-arm
+          - tuple: darwin-x64
+            runner: macos-15-intel
+          - tuple: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm install
+      - run: node scripts/build-platform.mjs ${{ matrix.tuple }}
+      - run: node scripts/package-platform.mjs ${{ matrix.tuple }} --pack --pack-destination dist/npm
+      - uses: actions/upload-artifact@v7
+        with:
+          name: platform-${{ matrix.tuple }}
+          path: |
+            dist/npm/*.tgz
+            bin/${{ matrix.tuple }}/*
+
+  platform-fallback:
+    name: fallback-${{ matrix.tuple }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.use_cross_fallback == true }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tuple: win32-arm64
+            runner: windows-2022
+          - tuple: darwin-x64
+            runner: macos-15
+          - tuple: linux-arm64
+            runner: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux ARM64 linker
+        if: ${{ matrix.tuple == 'linux-arm64' }}
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+      - run: npm install
+      - name: Build platform
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: node scripts/build-platform.mjs ${{ matrix.tuple }} --skip-native-validation
+      - run: node scripts/package-platform.mjs ${{ matrix.tuple }} --pack --pack-destination dist/npm
+      - uses: actions/upload-artifact@v7
+        with:
+          name: platform-${{ matrix.tuple }}
+          path: |
+            dist/npm/*.tgz
+            bin/${{ matrix.tuple }}/*
+
+  root:
+    name: root-package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - run: npm install
+      - run: npm --prefix extension install
+      - run: npm --prefix extension run build
+      - run: mkdir -p dist/npm
+      - run: npm pack --pack-destination dist/npm --json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: root-package
+          path: dist/npm/*.tgz
+
+  verify:
+    name: verify-artifacts
+    runs-on: ubuntu-24.04
+    needs:
+      - platform-native
+      - platform-native-optional
+      - platform-fallback
+      - root
+    if: ${{ always() && needs.root.result == 'success' && needs.platform-native.result == 'success' && (needs.platform-native-optional.result == 'success' || needs.platform-native-optional.result == 'skipped') && (needs.platform-fallback.result == 'success' || needs.platform-fallback.result == 'skipped') }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist/downloaded-artifacts
+          merge-multiple: true
+      - run: node scripts/verify-npm-artifacts.mjs dist/downloaded-artifacts
+      - run: npm pack --dry-run --json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pire-browser-npm-artifacts
+          path: dist/downloaded-artifacts/*.tgz

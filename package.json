@@ -1,0 +1,95 @@
+{
+  "name": "pire-browser",
+  "version": "0.0.0",
+  "description": "Cross-platform Pi extension and Firefox bridge for local browser automation",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-skill",
+    "firefox",
+    "browser-automation"
+  ],
+  "homepage": "https://github.com/ryenwang/pire-browser#readme",
+  "bugs": {
+    "url": "https://github.com/ryenwang/pire-browser/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ryenwang/pire-browser.git"
+  },
+  "license": "MIT",
+  "type": "module",
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "bin": {
+    "pire-browser": "bin/pire-browser.js"
+  },
+  "files": [
+    "bin/pire-browser.js",
+    "pi/extensions/pire-browser.ts",
+    "pi/extensions/pire-browser-runner.ts",
+    "pi/extensions/redaction.ts",
+    "extension/manifest.json",
+    "extension/dist/",
+    "extension/pire-browser.xpi",
+    "agent/",
+    "pire-browser.schema.json",
+    "agent-browser.schema.json",
+    "skills/",
+    "skill-data/",
+    "scripts/platform.mjs",
+    "scripts/pi-install-migration.mjs",
+    "scripts/pi-postinstall.mjs",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/pi-postinstall.mjs",
+    "test": "vitest run --exclude \"**/.claude/**\"",
+    "test:docs": "node scripts/test-docs.mjs",
+    "build:extension": "npm --prefix extension run build",
+    "pack:platform": "node scripts/package-platform.mjs --all",
+    "pack:extension:xpi": "node scripts/package-extension-xpi.mjs",
+    "pack:extension:xpi:sign": "node scripts/package-extension-xpi.mjs --sign",
+    "release:npm:trust": "node scripts/npm-trust-setup.mjs",
+    "release:npm:publish": "node scripts/publish-npm-artifacts.mjs",
+    "smoke:confirm-actions": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-confirm-actions.ps1",
+    "smoke:action-policy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-action-policy.ps1",
+    "smoke:domain-policy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-domain-policy.ps1",
+    "smoke:downloads": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-downloads.ps1",
+    "smoke:uploads": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-uploads.ps1",
+    "smoke:named-sessions": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-named-sessions.ps1",
+    "smoke:state": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-state.ps1"
+  },
+  "pi": {
+    "extensions": [
+      "pi/extensions/pire-browser.ts"
+    ],
+    "skills": [
+      "skills"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "optionalDependencies": {
+    "@ryenw/pire-browser-win32-x64": "0.0.0",
+    "@ryenw/pire-browser-win32-ia32": "0.0.0",
+    "@ryenw/pire-browser-win32-arm64": "0.0.0",
+    "@ryenw/pire-browser-darwin-x64": "0.0.0",
+    "@ryenw/pire-browser-darwin-arm64": "0.0.0",
+    "@ryenw/pire-browser-linux-x64": "0.0.0",
+    "@ryenw/pire-browser-linux-arm64": "0.0.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.0",
+    "typebox": "^1.1.39",
+    "vitest": "^4.1.7"
+  }
+}

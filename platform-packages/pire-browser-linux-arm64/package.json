@@ -1,0 +1,20 @@
+{
+  "name": "@ryenw/pire-browser-linux-arm64",
+  "version": "0.0.0",
+  "description": "Linux ARM64 native binaries for pire-browser",
+  "license": "MIT",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "pireBrowser": {
+    "platform": "linux-arm64"
+  }
+}

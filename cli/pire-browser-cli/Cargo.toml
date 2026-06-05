@@ -1,0 +1,17 @@
+[package]
+name = "pire-browser-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "pire-browser"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+pire-browser-core = { path = "../pire-browser-core" }

@@ -1,0 +1,26 @@
+/target/
+/cli/target/
+target-codex*/
+/dist/
+node_modules/
+extension/node_modules/
+web-ext-artifacts/
+extension/pire-browser.xpi
+/site/
+/bin/*/
+!/bin/pire-browser.js
+
+# Generated test/build artifacts
+coverage/
+*.tsbuildinfo
+*.log
+
+# Local browser/capture artifacts
+.pire-state/
+/out.png
+/file-location-*.csv
+/download-list-*.csv
+
+# Local AI tool worktrees
+.claude/worktrees/
+.gemini/

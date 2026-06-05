@@ -1,0 +1,106 @@
+{
+  "cases": [
+    {
+      "name": "exact host",
+      "patterns": ["example.com"],
+      "input": "https://example.com/path",
+      "verdict": "allowed"
+    },
+    {
+      "name": "uppercase host",
+      "patterns": ["example.com"],
+      "input": "HTTPS://EXAMPLE.COM/path",
+      "verdict": "allowed"
+    },
+    {
+      "name": "port ignored for host match",
+      "patterns": ["example.com"],
+      "input": "https://example.com:8443/path",
+      "verdict": "allowed"
+    },
+    {
+      "name": "userinfo ignored for host match",
+      "patterns": ["example.com"],
+      "input": "https://user@example.com/path",
+      "verdict": "allowed"
+    },
+    {
+      "name": "trailing dot host",
+      "patterns": ["example.com"],
+      "input": "https://example.com./path",
+      "verdict": "allowed"
+    },
+    {
+      "name": "scheme-less host",
+      "patterns": ["example.com"],
+      "input": "example.com/path",
+      "verdict": "allowed"
+    },
+    {
+      "name": "wildcard subdomain",
+      "patterns": ["*.example.com"],
+      "input": "https://app.example.com/dashboard",
+      "verdict": "allowed"
+    },
+    {
+      "name": "wildcard deep subdomain",
+      "patterns": ["*.example.com"],
+      "input": "https://deep.app.example.com/dashboard",
+      "verdict": "allowed"
+    },
+    {
+      "name": "wildcard does not match apex",
+      "patterns": ["*.example.com"],
+      "input": "https://example.com/dashboard",
+      "verdict": "denied"
+    },
+    {
+      "name": "wildcard does not match suffix lookalike",
+      "patterns": ["*.example.com"],
+      "input": "https://example.com.evil.net/dashboard",
+      "verdict": "denied"
+    },
+    {
+      "name": "localhost exact",
+      "patterns": ["localhost"],
+      "input": "http://localhost:8769/state.html",
+      "verdict": "allowed"
+    },
+    {
+      "name": "ipv4 exact",
+      "patterns": ["127.0.0.1"],
+      "input": "http://127.0.0.1:8769/state.html",
+      "verdict": "allowed"
+    },
+    {
+      "name": "disallowed host",
+      "patterns": ["example.com"],
+      "input": "https://evil.example.net/path",
+      "verdict": "denied"
+    },
+    {
+      "name": "about blank",
+      "patterns": ["example.com"],
+      "input": "about:blank",
+      "verdict": "non_http"
+    },
+    {
+      "name": "file url",
+      "patterns": ["example.com"],
+      "input": "file:///tmp/state.html",
+      "verdict": "non_http"
+    },
+    {
+      "name": "empty input",
+      "patterns": ["example.com"],
+      "input": "",
+      "verdict": "invalid"
+    },
+    {
+      "name": "malformed input",
+      "patterns": ["example.com"],
+      "input": "http://bad value",
+      "verdict": "invalid"
+    }
+  ]
+}

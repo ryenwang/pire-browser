@@ -1,0 +1,200 @@
+name: Release Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Release smoke target"
+        required: false
+        type: choice
+        default: all
+        options:
+          - all
+          - windows-x64
+          - macos-arm64
+          - linux-x64
+      run_browser_smoke:
+        description: "Run browser smoke against installed packed artifacts"
+        required: false
+        type: boolean
+        default: true
+      run_signed_xpi:
+        description: "Sign the extension through AMO and also smoke PIRE_BROWSER_EXTENSION_MODE=xpi on Windows x64"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  packed-package:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.target == 'windows-x64' && '{"include":[{"target":"windows-x64","label":"Windows x64 packed package","tuple":"win32-x64","runner":"windows-2022","os":"windows"}]}' || inputs.target == 'macos-arm64' && '{"include":[{"target":"macos-arm64","label":"macOS ARM64 packed package","tuple":"darwin-arm64","runner":"macos-15","os":"macos"}]}' || inputs.target == 'linux-x64' && '{"include":[{"target":"linux-x64","label":"Linux x64 packed package","tuple":"linux-x64","runner":"ubuntu-24.04","os":"linux"}]}' || '{"include":[{"target":"windows-x64","label":"Windows x64 packed package","tuple":"win32-x64","runner":"windows-2022","os":"windows"},{"target":"macos-arm64","label":"macOS ARM64 packed package","tuple":"darwin-arm64","runner":"macos-15","os":"macos"},{"target":"linux-x64","label":"Linux x64 packed package","tuple":"linux-x64","runner":"ubuntu-24.04","os":"linux"}]}') }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm install
+      - run: npm --prefix extension install
+
+      - name: Ensure Firefox (Windows)
+        if: ${{ inputs.run_browser_smoke && matrix.os == 'windows' }}
+        shell: pwsh
+        run: |
+          $paths = @(
+            "C:\Program Files\Mozilla Firefox\firefox.exe",
+            "C:\Program Files (x86)\Mozilla Firefox\firefox.exe"
+          )
+          $firefox = $paths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $firefox) {
+            choco install firefox -y --no-progress
+            $firefox = $paths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          }
+          if (-not $firefox) {
+            throw "Firefox was not found after install"
+          }
+          "PIRE_BROWSER_FIREFOX_PATH=$firefox" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Ensure Firefox (macOS)
+        if: ${{ inputs.run_browser_smoke && matrix.os == 'macos' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          firefox="/Applications/Firefox.app/Contents/MacOS/firefox"
+          if [ ! -x "$firefox" ]; then
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask firefox
+          fi
+          if [ ! -x "$firefox" ]; then
+            echo "Firefox was not found after Homebrew install" >&2
+            exit 1
+          fi
+          {
+            echo "PIRE_BROWSER_FIREFOX_PATH=$firefox"
+            echo "PYTHON=python3"
+          } >> "$GITHUB_ENV"
+
+      - name: Ensure Firefox and Xvfb (Linux)
+        if: ${{ inputs.run_browser_smoke && matrix.os == 'linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xvfb bzip2 xz-utils
+          firefox_root="$RUNNER_TEMP/firefox"
+          mkdir -p "$firefox_root"
+          curl -fL "https://download.mozilla.org/?product=firefox-latest&os=linux64&lang=en-US" -o "$RUNNER_TEMP/firefox.tar"
+          tar -tf "$RUNNER_TEMP/firefox.tar" >/dev/null
+          tar -xf "$RUNNER_TEMP/firefox.tar" -C "$firefox_root" --strip-components=1
+          firefox="$firefox_root/firefox"
+          if [ ! -x "$firefox" ]; then
+            echo "Firefox was not found after Mozilla tarball extract" >&2
+            exit 1
+          fi
+          {
+            echo "PIRE_BROWSER_FIREFOX_PATH=$firefox"
+            echo "PYTHON=python3"
+          } >> "$GITHUB_ENV"
+
+      - name: Run packed release smoke (Windows)
+        if: ${{ matrix.os == 'windows' }}
+        shell: pwsh
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+        run: |
+          $smokeArgs = @("--build-platform", "--tuple", "${{ matrix.tuple }}")
+          if ("${{ inputs.run_browser_smoke }}" -ne "true") {
+            $smokeArgs += "--no-browser"
+          }
+          if ("${{ inputs.run_signed_xpi }}" -eq "true") {
+            $smokeArgs += "--signed-xpi"
+          }
+          if ($env:PIRE_BROWSER_FIREFOX_PATH) {
+            $smokeArgs += @("--firefox-path", $env:PIRE_BROWSER_FIREFOX_PATH)
+          }
+          $smokeArgs += @("--artifact-dir", "target/release-smoke-artifacts")
+          node scripts/smoke-packed-package.mjs @smokeArgs
+
+      - name: Run packed release smoke (macOS)
+        if: ${{ matrix.os == 'macos' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          smoke_args=(--build-platform --tuple "${{ matrix.tuple }}")
+          if [ "${{ inputs.run_browser_smoke }}" != "true" ]; then
+            smoke_args+=(--no-browser)
+          fi
+          if [ -n "${PIRE_BROWSER_FIREFOX_PATH:-}" ]; then
+            smoke_args+=(--firefox-path "$PIRE_BROWSER_FIREFOX_PATH")
+          fi
+          smoke_args+=(--artifact-dir target/release-smoke-artifacts)
+          node scripts/smoke-packed-package.mjs "${smoke_args[@]}"
+
+      - name: Run packed release smoke (Linux)
+        if: ${{ matrix.os == 'linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          smoke_args=(--build-platform --tuple "${{ matrix.tuple }}")
+          if [ "${{ inputs.run_browser_smoke }}" != "true" ]; then
+            smoke_args+=(--no-browser)
+          fi
+          if [ -n "${PIRE_BROWSER_FIREFOX_PATH:-}" ]; then
+            smoke_args+=(--firefox-path "$PIRE_BROWSER_FIREFOX_PATH")
+          fi
+          smoke_args+=(--artifact-dir target/release-smoke-artifacts)
+          if [ "${{ inputs.run_browser_smoke }}" = "true" ]; then
+            xvfb-run -a node scripts/smoke-packed-package.mjs "${smoke_args[@]}"
+          else
+            node scripts/smoke-packed-package.mjs "${smoke_args[@]}"
+          fi
+
+      - name: Print release smoke diagnostics
+        if: failure()
+        shell: pwsh
+        run: |
+          $dir = "target/release-smoke-artifacts"
+          if (-not (Test-Path -LiteralPath $dir)) {
+            Write-Host "No release smoke artifact directory found at $dir"
+            exit 0
+          }
+          Write-Host "Release smoke artifact tree:"
+          Get-ChildItem -LiteralPath $dir -Recurse -File |
+            Sort-Object FullName |
+            ForEach-Object { Write-Host $_.FullName }
+
+          $patterns = @(
+            "summary.json",
+            "*install*.stderr.log",
+            "*doctor*.stdout.log",
+            "*doctor*.stderr.log",
+            "*setup*.stdout.log",
+            "*setup*.stderr.log",
+            "*launch*.stdout.log",
+            "*launch*.stderr.log",
+            "*snapshot*.stderr.log",
+            "*find*.stderr.log",
+            "*wait*.stderr.log",
+            "fixture-server.stderr.log",
+            "*web-ext.log"
+          )
+          foreach ($pattern in $patterns) {
+            Get-ChildItem -LiteralPath $dir -Recurse -File -Filter $pattern -ErrorAction SilentlyContinue |
+              Sort-Object FullName |
+              ForEach-Object {
+                Write-Host ""
+                Write-Host "==> Tail $($_.FullName)"
+                Get-Content -LiteralPath $_.FullName -Tail 50 -ErrorAction SilentlyContinue |
+                  ForEach-Object { Write-Host $_ }
+              }
+          }
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release-smoke-${{ matrix.target }}
+          path: target/release-smoke-artifacts
+          if-no-files-found: warn

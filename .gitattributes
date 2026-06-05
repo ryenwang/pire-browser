@@ -1,0 +1,18 @@
+* text=auto eol=lf
+
+*.bmp binary
+*.exe binary
+*.gif binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.png binary
+*.webp binary
+*.woff2 binary
+*.zip binary
+
+*.docx binary
+*.pptx binary
+*.xlsx binary
+*.rbxlx binary

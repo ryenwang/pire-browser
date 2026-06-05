@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ryenwang/pire-browser/blob/main/pire-browser.schema.json",
+  "title": "pire-browser config",
+  "description": "Config defaults supported by pire-browser. Unknown keys are allowed for forward compatibility.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema URL or local schema path for editor autocomplete."
+    },
+    "json": {
+      "type": "boolean",
+      "description": "Default to JSON command output."
+    },
+    "session": {
+      "type": "string",
+      "description": "Default strict session id."
+    },
+    "profile": {
+      "type": "string",
+      "description": "Default managed Firefox profile name or path-like profile value."
+    },
+    "sessionName": {
+      "type": "string",
+      "description": "Default managed profile/session name."
+    },
+    "allowedDomains": {
+      "description": "Default allowed-domain guardrail list.",
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      ]
+    },
+    "noAllowedDomains": {
+      "type": "boolean",
+      "description": "Disable the allowed-domain guardrail."
+    },
+    "actionPolicy": {
+      "type": "string",
+      "description": "Path to an action policy JSON file."
+    },
+    "confirmActions": {
+      "type": "string",
+      "description": "Comma-separated action categories that require confirmation."
+    },
+    "confirmInteractive": {
+      "type": "boolean",
+      "description": "Allow an interactive terminal prompt for confirmation-required actions."
+    },
+    "allowFileAccess": {
+      "type": "boolean",
+      "description": "Accept local file URLs for supported local-file workflows."
+    },
+    "autoConnect": {
+      "type": "boolean",
+      "description": "Best-effort auto-connect flag for commands that can target a selected live managed Firefox session."
+    },
+    "headed": {
+      "type": "boolean",
+      "description": "Legacy headed flag accepted as a Firefox session input."
+    },
+    "headless": {
+      "type": "boolean",
+      "description": "Legacy headless flag accepted as a Firefox session input."
+    },
+    "colorScheme": {
+      "type": "string",
+      "enum": ["light", "dark"],
+      "description": "Color scheme flag accepted by the managed Firefox session."
+    },
+    "maxOutput": {
+      "description": "Output cap flag.",
+      "oneOf": [
+        { "type": "integer", "minimum": 1 },
+        { "type": "string", "minLength": 1 }
+      ]
+    },
+    "contentBoundaries": {
+      "description": "Enable content boundary markers.",
+      "oneOf": [
+        { "type": "boolean" },
+        { "type": "string", "minLength": 1 }
+      ]
+    },
+    "executablePath": {
+      "type": "string",
+      "description": "Browser executable path."
+    },
+    "engine": {
+      "type": "string",
+      "description": "Engine selection input."
+    },
+    "provider": {
+      "type": "string",
+      "description": "Provider selection input."
+    },
+    "model": {
+      "type": "string",
+      "description": "Model selection input."
+    }
+  }
+}

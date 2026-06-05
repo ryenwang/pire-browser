@@ -1,0 +1,801 @@
+{
+  "schemaVersion": 1,
+  "description": "Machine-readable action policy category contract for pire-browser. Runtime implementation must consume or test against this map before enforcing --action-policy.",
+  "categories": [
+    "navigate",
+    "click",
+    "fill",
+    "eval",
+    "snapshot",
+    "scroll",
+    "wait",
+    "get",
+    "interact",
+    "state",
+    "network",
+    "download",
+    "upload"
+  ],
+  "policyShape": {
+    "fields": ["default", "allow", "deny"],
+    "precedence": ["deny", "allow", "default"],
+    "confirmation": "Confirmation is not part of the policy file in v1. It is implemented through the separate --confirm-actions, PIRE_BROWSER_CONFIRM_ACTIONS, confirm, and deny surfaces."
+  },
+  "resolution": {
+    "order": ["compoundEntries", "metaBypasses", "commandEntries", "reservedFutureEntries"],
+    "rule": "Compound commands resolve by their special rule first. Exact meta bypasses are checked before policy categories, but a bare-root meta bypass must not shadow a more-specific command entry for the same root. Otherwise, the most-specific command entry wins: root+subcommand or explicit match entries take precedence over root-only entries. Bare roots fall back to root-only entries only when no more specific entry matches. Unsupported or not-available commands keep their existing errors before policy checks.",
+    "subcommandRule": "For simple commands, subcommand means the first token after the root. Entries with a match object define signature-specific matching when the meaningful operation token appears later, such as storage local set.",
+    "aliasRule": "tab and tabs are aliases and must resolve identically for equivalent forms."
+  },
+  "commandEntries": [
+    {
+      "root": "open",
+      "signature": "open <url>",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
+      "root": "goto",
+      "signature": "goto <url>",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "pire-extension"
+    },
+    {
+      "root": "navigate",
+      "signature": "navigate <url>",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "pire-extension"
+    },
+    {
+      "root": "launch",
+      "signature": "launch --url <url>",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "cli",
+      "source": "pire-extension"
+    },
+    {
+      "root": "tab",
+      "signature": "tab",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "tab",
+      "subcommand": "new",
+      "signature": "tab new [url]",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
+      "root": "tab",
+      "subcommand": "select",
+      "signature": "tab select <tab>",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "tab",
+      "subcommand": "close",
+      "signature": "tab close [tab]",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "tabs",
+      "signature": "tabs",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "tabs",
+      "subcommand": "new",
+      "signature": "tabs new [url]",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "pire-extension"
+    },
+    {
+      "root": "tabs",
+      "subcommand": "select",
+      "signature": "tabs select <tab>",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "tabs",
+      "subcommand": "close",
+      "signature": "tabs close [tab]",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "back",
+      "signature": "back",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "forward",
+      "signature": "forward",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "reload",
+      "signature": "reload",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "window",
+      "subcommand": "new",
+      "signature": "window new",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "click",
+      "signature": "click <target>",
+      "category": "click",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "dblclick",
+      "signature": "dblclick <target>",
+      "category": "click",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "fill",
+      "signature": "fill <target> <text>",
+      "category": "fill",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "type",
+      "signature": "type <target> <text>",
+      "category": "fill",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "keyboard",
+      "subcommand": "type",
+      "signature": "keyboard type <text>",
+      "category": "fill",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "keyboard",
+      "subcommand": "inserttext",
+      "signature": "keyboard inserttext <text>",
+      "category": "fill",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "select",
+      "signature": "select <target> <value>",
+      "category": "fill",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "check",
+      "signature": "check <target>",
+      "category": "fill",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "uncheck",
+      "signature": "uncheck <target>",
+      "category": "fill",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "clipboard",
+      "subcommand": "paste",
+      "signature": "clipboard paste",
+      "category": "fill",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "eval",
+      "signature": "eval <js>",
+      "category": "eval",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "snapshot",
+      "signature": "snapshot",
+      "category": "snapshot",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "screenshot",
+      "signature": "screenshot [path]",
+      "category": "snapshot",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "scroll",
+      "signature": "scroll [direction] [amount]",
+      "category": "scroll",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "scrollintoview",
+      "signature": "scrollintoview <target>",
+      "category": "scroll",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "wait",
+      "signature": "wait [selector|--load|--text|--url|--fn|ms]",
+      "category": "wait",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "wait",
+      "subcommand": "--download",
+      "signature": "wait --download [path]",
+      "category": "download",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
+      "root": "find",
+      "signature": "find <locator>",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "get",
+      "signature": "get <property> [target]",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "is",
+      "signature": "is <state> <target>",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "tab",
+      "subcommand": "list",
+      "signature": "tab list",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "tabs",
+      "subcommand": "list",
+      "signature": "tabs list",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "cookies",
+      "signature": "cookies",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "storage",
+      "signature": "storage local|session [key]",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "dialog",
+      "signature": "dialog",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "dialog",
+      "subcommand": "status",
+      "signature": "dialog status",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "frame",
+      "signature": "frame [main]",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "hover",
+      "signature": "hover <target>",
+      "category": "interact",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "focus",
+      "signature": "focus <target>",
+      "category": "interact",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "press",
+      "signature": "press <key>",
+      "category": "interact",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "key",
+      "signature": "key <key>",
+      "category": "interact",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "keydown",
+      "signature": "keydown <key>",
+      "category": "interact",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "keyup",
+      "signature": "keyup <key>",
+      "category": "interact",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "dialog",
+      "subcommand": "accept",
+      "signature": "dialog accept [text]",
+      "category": "interact",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "dialog",
+      "subcommand": "dismiss",
+      "signature": "dialog dismiss",
+      "category": "interact",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "state",
+      "subcommand": "save",
+      "signature": "state save <path>",
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "cli",
+      "source": "upstream"
+    },
+    {
+      "root": "state",
+      "subcommand": "load",
+      "signature": "state load <path>",
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "cli",
+      "source": "upstream"
+    },
+    {
+      "root": "cookies",
+      "subcommand": "set",
+      "signature": "cookies set <name> <value>",
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "cookies",
+      "subcommand": "clear",
+      "signature": "cookies clear",
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "storage",
+      "subcommand": "local|session set",
+      "signature": "storage local|session set <key> <value>",
+      "match": {
+        "tokens": ["storage", "local|session", "set"]
+      },
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "storage",
+      "subcommand": "local|session clear",
+      "signature": "storage local|session clear",
+      "match": {
+        "tokens": ["storage", "local|session", "clear"]
+      },
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "clipboard",
+      "subcommand": "read",
+      "signature": "clipboard read",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "clipboard",
+      "subcommand": "write",
+      "signature": "clipboard write <text>",
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "clipboard",
+      "subcommand": "copy",
+      "signature": "clipboard copy",
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension"
+    },
+    {
+      "root": "download",
+      "signature": "download <target> <path>",
+      "category": "download",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
+      "root": "upload",
+      "signature": "upload <target> <files...>",
+      "category": "upload",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    }
+  ],
+  "compoundEntries": [
+    {
+      "root": "batch",
+      "signature": "batch <commands...>",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream",
+      "rule": "batch is not a category; enforce action policy on each subcommand and stop the batch on policy denial."
+    },
+    {
+      "root": "find",
+      "signature": "find <locator> <action> ...",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "pire-extension",
+      "rule": "read-only find is get; a chained action is classified by the chained action category."
+    }
+  ],
+  "metaBypasses": [
+    {
+      "root": "status",
+      "signature": "status",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "pire-extension",
+      "reason": "local/session diagnostic"
+    },
+    {
+      "root": "doctor",
+      "signature": "doctor",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "pire-extension",
+      "reason": "local setup diagnostic"
+    },
+    {
+      "root": "help",
+      "signature": "help [topic]",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "pire-extension",
+      "reason": "local help"
+    },
+    {
+      "root": "setup",
+      "signature": "setup",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "pire-extension",
+      "reason": "local install setup"
+    },
+    {
+      "root": "launch",
+      "signature": "launch",
+      "matchWhen": "no --url",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "pire-extension",
+      "reason": "no-URL launch creates a browser session without page action"
+    },
+    {
+      "root": "session",
+      "signature": "session list|attach|cleanup",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "pire-extension",
+      "reason": "local session management"
+    },
+    {
+      "root": "close",
+      "signature": "close",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "pire-extension",
+      "reason": "controlled teardown"
+    },
+    {
+      "root": "quit",
+      "signature": "quit",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "pire-extension",
+      "reason": "controlled teardown"
+    },
+    {
+      "root": "exit",
+      "signature": "exit",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "pire-extension",
+      "reason": "controlled teardown"
+    },
+    {
+      "root": "tabs",
+      "subcommand": "label",
+      "signature": "tabs label <tab> <label>",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "pire-extension",
+      "reason": "local tab-label metadata"
+    },
+    {
+      "root": "tab",
+      "subcommand": "label",
+      "signature": "tab label <tab> <label>",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "pire-extension",
+      "reason": "local tab-label metadata"
+    },
+    {
+      "root": "state",
+      "subcommand": "inspect",
+      "signature": "state inspect <path>",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "pire-extension",
+      "reason": "local metadata-only file inspection"
+    },
+    {
+      "root": "confirm",
+      "signature": "confirm <confirmation-id>",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "upstream",
+      "reason": "approval of a pending action confirmation record"
+    },
+    {
+      "root": "deny",
+      "signature": "deny <confirmation-id>",
+      "category": null,
+      "implementationStatus": "implemented",
+      "enforcementLocus": "meta",
+      "source": "upstream",
+      "reason": "denial of a pending action confirmation record"
+    }
+  ],
+  "reservedFutureEntries": [
+    {
+      "root": "tap",
+      "signature": "tap <target>",
+      "category": "click",
+      "implementationStatus": "reserved",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "drag",
+      "signature": "drag <source> <target>",
+      "category": "interact",
+      "implementationStatus": "reserved",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "mouse",
+      "signature": "mouse move|click|down|up ...",
+      "category": "interact",
+      "implementationStatus": "reserved",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "dispatch",
+      "signature": "dispatch <event>",
+      "category": "interact",
+      "implementationStatus": "reserved",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "evalhandle",
+      "signature": "evalhandle <js>",
+      "category": "eval",
+      "implementationStatus": "reserved",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "addinitscript",
+      "signature": "addinitscript <js>",
+      "category": "eval",
+      "implementationStatus": "reserved",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "addscript",
+      "signature": "addscript <js>",
+      "category": "eval",
+      "implementationStatus": "reserved",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "setcontent",
+      "signature": "setcontent <html>",
+      "category": "eval",
+      "implementationStatus": "reserved",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "pdf",
+      "signature": "pdf <path>",
+      "category": "snapshot",
+      "implementationStatus": "reserved",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "diff",
+      "signature": "diff <subcommand>",
+      "category": "snapshot",
+      "implementationStatus": "reserved",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "network",
+      "signature": "network <subcommand>",
+      "category": "network",
+      "implementationStatus": "reserved",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    }
+  ]
+}

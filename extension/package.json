@@ -1,0 +1,16 @@
+{
+  "name": "pire-browser-extension",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Firefox WebExtension bridge for pire-browser",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

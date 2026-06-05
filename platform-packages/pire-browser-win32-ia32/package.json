@@ -1,0 +1,20 @@
+{
+  "name": "@ryenw/pire-browser-win32-ia32",
+  "version": "0.0.0",
+  "description": "Windows x86 native binaries for pire-browser",
+  "license": "MIT",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "ia32"
+  ],
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "pireBrowser": {
+    "platform": "win32-ia32"
+  }
+}
