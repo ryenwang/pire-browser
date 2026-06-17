@@ -2237,6 +2237,7 @@ Usage:
   pire-browser set viewport <w> <h> [scale]
   pire-browser set device "iPhone 14"
   pire-browser set headers <json>
+  pire-browser set credentials <username> <password>
   pire-browser set media dark|light|auto
   pire-browser set offline on|off
 
@@ -2255,14 +2256,19 @@ enforced on the Firefox backend.
 current managed Firefox session. Passing `{}` clears headers for that origin.
 Values are not echoed; output reports header names only.
 
+`set credentials <username> <password>` applies best-effort HTTP Basic auth to
+the active page's origin for the current managed Firefox session. The password
+is not echoed in output. Credentials are memory-only for the extension session,
+not an encrypted auth vault.
+
 `set media dark|light|auto` applies Firefox's webpage content color-scheme
 override for the managed session.
 
 `set offline on|off` toggles best-effort Firefox request blocking for managed
 tabs. It cancels future network requests, but does not fully emulate CDP
 offline mode: navigator.onLine, service worker cache behavior, DNS, and socket
-state are not controlled. Geolocation and credentials settings are not
-supported on this backend.
+state are not controlled. Geolocation settings are not supported on this
+backend.
 "##;
 
 const MOUSE_HELP: &str = r##"
@@ -4219,6 +4225,9 @@ mod tests {
         assert!(help_text(Some("set"))
             .unwrap()
             .contains("set headers <json>"));
+        assert!(help_text(Some("set"))
+            .unwrap()
+            .contains("set credentials <username> <password>"));
         assert!(help_text(Some("set"))
             .unwrap()
             .contains("set offline on|off"));

@@ -129,6 +129,13 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "set credentials maps to network",
+      "args": ["set", "credentials", "user", "pass"],
+      "policy": { "default": "deny", "allow": ["network"] },
+      "expectedCategory": "network",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "set device maps to state",
       "args": ["set", "device", "iPhone 14"],
       "policy": { "default": "deny", "allow": ["state"] },

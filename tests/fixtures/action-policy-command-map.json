@@ -324,6 +324,15 @@
       "source": "upstream"
     },
     {
+      "root": "set",
+      "subcommand": "credentials",
+      "signature": "set credentials <username> <password>",
+      "category": "network",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
       "root": "diff",
       "subcommand": "snapshot",
       "signature": "diff snapshot [--baseline <path>]",

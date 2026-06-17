@@ -197,6 +197,11 @@ type HeaderRule = {
   value: string;
 };
 
+type BasicCredentialRule = {
+  username: string;
+  password: string;
+};
+
 type NetworkActivityRecord = {
   requestId: string;
   tabId: number;
@@ -262,6 +267,7 @@ const recentDialogsByTabId = new Map<number, DialogRecord[]>();
 const lastSnapshotTextByTabId = new Map<number, string>();
 const runtimeInitScripts = new Map<string, RuntimeInitScriptRecord>();
 const headersByOrigin = new Map<string, HeaderRule[]>();
+const credentialsByOrigin = new Map<string, BasicCredentialRule>();
 const networkRequestsById = new Map<string, NetworkActivityRecord>();
 const networkRequestIdsByTabId = new Map<number, Set<string>>();
 const networkRequestLogIdsByTabId = new Map<number, string[]>();
@@ -346,6 +352,7 @@ connectNative();
 void applyContentColorScheme("auto").catch(() => undefined);
 registerBrowserListeners();
 registerHeaderListener();
+registerAuthListener();
 registerNetworkRouteListener();
 registerNetworkActivityListeners();
 
@@ -701,7 +708,7 @@ function actionPolicyCategoryName(args: string[]): string | null {
       if (subcommand === "save" || subcommand === "load") return "state";
       return null;
     case "set":
-      if (subcommand === "headers" || subcommand === "offline") return "network";
+      if (subcommand === "headers" || subcommand === "offline" || subcommand === "credentials") return "network";
       return "state";
     case "download":
       return "download";
@@ -2488,10 +2495,11 @@ async function setCommand(args: string[]) {
   if (subcommand === "media") return setMediaCommand(rest);
   if (subcommand === "device") return setDeviceCommand(rest);
   if (subcommand === "offline") return setOfflineCommand(rest);
+  if (subcommand === "credentials") return setCredentialsCommand(rest);
   if (subcommand !== "viewport") {
     return notAvailable(
       `set ${subcommand || ""}`.trim(),
-      "Only `set viewport <w> <h> [scale]`, `set device <name>`, `set headers <json>`, `set media dark|light|auto`, and `set offline on|off` are implemented on the Firefox WebExtension backend. geo and credentials still require a CDP-capable backend."
+      "Only `set viewport <w> <h> [scale]`, `set device <name>`, `set headers <json>`, `set credentials <username> <password>`, `set media dark|light|auto`, and `set offline on|off` are implemented on the Firefox WebExtension backend. geo still requires a CDP-capable backend."
     );
   }
   const parsed = parseViewportArgs(rest);
@@ -2632,6 +2640,50 @@ function offlineModeWarning() {
   );
 }
 
+async function setCredentialsCommand(args: string[]) {
+  const parsed = parseBasicCredentials(args);
+  if ("error" in parsed) return parsed;
+  const tab = await targetTab();
+  const origin = safeOrigin(tab.url);
+  if (!origin) {
+    return { error: { code: "InvalidArgumentError", message: "set credentials requires an active http(s) page" } };
+  }
+  const credential = applyCredentialsForOrigin(origin, parsed.credentials);
+  return {
+    text: `Set HTTP Basic credentials for ${origin} as ${credential.username}`,
+    credentials: {
+      origin,
+      username: credential.username,
+      mode: "http_basic",
+      sessionOnly: true,
+    },
+    warnings: [credentialsWarning()],
+  };
+}
+
+function parseBasicCredentials(args: string[]):
+  | { credentials: BasicCredentialRule }
+  | { error: RpcResponse["error"] } {
+  if (args.length !== 2) {
+    return { error: { code: "invalid_args", message: "set credentials requires <username> <password>" } };
+  }
+  const [username, password] = args;
+  if (!username) {
+    return { error: { code: "invalid_args", message: "set credentials username cannot be empty" } };
+  }
+  if (username.includes("\n") || username.includes("\r") || password.includes("\n") || password.includes("\r")) {
+    return { error: { code: "invalid_args", message: "set credentials values cannot contain newlines" } };
+  }
+  return { credentials: { username, password } };
+}
+
+function credentialsWarning() {
+  return bestEffortWarning(
+    "set credentials",
+    "HTTP Basic credentials are stored only in this managed Firefox extension session. They are applied to matching active-origin requests and auth challenges, but they are not an encrypted credential vault."
+  );
+}
+
 function normalizeContentColorScheme(value: unknown): { scheme?: ContentColorScheme } | { error: RpcResponse["error"] } {
   if (value == null || value === "") return {};
   if (typeof value !== "string") {
@@ -2747,6 +2799,11 @@ function applyHeadersForOrigin(origin: string, headers: HeaderRule[]) {
     headersByOrigin.set(origin, headers);
   }
   return { origin, names: headers.map((header) => header.name) };
+}
+
+function applyCredentialsForOrigin(origin: string, credentials: BasicCredentialRule) {
+  credentialsByOrigin.set(origin, credentials);
+  return { origin, username: credentials.username };
 }
 
 function parseViewportArgs(args: string[]): { width: number; height: number; scale?: number } | { error: RpcResponse["error"] } {
@@ -4762,6 +4819,15 @@ function registerHeaderListener() {
   );
 }
 
+function registerAuthListener() {
+  if (!browser.webRequest?.onAuthRequired?.addListener) return;
+  browser.webRequest.onAuthRequired.addListener(
+    applyBasicAuthCredentials,
+    { urls: ["<all_urls>"] },
+    ["blocking"]
+  );
+}
+
 function registerNetworkRouteListener() {
   if (!browser.webRequest?.onBeforeRequest?.addListener) return;
   browser.webRequest.onBeforeRequest.addListener(
@@ -4962,17 +5028,43 @@ function networkRouteUrlMatches(url: string, pattern: string) {
 function applyScopedRequestHeaders(details: any) {
   const origin = safeOrigin(details?.url);
   const rules = origin ? headersByOrigin.get(origin) : undefined;
-  if (!rules?.length) return {};
+  const credentials = origin ? credentialsByOrigin.get(origin) : undefined;
+  if (!rules?.length && !credentials) return {};
   const requestHeaders = Array.isArray(details.requestHeaders) ? [...details.requestHeaders] : [];
-  for (const rule of rules) {
-    const existing = requestHeaders.find((header: any) => header?.name?.toLowerCase() === rule.name.toLowerCase());
-    if (existing) {
-      existing.value = rule.value;
-    } else {
-      requestHeaders.push({ name: rule.name, value: rule.value });
-    }
+  for (const rule of rules ?? []) {
+    upsertRequestHeader(requestHeaders, rule.name, rule.value);
+  }
+  if (credentials) {
+    upsertRequestHeader(requestHeaders, "Authorization", basicAuthorizationValue(credentials));
   }
   return { requestHeaders };
+}
+
+function upsertRequestHeader(requestHeaders: any[], name: string, value: string) {
+  const existing = requestHeaders.find((header: any) => header?.name?.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    existing.value = value;
+  } else {
+    requestHeaders.push({ name, value });
+  }
+}
+
+function applyBasicAuthCredentials(details: any) {
+  if (details?.isProxy === true) return {};
+  const origin = safeOrigin(details?.url);
+  const credentials = origin ? credentialsByOrigin.get(origin) : undefined;
+  if (!credentials) return {};
+  return {
+    authCredentials: {
+      username: credentials.username,
+      password: credentials.password,
+    },
+  };
+}
+
+function basicAuthorizationValue(credentials: BasicCredentialRule) {
+  const encoded = new TextEncoder().encode(`${credentials.username}:${credentials.password}`);
+  return `Basic ${bytesToBase64(encoded)}`;
 }
 
 function waitForNetworkIdle(tabId: number, timeout: number, idleMs: number): Promise<Record<string, unknown>> {

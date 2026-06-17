@@ -174,6 +174,7 @@ mod tests {
         assert!(skill.content.contains("pire-browser set viewport"));
         assert!(skill.content.contains("pire-browser set device"));
         assert!(skill.content.contains("pire-browser set headers"));
+        assert!(skill.content.contains("pire-browser set credentials"));
         assert!(skill.content.contains("pire-browser set offline"));
         assert!(skill.content.contains("pire-browser vitals"));
         assert!(skill

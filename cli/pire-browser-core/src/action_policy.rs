@@ -350,7 +350,7 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
             _ => return CommandPolicyResolution::NotAvailable,
         },
         "set" => match subcommand {
-            Some("headers" | "offline") => "network",
+            Some("headers" | "offline" | "credentials") => "network",
             Some("viewport" | "device" | "media") => "state",
             _ => return CommandPolicyResolution::NotAvailable,
         },
@@ -905,6 +905,7 @@ mod tests {
             vec!["set", "media", "dark"],
             vec!["set", "headers", "{\"X-Custom-Header\":\"value\"}"],
             vec!["set", "offline", "on"],
+            vec!["set", "credentials", "user", "pass"],
             vec!["get", "title"],
             vec!["is", "visible", "@e1"],
             vec!["eval", "document.title"],

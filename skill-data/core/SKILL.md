@@ -156,7 +156,7 @@ pire-browser snapshot -i --compact
 pire-browser screenshot mobile.png
 ```
 
-`set viewport` and `set device` are Firefox best-effort paths. They resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `set device` reports a preset User-Agent/touch/scale profile but does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. Geo and credentials are not available on the Firefox backend yet.
+`set viewport` and `set device` are Firefox best-effort paths. They resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `set device` reports a preset User-Agent/touch/scale profile but does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. Geo is not available on the Firefox backend yet.
 
 ```sh
 pire-browser --color-scheme dark open https://example.com
@@ -221,10 +221,11 @@ Authenticate a page or API route with request headers:
 ```bash
 pire-browser open https://api.example.com --headers '{"Authorization":"Bearer token"}'
 pire-browser set headers '{"X-Custom-Header":"value"}'
+pire-browser set credentials user pass
 pire-browser open https://api.example.com/dashboard
 ```
 
-`open --headers` applies headers to the opened URL's origin for the current managed Firefox session. `set headers` applies headers to the active page's origin; use `set headers '{}'` to clear that origin. Header values are not echoed in command output. Reinspect after navigation and do not assume headers apply to other hosts or ports.
+`open --headers` applies headers to the opened URL's origin for the current managed Firefox session. `set headers` applies headers to the active page's origin; use `set headers '{}'` to clear that origin. `set credentials <username> <password>` applies memory-only HTTP Basic auth to the active page's origin. Header values and passwords are not echoed in command output. Reinspect after navigation and do not assume auth applies to other hosts or ports.
 
 Use page-level mouse events when a custom widget needs coordinates:
 

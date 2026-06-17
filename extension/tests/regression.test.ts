@@ -486,6 +486,24 @@ describe("pire-browser command foundations", () => {
     expect(body).not.toContain("values: headers.map");
   });
 
+  it("implements best-effort HTTP Basic credentials without echoing passwords", () => {
+    const body = background();
+    expect(body).toContain("const credentialsByOrigin = new Map");
+    expect(body).toContain('if (subcommand === "credentials") return setCredentialsCommand(rest);');
+    expect(body).toContain("async function setCredentialsCommand");
+    expect(body).toContain("function parseBasicCredentials");
+    expect(body).toContain("function applyCredentialsForOrigin");
+    expect(body).toContain("registerAuthListener();");
+    expect(body).toContain("browser.webRequest.onAuthRequired.addListener");
+    expect(body).toContain("function applyBasicAuthCredentials");
+    expect(body).toContain("function basicAuthorizationValue");
+    expect(body).toContain('upsertRequestHeader(requestHeaders, "Authorization", basicAuthorizationValue(credentials));');
+    expect(body).toContain('mode: "http_basic"');
+    expect(body).toContain("sessionOnly: true");
+    expect(body).not.toContain("password: credential.password");
+    expect(body).not.toContain("password: credentials.password, sessionOnly");
+  });
+
   it("implements best-effort offline mode through Firefox request blocking", () => {
     const body = background();
     expect(body).toContain("let offlineModeEnabled = false");
@@ -729,6 +747,7 @@ describe("pire-browser command foundations", () => {
       ["set", "media", "dark"],
       ["set", "headers", "{\"X-Custom-Header\":\"value\"}"],
       ["set", "offline", "on"],
+      ["set", "credentials", "user", "pass"],
       ["wait"],
       ["wait", "--download", "file.txt"],
       ["screenshot"],
