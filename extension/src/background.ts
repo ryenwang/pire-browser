@@ -647,6 +647,7 @@ function actionPolicyCategoryName(args: string[]): string | null {
       return "network";
     case "snapshot":
     case "screenshot":
+    case "pdf":
       return "snapshot";
     case "diff":
       if (subcommand === "snapshot" || subcommand === "screenshot") return "snapshot";
@@ -729,7 +730,6 @@ function notAvailableActionPolicyRoot(command: string) {
     "dashboard",
     "device",
     "install",
-    "pdf",
     "profiler",
     "profiles",
     "react",

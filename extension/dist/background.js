@@ -398,6 +398,7 @@
                 return "network";
             case "snapshot":
             case "screenshot":
+            case "pdf":
                 return "snapshot";
             case "diff":
                 if (subcommand === "snapshot" || subcommand === "screenshot")
@@ -495,7 +496,6 @@
             "dashboard",
             "device",
             "install",
-            "pdf",
             "profiler",
             "profiles",
             "react",

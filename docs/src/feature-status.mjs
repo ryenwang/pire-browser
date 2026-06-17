@@ -48,7 +48,7 @@ export const featureStatuses = {
   },
   screenshots: {
     status: "partial",
-    summary: "Visible viewport PNG/JPEG screenshots, stitched `--full` captures, generated screenshot directories, best-effort numbered `--annotate` overlays, screenshot pixel diffing, and URL snapshot diffing with optional screenshot comparison are supported; PDF remains unavailable.",
+    summary: "Visible viewport PNG/JPEG screenshots, stitched `--full` captures, generated screenshot directories, best-effort numbered `--annotate` overlays, image-backed `pdf <path>` output, screenshot pixel diffing, and URL snapshot diffing with optional screenshot comparison are supported.",
     sources: ["README.md", "cli/pire-browser-core/src/cli.rs", "extension/src/background.ts"],
   },
   mouseAndDrag: {
@@ -146,7 +146,7 @@ export const commandRootStatus = {
   navigate: "available",
   network: "partial",
   open: "available",
-  pdf: "not_available",
+  pdf: "best_effort",
   press: "available",
   profiler: "not_available",
   profiles: "best_effort",

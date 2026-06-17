@@ -4,8 +4,9 @@ const recordingBlocks = [
   unavailable("Video recording"),
   h2("Screenshot capture", "screenshot-capture"),
   code(`pire-browser screenshot page.png
-pire-browser screenshot --screenshot-dir ./shots page.png`),
-  p("The current Firefox backend captures visible viewport and stitched full-page screenshots. Saved WebM recording is not implemented."),
+pire-browser screenshot --screenshot-dir ./shots page.png
+pire-browser pdf page.pdf`),
+  p("The current Firefox backend captures visible viewport screenshots, stitched full-page screenshots, and image-backed PDF evidence. Saved WebM recording is not implemented."),
 ];
 
 export default page({

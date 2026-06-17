@@ -1861,6 +1861,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "install" => INSTALL_HELP,
         "open" | "goto" | "navigate" => OPEN_HELP,
         "snapshot" => SNAPSHOT_HELP,
+        "pdf" => PDF_HELP,
         "diff" => DIFF_HELP,
         "find" => FIND_HELP,
         "click" => CLICK_HELP,
@@ -1963,6 +1964,7 @@ Common commands:
   profiles [--json]               List managed Firefox profiles
   session list                    List live Firefox sessions
   screenshot out.png              Capture screenshot evidence
+  pdf page.pdf                    Capture an image-backed PDF of the page
   tab new <url>                   Open a new tab and switch to it
   tabs list                       List tracked tabs
   window new                      Open a separate Firefox window
@@ -2055,6 +2057,19 @@ for interaction. `-c`/`--compact` suppresses low-value generic elements,
 `-d`/`--depth` limits DOM depth in the Firefox snapshot model, `-u`/`--urls`
 includes link URLs, and `-s` scopes to a CSS selector. Use quoted refs in
 PowerShell, for example: pire-browser click '@e1'.
+"##;
+
+const PDF_HELP: &str = r##"
+Usage:
+  pire-browser pdf <path>
+  pire-browser pdf <path> --viewport
+  pire-browser pdf <path> --json
+
+Captures the active page as a PDF file. The Firefox backend uses a full-page
+screenshot by default and embeds that image into a one-page PDF, avoiding
+Firefox's native save-as dialog. Pass `--viewport` to capture only the visible
+viewport. The resulting PDF is suitable for visual evidence, but text is not
+selectable and print CSS is not applied.
 "##;
 
 const DIFF_HELP: &str = r##"
@@ -4139,6 +4154,10 @@ mod tests {
             .unwrap()
             .contains("snapshot -i -c -d 5"));
         assert!(help_text(Some("snapshot")).unwrap().contains("-s"));
+        assert!(help_text(Some("pdf"))
+            .unwrap()
+            .contains("pire-browser pdf <path>"));
+        assert!(help_text(None).unwrap().contains("pdf page.pdf"));
         assert!(help_text(Some("diff"))
             .unwrap()
             .contains("diff snapshot --baseline"));

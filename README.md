@@ -147,13 +147,14 @@ pire-browser screenshot [path]       # Screenshot
 pire-browser screenshot --annotate   # Annotated screenshot with numbered element labels
 pire-browser screenshot --screenshot-dir ./shots
 pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80
+pire-browser pdf page.pdf            # Image-backed page PDF
 pire-browser snapshot -i             # Accessibility tree with refs
 pire-browser eval <js>               # Run JavaScript with policy checks
 pire-browser close                   # Close targeted managed Firefox session
 pire-browser close --all             # Close all managed Firefox sessions
 ```
 
-PDF capture, CDP connect, runtime viewport streaming, and natural-language chat are not implemented in the current Firefox backend.
+PDF capture is available as an image-backed visual evidence file. CDP connect, runtime viewport streaming, and natural-language chat are not implemented in the current Firefox backend.
 
 ### Get Info
 
@@ -602,9 +603,12 @@ pire-browser screenshot --full full-page.png
 pire-browser screenshot --annotate annotated.png
 pire-browser screenshot --screenshot-dir ./shots
 pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80 page.jpg
+pire-browser pdf page.pdf
+pire-browser pdf viewport.pdf --viewport
 ```
 
 `--full` scrolls and stitches the page into one full-document image. `--annotate` temporarily draws numbered overlays for actionable elements before capture and clears them afterwards.
+`pdf <path>` captures a full-page screenshot and embeds it into a one-page PDF. Use it for visual evidence; text is not selectable and print CSS is not applied.
 
 ## Options
 
@@ -777,9 +781,10 @@ Open and interact with supported local HTML files using `file://` URLs:
 ```bash
 pire-browser --allow-file-access open file:///path/to/page.html
 pire-browser screenshot output.png
+pire-browser pdf output.pdf
 ```
 
-For repeatable agent tests, an HTTP fixture server is usually more reliable than file URLs. PDF local-file capture is not implemented in the Firefox backend.
+For repeatable agent tests, an HTTP fixture server is usually more reliable than file URLs. PDF output is image-backed visual evidence, not a selectable-text print export.
 
 ## CDP Mode
 

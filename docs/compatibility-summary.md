@@ -9,7 +9,7 @@ This is a public, product-facing status summary for `pire-browser@0.2.2`. Detail
 | Core navigation and refs | Supported | Open, snapshot, refs, click, fill, get, wait, and tab workflows are available. |
 | Selectors and snapshots | Supported | CSS, text-style selectors, semantic locators, interactive snapshots, compact output, snapshot text diffing, URL snapshot diffing, and screenshot pixel diffing are available. |
 | Sessions, profiles, and state | Partial | Named sessions, managed profiles, and state files are available with Firefox-specific behavior. |
-| Screenshots, files, and clipboard | Partial | Screenshots, downloads, small uploads, and clipboard helpers are available; PDF and native file picker control are not. |
+| Screenshots, files, and clipboard | Partial | Screenshots, image-backed PDF evidence, downloads, small uploads, and clipboard helpers are available; selectable-text PDF export and native file picker control are not. |
 | Network and configuration | Partial | Domain allowlists, headers, best-effort viewport/device settings, network diagnostics, metadata-only HAR start/stop/export, route mocks, and config defaults are available with documented limits. |
 | Security guardrails | Partial | Domain, action, confirmation, content-boundary, and output-size guardrails are available; encrypted vault features are not. |
 | Debugging and observability | Partial | Console, errors, highlight, best-effort Web Vitals, doctor, status, and session inspection are available; dashboard, trace, video, React DevTools introspection, and profiler are not. |

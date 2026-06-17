@@ -24,8 +24,9 @@ pire-browser screenshot --screenshot-dir ./shots
 pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80 page.jpg
 pire-browser screenshot --full page.png      # Scroll and stitch full page
 pire-browser screenshot --annotate page.png  # Adds best-effort numbered visible-element overlays
-# PDF capture is not available in the Firefox backend.`),
-  p("<code>--full</code> scrolls and stitches the page into one full-document image. <code>--annotate</code> temporarily draws numbered overlays for actionable elements before capture and clears them afterwards. <code>--screenshot-dir</code> writes the explicit filename there, or generates a timestamped filename in that directory when no filename is provided. Relative screenshot paths resolve from the command's current working directory."),
+pire-browser pdf page.pdf
+pire-browser pdf viewport.pdf --viewport`),
+  p("<code>--full</code> scrolls and stitches the page into one full-document image. <code>--annotate</code> temporarily draws numbered overlays for actionable elements before capture and clears them afterwards. <code>pdf &lt;path&gt;</code> embeds a screenshot into a one-page image-backed PDF for visual evidence; text is not selectable and print CSS is not applied. <code>--screenshot-dir</code> writes the explicit filename there, or generates a timestamped filename in that directory when no filename is provided. Relative screenshot paths resolve from the command's current working directory."),
 ];
 
 export default page({

@@ -80,7 +80,6 @@ const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &[
     "dashboard",
     "device",
     "install",
-    "pdf",
     "profiler",
     "react",
     "record",
@@ -115,6 +114,12 @@ struct DiffScreenshotOptions {
     current_path: Option<PathBuf>,
     output_path: Option<PathBuf>,
     threshold: f32,
+    full_page: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PdfOptions {
+    output_path: PathBuf,
     full_page: bool,
 }
 
@@ -658,6 +663,26 @@ fn run() -> Result<()> {
                     unreachable!();
                 }
             };
+            if let Some(options) = pdf_options(&args)? {
+                let mut result = handle_pdf_capture(
+                    &target,
+                    &options,
+                    json,
+                    &ignored_global_flags,
+                    &domain_decision,
+                    &action_decision,
+                    &confirmation_decision,
+                    interactively_approved,
+                    firefox_path_override.as_deref(),
+                    color_scheme.as_deref(),
+                )?;
+                append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
+                append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
+                apply_output_guards(&mut result, &output_guards, json);
+                println!("{}", format_cli_result(&result, json)?);
+                print_config_warnings(&config_warnings);
+                return Ok(());
+            }
             if let Some(options) = diff_screenshot_options(&args)? {
                 let mut result = handle_diff_screenshot(
                     &target,
@@ -3884,6 +3909,46 @@ fn diff_snapshot_value_flag(arg: &str) -> bool {
     )
 }
 
+fn pdf_options(args: &[String]) -> Result<Option<PdfOptions>> {
+    if args.first().map(String::as_str) != Some("pdf") {
+        return Ok(None);
+    }
+
+    let mut output_path = None;
+    let mut full_page = true;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" | "--full" => {
+                index += 1;
+            }
+            "--viewport" => {
+                full_page = false;
+                index += 1;
+            }
+            arg if arg.starts_with('-') => {
+                bail!("invalid_args: pdf does not support option: {arg}");
+            }
+            path => {
+                if output_path.is_some() {
+                    bail!("invalid_args: pdf accepts at most one output path");
+                }
+                output_path = Some(PathBuf::from(path));
+                index += 1;
+            }
+        }
+    }
+
+    let Some(output_path) = output_path else {
+        bail!("invalid_args: pdf requires <path>");
+    };
+
+    Ok(Some(PdfOptions {
+        output_path,
+        full_page,
+    }))
+}
+
 fn diff_screenshot_options(args: &[String]) -> Result<Option<DiffScreenshotOptions>> {
     if args.first().map(String::as_str) != Some("diff")
         || args.get(1).map(String::as_str) != Some("screenshot")
@@ -4295,6 +4360,165 @@ fn capture_diff_screenshot_current(
         .map(PathBuf::from)
         .unwrap_or(path);
     Ok(resolved)
+}
+
+fn handle_pdf_capture(
+    target: &SessionTarget,
+    options: &PdfOptions,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
+    firefox_path_override: Option<&str>,
+    color_scheme: Option<&str>,
+) -> Result<Value> {
+    let screenshot_path = capture_diff_screenshot_current(
+        target,
+        options.full_page,
+        json_output,
+        ignored_global_flags,
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+        firefox_path_override,
+        color_scheme,
+    )?;
+    let output_path = resolve_pdf_output_path(&options.output_path)?;
+    let image = image::open(&screenshot_path).with_context(|| {
+        format!(
+            "invalid_args: failed to read captured screenshot {}",
+            screenshot_path.display()
+        )
+    })?;
+    let rgba = image.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    let bytes = image_pdf_bytes(&rgba)?;
+    if let Some(parent) = output_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+    }
+    fs::write(&output_path, bytes)
+        .with_context(|| format!("failed to write PDF {}", output_path.display()))?;
+    let _ = fs::remove_file(&screenshot_path);
+    Ok(json!({
+        "text": format!(
+            "PDF written to {}\nWarning [BEST_EFFORT_FIREFOX_GAP]: PDF output is generated from a {} screenshot, so text is not selectable and print CSS is not applied.",
+            output_path.display(),
+            if options.full_page { "full-page" } else { "viewport" }
+        ),
+        "pdfPath": output_path.to_string_lossy().to_string(),
+        "pdf": {
+            "path": output_path.to_string_lossy().to_string(),
+            "source": if options.full_page { "full-page-screenshot" } else { "viewport-screenshot" },
+            "width": width,
+            "height": height,
+            "pageCount": 1,
+            "selectableText": false,
+            "printCssApplied": false
+        },
+        "warnings": [{
+            "code": "BEST_EFFORT_FIREFOX_GAP",
+            "feature": "pdf",
+            "message": "PDF output is generated from a Firefox screenshot because Firefox WebExtensions cannot save a PDF to a requested path without an OS dialog. Text is not selectable and print CSS is not applied."
+        }]
+    }))
+}
+
+fn resolve_pdf_output_path(path: &Path) -> Result<PathBuf> {
+    if path.is_absolute() {
+        return Ok(path.to_path_buf());
+    }
+    Ok(std::env::current_dir()?.join(path))
+}
+
+fn image_pdf_bytes(image: &RgbaImage) -> Result<Vec<u8>> {
+    let (width, height) = image.dimensions();
+    if width == 0 || height == 0 {
+        bail!("invalid_args: PDF image dimensions must be non-zero");
+    }
+    let rgb = rgba_to_white_rgb(image);
+    let page_width = f64::from(width) * 72.0 / 96.0;
+    let page_height = f64::from(height) * 72.0 / 96.0;
+    let content = format!("q\n{page_width:.2} 0 0 {page_height:.2} 0 0 cm\n/Im0 Do\nQ\n");
+    let mut pdf = Vec::new();
+    pdf.extend_from_slice(b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+    let mut offsets = Vec::new();
+    push_pdf_object(
+        &mut pdf,
+        &mut offsets,
+        1,
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+    )?;
+    push_pdf_object(
+        &mut pdf,
+        &mut offsets,
+        2,
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    )?;
+    push_pdf_object(
+        &mut pdf,
+        &mut offsets,
+        3,
+        format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_width:.2} {page_height:.2}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>"
+        )
+        .as_bytes(),
+    )?;
+    offsets.push(pdf.len());
+    write!(
+        pdf,
+        "4 0 obj\n<< /Type /XObject /Subtype /Image /Width {width} /Height {height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length {} >>\nstream\n",
+        rgb.len()
+    )?;
+    pdf.extend_from_slice(&rgb);
+    pdf.extend_from_slice(b"\nendstream\nendobj\n");
+    offsets.push(pdf.len());
+    write!(
+        pdf,
+        "5 0 obj\n<< /Length {} >>\nstream\n{}endstream\nendobj\n",
+        content.as_bytes().len(),
+        content
+    )?;
+    let xref_offset = pdf.len();
+    write!(pdf, "xref\n0 6\n0000000000 65535 f \n")?;
+    for offset in offsets {
+        write!(pdf, "{offset:010} 00000 n \n")?;
+    }
+    write!(
+        pdf,
+        "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
+    )?;
+    Ok(pdf)
+}
+
+fn push_pdf_object(
+    pdf: &mut Vec<u8>,
+    offsets: &mut Vec<usize>,
+    id: usize,
+    body: &[u8],
+) -> Result<()> {
+    offsets.push(pdf.len());
+    write!(pdf, "{id} 0 obj\n")?;
+    pdf.extend_from_slice(body);
+    pdf.extend_from_slice(b"\nendobj\n");
+    Ok(())
+}
+
+fn rgba_to_white_rgb(image: &RgbaImage) -> Vec<u8> {
+    let mut rgb = Vec::with_capacity(image.width() as usize * image.height() as usize * 3);
+    for pixel in image.pixels() {
+        let alpha = f32::from(pixel[3]) / 255.0;
+        for channel in [pixel[0], pixel[1], pixel[2]] {
+            let value = f32::from(channel) * alpha + 255.0 * (1.0 - alpha);
+            rgb.push(value.round().clamp(0.0, 255.0) as u8);
+        }
+    }
+    rgb
 }
 
 fn capture_diff_url_baseline(
@@ -5807,6 +6031,7 @@ fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
                 | "scrollintoview"
                 | "wait"
                 | "screenshot"
+                | "pdf"
                 | "get"
                 | "is"
                 | "eval"
@@ -5862,6 +6087,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "scrollintoview"
             | "wait"
             | "screenshot"
+            | "pdf"
             | "get"
             | "is"
             | "eval"
@@ -5915,6 +6141,7 @@ fn command_suggestions(command: &str) -> Vec<String> {
         "network",
         "highlight",
         "vitals",
+        "pdf",
         "mouse",
         "drag",
         "addinitscript",
@@ -6348,6 +6575,54 @@ mod tests {
     }
 
     #[test]
+    fn pdf_options_parse_agent_browser_shape() {
+        assert_eq!(
+            pdf_options(&s(&["pdf", "page.pdf"])).unwrap(),
+            Some(PdfOptions {
+                output_path: PathBuf::from("page.pdf"),
+                full_page: true,
+            })
+        );
+        assert_eq!(
+            pdf_options(&s(&["pdf", "page.pdf", "--viewport", "--json"])).unwrap(),
+            Some(PdfOptions {
+                output_path: PathBuf::from("page.pdf"),
+                full_page: false,
+            })
+        );
+        assert!(pdf_options(&s(&["pdf"]))
+            .unwrap_err()
+            .to_string()
+            .contains("requires <path>"));
+        assert!(pdf_options(&s(&["pdf", "one.pdf", "two.pdf"]))
+            .unwrap_err()
+            .to_string()
+            .contains("at most one"));
+    }
+
+    #[test]
+    fn image_pdf_bytes_embed_valid_image_pdf() {
+        let mut image = RgbaImage::new(2, 1);
+        image.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
+        image.put_pixel(1, 0, Rgba([0, 0, 255, 128]));
+
+        let pdf = image_pdf_bytes(&image).unwrap();
+
+        assert!(pdf.starts_with(b"%PDF-1.4"));
+        assert!(pdf
+            .windows(b"/Subtype /Image".len())
+            .any(|window| window == b"/Subtype /Image"));
+        assert!(pdf
+            .windows(b"/Width 2".len())
+            .any(|window| window == b"/Width 2"));
+        assert!(pdf
+            .windows(b"/Height 1".len())
+            .any(|window| window == b"/Height 1"));
+        assert!(pdf.windows(b"xref".len()).any(|window| window == b"xref"));
+        assert!(pdf.ends_with(b"%%EOF\n"));
+    }
+
+    #[test]
     fn diff_screenshot_options_require_baseline_and_valid_threshold() {
         assert!(diff_screenshot_options(&s(&["diff", "screenshot"]))
             .unwrap_err()
@@ -6641,6 +6916,7 @@ mod tests {
         assert!(can_auto_launch_for_remote_args(&s(&[
             "set", "headers", "{}"
         ])));
+        assert!(can_auto_launch_for_remote_args(&s(&["pdf", "page.pdf"])));
         assert!(can_auto_launch_for_remote_args(&s(&["drag", "@e1", "@e2"])));
         assert!(can_auto_launch_for_remote_args(&s(&[
             "addinitscript",
@@ -6701,6 +6977,7 @@ mod tests {
         assert!(DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"stream"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"download"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"diff"));
+        assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"pdf"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"open"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"click"));
     }
@@ -6734,6 +7011,7 @@ mod tests {
             "upload",
             "diff",
             "vitals",
+            "pdf",
             "addinitscript",
             "removeinitscript",
             "skills",

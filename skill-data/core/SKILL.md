@@ -172,10 +172,11 @@ pire-browser highlight '#submit'
 pire-browser screenshot submit-highlight.png
 pire-browser screenshot --full full-page.png
 pire-browser screenshot --annotate numbered-elements.png
+pire-browser pdf page.pdf
 pire-browser screenshot --screenshot-dir screenshots
 ```
 
-Use `highlight <target>` with the same refs, selectors, text, and semantic targets you would use for `click` or `fill`. Use `screenshot --full` when the report needs the whole page, and `screenshot --annotate` when numbered element evidence is more useful than a single target overlay. `screenshot` with no path writes a generated file under the local `pire-browser/screenshots` data directory and prints the resolved path. `--screenshot-dir <dir>` generates a timestamped filename inside that directory when no filename is provided. Relative screenshot paths resolve from the command's current working directory. These are visual QA helpers; styling is Firefox-specific, so do not rely on pixel-identical annotation behavior across browsers.
+Use `highlight <target>` with the same refs, selectors, text, and semantic targets you would use for `click` or `fill`. Use `screenshot --full` when the report needs the whole page, `screenshot --annotate` when numbered element evidence is more useful than a single target overlay, and `pdf <path>` when the report needs a portable visual evidence file. `pdf` embeds a screenshot into a one-page image-backed PDF; text is not selectable and print CSS is not applied. `screenshot` with no path writes a generated file under the local `pire-browser/screenshots` data directory and prints the resolved path. `--screenshot-dir <dir>` generates a timestamped filename inside that directory when no filename is provided. Relative screenshot paths resolve from the command's current working directory. These are visual QA helpers; styling is Firefox-specific, so do not rely on pixel-identical annotation behavior across browsers.
 
 Compare page structure before and after an action:
 
@@ -262,12 +263,13 @@ Open a local HTML file:
 pire-browser --allow-file-access open file:///path/to/page.html
 ```
 
-Use this for local HTML artifacts and fixtures. PDF local-file capture is not available in the current Firefox backend.
+Use this for local HTML artifacts and fixtures. For portable visual evidence, run `pire-browser pdf page.pdf` after opening the local page.
 
 Capture screenshots:
 
 ```bash
 pire-browser screenshot page.png
+pire-browser pdf page.pdf
 ```
 
 Use a config file for repeated defaults:

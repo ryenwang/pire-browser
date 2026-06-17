@@ -19,6 +19,7 @@ pire-browser scroll <dir> [px]       # Scroll page or container
 pire-browser scrollintoview <sel>    # Scroll element into view
 pire-browser upload <sel> <files>    # Assign local file input payloads
 pire-browser screenshot [path]       # Capture screenshot evidence
+pire-browser pdf page.pdf            # Capture image-backed PDF evidence
 pire-browser snapshot -i             # Accessibility tree with refs
 pire-browser eval <js>               # Run JavaScript with policy checks
 pire-browser close                   # Close targeted session`),
@@ -29,7 +30,8 @@ pire-browser screenshot --screenshot-dir ./shots
 pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80 page.jpg
 pire-browser screenshot --full page.png       # Scroll and stitch full page
 pire-browser screenshot --annotate page.png   # Adds best-effort numbered visible-element overlays
-# PDF capture is still unavailable in the Firefox backend.`),
+pire-browser pdf page.pdf
+pire-browser pdf viewport.pdf --viewport`),
   code(`pire-browser snapshot -i
 pire-browser click '@e4'
 pire-browser diff snapshot
