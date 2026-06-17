@@ -38,6 +38,20 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "vitals maps to get",
+      "args": ["vitals"],
+      "policy": { "default": "deny", "allow": ["get"] },
+      "expectedCategory": "get",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "vitals url maps to navigate",
+      "args": ["vitals", "https://example.com"],
+      "policy": { "default": "deny", "allow": ["navigate"] },
+      "expectedCategory": "navigate",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "diff snapshot maps to snapshot",
       "args": ["diff", "snapshot"],
       "policy": { "default": "deny", "allow": ["snapshot"] },

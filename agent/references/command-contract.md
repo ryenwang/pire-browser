@@ -34,3 +34,6 @@ Skill commands use:
 ## Browser Commands
 
 Browser commands may auto-launch a managed Firefox session when safe. Read the returned output before deciding the next step.
+
+- Use `pire-browser vitals [url]` for best-effort page performance diagnostics: TTFB, FCP, LCP, CLS, INP, DOMContentLoaded, load, readyState, and captured hydration warnings.
+- If `vitals` reports unavailable metrics, treat that as a Firefox/WebExtension API limitation instead of inventing estimates.

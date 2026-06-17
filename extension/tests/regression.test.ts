@@ -580,6 +580,7 @@ describe("pire-browser command foundations", () => {
     expect(body).toContain("await targetTab().catch(() => undefined)");
     expect(body).toContain('"DomainPolicyError"');
     expect(body).toContain('"snapshot"');
+    expect(body).toContain('if (command === "vitals")');
     expect(body).toContain('command === "clipboard"');
     expect(body).toContain('command === "state"');
     expect(body).toContain('command === "tab" || command === "tabs"');
@@ -702,6 +703,8 @@ describe("pire-browser command foundations", () => {
       ["wait"],
       ["wait", "--download", "file.txt"],
       ["screenshot"],
+      ["vitals"],
+      ["vitals", "https://example.com"],
       ["get", "title"],
       ["is", "visible", "@e1"],
       ["eval", "document.title"],
@@ -887,6 +890,26 @@ describe("command shape parity", () => {
     expect(contentBody).toContain("function snapshotRoot");
     expect(contentBody).toContain("function elementDepthWithinRoot");
     expect(contentBody).toContain("function hrefFor");
+  });
+
+  it("supports best-effort web vitals diagnostics", () => {
+    const body = background();
+    expect(body).toContain('case "vitals":');
+    expect(body).toContain("return vitalsCommand(rest, domainPolicy);");
+    expect(body).toContain("async function vitalsCommand");
+    expect(body).toContain("function parseVitalsArgs");
+    expect(body).toContain('firstPositionalArg(args.slice(1), []) ? "navigate" : "get"');
+    expect(body).toContain("bestEffortWarning(");
+
+    const contentBody = content();
+    expect(contentBody).toContain('if (message.type === "vitals") return Promise.resolve(pageVitals());');
+    expect(contentBody).toContain("function pageVitals");
+    expect(contentBody).toContain('"TTFB"');
+    expect(contentBody).toContain('"first-contentful-paint"');
+    expect(contentBody).toContain('"largest-contentful-paint"');
+    expect(contentBody).toContain('"layout-shift"');
+    expect(contentBody).toContain('"event"');
+    expect(contentBody).toContain("function hydrationSummary");
   });
 
   it("supports text-based snapshot diffs", () => {

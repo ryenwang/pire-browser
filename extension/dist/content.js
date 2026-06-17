@@ -117,6 +117,8 @@
             return waitForFunction(String(message.expression ?? ""), Number(message.timeout ?? 10000));
         if (message.type === "debug_logs")
             return Promise.resolve(debugLogs(String(message.kind ?? "console"), Boolean(message.clear)));
+        if (message.type === "vitals")
+            return Promise.resolve(pageVitals());
         if (message.type === "eval")
             return Promise.resolve(evalScript(String(message.script ?? "")));
         if (message.type === "pushstate")
@@ -1633,6 +1635,141 @@
             return `[${record.type}] ${record.message}${location}`;
         })
             .join("\n");
+    }
+    function pageVitals() {
+        const metrics = {
+            ttfb: timingMetric("TTFB", navigationTimingValue("responseStart"), "ms", "PerformanceNavigationTiming", [800, 1800]),
+            fcp: timingMetric("FCP", paintTimingValue("first-contentful-paint"), "ms", "PerformancePaintTiming", [1800, 3000]),
+            lcp: timingMetric("LCP", largestContentfulPaintValue(), "ms", "LargestContentfulPaint", [2500, 4000]),
+            cls: timingMetric("CLS", cumulativeLayoutShiftValue(), "score", "LayoutShift", [0.1, 0.25]),
+            inp: timingMetric("INP", interactionToNextPaintValue(), "ms", "PerformanceEventTiming", [200, 500]),
+        };
+        const navigation = navigationSummary();
+        const hydration = hydrationSummary();
+        return {
+            text: formatVitalsText(metrics, navigation, hydration),
+            url: location.href,
+            title: document.title,
+            metrics,
+            navigation,
+            hydration,
+            warnings: [
+                {
+                    code: "BEST_EFFORT_FIREFOX_GAP",
+                    feature: "vitals",
+                    message: "Web Vitals are collected from browser Performance APIs exposed to Firefox content scripts; some Chrome web-vitals signals may be unavailable.",
+                },
+            ],
+            dialogs: drainDialogs(),
+        };
+    }
+    function timingMetric(name, value, unit, source, thresholds) {
+        if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+            return { name, value: null, unit, rating: "unknown", available: false, source };
+        }
+        return {
+            name,
+            value,
+            unit,
+            rating: rateMetric(value, thresholds),
+            available: true,
+            source,
+        };
+    }
+    function rateMetric(value, [good, needsImprovement]) {
+        if (value <= good)
+            return "good";
+        if (value <= needsImprovement)
+            return "needs-improvement";
+        return "poor";
+    }
+    function navigationTimingValue(field) {
+        const nav = navigationEntry();
+        const value = nav && typeof nav[field] === "number" ? nav[field] : null;
+        if (typeof value === "number" && value > 0)
+            return value;
+        const legacy = legacyNavigationTimingValue(field);
+        return legacy;
+    }
+    function legacyNavigationTimingValue(field) {
+        const timing = performance.timing;
+        if (!timing || typeof timing.navigationStart !== "number")
+            return null;
+        const value = timing[field];
+        if (typeof value !== "number" || value <= 0)
+            return null;
+        return value - timing.navigationStart;
+    }
+    function paintTimingValue(name) {
+        const entry = performance.getEntriesByName(name)[0];
+        return typeof entry?.startTime === "number" ? entry.startTime : null;
+    }
+    function largestContentfulPaintValue() {
+        const entries = performance.getEntriesByType("largest-contentful-paint");
+        const entry = entries[entries.length - 1];
+        return typeof entry?.startTime === "number" ? entry.startTime : null;
+    }
+    function cumulativeLayoutShiftValue() {
+        const entries = performance.getEntriesByType("layout-shift");
+        if (!entries.length)
+            return null;
+        return entries
+            .filter((entry) => !entry.hadRecentInput)
+            .reduce((sum, entry) => sum + (typeof entry.value === "number" ? entry.value : 0), 0);
+    }
+    function interactionToNextPaintValue() {
+        const entries = performance.getEntriesByType("event");
+        const interactionEntries = entries.filter((entry) => Number(entry.interactionId) > 0 && typeof entry.duration === "number");
+        if (!interactionEntries.length)
+            return null;
+        return Math.max(...interactionEntries.map((entry) => entry.duration));
+    }
+    function navigationSummary() {
+        return {
+            domContentLoaded: timingMetric("DOMContentLoaded", navigationTimingValue("domContentLoadedEventEnd"), "ms", "PerformanceNavigationTiming", [2000, 4000]),
+            load: timingMetric("Load", navigationTimingValue("loadEventEnd"), "ms", "PerformanceNavigationTiming", [2500, 5000]),
+            readyState: document.readyState,
+        };
+    }
+    function navigationEntry() {
+        return performance.getEntriesByType("navigation")[0] ?? null;
+    }
+    function hydrationSummary() {
+        const hydrationRecords = [...consoleRecords, ...pageErrorRecords].filter((record) => /hydrat/i.test(logRecordMessage(record)));
+        const frameworks = {
+            next: Boolean(document.getElementById("__NEXT_DATA__") || document.querySelector("[data-nextjs-router]")),
+            react: Boolean(window.__REACT_DEVTOOLS_GLOBAL_HOOK__) ||
+                Boolean(document.querySelector("#root, #__next, [data-reactroot], [data-reactid]")),
+        };
+        return {
+            warnings: hydrationRecords.map((record) => ({
+                type: "level" in record ? record.level : record.type,
+                message: "text" in record ? record.text : record.message,
+                at: record.at,
+            })),
+            warningCount: hydrationRecords.length,
+            frameworks,
+        };
+    }
+    function logRecordMessage(record) {
+        return "text" in record ? record.text : record.message;
+    }
+    function formatVitalsText(metrics, navigation, hydration) {
+        const lines = [`Web Vitals for ${location.href}`];
+        for (const key of ["ttfb", "fcp", "lcp", "cls", "inp"]) {
+            lines.push(formatVitalMetric(metrics[key]));
+        }
+        lines.push(formatVitalMetric(navigation.domContentLoaded));
+        lines.push(formatVitalMetric(navigation.load));
+        lines.push(`Ready state: ${navigation.readyState}`);
+        lines.push(`Hydration warnings: ${hydration.warningCount}`);
+        return lines.join("\n");
+    }
+    function formatVitalMetric(metric) {
+        if (!metric.available || metric.value === null)
+            return `${metric.name}: unavailable`;
+        const value = metric.unit === "ms" ? `${Math.round(metric.value)}ms` : metric.value.toFixed(3);
+        return `${metric.name}: ${value} (${metric.rating})`;
     }
     function fireInputEvents(element) {
         element.dispatchEvent(new Event("input", { bubbles: true }));

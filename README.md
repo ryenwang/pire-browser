@@ -416,14 +416,18 @@ pire-browser --session-name review open https://app.example.com/dashboard
 
 ### React / Web Vitals
 
-Framework-aware React tree, Suspense, render profiling, and Web Vitals commands are not implemented. Use page inspection commands instead:
+`vitals` is available for best-effort page performance checks. Framework-aware React tree, Suspense, and render profiling commands are not implemented in the Firefox backend yet.
 
 ```bash
+pire-browser vitals
+pire-browser vitals https://app.example.com/dashboard
+pire-browser vitals --json
 pire-browser snapshot -i
-pire-browser get text <sel>
-pire-browser eval "document.querySelector('#root')?.textContent"
-pire-browser screenshot page.png
 ```
+
+`vitals` reports TTFB, FCP, LCP, CLS, INP, DOMContentLoaded, load, readyState,
+and hydration warnings when Firefox exposes the underlying Performance API
+entries. Missing browser signals are reported as unavailable.
 
 ### Init scripts
 

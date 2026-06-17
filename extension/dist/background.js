@@ -334,6 +334,8 @@
                 return args.includes("--clear") || subcommand === "clear" ? "state" : "get";
             case "highlight":
                 return "snapshot";
+            case "vitals":
+                return firstPositionalArg(args.slice(1), []) ? "navigate" : "get";
             case "network":
                 if (subcommand === "requests")
                     return args.includes("--clear") ? "state" : "get";
@@ -451,7 +453,6 @@
             "tap",
             "trace",
             "upgrade",
-            "vitals",
         ].includes(command);
     }
     function domainPolicyDestinationUrl(args) {
@@ -461,6 +462,9 @@
         }
         if ((command === "tab" || command === "tabs") && subcommand === "new") {
             return firstPositionalArg(rest, ["--label"]);
+        }
+        if (command === "vitals") {
+            return firstPositionalArg(rest, []);
         }
         return undefined;
     }
@@ -563,6 +567,7 @@
             "download",
             "upload",
             "set",
+            "vitals",
         ].includes(command ?? "")) {
             return true;
         }
@@ -685,6 +690,8 @@
                 return authCommand(rest, domainPolicy);
             case "network":
                 return networkCommand(rest);
+            case "vitals":
+                return vitalsCommand(rest, domainPolicy);
             case "addinitscript":
                 return addInitScriptCommand(rest);
             case "removeinitscript":
@@ -703,7 +710,6 @@
             case "session":
             case "profiles":
             case "react":
-            case "vitals":
             case "pdf":
             case "connect":
             case "device":
@@ -2469,6 +2475,40 @@
             }
             return `[${record.level ?? "log"}] ${record.text ?? ""}`;
         }).join("\n");
+    }
+    async function vitalsCommand(args, _domainPolicy) {
+        const parsed = parseVitalsArgs(args);
+        if ("error" in parsed)
+            return parsed;
+        const opened = parsed.url ? await openCommand([parsed.url], "open") : null;
+        if (opened && "error" in opened)
+            return opened;
+        const tab = await targetTab();
+        const response = await sendFrame(tab.tabId, 0, { type: "vitals" });
+        const result = normalizeContentResponse(response);
+        if ("error" in result)
+            return result;
+        return {
+            ...result,
+            tab,
+            open: opened ? resultSummary(opened) : undefined,
+            warnings: mergeWarnings(opened ? opened.warnings : undefined, result.warnings, bestEffortWarning("vitals", "Firefox exposes a subset of Chrome Web Vitals timing APIs to WebExtensions; unavailable metrics are reported explicitly.")),
+        };
+    }
+    function parseVitalsArgs(args) {
+        let url;
+        for (const arg of args) {
+            if (arg === "--json")
+                continue;
+            if (arg.startsWith("-")) {
+                return { error: { code: "invalid_args", message: `vitals does not support option: ${arg}` } };
+            }
+            if (url) {
+                return { error: { code: "invalid_args", message: "vitals accepts at most one URL" } };
+            }
+            url = arg;
+        }
+        return { url };
     }
     async function networkCommand(args) {
         const [subcommand, ...rest] = args;

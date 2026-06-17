@@ -271,6 +271,14 @@
       "source": "upstream"
     },
     {
+      "root": "vitals",
+      "signature": "vitals [url]",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
       "root": "diff",
       "subcommand": "snapshot",
       "signature": "diff snapshot [--baseline <path>]",

@@ -73,7 +73,7 @@ export const featureStatuses = {
   },
   debugging: {
     status: "partial",
-    summary: "`console`, `errors`, and `highlight` are available for active Firefox tabs; trace capture, DevTools inspect proxy, profiler, and video recording commands are not implemented.",
+    summary: "`console`, `errors`, `highlight`, and best-effort `vitals` are available for active Firefox tabs; trace capture, DevTools inspect proxy, profiler, React DevTools introspection, and video recording commands are not implemented.",
     sources: ["README.md", "extension/src/background.ts"],
   },
   profiler: {
@@ -174,7 +174,7 @@ export const commandRootStatus = {
   type: "available",
   uncheck: "available",
   upload: "best_effort",
-  vitals: "not_available",
+  vitals: "best_effort",
   wait: "available",
   window: "available",
 };

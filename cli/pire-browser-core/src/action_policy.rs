@@ -33,7 +33,6 @@ const RESERVED_NOT_AVAILABLE_ROOTS: &[&str] = &[
     "tap",
     "trace",
     "upgrade",
-    "vitals",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -305,6 +304,8 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
         "diff" if matches!(subcommand, Some("snapshot" | "screenshot")) => "snapshot",
         "diff" if subcommand == Some("url") => "navigate",
         "highlight" => "snapshot",
+        "vitals" if has_vitals_url_arg(args) => "navigate",
+        "vitals" => "get",
         "addinitscript" | "removeinitscript" => "eval",
         "scroll" | "scrollintoview" => "scroll",
         "mouse" if subcommand == Some("wheel") => "scroll",
@@ -381,6 +382,9 @@ pub fn policy_command_sequences(args: &[String]) -> Result<Vec<Vec<String>>> {
     if args.first().map(String::as_str) == Some("diff") {
         return diff_policy_command_sequences(args);
     }
+    if args.first().map(String::as_str) == Some("vitals") {
+        return vitals_policy_command_sequences(args);
+    }
     if args.first().map(String::as_str) != Some("batch") {
         return Ok(vec![args.to_vec()]);
     }
@@ -418,6 +422,16 @@ fn diff_policy_command_sequences(args: &[String]) -> Result<Vec<Vec<String>>> {
         }
         _ => Ok(vec![args.to_vec()]),
     }
+}
+
+fn vitals_policy_command_sequences(args: &[String]) -> Result<Vec<Vec<String>>> {
+    let Some(url) = first_vitals_url_arg(args) else {
+        return Ok(vec![args.to_vec()]);
+    };
+    Ok(vec![
+        vec!["open".to_string(), url],
+        vec!["vitals".to_string()],
+    ])
 }
 
 pub fn split_command_text(command: &str) -> Result<Vec<String>> {
@@ -526,6 +540,27 @@ fn action_tail(args: &[String], value_flags: &[&str], bool_flags: &[&str]) -> Op
             continue;
         }
         return Some(args[i].clone());
+    }
+    None
+}
+
+fn has_vitals_url_arg(args: &[String]) -> bool {
+    first_vitals_url_arg(args).is_some()
+}
+
+fn first_vitals_url_arg(args: &[String]) -> Option<String> {
+    let mut index = 1;
+    while index < args.len() {
+        let arg = &args[index];
+        if arg == "--json" {
+            index += 1;
+            continue;
+        }
+        if arg.starts_with('-') {
+            index += 1;
+            continue;
+        }
+        return Some(arg.clone());
     }
     None
 }
@@ -875,6 +910,8 @@ mod tests {
             vec!["errors"],
             vec!["errors", "--clear"],
             vec!["highlight", "#target"],
+            vec!["vitals"],
+            vec!["vitals", "https://example.com"],
             vec!["network"],
             vec!["network", "requests"],
             vec!["network", "requests", "--clear"],
@@ -963,6 +1000,27 @@ mod tests {
                 vec!["snapshot".to_string()],
                 vec!["screenshot".to_string()],
             ]
+        );
+    }
+
+    #[test]
+    fn vitals_url_policy_sequences_expose_navigation_then_read() {
+        let args = vec!["vitals".to_string(), "https://example.com".to_string()];
+
+        assert_eq!(
+            resolve_command_policy(&args),
+            CommandPolicyResolution::Category("navigate".to_string())
+        );
+        assert_eq!(
+            policy_command_sequences(&args).unwrap(),
+            vec![
+                vec!["open".to_string(), "https://example.com".to_string()],
+                vec!["vitals".to_string()],
+            ]
+        );
+        assert_eq!(
+            resolve_command_policy(&["vitals".to_string()]),
+            CommandPolicyResolution::Category("get".to_string())
         );
     }
 }

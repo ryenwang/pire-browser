@@ -89,7 +89,6 @@ const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &[
     "tap",
     "trace",
     "upgrade",
-    "vitals",
 ];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -5826,6 +5825,7 @@ fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
                 | "clipboard"
                 | "auth"
                 | "download"
+                | "vitals"
                 | "addinitscript"
                 | "removeinitscript"
         )
@@ -5886,6 +5886,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "auth"
             | "download"
             | "upload"
+            | "vitals"
             | "addinitscript"
             | "removeinitscript"
             | "session"
@@ -5913,6 +5914,7 @@ fn command_suggestions(command: &str) -> Vec<String> {
         "errors",
         "network",
         "highlight",
+        "vitals",
         "mouse",
         "drag",
         "addinitscript",
@@ -5973,6 +5975,7 @@ fn launch_url_for_remote_args(args: &[String]) -> Option<String> {
         Some("open" | "goto" | "navigate") => {
             first_positional_arg(&args[1..], &["--label", "--init-script"])
         }
+        Some("vitals") => first_positional_arg(&args[1..], &[]),
         Some("batch") => batch_launch_url(args),
         _ => None,
     }
@@ -6110,6 +6113,7 @@ fn navigation_url_for_remote_args(args: &[String]) -> Option<String> {
         Some("tab" | "tabs") if args.get(1).map(String::as_str) == Some("new") => {
             first_positional_arg(&args[2..], &["--label"])
         }
+        Some("vitals") => first_positional_arg(&args[1..], &[]),
         _ => None,
     }
 }
@@ -6642,6 +6646,7 @@ mod tests {
             "addinitscript",
             "window.__flag=true"
         ])));
+        assert!(can_auto_launch_for_remote_args(&s(&["vitals"])));
         assert!(!can_auto_launch_for_remote_args(&s(&["close"])));
         assert!(!can_auto_launch_for_remote_args(&s(&["unknown"])));
     }
@@ -6728,6 +6733,7 @@ mod tests {
             "download",
             "upload",
             "diff",
+            "vitals",
             "addinitscript",
             "removeinitscript",
             "skills",
@@ -6895,6 +6901,14 @@ mod tests {
         );
         assert_eq!(
             launch_url_for_remote_args(&s(&["batch", "open https://example.com", "snapshot -i"])),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            launch_url_for_remote_args(&s(&["vitals", "--json", "https://example.com"])),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            navigation_url_for_remote_args(&s(&["vitals", "--json", "https://example.com"])),
             Some("https://example.com".to_string())
         );
         assert_eq!(

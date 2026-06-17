@@ -102,13 +102,18 @@ Inspect app diagnostics before guessing at failures:
 ```bash
 pire-browser console
 pire-browser errors
+pire-browser vitals
+pire-browser vitals https://app.example.com/dashboard
 pire-browser console --clear
 pire-browser errors --clear
 ```
 
-Use `console` and `errors` after navigation, login, or failed actions when the
-page looks stuck or broken. They report Firefox WebExtension-captured page-world
-console messages and page errors from reachable frames. They do not expose raw
+Use `console`, `errors`, and `vitals` after navigation, login, or failed actions
+when the page looks stuck or broken. `vitals` reports best-effort TTFB, FCP,
+LCP, CLS, INP, DOMContentLoaded, load, readyState, and hydration-warning signals
+from Firefox Performance APIs. Unavailable Chrome-specific metrics are reported
+as unavailable. Console and error commands report Firefox WebExtension-captured
+page-world messages and page errors from reachable frames. They do not expose raw
 Chrome CDP console payloads, and they only capture records observed after the
 pire-browser content script loads.
 

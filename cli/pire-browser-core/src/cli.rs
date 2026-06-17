@@ -1870,6 +1870,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "console" => CONSOLE_HELP,
         "errors" => ERRORS_HELP,
         "network" => NETWORK_HELP,
+        "vitals" => VITALS_HELP,
         "highlight" => HIGHLIGHT_HELP,
         "set" => SET_HELP,
         "mouse" => MOUSE_HELP,
@@ -1929,6 +1930,7 @@ Common commands:
   network requests                Show recent page network requests
   network har network.har         Export recent request metadata as HAR
   network route "**/api/**" --body '{}' Mock or block active-tab requests
+  vitals [url]                    Measure best-effort Web Vitals for a page
   highlight '#submit'             Draw a visible overlay around a target
   set viewport 1280 720           Approximate the active page viewport
   mouse move 80 80                Dispatch page mouse events at viewport coords
@@ -2189,6 +2191,19 @@ captured records directly. HAR output is metadata-only from WebExtension request
 records; request/response bodies, cookies, and raw headers are not captured.
 Full CDP-style response control is not supported on the Firefox WebExtension
 backend.
+"##;
+
+const VITALS_HELP: &str = r##"
+Usage:
+  pire-browser vitals
+  pire-browser vitals https://example.com
+  pire-browser vitals --json
+
+Measures best-effort page performance signals from Firefox Performance APIs:
+TTFB, FCP, LCP, CLS, INP, DOMContentLoaded, load, readyState, and hydration
+warnings seen in captured console/page-error records. Some Chrome Web Vitals
+entries may be unavailable in Firefox; unavailable metrics are reported
+explicitly instead of estimated.
 "##;
 
 const HIGHLIGHT_HELP: &str = r##"
@@ -4157,6 +4172,10 @@ mod tests {
         assert!(help_text(Some("network"))
             .unwrap()
             .contains("network unroute [pattern-or-route-id]"));
+        assert!(help_text(Some("vitals"))
+            .unwrap()
+            .contains("pire-browser vitals https://example.com"));
+        assert!(help_text(None).unwrap().contains("vitals [url]"));
         assert!(help_text(Some("highlight"))
             .unwrap()
             .contains("Draws a visible overlay"));

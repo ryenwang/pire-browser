@@ -12,5 +12,5 @@ This is a public, product-facing status summary for `pire-browser@0.2.2`. Detail
 | Screenshots, files, and clipboard | Partial | Screenshots, downloads, small uploads, and clipboard helpers are available; PDF and native file picker control are not. |
 | Network and configuration | Partial | Domain allowlists, headers, network diagnostics, metadata-only HAR start/stop/export, route mocks, and config defaults are available with documented limits. |
 | Security guardrails | Partial | Domain, action, confirmation, content-boundary, and output-size guardrails are available; encrypted vault features are not. |
-| Debugging and observability | Partial | Console, errors, highlight, doctor, status, and session inspection are available; dashboard, trace, video, and profiler are not. |
+| Debugging and observability | Partial | Console, errors, highlight, best-effort Web Vitals, doctor, status, and session inspection are available; dashboard, trace, video, React DevTools introspection, and profiler are not. |
 | Cloud providers and alternate engines | Not supported | CDP, cloud browser providers, Chrome engine mode, Lightpanda, and iOS simulator support are not in the current package. |
