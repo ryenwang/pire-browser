@@ -116,6 +116,7 @@ pire-browser --color-scheme dark open https://example.com
 pire-browser set media light
 pire-browser set viewport 1280 720
 pire-browser set device "iPhone 14"
+pire-browser set geo 37.7749 -122.4194
 pire-browser set headers '{"X-Custom-Header":"value"}'
 pire-browser set credentials user pass
 pire-browser set offline on
@@ -124,7 +125,7 @@ pire-browser open https://api.example.com --headers '{"Authorization":"Bearer to
 pire-browser --executable-path /path/to/firefox open https://example.com
 # set device is best-effort viewport-only. set offline is best-effort request blocking.
 # set credentials is memory-only HTTP Basic auth for the active origin.
-# Geolocation and TLS-ignore launch flags are not available`),
+# set geo is a page-level navigator.geolocation shim; TLS-ignore launch flags are not available`),
   code(`pire-browser launch --profile Default
 pire-browser launch --url https://example.com
 PIRE_BROWSER_FIREFOX_PATH=/path/to/firefox pire-browser launch

@@ -29,6 +29,7 @@
     const recentDialogsByTabId = new Map();
     const lastSnapshotTextByTabId = new Map();
     const runtimeInitScripts = new Map();
+    let geolocationInitScriptRegistration = null;
     const headersByOrigin = new Map();
     const credentialsByOrigin = new Map();
     const networkRequestsById = new Map();
@@ -2170,8 +2171,10 @@
             return setOfflineCommand(rest);
         if (subcommand === "credentials")
             return setCredentialsCommand(rest);
+        if (subcommand === "geo")
+            return setGeolocationCommand(rest);
         if (subcommand !== "viewport") {
-            return notAvailable(`set ${subcommand || ""}`.trim(), "Only `set viewport <w> <h> [scale]`, `set device <name>`, `set headers <json>`, `set credentials <username> <password>`, `set media dark|light|auto`, and `set offline on|off` are implemented on the Firefox WebExtension backend. geo still requires a CDP-capable backend.");
+            return notAvailable(`set ${subcommand || ""}`.trim(), "Only `set viewport <w> <h> [scale]`, `set device <name>`, `set geo <lat> <lng>`, `set headers <json>`, `set credentials <username> <password>`, `set media dark|light|auto`, and `set offline on|off` are implemented on the Firefox WebExtension backend.");
         }
         const parsed = parseViewportArgs(rest);
         if ("error" in parsed)
@@ -2328,6 +2331,168 @@
     }
     function credentialsWarning() {
         return bestEffortWarning("set credentials", "HTTP Basic credentials are stored only in this managed Firefox extension session. They are applied to matching active-origin requests and auth challenges, but they are not an encrypted credential vault.");
+    }
+    async function setGeolocationCommand(args) {
+        const parsed = parseGeolocationArgs(args);
+        if ("error" in parsed)
+            return parsed;
+        const script = geolocationShimScript(parsed.geo);
+        const warnings = [geolocationWarning()];
+        const registration = await registerGeolocationShim(script);
+        if ("error" in registration)
+            return registration;
+        const activeInjection = await injectGeolocationShimIntoActivePage(script);
+        return {
+            text: `Geolocation set to ${parsed.geo.latitude}, ${parsed.geo.longitude}`,
+            geolocation: {
+                latitude: parsed.geo.latitude,
+                longitude: parsed.geo.longitude,
+                accuracy: parsed.geo.accuracy,
+                emulated: {
+                    pageNavigatorGeolocation: true,
+                    browserPermissionPrompt: false,
+                    operatingSystemLocation: false,
+                },
+                registeredForFutureNavigations: registration.registered,
+                activeFrameInjections: activeInjection.count,
+            },
+            warnings: mergeWarnings(warnings, registration.warnings, activeInjection.warnings),
+        };
+    }
+    function parseGeolocationArgs(args) {
+        if (args.length !== 2) {
+            return { error: { code: "invalid_args", message: "set geo requires <lat> <lng>" } };
+        }
+        const latitude = Number(args[0]);
+        const longitude = Number(args[1]);
+        if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+            return { error: { code: "invalid_args", message: "set geo latitude must be a number from -90 to 90" } };
+        }
+        if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+            return { error: { code: "invalid_args", message: "set geo longitude must be a number from -180 to 180" } };
+        }
+        return { geo: { latitude, longitude, accuracy: 25 } };
+    }
+    async function registerGeolocationShim(script) {
+        if (typeof browser.contentScripts?.register !== "function") {
+            return {
+                error: {
+                    code: "not_available",
+                    message: "set geo requires Firefox contentScripts.register support.",
+                },
+            };
+        }
+        if (geolocationInitScriptRegistration) {
+            await unregisterInitScripts([geolocationInitScriptRegistration]);
+            geolocationInitScriptRegistration = null;
+        }
+        geolocationInitScriptRegistration = await browser.contentScripts.register({
+            matches: ["<all_urls>"],
+            js: [{ code: initScriptContentScript({ path: "set-geo", code: script }) }],
+            runAt: "document_start",
+            allFrames: true,
+            matchAboutBlank: true,
+        });
+        return { registered: true, warnings: [] };
+    }
+    async function injectGeolocationShimIntoActivePage(script) {
+        const tab = await targetTab().catch(() => null);
+        if (!tab || typeof browser.tabs?.executeScript !== "function") {
+            return {
+                count: 0,
+                warnings: [
+                    bestEffortWarning("set geo", "Registered geolocation for future navigations, but could not inject it into the currently active page."),
+                ],
+            };
+        }
+        try {
+            const results = await browser.tabs.executeScript(tab.tabId, {
+                code: initScriptContentScript({ path: "set-geo-runtime", code: script }),
+                allFrames: true,
+                matchAboutBlank: true,
+            });
+            return { count: Array.isArray(results) ? results.length : 0, warnings: [] };
+        }
+        catch (error) {
+            return {
+                count: 0,
+                warnings: [
+                    bestEffortWarning("set geo", `Registered geolocation for future navigations, but active-page injection failed: ${error instanceof Error ? error.message : String(error)}`),
+                ],
+            };
+        }
+    }
+    function geolocationWarning() {
+        return bestEffortWarning("set geo", "Geolocation is emulated with a page-level navigator.geolocation shim for managed Firefox pages. It does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state.");
+    }
+    function geolocationShimScript(geo) {
+        const payload = JSON.stringify(geo);
+        return `(() => {
+  const geo = ${payload};
+  const makePosition = () => ({
+    coords: {
+      latitude: geo.latitude,
+      longitude: geo.longitude,
+      accuracy: geo.accuracy,
+      altitude: null,
+      altitudeAccuracy: null,
+      heading: null,
+      speed: null,
+    },
+    timestamp: Date.now(),
+  });
+  const previous = window.__pireBrowserGeolocation;
+  if (previous && previous.timers) {
+    for (const timer of previous.timers.values()) clearInterval(timer);
+  }
+  const state = { timers: new Map(), nextWatchId: 1 };
+  window.__pireBrowserGeolocation = state;
+  const api = {
+    getCurrentPosition(success, error, options) {
+      if (typeof success === "function") setTimeout(() => success(makePosition()), 0);
+    },
+    watchPosition(success, error, options) {
+      const id = state.nextWatchId++;
+      const emit = () => {
+        if (typeof success === "function") success(makePosition());
+      };
+      state.timers.set(id, setInterval(emit, 1000));
+      setTimeout(emit, 0);
+      return id;
+    },
+    clearWatch(id) {
+      const timer = state.timers.get(id);
+      if (timer) clearInterval(timer);
+      state.timers.delete(id);
+    },
+  };
+  try {
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      enumerable: true,
+      value: api,
+    });
+  } catch {
+    try { navigator.geolocation = api; } catch {}
+  }
+  try {
+    if (navigator.permissions && typeof navigator.permissions.query === "function") {
+      const originalQuery = navigator.permissions.query.bind(navigator.permissions);
+      navigator.permissions.query = (descriptor) => {
+        if (descriptor && descriptor.name === "geolocation") {
+          return Promise.resolve({
+            state: "granted",
+            onchange: null,
+            addEventListener() {},
+            removeEventListener() {},
+            dispatchEvent() { return false; },
+          });
+        }
+        return originalQuery(descriptor);
+      };
+    }
+  } catch {}
+})();`;
     }
     function normalizeContentColorScheme(value) {
         if (value == null || value === "")

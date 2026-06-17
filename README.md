@@ -259,6 +259,7 @@ Mouse and drag commands dispatch page-level Firefox WebExtension events. They do
 ```bash
 pire-browser set viewport <w> <h> [scale]  # Resize browser window toward target viewport
 pire-browser set device "iPhone 14"  # Best-effort mobile viewport preset
+pire-browser set geo 37.7749 -122.4194  # Best-effort page geolocation
 pire-browser set headers <json>      # Extra HTTP headers for the active origin
 pire-browser set credentials <user> <pass>  # HTTP Basic auth for the active origin
 pire-browser set media [dark|light|auto]  # Emulate page color scheme
@@ -267,7 +268,7 @@ pire-browser --color-scheme dark open https://example.com
 pire-browser --executable-path /path/to/firefox open https://example.com
 ```
 
-`set device` applies a best-effort viewport preset for common devices. Firefox does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor for this path, so verify the measured `page.innerWidth`/`page.innerHeight` before relying on responsive screenshots. `set credentials` applies memory-only HTTP Basic auth for the active origin and does not echo the password. `set offline` cancels future network requests for managed tabs, but it does not fully emulate Chromium/CDP offline mode: `navigator.onLine`, service worker cache behavior, DNS, and socket state are not controlled. Geolocation, proxy flags, and TLS-ignore launch flags are not implemented in the current Firefox backend.
+`set device` applies a best-effort viewport preset for common devices. Firefox does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor for this path, so verify the measured `page.innerWidth`/`page.innerHeight` before relying on responsive screenshots. `set geo` installs a page-level `navigator.geolocation` shim for managed Firefox pages, but it does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state. `set credentials` applies memory-only HTTP Basic auth for the active origin and does not echo the password. `set offline` cancels future network requests for managed tabs, but it does not fully emulate Chromium/CDP offline mode: `navigator.onLine`, service worker cache behavior, DNS, and socket state are not controlled. Proxy flags and TLS-ignore launch flags are not implemented in the current Firefox backend.
 
 ### Cookies & Storage
 

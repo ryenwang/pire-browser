@@ -143,6 +143,13 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "set geo maps to state",
+      "args": ["set", "geo", "37.7749", "-122.4194"],
+      "policy": { "default": "deny", "allow": ["state"] },
+      "expectedCategory": "state",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "storage session read maps to get",
       "args": ["storage", "session", "token"],
       "policy": { "default": "deny", "allow": ["get"] },

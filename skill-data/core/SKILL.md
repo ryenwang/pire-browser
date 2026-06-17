@@ -152,11 +152,12 @@ pire-browser set viewport 1280 720
 pire-browser snapshot -i --compact
 pire-browser screenshot desktop.png
 pire-browser set device "iPhone 14"
+pire-browser set geo 37.7749 -122.4194
 pire-browser snapshot -i --compact
 pire-browser screenshot mobile.png
 ```
 
-`set viewport` and `set device` are Firefox best-effort paths. They resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `set device` reports a preset User-Agent/touch/scale profile but does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. Geo is not available on the Firefox backend yet.
+`set viewport`, `set device`, and `set geo` are Firefox best-effort paths. Viewport and device settings resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `set device` reports a preset User-Agent/touch/scale profile but does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. `set geo` installs a page-level `navigator.geolocation` shim for managed Firefox pages; it does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state.
 
 ```sh
 pire-browser --color-scheme dark open https://example.com

@@ -35,6 +35,7 @@ pire-browser --executable-path /path/to/firefox open https://example.com`),
   code(`pire-browser set viewport 1280 720
 pire-browser set device "iPhone 14"
 pire-browser set viewport 390 844 3
+pire-browser set geo 37.7749 -122.4194
 pire-browser --color-scheme dark open https://example.com
 pire-browser set media light
 pire-browser open https://api.example.com --headers '{"Authorization":"Bearer token"}'
@@ -42,7 +43,7 @@ pire-browser set headers '{"X-Custom-Header":"value"}'
 pire-browser set credentials user pass
 pire-browser set offline on
 pire-browser set offline off`),
-  p("Header values and HTTP Basic passwords are scoped to the current origin and are not echoed in output. Basic credentials are memory-only for the managed Firefox extension session. Viewport and device sizing are approximate because Firefox WebExtensions resize the browser window rather than a CDP viewport. Offline mode is best-effort request blocking for managed tabs; it does not control navigator.onLine, service worker cache behavior, DNS, or socket state."),
+  p("Header values and HTTP Basic passwords are scoped to the current origin and are not echoed in output. Basic credentials are memory-only for the managed Firefox extension session. Viewport and device sizing are approximate because Firefox WebExtensions resize the browser window rather than a CDP viewport. Geolocation is a best-effort page-level navigator.geolocation shim. Offline mode is best-effort request blocking for managed tabs; it does not control navigator.onLine, service worker cache behavior, DNS, or socket state."),
   h2("Environment variables", "environment-variables"),
   table(["Variable", "Purpose"], [
     ["<code>PIRE_BROWSER_FIREFOX_PATH</code>", "Custom Firefox executable for setup or launch."],

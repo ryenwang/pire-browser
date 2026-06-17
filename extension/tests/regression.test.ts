@@ -459,6 +459,21 @@ describe("pire-browser command foundations", () => {
     expect(body).toContain("User-Agent, touch events, mobile browser chrome, and deviceScaleFactor are reported but not enforced");
   });
 
+  it("implements set geo as a best-effort page geolocation shim", () => {
+    const body = background();
+    expect(body).toContain('if (subcommand === "geo") return setGeolocationCommand(rest);');
+    expect(body).toContain("let geolocationInitScriptRegistration");
+    expect(body).toContain("async function setGeolocationCommand");
+    expect(body).toContain("function parseGeolocationArgs");
+    expect(body).toContain("function registerGeolocationShim");
+    expect(body).toContain("function injectGeolocationShimIntoActivePage");
+    expect(body).toContain("function geolocationShimScript");
+    expect(body).toContain('Object.defineProperty(navigator, "geolocation"');
+    expect(body).toContain("browser.contentScripts.register");
+    expect(body).toContain("browser.tabs.executeScript");
+    expect(body).toContain("does not change Firefox's native permission prompt");
+  });
+
   it("implements color scheme media emulation through Firefox browser settings", () => {
     const body = background();
     const manifest = readFileSync(resolve(__dirname, "../manifest.json"), "utf8");
@@ -744,6 +759,7 @@ describe("pire-browser command foundations", () => {
       ["scrollintoview", "@e1"],
       ["set", "viewport", "1280", "720"],
       ["set", "device", "iPhone 14"],
+      ["set", "geo", "37.7749", "-122.4194"],
       ["set", "media", "dark"],
       ["set", "headers", "{\"X-Custom-Header\":\"value\"}"],
       ["set", "offline", "on"],

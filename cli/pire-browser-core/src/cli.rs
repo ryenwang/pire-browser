@@ -2236,6 +2236,7 @@ const SET_HELP: &str = r##"
 Usage:
   pire-browser set viewport <w> <h> [scale]
   pire-browser set device "iPhone 14"
+  pire-browser set geo <lat> <lng>
   pire-browser set headers <json>
   pire-browser set credentials <username> <password>
   pire-browser set media dark|light|auto
@@ -2252,6 +2253,12 @@ such as iPhone 14, iPhone 15 Pro, Pixel 7, Galaxy S22, and iPad. User-Agent,
 touch, mobile browser chrome, and exact deviceScaleFactor are reported but not
 enforced on the Firefox backend.
 
+`set geo <lat> <lng>` installs a best-effort page-level geolocation shim for
+managed Firefox pages. It updates navigator.geolocation for future navigations
+and tries to inject into the active page, but does not change Firefox's native
+permission prompt, OS location services, IP-based location, or browser chrome
+state.
+
 `set headers <json>` applies request headers to the active page's origin for the
 current managed Firefox session. Passing `{}` clears headers for that origin.
 Values are not echoed; output reports header names only.
@@ -2267,8 +2274,7 @@ override for the managed session.
 `set offline on|off` toggles best-effort Firefox request blocking for managed
 tabs. It cancels future network requests, but does not fully emulate CDP
 offline mode: navigator.onLine, service worker cache behavior, DNS, and socket
-state are not controlled. Geolocation settings are not supported on this
-backend.
+state are not controlled.
 "##;
 
 const MOUSE_HELP: &str = r##"
@@ -4222,6 +4228,9 @@ mod tests {
         assert!(help_text(Some("set"))
             .unwrap()
             .contains("set device \"iPhone 14\""));
+        assert!(help_text(Some("set"))
+            .unwrap()
+            .contains("set geo <lat> <lng>"));
         assert!(help_text(Some("set"))
             .unwrap()
             .contains("set headers <json>"));
