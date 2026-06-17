@@ -184,6 +184,8 @@ mod tests {
         assert!(skill.content.contains("pire-browser removeinitscript"));
         assert!(skill.content.contains("pire-browser install"));
         assert!(skill.content.contains("pire-browser skills cat core"));
+        assert!(skill.content.contains("pire-browser skills get core"));
+        assert!(skill.content.contains("pire-browser skills get --all"));
         assert!(skill
             .content
             .contains("Do not inspect installed source code"));

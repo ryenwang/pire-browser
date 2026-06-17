@@ -428,9 +428,11 @@ pire-browser skills list
 pire-browser skills list --json
 pire-browser skills cat core
 pire-browser skills cat core --json
+pire-browser skills get core
+pire-browser skills get --all --json
 ```
 
-Installed agents should use the bundled skill command for version-matched guidance instead of relying on stale copied instructions. The package also ships compact routing context under `agent/`.
+Installed agents should use the bundled skill command for version-matched guidance instead of relying on stale copied instructions. `skills get` is an agent-browser-style alias for `skills cat`; `skills get --all` returns all bundled skill content. The package also ships compact routing context under `agent/`.
 
 ## Authentication
 
@@ -795,7 +797,7 @@ npx skills add ryenwang/pire-browser
 The installed npm package also serves the bundled core skill:
 
 ```bash
-pire-browser skills cat core
+pire-browser skills get core
 ```
 
 ### AGENTS.md / CLAUDE.md

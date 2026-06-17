@@ -73,6 +73,9 @@ pub enum LocalCommand {
         name: String,
         json: bool,
     },
+    SkillsCatAll {
+        json: bool,
+    },
     InstallStatus {
         json: bool,
         domain_policy: DomainPolicyArgs,
@@ -886,16 +889,33 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 }
                 return Ok(LocalCommand::SkillsList { json: json_output });
             }
-            "cat" => {
+            "cat" | "get" => {
+                let verb = subcommand.to_string();
                 args.remove(0);
                 remove_json_flags(&mut args, &mut json_output);
+                if args.first().is_some_and(|arg| arg == "--all") {
+                    args.remove(0);
+                    remove_json_flags(&mut args, &mut json_output);
+                    while args.first().is_some_and(|arg| arg == "--full") {
+                        args.remove(0);
+                        remove_json_flags(&mut args, &mut json_output);
+                    }
+                    if let Some(extra) = args.first() {
+                        bail!("unsupported skills {verb} option: {extra}");
+                    }
+                    return Ok(LocalCommand::SkillsCatAll { json: json_output });
+                }
                 let Some(name) = args.first().cloned() else {
-                    bail!("invalid_args: skills cat requires <name>");
+                    bail!("invalid_args: skills {verb} requires <name>");
                 };
                 args.remove(0);
                 remove_json_flags(&mut args, &mut json_output);
+                while args.first().is_some_and(|arg| arg == "--full") {
+                    args.remove(0);
+                    remove_json_flags(&mut args, &mut json_output);
+                }
                 if let Some(extra) = args.first() {
-                    bail!("unsupported skills cat option: {extra}");
+                    bail!("unsupported skills {verb} option: {extra}");
                 }
                 return Ok(LocalCommand::SkillsCat {
                     name,
@@ -1893,6 +1913,7 @@ Common commands:
   clipboard read                  Read text from the system clipboard
   skills list                     List installed agent skills
   skills cat core                 Print the version-matched core agent skill
+  skills get core                 Agent-browser-style alias for skills cat core
   state save .pire-state/app.json Save active-origin cookies and web storage
   state list [--json]             List .pire-state files
   state inspect .pire-state/app.json
@@ -2410,11 +2431,16 @@ For reusable named command workflows, use `--profile <name-or-path> <command>`,
 
 const SKILLS_HELP: &str = r##"
 Usage:
+  pire-browser skills [list] [--json]
   pire-browser skills list [--json]
   pire-browser skills cat core [--json]
+  pire-browser skills get core [--full] [--json]
+  pire-browser skills get --all [--json]
 
-Lists or prints installed agent skill guidance. The `skill` root is accepted as
-a compatibility alias, but public docs prefer `skills`.
+Lists or prints installed agent skill guidance. `get` is an agent-browser-style
+alias for `cat`; `--full` is accepted for compatibility because bundled skill
+content is self-contained. The `skill` root is accepted as a compatibility alias,
+but public docs prefer `skills`.
 "##;
 
 pub fn build_command_request(args: Vec<String>) -> RpcRequest {
@@ -3629,6 +3655,21 @@ mod tests {
                 json: true
             }
         );
+        assert_eq!(
+            parse_cli_args(&s(&["skills", "get", "core", "--full", "--json"])).unwrap(),
+            LocalCommand::SkillsCat {
+                name: "core".to_string(),
+                json: true
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["skills", "get", "--all", "--json"])).unwrap(),
+            LocalCommand::SkillsCatAll { json: true }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["skill", "cat", "--all"])).unwrap(),
+            LocalCommand::SkillsCatAll { json: false }
+        );
         assert!(parse_cli_args(&s(&["skills", "cat"])).is_err());
         assert!(parse_cli_args(&s(&["skills", "show", "core"])).is_err());
     }
@@ -4033,7 +4074,7 @@ mod tests {
         assert!(help_text(Some("state")).unwrap().contains("state show"));
         assert!(help_text(Some("skills"))
             .unwrap()
-            .contains("skills cat core"));
+            .contains("skills get core"));
         assert!(help_text(Some("session"))
             .unwrap()
             .contains("session attach"));

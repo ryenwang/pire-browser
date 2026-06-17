@@ -5,7 +5,7 @@ description: Core pire-browser workflow for safe Firefox automation.
 
 # Core pire-browser Skill
 
-Use `pire-browser` when the user asks you to inspect or control Firefox. Do not inspect installed source code to discover commands; use `pire-browser --help`, `pire-browser <command> --help`, and `pire-browser skills cat core`.
+Use `pire-browser` when the user asks you to inspect or control Firefox. Do not inspect installed source code to discover commands; use `pire-browser --help`, `pire-browser <command> --help`, and `pire-browser skills get core`.
 
 ## Quick Start
 
@@ -341,6 +341,8 @@ pire-browser open --help
 pire-browser snapshot --help
 pire-browser skills list
 pire-browser skills cat core
+pire-browser skills get core
+pire-browser skills get --all
 ```
 
 Use `--json` when another tool or script needs structured output.

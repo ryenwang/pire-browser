@@ -172,6 +172,9 @@ fn run() -> Result<()> {
         LocalCommand::SkillsCat { name, json } => {
             handle_skills_cat(&name, json)?;
         }
+        LocalCommand::SkillsCatAll { json } => {
+            handle_skills_cat_all(json)?;
+        }
         LocalCommand::ProfilesList { json } => {
             handle_profiles_list(json)?;
         }
@@ -1309,6 +1312,25 @@ fn handle_skills_cat(name: &str, json_output: bool) -> Result<()> {
         println!("{}", format_cli_result(&json!({ "skill": skill }), true)?);
     } else {
         print!("{}", skill.content);
+        io::stdout().flush()?;
+    }
+    Ok(())
+}
+
+fn handle_skills_cat_all(json_output: bool) -> Result<()> {
+    let skills = list_skills()
+        .into_iter()
+        .filter_map(|skill| skill_content(&skill.name))
+        .collect::<Vec<_>>();
+    if json_output {
+        println!("{}", format_cli_result(&json!({ "skills": skills }), true)?);
+    } else {
+        for (index, skill) in skills.iter().enumerate() {
+            if index > 0 {
+                println!();
+            }
+            print!("{}", skill.content);
+        }
         io::stdout().flush()?;
     }
     Ok(())
