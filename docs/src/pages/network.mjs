@@ -11,13 +11,15 @@ pire-browser wait --load networkidle
 pire-browser network requests
 pire-browser network requests --filter /api/
 pire-browser network request <requestId>
+pire-browser network har start
+pire-browser network har stop network.har
 pire-browser network har
 pire-browser network har network.har --filter /api/
 pire-browser network route "**/api/config**" --body '{"ready":true}'
 pire-browser network route "*" --abort --resource-type script
 pire-browser network unroute "*"
 pire-browser network requests --clear`),
-  p("These are Firefox-backed guardrails, request-header helpers, network-idle waits, recent active-tab request diagnostics, metadata-only HAR export, and best-effort route interception. Route rules are scoped to the active tab. Body mocks use a WebExtension redirect, so they are useful for QA flows but are not full CDP response fulfillment."),
+  p("These are Firefox-backed guardrails, request-header helpers, network-idle waits, recent active-tab request diagnostics, agent-browser-style metadata HAR start/stop, direct HAR export, and best-effort route interception. Route rules are scoped to the active tab. Body mocks use a WebExtension redirect, so they are useful for QA flows but are not full CDP response fulfillment."),
   h2("Remaining gaps", "remaining-gaps"),
   list([
     "Response body inspection and raw request/response headers.",

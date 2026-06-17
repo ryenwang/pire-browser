@@ -762,10 +762,12 @@ fn defer_config_warnings(command: &LocalCommand) -> bool {
 }
 
 fn maybe_write_network_har(args: &[String], result: &mut Value) -> Result<()> {
-    let Some(path) = network_har_output_path(args) else {
+    let Some(har) = result.get("har") else {
         return Ok(());
     };
-    let Some(har) = result.get("har") else {
+    let Some(path) =
+        network_har_output_path(args).or_else(|| default_network_har_output_path(args))
+    else {
         return Ok(());
     };
     if let Some(parent) = Path::new(&path)
@@ -788,10 +790,41 @@ fn network_har_output_path(args: &[String]) -> Option<String> {
         return None;
     }
     let subcommand = args.get(1).map(String::as_str)?;
-    if subcommand != "har" && subcommand != "export-har" {
+    match subcommand {
+        "export-har" => {
+            first_positional_arg(&args[2..], &["--filter", "--type", "--method", "--status"])
+        }
+        "har" => match args.get(2).map(String::as_str) {
+            Some("start") => None,
+            Some("stop") => {
+                first_positional_arg(&args[3..], &["--filter", "--type", "--method", "--status"])
+            }
+            _ => first_positional_arg(&args[2..], &["--filter", "--type", "--method", "--status"]),
+        },
+        _ => None,
+    }
+}
+
+fn default_network_har_output_path(args: &[String]) -> Option<String> {
+    if !network_har_stop_without_output_path(args) {
         return None;
     }
-    first_positional_arg(&args[2..], &["--filter", "--type", "--method", "--status"])
+    Some(
+        std::env::temp_dir()
+            .join(format!("pire-browser-har-{}.har", Uuid::new_v4()))
+            .to_string_lossy()
+            .to_string(),
+    )
+}
+
+fn network_har_stop_without_output_path(args: &[String]) -> bool {
+    if args.first().map(String::as_str) != Some("network")
+        || args.get(1).map(String::as_str) != Some("har")
+        || args.get(2).map(String::as_str) != Some("stop")
+    {
+        return false;
+    }
+    first_positional_arg(&args[3..], &["--filter", "--type", "--method", "--status"]).is_none()
 }
 
 fn print_config_warnings(warnings: &[ConfigWarning]) {
@@ -5098,6 +5131,18 @@ mod tests {
             None
         );
         assert_eq!(
+            network_har_output_path(&s(&["network", "har", "start"])),
+            None
+        );
+        assert_eq!(
+            network_har_output_path(&s(&["network", "har", "stop", "out.har"])),
+            Some("out.har".to_string())
+        );
+        assert_eq!(
+            network_har_output_path(&s(&["network", "har", "stop"])),
+            None
+        );
+        assert_eq!(
             network_har_output_path(&s(&["network", "export-har", "target/out.har"])),
             Some("target/out.har".to_string())
         );
@@ -5128,6 +5173,25 @@ mod tests {
             result["text"],
             json!(format!("Wrote HAR to {}", path_string))
         );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn maybe_write_network_har_generates_default_path_for_stop() {
+        let mut result = json!({
+            "har": {
+                "log": {
+                    "version": "1.2"
+                }
+            }
+        });
+
+        maybe_write_network_har(&s(&["network", "har", "stop"]), &mut result).unwrap();
+
+        let path = result["path"].as_str().unwrap().to_string();
+        assert!(path.ends_with(".har"));
+        assert!(Path::new(&path).exists());
+        assert!(result["text"].as_str().unwrap().contains("Wrote HAR to"));
         let _ = fs::remove_file(path);
     }
 

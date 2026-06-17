@@ -292,6 +292,8 @@ pire-browser network requests --type xhr,fetch
 pire-browser network requests --method POST
 pire-browser network requests --status 2xx
 pire-browser network request <requestId>
+pire-browser network har start
+pire-browser network har stop network.har
 pire-browser network har
 pire-browser network har network.har --filter /api/
 pire-browser network route "**/api/config**" --body '{"ready":true}'
@@ -300,7 +302,7 @@ pire-browser network unroute "*"
 pire-browser network requests --clear
 ```
 
-The network surface is Firefox-backed: cooperative domain allowlists, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics, metadata-only HAR export, and best-effort active-tab route interception. HAR export is built from WebExtension request metadata; response bodies, cookies, and raw request/response headers are not captured.
+The network surface is Firefox-backed: cooperative domain allowlists, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics, agent-browser-style `network har start` / `network har stop`, direct metadata-only HAR export, and best-effort active-tab route interception. HAR export is built from WebExtension request metadata; response bodies, cookies, and raw request/response headers are not captured.
 
 ### Tabs & Windows
 

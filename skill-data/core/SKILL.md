@@ -119,6 +119,8 @@ pire-browser network requests
 pire-browser network requests --filter /api/
 pire-browser network requests --type xhr,fetch --status 2xx
 pire-browser network request <requestId>
+pire-browser network har start
+pire-browser network har stop network.har
 pire-browser network har
 pire-browser network har network.har --filter /api/
 pire-browser network route "**/api/config**" --body '{"ready":true}'
@@ -132,10 +134,11 @@ active-tab requests. Filters support URL substring/glob, resource type, method,
 and status. Use `network route` before triggering a fetch/load when you need a
 best-effort active-tab mock or block, then `network unroute` before returning to
 normal behavior. Firefox route mocking uses WebExtension interception, so treat
-it as QA/debug control rather than full CDP response capture. Use `network har`
-when you need a portable request timeline artifact, but remember it is
-metadata-only: bodies, cookies, and raw request/response headers are not
-captured.
+it as QA/debug control rather than full CDP response capture. Use `network har start`
+before a flow and `network har stop <path>` afterward when you need a
+portable request timeline artifact. `network har <path>` also exports the
+current recent request log directly. HAR output is metadata-only: bodies,
+cookies, and raw request/response headers are not captured.
 
 Set a responsive viewport before QA screenshots:
 

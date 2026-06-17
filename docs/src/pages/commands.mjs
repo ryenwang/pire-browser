@@ -129,13 +129,15 @@ pire-browser wait --load networkidle
 pire-browser network requests
 pire-browser network requests --filter /api/
 pire-browser network request <requestId>
+pire-browser network har start
+pire-browser network har stop network.har
 pire-browser network har
 pire-browser network har network.har --filter /api/
 pire-browser network route "**/api/config**" --body '{"ready":true}'
 pire-browser network route "*" --abort --resource-type script
 pire-browser network unroute "*"
 pire-browser network requests --clear`),
-  p("The current network-related surface is cooperative domain allowlists, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics, metadata-only HAR export, and best-effort active-tab route interception for mocks or aborts. Full CDP-style response control plus response body and raw-header inspection remain outside the current Firefox runtime."),
+  p("The current network-related surface is cooperative domain allowlists, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics, agent-browser-style metadata HAR start/stop, direct HAR export, and best-effort active-tab route interception for mocks or aborts. Full CDP-style response control plus response body and raw-header inspection remain outside the current Firefox runtime."),
 
   h2("Tabs & frames", "tabs-frames"),
   code(`pire-browser tab list

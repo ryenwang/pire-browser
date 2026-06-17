@@ -265,6 +265,7 @@ const networkRequestsById = new Map<string, NetworkActivityRecord>();
 const networkRequestIdsByTabId = new Map<number, Set<string>>();
 const networkRequestLogIdsByTabId = new Map<number, string[]>();
 const lastNetworkActivityAtByTabId = new Map<number, number>();
+const networkHarRecordingStartedAtByTabId = new Map<number, number>();
 const networkRoutes = new Map<string, NetworkRouteRule>();
 const networkRouteMatchesByRequestId = new Map<string, { routeId: string; action: "continue" | "abort" | "mock" }>();
 let nextRuntimeInitScriptNumber = 1;
@@ -2795,32 +2796,85 @@ async function networkRequestsCommand(args: string[]) {
 
 async function networkHarCommand(args: string[]) {
   const tab = await targetTab();
-  const invalid = invalidNetworkHarArgs(args);
+  const mode = networkHarMode(args);
+  const commandArgs = networkHarCommandArgs(args, mode);
+  const invalid = invalidNetworkHarArgs(commandArgs, mode);
   if (invalid) return invalid;
-  const path = firstPositionalArg(args, ["--filter", "--type", "--method", "--status"]);
-  const filter = valueAfter(args, "--filter");
-  const typeFilter = valueAfter(args, "--type");
-  const methodFilter = valueAfter(args, "--method");
-  const statusFilter = valueAfter(args, "--status");
+
+  if (mode === "start") {
+    const startedAt = Date.now();
+    networkHarRecordingStartedAtByTabId.set(tab.tabId, startedAt);
+    return {
+      text: `Started HAR recording in ${tab.agentId}`,
+      harRecording: {
+        active: true,
+        startedAt,
+        tabId: tab.tabId,
+        agentId: tab.agentId,
+      },
+      warnings: [networkHarMetadataWarning()],
+    };
+  }
+
+  const recordingStartedAt = mode === "stop" ? networkHarRecordingStartedAtByTabId.get(tab.tabId) : undefined;
+  if (mode === "stop" && recordingStartedAt === undefined) {
+    return {
+      error: {
+        code: "invalid_state",
+        message: "No HAR recording is active for the current tab. Run `network har start` before `network har stop`.",
+      },
+    };
+  }
+
+  const path = firstPositionalArg(commandArgs, ["--filter", "--type", "--method", "--status"]);
+  const filter = valueAfter(commandArgs, "--filter");
+  const typeFilter = valueAfter(commandArgs, "--type");
+  const methodFilter = valueAfter(commandArgs, "--method");
+  const statusFilter = valueAfter(commandArgs, "--status");
   const records = networkRecordsForTab(tab.tabId)
+    .filter((record) => recordingStartedAt === undefined || record.startedAt >= recordingStartedAt)
     .filter((record) => networkRecordMatches(record, { filter, typeFilter, methodFilter, statusFilter }))
     .map(publicNetworkRecord);
-  const har = networkHarForRecords(records, tab);
+  const har = networkHarForRecords(records, tab, { startedAt: recordingStartedAt });
+  if (mode === "stop") networkHarRecordingStartedAtByTabId.delete(tab.tabId);
   return {
     text: path ? `Prepared HAR with ${records.length} request${records.length === 1 ? "" : "s"} for ${path}` : JSON.stringify(har, null, 2),
     har,
     path,
     count: records.length,
-    warnings: [
-      bestEffortWarning(
-        "network har",
-        "HAR export is built from Firefox WebExtension request metadata. Request/response headers, cookies, and response bodies are not captured."
-      ),
-    ],
+    harRecording: {
+      active: false,
+      mode,
+      startedAt: recordingStartedAt,
+      stoppedAt: mode === "stop" ? Date.now() : undefined,
+      tabId: tab.tabId,
+      agentId: tab.agentId,
+    },
+    warnings: [networkHarMetadataWarning()],
   };
 }
 
-function invalidNetworkHarArgs(args: string[]) {
+function networkHarMode(args: string[]): "export" | "start" | "stop" {
+  if (args[0] === "start") return "start";
+  if (args[0] === "stop") return "stop";
+  return "export";
+}
+
+function networkHarCommandArgs(args: string[], mode: "export" | "start" | "stop") {
+  return mode === "export" ? args : args.slice(1);
+}
+
+function networkHarMetadataWarning() {
+  return bestEffortWarning(
+    "network har",
+    "HAR export is built from Firefox WebExtension request metadata. Request/response headers, cookies, and response bodies are not captured."
+  );
+}
+
+function invalidNetworkHarArgs(args: string[], mode: "export" | "start" | "stop") {
+  if (mode === "start" && args.length > 0) {
+    return { error: { code: "invalid_args", message: "network har start does not accept filters or an output path" } };
+  }
   const valueFlags = new Set(["--filter", "--type", "--method", "--status"]);
   let positionalCount = 0;
   for (let index = 0; index < args.length; index++) {
@@ -2993,7 +3047,8 @@ function formatNetworkDetail(record: ReturnType<typeof publicNetworkRecord>) {
   ].filter(Boolean).join("\n");
 }
 
-function networkHarForRecords(records: ReturnType<typeof publicNetworkRecord>[], tab: TabRecord) {
+function networkHarForRecords(records: ReturnType<typeof publicNetworkRecord>[], tab: TabRecord, options: { startedAt?: number } = {}) {
+  const pageStartedAt = options.startedAt ?? Math.min(...records.map((record) => record.startedAt).filter(Number.isFinite), Date.now());
   return {
     log: {
       version: "1.2",
@@ -3008,7 +3063,7 @@ function networkHarForRecords(records: ReturnType<typeof publicNetworkRecord>[],
       },
       pages: [
         {
-          startedDateTime: new Date(Math.min(...records.map((record) => record.startedAt).filter(Number.isFinite), Date.now())).toISOString(),
+          startedDateTime: new Date(pageStartedAt).toISOString(),
           id: `page_${tab.agentId}`,
           title: tab.title ?? "",
           pageTimings: {
@@ -4442,6 +4497,7 @@ function clearNetworkStateForTab(tabId: number) {
   for (const [id, route] of Array.from(networkRoutes.entries())) {
     if (route.tabId === tabId) networkRoutes.delete(id);
   }
+  networkHarRecordingStartedAtByTabId.delete(tabId);
   networkRequestLogIdsByTabId.delete(tabId);
   networkRequestIdsByTabId.delete(tabId);
   lastNetworkActivityAtByTabId.delete(tabId);

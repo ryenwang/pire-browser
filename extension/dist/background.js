@@ -33,6 +33,7 @@
     const networkRequestIdsByTabId = new Map();
     const networkRequestLogIdsByTabId = new Map();
     const lastNetworkActivityAtByTabId = new Map();
+    const networkHarRecordingStartedAtByTabId = new Map();
     const networkRoutes = new Map();
     const networkRouteMatchesByRequestId = new Map();
     let nextRuntimeInitScriptNumber = 1;
@@ -2465,29 +2466,79 @@
     }
     async function networkHarCommand(args) {
         const tab = await targetTab();
-        const invalid = invalidNetworkHarArgs(args);
+        const mode = networkHarMode(args);
+        const commandArgs = networkHarCommandArgs(args, mode);
+        const invalid = invalidNetworkHarArgs(commandArgs, mode);
         if (invalid)
             return invalid;
-        const path = firstPositionalArg(args, ["--filter", "--type", "--method", "--status"]);
-        const filter = valueAfter(args, "--filter");
-        const typeFilter = valueAfter(args, "--type");
-        const methodFilter = valueAfter(args, "--method");
-        const statusFilter = valueAfter(args, "--status");
+        if (mode === "start") {
+            const startedAt = Date.now();
+            networkHarRecordingStartedAtByTabId.set(tab.tabId, startedAt);
+            return {
+                text: `Started HAR recording in ${tab.agentId}`,
+                harRecording: {
+                    active: true,
+                    startedAt,
+                    tabId: tab.tabId,
+                    agentId: tab.agentId,
+                },
+                warnings: [networkHarMetadataWarning()],
+            };
+        }
+        const recordingStartedAt = mode === "stop" ? networkHarRecordingStartedAtByTabId.get(tab.tabId) : undefined;
+        if (mode === "stop" && recordingStartedAt === undefined) {
+            return {
+                error: {
+                    code: "invalid_state",
+                    message: "No HAR recording is active for the current tab. Run `network har start` before `network har stop`.",
+                },
+            };
+        }
+        const path = firstPositionalArg(commandArgs, ["--filter", "--type", "--method", "--status"]);
+        const filter = valueAfter(commandArgs, "--filter");
+        const typeFilter = valueAfter(commandArgs, "--type");
+        const methodFilter = valueAfter(commandArgs, "--method");
+        const statusFilter = valueAfter(commandArgs, "--status");
         const records = networkRecordsForTab(tab.tabId)
+            .filter((record) => recordingStartedAt === undefined || record.startedAt >= recordingStartedAt)
             .filter((record) => networkRecordMatches(record, { filter, typeFilter, methodFilter, statusFilter }))
             .map(publicNetworkRecord);
-        const har = networkHarForRecords(records, tab);
+        const har = networkHarForRecords(records, tab, { startedAt: recordingStartedAt });
+        if (mode === "stop")
+            networkHarRecordingStartedAtByTabId.delete(tab.tabId);
         return {
             text: path ? `Prepared HAR with ${records.length} request${records.length === 1 ? "" : "s"} for ${path}` : JSON.stringify(har, null, 2),
             har,
             path,
             count: records.length,
-            warnings: [
-                bestEffortWarning("network har", "HAR export is built from Firefox WebExtension request metadata. Request/response headers, cookies, and response bodies are not captured."),
-            ],
+            harRecording: {
+                active: false,
+                mode,
+                startedAt: recordingStartedAt,
+                stoppedAt: mode === "stop" ? Date.now() : undefined,
+                tabId: tab.tabId,
+                agentId: tab.agentId,
+            },
+            warnings: [networkHarMetadataWarning()],
         };
     }
-    function invalidNetworkHarArgs(args) {
+    function networkHarMode(args) {
+        if (args[0] === "start")
+            return "start";
+        if (args[0] === "stop")
+            return "stop";
+        return "export";
+    }
+    function networkHarCommandArgs(args, mode) {
+        return mode === "export" ? args : args.slice(1);
+    }
+    function networkHarMetadataWarning() {
+        return bestEffortWarning("network har", "HAR export is built from Firefox WebExtension request metadata. Request/response headers, cookies, and response bodies are not captured.");
+    }
+    function invalidNetworkHarArgs(args, mode) {
+        if (mode === "start" && args.length > 0) {
+            return { error: { code: "invalid_args", message: "network har start does not accept filters or an output path" } };
+        }
         const valueFlags = new Set(["--filter", "--type", "--method", "--status"]);
         let positionalCount = 0;
         for (let index = 0; index < args.length; index++) {
@@ -2654,7 +2705,8 @@
             typeof record.durationMs === "number" ? `Duration: ${record.durationMs}ms` : "",
         ].filter(Boolean).join("\n");
     }
-    function networkHarForRecords(records, tab) {
+    function networkHarForRecords(records, tab, options = {}) {
+        const pageStartedAt = options.startedAt ?? Math.min(...records.map((record) => record.startedAt).filter(Number.isFinite), Date.now());
         return {
             log: {
                 version: "1.2",
@@ -2669,7 +2721,7 @@
                 },
                 pages: [
                     {
-                        startedDateTime: new Date(Math.min(...records.map((record) => record.startedAt).filter(Number.isFinite), Date.now())).toISOString(),
+                        startedDateTime: new Date(pageStartedAt).toISOString(),
                         id: `page_${tab.agentId}`,
                         title: tab.title ?? "",
                         pageTimings: {
@@ -4063,6 +4115,7 @@
             if (route.tabId === tabId)
                 networkRoutes.delete(id);
         }
+        networkHarRecordingStartedAtByTabId.delete(tabId);
         networkRequestLogIdsByTabId.delete(tabId);
         networkRequestIdsByTabId.delete(tabId);
         lastNetworkActivityAtByTabId.delete(tabId);

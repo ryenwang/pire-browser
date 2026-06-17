@@ -68,7 +68,7 @@ export const featureStatuses = {
   },
   networkControls: {
     status: "partial",
-    summary: "Domain guardrails, origin-scoped headers, active-tab `wait --load networkidle`, recent request diagnostics, metadata-only HAR export, and best-effort route mock/abort controls are available; response body and raw-header inspection are not.",
+    summary: "Domain guardrails, origin-scoped headers, active-tab `wait --load networkidle`, recent request diagnostics, agent-browser-style metadata HAR start/stop, direct HAR export, and best-effort route mock/abort controls are available; response body and raw-header inspection are not.",
     sources: ["README.md", "skill-data/core/SKILL.md", "extension/src/background.ts"],
   },
   debugging: {

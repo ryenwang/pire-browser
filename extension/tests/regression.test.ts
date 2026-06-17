@@ -935,6 +935,12 @@ describe("command shape parity", () => {
     const body = background();
     expect(body).toContain('if (subcommand === "har" || subcommand === "export-har") return networkHarCommand(rest);');
     expect(body).toContain("async function networkHarCommand");
+    expect(body).toContain("const networkHarRecordingStartedAtByTabId = new Map");
+    expect(body).toContain("function networkHarMode");
+    expect(body).toContain('if (args[0] === "start") return "start";');
+    expect(body).toContain('if (args[0] === "stop") return "stop";');
+    expect(body).toContain("Started HAR recording");
+    expect(body).toContain("No HAR recording is active for the current tab");
     expect(body).toContain("function invalidNetworkHarArgs");
     expect(body).toContain("function networkHarForRecords");
     expect(body).toContain("function networkHarEntry");
