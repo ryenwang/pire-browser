@@ -35,7 +35,10 @@ pire-browser click '@e4'
 pire-browser diff snapshot
 pire-browser diff snapshot --baseline before.txt
 pire-browser diff snapshot --selector "#main" --compact
-# Screenshot and URL visual diff commands are still unavailable in the Firefox backend.`),
+pire-browser diff screenshot --baseline before.png
+pire-browser diff screenshot --baseline before.png -o diff.png
+pire-browser diff screenshot --baseline before.png -t 0.2
+# URL diff commands are still unavailable in the Firefox backend.`),
 
   h2("Get info", "get-info"),
   code(`pire-browser get text <sel>          # Get text content

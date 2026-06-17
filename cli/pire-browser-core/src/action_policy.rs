@@ -302,7 +302,7 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
         "clipboard" if subcommand == Some("paste") => "fill",
         "eval" => "eval",
         "snapshot" | "screenshot" => "snapshot",
-        "diff" if subcommand == Some("snapshot") => "snapshot",
+        "diff" if matches!(subcommand, Some("snapshot" | "screenshot")) => "snapshot",
         "highlight" => "snapshot",
         "addinitscript" | "removeinitscript" => "eval",
         "scroll" | "scrollintoview" => "scroll",

@@ -1917,6 +1917,7 @@ Common commands:
   --allow-file-access open file:///path/to/page.html
   snapshot -i                     Inspect the active page and print refs
   diff snapshot                    Compare current snapshot to previous
+  diff screenshot --baseline before.png Compare current screenshot to baseline
   click '@e4'                     Click a ref from snapshot/find output
   fill '@e2' "text"               Fill a ref from snapshot/find output
   find label "Email" fill "x@y"   Find by semantic locator and act
@@ -2058,14 +2059,21 @@ Usage:
   pire-browser diff snapshot [--json]
   pire-browser diff snapshot --baseline before.txt [--json]
   pire-browser diff snapshot --selector "#main" --compact [--json]
+  pire-browser diff screenshot --baseline before.png [--json]
+  pire-browser diff screenshot --baseline before.png after.png [--json]
+  pire-browser diff screenshot --baseline before.png -o diff.png
+  pire-browser diff screenshot --baseline before.png -t 0.2
 
 Compares a fresh active-page snapshot against the previous snapshot captured in
 the active tab, or against a local baseline text file when `--baseline` is
 provided. `--selector` scopes the snapshot before diffing, and `--compact`
 uses the same compact snapshot filtering as `snapshot -i -c`.
 
-Only snapshot text diffing is implemented on the Firefox backend today.
-Screenshot, URL, and visual pixel diff commands are not supported yet.
+`diff screenshot` compares a baseline image to a freshly captured current
+screenshot, or to an explicit current image path. `-o`/`--output` writes a red
+pixel-diff image. `-t`/`--threshold` accepts a 0-1 per-channel color threshold.
+
+URL diff commands are not supported yet.
 "##;
 
 const FIND_HELP: &str = r##"
@@ -4108,7 +4116,10 @@ mod tests {
             .contains("diff snapshot --baseline"));
         assert!(help_text(Some("diff"))
             .unwrap()
-            .contains("Only snapshot text diffing"));
+            .contains("diff screenshot --baseline before.png"));
+        assert!(help_text(Some("diff"))
+            .unwrap()
+            .contains("URL diff commands"));
         assert!(help_text(Some("wait")).unwrap().contains("wait '@e1'"));
         assert!(help_text(Some("wait"))
             .unwrap()

@@ -1,6 +1,7 @@
 mod mcp;
 
 use anyhow::{bail, Context, Result};
+use image::{ImageFormat, Rgba, RgbaImage};
 use pire_browser_core::action_policy::{
     action_policy_diagnostic_from_args, action_policy_text,
     decision_from_request_context as action_decision_from_request_context, ensure_action_allowed,
@@ -107,6 +108,15 @@ struct DownloadCommandPlan {
 struct UploadCommandPlan {
     public_args: Vec<String>,
     files: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct DiffScreenshotOptions {
+    baseline_path: PathBuf,
+    current_path: Option<PathBuf>,
+    output_path: Option<PathBuf>,
+    threshold: f32,
+    full_page: bool,
 }
 
 const MAX_INIT_SCRIPT_BYTES: u64 = 256 * 1024;
@@ -623,6 +633,26 @@ fn run() -> Result<()> {
                     unreachable!();
                 }
             };
+            if let Some(options) = diff_screenshot_options(&args)? {
+                let mut result = handle_diff_screenshot(
+                    &target,
+                    &options,
+                    json,
+                    &ignored_global_flags,
+                    &domain_decision,
+                    &action_decision,
+                    &confirmation_decision,
+                    interactively_approved,
+                    firefox_path_override.as_deref(),
+                    color_scheme.as_deref(),
+                )?;
+                append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
+                append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
+                apply_output_guards(&mut result, &output_guards, json);
+                println!("{}", format_cli_result(&result, json)?);
+                print_config_warnings(&config_warnings);
+                return Ok(());
+            }
             let request = build_command_request_with_policies(
                 args.clone(),
                 &domain_decision,
@@ -632,87 +662,15 @@ fn run() -> Result<()> {
             )?;
             let mut request = request;
             attach_color_scheme(&mut request, color_scheme.as_deref())?;
-            let dispatch_result = match target {
-                SessionTarget::Id(session_id) => send_to_session(Some(&session_id), &request),
-                SessionTarget::Name(profile_name) => send_to_named_session(
-                    &profile_name,
-                    &args,
-                    &request,
-                    &domain_decision,
-                    firefox_path_override.as_deref(),
-                ),
-                SessionTarget::Default => match send_to_session(None, &request) {
-                    Ok(result) => Ok(result),
-                    Err(err) if should_auto_launch_remote(None, &args, &err) => {
-                        cleanup_stale_sessions(now_ms())?;
-                        if let Some(url) = launch_url_for_remote_args(&args) {
-                            if let Err(err) = ensure_url_allowed(&domain_decision, &url) {
-                                exit_with_anyhow_error_with_domain_policy(
-                                    err,
-                                    json,
-                                    &ignored_global_flags,
-                                    &domain_decision.warnings,
-                                )?;
-                                unreachable!();
-                            }
-                        }
-                        let launch_result = match launch_firefox_with_lazy_setup(LaunchOptions {
-                            profile: "Default".to_string(),
-                            url: launch_url_for_remote_args(&args),
-                            firefox_path: firefox_path_override.clone(),
-                        }) {
-                            Ok(result) => result,
-                            Err(err) => {
-                                exit_with_anyhow_error_with_domain_policy(
-                                    err,
-                                    json,
-                                    &ignored_global_flags,
-                                    &domain_decision.warnings,
-                                )?;
-                                unreachable!();
-                            }
-                        };
-                        let launch_result = wait_for_auto_launched_open_page(launch_result, &args)?;
-                        if let Some(response) = auto_launched_open_response(&args, &launch_result) {
-                            Ok(response)
-                        } else {
-                            match send_to_session(None, &request) {
-                                Ok(result) => Ok(result),
-                                Err(err) => {
-                                    exit_with_anyhow_error_with_domain_policy(
-                                        err,
-                                        json,
-                                        &ignored_global_flags,
-                                        &domain_decision.warnings,
-                                    )?;
-                                    unreachable!();
-                                }
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        exit_with_anyhow_error_with_domain_policy(
-                            err,
-                            json,
-                            &ignored_global_flags,
-                            &domain_decision.warnings,
-                        )?;
-                        unreachable!();
-                    }
-                },
-            };
-            let (response, response_session_id) = match dispatch_result {
-                Ok(result) => result,
-                Err(err) => {
-                    exit_with_anyhow_error_with_domain_policy(
-                        err,
-                        json,
-                        &ignored_global_flags,
-                        &domain_decision.warnings,
-                    )?;
-                    unreachable!();
-                }
-            };
+            let (response, response_session_id) = dispatch_remote_request_or_exit(
+                &target,
+                &args,
+                &request,
+                &domain_decision,
+                json,
+                &ignored_global_flags,
+                firefox_path_override.as_deref(),
+            )?;
             if !response.ok {
                 let error = response
                     .error
@@ -3821,6 +3779,343 @@ fn diff_snapshot_value_flag(arg: &str) -> bool {
     )
 }
 
+fn diff_screenshot_options(args: &[String]) -> Result<Option<DiffScreenshotOptions>> {
+    if args.first().map(String::as_str) != Some("diff")
+        || args.get(1).map(String::as_str) != Some("screenshot")
+    {
+        return Ok(None);
+    }
+
+    let mut baseline_path = None;
+    let mut current_path = None;
+    let mut output_path = None;
+    let mut threshold = 0.0_f32;
+    let mut full_page = false;
+    let mut index = 2;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--baseline" => {
+                let value = required_diff_screenshot_value(args, index, "--baseline")?;
+                baseline_path = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "-o" | "--output" => {
+                let flag = args[index].clone();
+                let value = required_diff_screenshot_value(args, index, &flag)?;
+                output_path = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "-t" | "--threshold" => {
+                let flag = args[index].clone();
+                let value = required_diff_screenshot_value(args, index, &flag)?;
+                threshold = value.parse::<f32>().with_context(|| {
+                    format!("invalid_args: diff screenshot {flag} must be a number from 0 to 1")
+                })?;
+                if !(0.0..=1.0).contains(&threshold) {
+                    bail!("invalid_args: diff screenshot {flag} must be between 0 and 1");
+                }
+                index += 2;
+            }
+            "--full" => {
+                full_page = true;
+                index += 1;
+            }
+            "--json" => {
+                index += 1;
+            }
+            arg if arg.starts_with('-') => {
+                bail!("invalid_args: diff screenshot does not support option: {arg}");
+            }
+            path => {
+                if current_path.is_some() {
+                    bail!(
+                        "invalid_args: diff screenshot accepts at most one current screenshot path"
+                    );
+                }
+                current_path = Some(PathBuf::from(path));
+                index += 1;
+            }
+        }
+    }
+
+    let Some(baseline_path) = baseline_path else {
+        bail!("invalid_args: diff screenshot requires --baseline <path>");
+    };
+
+    Ok(Some(DiffScreenshotOptions {
+        baseline_path,
+        current_path,
+        output_path,
+        threshold,
+        full_page,
+    }))
+}
+
+fn required_diff_screenshot_value<'a>(
+    args: &'a [String],
+    index: usize,
+    flag: &str,
+) -> Result<&'a str> {
+    let Some(value) = args.get(index + 1) else {
+        bail!("invalid_args: diff screenshot {flag} requires a value");
+    };
+    if value.starts_with('-') {
+        bail!("invalid_args: diff screenshot {flag} requires a value");
+    }
+    Ok(value)
+}
+
+fn handle_diff_screenshot(
+    target: &SessionTarget,
+    options: &DiffScreenshotOptions,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
+    firefox_path_override: Option<&str>,
+    color_scheme: Option<&str>,
+) -> Result<Value> {
+    let current_path = match &options.current_path {
+        Some(path) => path.clone(),
+        None => capture_diff_screenshot_current(
+            target,
+            options.full_page,
+            json_output,
+            ignored_global_flags,
+            domain_decision,
+            action_decision,
+            confirmation_decision,
+            interactively_approved,
+            firefox_path_override,
+            color_scheme,
+        )?,
+    };
+
+    compare_screenshot_files(
+        &options.baseline_path,
+        &current_path,
+        options.output_path.as_deref(),
+        options.threshold,
+        options.current_path.is_none(),
+    )
+}
+
+fn capture_diff_screenshot_current(
+    target: &SessionTarget,
+    full_page: bool,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
+    firefox_path_override: Option<&str>,
+    color_scheme: Option<&str>,
+) -> Result<PathBuf> {
+    let path =
+        std::env::temp_dir().join(format!("pire-browser-diff-current-{}.png", Uuid::new_v4()));
+    let path_string = path.to_string_lossy().to_string();
+    let mut screenshot_args = vec!["screenshot".to_string(), path_string.clone()];
+    if full_page {
+        screenshot_args.push("--full".to_string());
+    }
+    let mut request = build_command_request_with_policies(
+        screenshot_args.clone(),
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+    )?;
+    attach_color_scheme(&mut request, color_scheme)?;
+    let (response, _) = dispatch_remote_request_or_exit(
+        target,
+        &screenshot_args,
+        &request,
+        domain_decision,
+        json_output,
+        ignored_global_flags,
+        firefox_path_override,
+    )?;
+    if !response.ok {
+        let error = response
+            .error
+            .unwrap_or(pire_browser_core::protocol::RpcError {
+                code: "unknown_error".into(),
+                message: "unknown extension error".into(),
+                data: None,
+            });
+        bail!("{}", plain_error_message(&error));
+    }
+    let result = response.result.unwrap_or_else(|| json!({}));
+    let resolved = result
+        .get("screenshotPath")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .unwrap_or(path);
+    Ok(resolved)
+}
+
+fn compare_screenshot_files(
+    baseline_path: &Path,
+    current_path: &Path,
+    output_path: Option<&Path>,
+    threshold: f32,
+    captured_current: bool,
+) -> Result<Value> {
+    let baseline_image = image::open(baseline_path).with_context(|| {
+        format!(
+            "invalid_args: failed to read baseline screenshot {}",
+            baseline_path.display()
+        )
+    })?;
+    let current_image = image::open(current_path).with_context(|| {
+        format!(
+            "invalid_args: failed to read current screenshot {}",
+            current_path.display()
+        )
+    })?;
+    let baseline = baseline_image.to_rgba8();
+    let current = current_image.to_rgba8();
+    let width = baseline.width().max(current.width());
+    let height = baseline.height().max(current.height());
+    if width == 0 || height == 0 {
+        bail!("invalid_args: screenshot dimensions must be non-zero");
+    }
+
+    let mut diff_image = RgbaImage::new(width, height);
+    let mut differing_pixels = 0_u64;
+    let mut max_delta = 0.0_f32;
+    let total_pixels = u64::from(width) * u64::from(height);
+    for y in 0..height {
+        for x in 0..width {
+            let baseline_pixel = pixel_at(&baseline, x, y);
+            let current_pixel = pixel_at(&current, x, y);
+            let delta = screenshot_pixel_delta(baseline_pixel, current_pixel);
+            max_delta = max_delta.max(delta);
+            let changed = delta > threshold;
+            if changed {
+                differing_pixels += 1;
+            }
+            diff_image.put_pixel(
+                x,
+                y,
+                if changed {
+                    Rgba([255, 0, 0, 255])
+                } else {
+                    dim_pixel(current_pixel.or(baseline_pixel))
+                },
+            );
+        }
+    }
+
+    if let Some(path) = output_path {
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent).with_context(|| {
+                    format!(
+                        "failed to create diff output directory {}",
+                        parent.display()
+                    )
+                })?;
+            }
+        }
+        let format = image_format_for_output(path);
+        image::DynamicImage::ImageRgba8(diff_image)
+            .save_with_format(path, format)
+            .with_context(|| format!("failed to write screenshot diff {}", path.display()))?;
+    }
+
+    let mismatch_ratio = differing_pixels as f64 / total_pixels as f64;
+    let changed = differing_pixels > 0
+        || baseline.width() != current.width()
+        || baseline.height() != current.height();
+    let mut text = if changed {
+        format!(
+            "Screenshot differences: {} of {} pixel(s) differ ({:.4}%).",
+            differing_pixels,
+            total_pixels,
+            mismatch_ratio * 100.0
+        )
+    } else {
+        "No screenshot differences".to_string()
+    };
+    if let Some(path) = output_path {
+        text.push_str(&format!("\nDiff image written to {}", path.display()));
+    }
+
+    Ok(json!({
+        "text": text,
+        "changed": changed,
+        "differingPixels": differing_pixels,
+        "totalPixels": total_pixels,
+        "mismatchRatio": mismatch_ratio,
+        "threshold": threshold,
+        "maxDelta": max_delta,
+        "baselinePath": baseline_path.to_string_lossy(),
+        "currentPath": current_path.to_string_lossy(),
+        "capturedCurrent": captured_current,
+        "outputPath": output_path.map(|path| path.to_string_lossy().to_string()),
+        "dimensions": {
+            "baseline": {
+                "width": baseline.width(),
+                "height": baseline.height()
+            },
+            "current": {
+                "width": current.width(),
+                "height": current.height()
+            },
+            "match": baseline.width() == current.width() && baseline.height() == current.height()
+        }
+    }))
+}
+
+fn pixel_at(image: &RgbaImage, x: u32, y: u32) -> Option<Rgba<u8>> {
+    if x < image.width() && y < image.height() {
+        Some(*image.get_pixel(x, y))
+    } else {
+        None
+    }
+}
+
+fn screenshot_pixel_delta(left: Option<Rgba<u8>>, right: Option<Rgba<u8>>) -> f32 {
+    match (left, right) {
+        (Some(left), Some(right)) => left
+            .0
+            .iter()
+            .zip(right.0.iter())
+            .map(|(left, right)| left.abs_diff(*right) as f32 / 255.0)
+            .fold(0.0_f32, f32::max),
+        (None, None) => 0.0,
+        _ => 1.0,
+    }
+}
+
+fn dim_pixel(pixel: Option<Rgba<u8>>) -> Rgba<u8> {
+    let Some(pixel) = pixel else {
+        return Rgba([32, 32, 32, 255]);
+    };
+    Rgba([
+        pixel.0[0] / 3,
+        pixel.0[1] / 3,
+        pixel.0[2] / 3,
+        pixel.0[3].max(128),
+    ])
+}
+
+fn image_format_for_output(path: &Path) -> ImageFormat {
+    match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| extension.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("jpg" | "jpeg") => ImageFormat::Jpeg,
+        _ => ImageFormat::Png,
+    }
+}
+
 fn init_script_payloads(args: &[String]) -> Result<Vec<Value>> {
     if !matches!(
         args.first().map(String::as_str),
@@ -4769,6 +5064,98 @@ fn send_to_named_session(
     send_to_session(Some(&session_id), request)
 }
 
+fn dispatch_remote_request_or_exit(
+    target: &SessionTarget,
+    args: &[String],
+    request: &RpcRequest,
+    domain_decision: &DomainPolicyDecision,
+    json: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    firefox_path_override: Option<&str>,
+) -> Result<(RpcResponse, String)> {
+    let dispatch_result = match target {
+        SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
+        SessionTarget::Name(profile_name) => send_to_named_session(
+            profile_name,
+            args,
+            request,
+            domain_decision,
+            firefox_path_override,
+        ),
+        SessionTarget::Default => match send_to_session(None, request) {
+            Ok(result) => Ok(result),
+            Err(err) if should_auto_launch_remote(None, args, &err) => {
+                cleanup_stale_sessions(now_ms())?;
+                if let Some(url) = launch_url_for_remote_args(args) {
+                    if let Err(err) = ensure_url_allowed(domain_decision, &url) {
+                        exit_with_anyhow_error_with_domain_policy(
+                            err,
+                            json,
+                            ignored_global_flags,
+                            &domain_decision.warnings,
+                        )?;
+                        unreachable!();
+                    }
+                }
+                let launch_result = match launch_firefox_with_lazy_setup(LaunchOptions {
+                    profile: "Default".to_string(),
+                    url: launch_url_for_remote_args(args),
+                    firefox_path: firefox_path_override.map(ToString::to_string),
+                }) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        exit_with_anyhow_error_with_domain_policy(
+                            err,
+                            json,
+                            ignored_global_flags,
+                            &domain_decision.warnings,
+                        )?;
+                        unreachable!();
+                    }
+                };
+                let launch_result = wait_for_auto_launched_open_page(launch_result, args)?;
+                if let Some(response) = auto_launched_open_response(args, &launch_result) {
+                    Ok(response)
+                } else {
+                    match send_to_session(None, request) {
+                        Ok(result) => Ok(result),
+                        Err(err) => {
+                            exit_with_anyhow_error_with_domain_policy(
+                                err,
+                                json,
+                                ignored_global_flags,
+                                &domain_decision.warnings,
+                            )?;
+                            unreachable!();
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                exit_with_anyhow_error_with_domain_policy(
+                    err,
+                    json,
+                    ignored_global_flags,
+                    &domain_decision.warnings,
+                )?;
+                unreachable!();
+            }
+        },
+    };
+    match dispatch_result {
+        Ok(result) => Ok(result),
+        Err(err) => {
+            exit_with_anyhow_error_with_domain_policy(
+                err,
+                json,
+                ignored_global_flags,
+                &domain_decision.warnings,
+            )?;
+            unreachable!();
+        }
+    }
+}
+
 fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
     matches!(
         args.first().map(String::as_str),
@@ -5307,6 +5694,103 @@ mod tests {
         assert_eq!(request.params["diffBaselineText"], json!("before snapshot"));
         assert_eq!(request.params["diffBaselinePath"], json!(path_string));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn diff_screenshot_options_parse_agent_browser_shape() {
+        let options = diff_screenshot_options(&s(&[
+            "diff",
+            "screenshot",
+            "--baseline",
+            "before.png",
+            "after.png",
+            "-o",
+            "diff.png",
+            "-t",
+            "0.2",
+            "--full",
+        ]))
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(options.baseline_path, PathBuf::from("before.png"));
+        assert_eq!(options.current_path, Some(PathBuf::from("after.png")));
+        assert_eq!(options.output_path, Some(PathBuf::from("diff.png")));
+        assert!((options.threshold - 0.2).abs() < f32::EPSILON);
+        assert!(options.full_page);
+    }
+
+    #[test]
+    fn diff_screenshot_options_require_baseline_and_valid_threshold() {
+        assert!(diff_screenshot_options(&s(&["diff", "screenshot"]))
+            .unwrap_err()
+            .to_string()
+            .contains("requires --baseline"));
+        assert!(diff_screenshot_options(&s(&[
+            "diff",
+            "screenshot",
+            "--baseline",
+            "before.png",
+            "-t",
+            "1.2"
+        ]))
+        .unwrap_err()
+        .to_string()
+        .contains("between 0 and 1"));
+        assert!(diff_screenshot_options(&s(&["diff", "snapshot"]))
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn compare_screenshot_files_reports_changed_pixels_and_writes_diff() {
+        let id = Uuid::new_v4();
+        let baseline = std::env::temp_dir().join(format!("pire-browser-baseline-{id}.png"));
+        let current = std::env::temp_dir().join(format!("pire-browser-current-{id}.png"));
+        let diff = std::env::temp_dir().join(format!("pire-browser-diff-{id}.png"));
+        write_test_png(&baseline, &[[0, 0, 0, 255], [0, 0, 0, 255]]);
+        write_test_png(&current, &[[0, 0, 0, 255], [255, 255, 255, 255]]);
+
+        let value = compare_screenshot_files(&baseline, &current, Some(&diff), 0.0, false).unwrap();
+
+        assert_eq!(value["changed"], json!(true));
+        assert_eq!(value["differingPixels"], json!(1));
+        assert_eq!(value["totalPixels"], json!(2));
+        assert_eq!(
+            value["outputPath"],
+            json!(diff.to_string_lossy().to_string())
+        );
+        assert!(diff.exists());
+        let _ = fs::remove_file(baseline);
+        let _ = fs::remove_file(current);
+        let _ = fs::remove_file(diff);
+    }
+
+    #[test]
+    fn compare_screenshot_files_respects_threshold() {
+        let id = Uuid::new_v4();
+        let baseline =
+            std::env::temp_dir().join(format!("pire-browser-threshold-baseline-{id}.png"));
+        let current = std::env::temp_dir().join(format!("pire-browser-threshold-current-{id}.png"));
+        write_test_png(&baseline, &[[100, 100, 100, 255]]);
+        write_test_png(&current, &[[110, 100, 100, 255]]);
+
+        let value = compare_screenshot_files(&baseline, &current, None, 0.1, false).unwrap();
+
+        assert_eq!(value["changed"], json!(false));
+        assert_eq!(value["differingPixels"], json!(0));
+        let _ = fs::remove_file(baseline);
+        let _ = fs::remove_file(current);
+    }
+
+    fn write_test_png(path: &Path, pixels: &[[u8; 4]]) {
+        let mut image = RgbaImage::new(pixels.len() as u32, 1);
+        for (index, pixel) in pixels.iter().enumerate() {
+            image.put_pixel(index as u32, 0, Rgba(*pixel));
+        }
+        image
+            .save_with_format(path, ImageFormat::Png)
+            .expect("write test png");
     }
 
     #[test]

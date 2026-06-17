@@ -1243,7 +1243,7 @@ async function diffCommand(args: string[], params: Record<string, any> = {}) {
     return {
       error: {
         code: "invalid_args",
-        message: "diff requires snapshot. Screenshot, URL, and visual pixel diff commands are not supported yet.",
+        message: "diff requires snapshot in extension batch mode. Run `pire-browser diff screenshot --baseline <path>` as a top-level CLI command for visual pixel diffing. URL diff commands are not supported yet.",
       },
     };
   }

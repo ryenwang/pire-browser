@@ -180,12 +180,17 @@ pire-browser click '@e4'
 pire-browser diff snapshot
 pire-browser diff snapshot --baseline before.txt
 pire-browser diff snapshot --selector "#main" --compact
+pire-browser diff screenshot --baseline before.png
+pire-browser diff screenshot --baseline before.png -o diff.png
+pire-browser diff screenshot --baseline before.png -t 0.2
 ```
 
 Use `diff snapshot` after a baseline snapshot and an action to see structural
 changes without leaving the CLI. `--baseline <path>` compares against a saved
-snapshot text file. Snapshot diffing is text-based; screenshot, URL, and visual
-pixel diff commands are not available in the Firefox backend yet.
+snapshot text file. Use `diff screenshot --baseline <path>` after capturing a
+visual baseline to compare the current active-page screenshot. Add `-o <path>`
+for a red diff image and `-t <0..1>` when small rendering differences should be
+ignored. URL diff commands are not available in the Firefox backend yet.
 
 Authenticate a page or API route with request headers:
 

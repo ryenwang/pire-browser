@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+image.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 pire-browser-core = { path = "../pire-browser-core" }

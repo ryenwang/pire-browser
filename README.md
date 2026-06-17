@@ -359,12 +359,18 @@ git diff --no-index before.txt after.txt
 
 pire-browser screenshot before.png
 # perform action
+pire-browser diff screenshot --baseline before.png
+pire-browser diff screenshot --baseline before.png -o diff.png
+pire-browser diff screenshot --baseline before.png -t 0.2
+
 pire-browser screenshot after.png
+pire-browser diff screenshot --baseline before.png after.png
 ```
 
 `diff snapshot` compares a fresh active-page snapshot to the previous snapshot
-captured in the active tab, or to a local baseline text file. Screenshot, URL,
-and visual pixel diff commands are not implemented yet.
+captured in the active tab, or to a local baseline text file. `diff screenshot`
+compares a baseline image to the current active-page screenshot, or to an
+explicit current image path. URL diff commands are not implemented yet.
 
 ### Debug
 
