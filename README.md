@@ -261,11 +261,12 @@ pire-browser set viewport <w> <h> [scale]  # Resize browser window toward target
 pire-browser set device "iPhone 14"  # Best-effort mobile viewport preset
 pire-browser set headers <json>      # Extra HTTP headers for the active origin
 pire-browser set media [dark|light|auto]  # Emulate page color scheme
+pire-browser set offline on|off      # Best-effort request blocking for managed tabs
 pire-browser --color-scheme dark open https://example.com
 pire-browser --executable-path /path/to/firefox open https://example.com
 ```
 
-`set device` applies a best-effort viewport preset for common devices. Firefox does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor for this path, so verify the measured `page.innerWidth`/`page.innerHeight` before relying on responsive screenshots. Geolocation, offline mode, credentials, proxy flags, and TLS-ignore launch flags are not implemented in the current Firefox backend.
+`set device` applies a best-effort viewport preset for common devices. Firefox does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor for this path, so verify the measured `page.innerWidth`/`page.innerHeight` before relying on responsive screenshots. `set offline` cancels future network requests for managed tabs, but it does not fully emulate Chromium/CDP offline mode: `navigator.onLine`, service worker cache behavior, DNS, and socket state are not controlled. Geolocation, credentials, proxy flags, and TLS-ignore launch flags are not implemented in the current Firefox backend.
 
 ### Cookies & Storage
 
@@ -288,6 +289,8 @@ pire-browser storage session
 pire-browser --allowed-domains "example.com,*.example.com" open https://example.com
 pire-browser open https://api.example.com --headers '{"Authorization":"Bearer token"}'
 pire-browser set headers '{"X-Custom-Header":"value"}'
+pire-browser set offline on
+pire-browser set offline off
 pire-browser wait --load networkidle
 pire-browser network requests
 pire-browser network requests --filter /api/

@@ -2238,6 +2238,7 @@ Usage:
   pire-browser set device "iPhone 14"
   pire-browser set headers <json>
   pire-browser set media dark|light|auto
+  pire-browser set offline on|off
 
 Resizes the active Firefox window to approximate a requested content
 viewport, then reports the requested size plus measured page innerWidth and
@@ -2255,8 +2256,13 @@ current managed Firefox session. Passing `{}` clears headers for that origin.
 Values are not echoed; output reports header names only.
 
 `set media dark|light|auto` applies Firefox's webpage content color-scheme
-override for the managed session. Geolocation, offline, and credentials
-settings are not supported on this backend.
+override for the managed session.
+
+`set offline on|off` toggles best-effort Firefox request blocking for managed
+tabs. It cancels future network requests, but does not fully emulate CDP
+offline mode: navigator.onLine, service worker cache behavior, DNS, and socket
+state are not controlled. Geolocation and credentials settings are not
+supported on this backend.
 "##;
 
 const MOUSE_HELP: &str = r##"
@@ -4213,6 +4219,9 @@ mod tests {
         assert!(help_text(Some("set"))
             .unwrap()
             .contains("set headers <json>"));
+        assert!(help_text(Some("set"))
+            .unwrap()
+            .contains("set offline on|off"));
         assert!(help_text(Some("find"))
             .unwrap()
             .contains("find text \"Save\" --exact"));

@@ -156,7 +156,7 @@ pire-browser snapshot -i --compact
 pire-browser screenshot mobile.png
 ```
 
-`set viewport` and `set device` are Firefox best-effort paths. They resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `set device` reports a preset User-Agent/touch/scale profile but does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. Geo, offline, and credentials are not available on the Firefox backend yet.
+`set viewport` and `set device` are Firefox best-effort paths. They resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `set device` reports a preset User-Agent/touch/scale profile but does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. Geo and credentials are not available on the Firefox backend yet.
 
 ```sh
 pire-browser --color-scheme dark open https://example.com
@@ -164,6 +164,18 @@ pire-browser set media light
 ```
 
 Use `--color-scheme dark|light|auto` before `open`, or `set media dark|light|auto` in a live session, when a page uses `prefers-color-scheme`.
+
+Test offline and reconnect flows with request blocking:
+
+```bash
+pire-browser set offline on
+pire-browser open https://example.com
+pire-browser snapshot -i
+pire-browser set offline off
+pire-browser wait --load networkidle
+```
+
+`set offline on|off` is best-effort Firefox request blocking for managed tabs. It cancels future network requests, but it does not fully emulate Chromium/CDP offline mode: `navigator.onLine`, service worker cache behavior, DNS, and socket state are not controlled.
 
 Highlight the visual target before a QA screenshot:
 

@@ -315,6 +315,15 @@
       "source": "upstream"
     },
     {
+      "root": "set",
+      "subcommand": "offline",
+      "signature": "set offline on|off",
+      "category": "network",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
       "root": "diff",
       "subcommand": "snapshot",
       "signature": "diff snapshot [--baseline <path>]",

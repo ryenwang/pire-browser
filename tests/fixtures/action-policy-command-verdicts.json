@@ -122,6 +122,13 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "set offline maps to network",
+      "args": ["set", "offline", "on"],
+      "policy": { "default": "deny", "allow": ["network"] },
+      "expectedCategory": "network",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "set device maps to state",
       "args": ["set", "device", "iPhone 14"],
       "policy": { "default": "deny", "allow": ["state"] },

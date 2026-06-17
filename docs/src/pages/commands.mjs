@@ -117,9 +117,12 @@ pire-browser set media light
 pire-browser set viewport 1280 720
 pire-browser set device "iPhone 14"
 pire-browser set headers '{"X-Custom-Header":"value"}'
+pire-browser set offline on
+pire-browser set offline off
 pire-browser open https://api.example.com --headers '{"Authorization":"Bearer token"}'
 pire-browser --executable-path /path/to/firefox open https://example.com
-# set device is best-effort viewport-only. Geolocation, offline, credentials, and TLS-ignore launch flags are not available`),
+# set device is best-effort viewport-only. set offline is best-effort request blocking.
+# Geolocation, credentials, and TLS-ignore launch flags are not available`),
   code(`pire-browser launch --profile Default
 pire-browser launch --url https://example.com
 PIRE_BROWSER_FIREFOX_PATH=/path/to/firefox pire-browser launch
@@ -141,6 +144,7 @@ pire-browser storage session`),
 PIRE_BROWSER_ALLOWED_DOMAINS="example.com" pire-browser snapshot -i
 pire-browser open https://api.example.com --headers '{"Authorization":"Bearer token"}'
 pire-browser set headers '{"X-Custom-Header":"value"}'
+pire-browser set offline on
 pire-browser wait --load networkidle
 pire-browser network requests
 pire-browser network requests --filter /api/

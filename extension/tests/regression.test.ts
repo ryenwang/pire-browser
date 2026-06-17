@@ -486,6 +486,19 @@ describe("pire-browser command foundations", () => {
     expect(body).not.toContain("values: headers.map");
   });
 
+  it("implements best-effort offline mode through Firefox request blocking", () => {
+    const body = background();
+    expect(body).toContain("let offlineModeEnabled = false");
+    expect(body).toContain('if (subcommand === "offline") return setOfflineCommand(rest);');
+    expect(body).toContain("async function setOfflineCommand");
+    expect(body).toContain("function parseOfflineMode");
+    expect(body).toContain("function offlineModeWarning");
+    expect(body).toContain("if (offlineModeEnabled && requestBelongsToManagedTab(details))");
+    expect(body).toContain("function rememberOfflineNetworkBlock");
+    expect(body).toContain('routeId: "offline"');
+    expect(body).toContain("navigator.onLine, service worker cache behavior, DNS, and socket state are not controlled");
+  });
+
   it("counts matching elements through findInTab for get count", () => {
     const body = background();
     expect(body).toContain('if (property === "count")');
@@ -715,6 +728,7 @@ describe("pire-browser command foundations", () => {
       ["set", "device", "iPhone 14"],
       ["set", "media", "dark"],
       ["set", "headers", "{\"X-Custom-Header\":\"value\"}"],
+      ["set", "offline", "on"],
       ["wait"],
       ["wait", "--download", "file.txt"],
       ["screenshot"],

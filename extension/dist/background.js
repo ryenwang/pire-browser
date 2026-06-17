@@ -37,6 +37,7 @@
     const networkHarRecordingStartedAtByTabId = new Map();
     const networkRoutes = new Map();
     const networkRouteMatchesByRequestId = new Map();
+    let offlineModeEnabled = false;
     let nextRuntimeInitScriptNumber = 1;
     let nextNetworkRouteNumber = 1;
     const DEVICE_PROFILES = [
@@ -460,7 +461,7 @@
                     return "state";
                 return null;
             case "set":
-                if (subcommand === "headers")
+                if (subcommand === "headers" || subcommand === "offline")
                     return "network";
                 return "state";
             case "download":
@@ -2163,8 +2164,10 @@
             return setMediaCommand(rest);
         if (subcommand === "device")
             return setDeviceCommand(rest);
+        if (subcommand === "offline")
+            return setOfflineCommand(rest);
         if (subcommand !== "viewport") {
-            return notAvailable(`set ${subcommand || ""}`.trim(), "Only `set viewport <w> <h> [scale]`, `set device <name>`, `set headers <json>`, and `set media dark|light|auto` are implemented on the Firefox WebExtension backend. geo, offline, and credentials still require a CDP-capable backend.");
+            return notAvailable(`set ${subcommand || ""}`.trim(), "Only `set viewport <w> <h> [scale]`, `set device <name>`, `set headers <json>`, `set media dark|light|auto`, and `set offline on|off` are implemented on the Firefox WebExtension backend. geo and credentials still require a CDP-capable backend.");
         }
         const parsed = parseViewportArgs(rest);
         if ("error" in parsed)
@@ -2251,6 +2254,39 @@
             text: `Media color scheme set to ${parsed.scheme}`,
             media: applied.media,
         };
+    }
+    async function setOfflineCommand(args) {
+        const parsed = parseOfflineMode(args);
+        if ("error" in parsed)
+            return parsed;
+        offlineModeEnabled = parsed.enabled;
+        return {
+            text: `Offline mode ${offlineModeEnabled ? "enabled" : "disabled"}`,
+            offline: {
+                enabled: offlineModeEnabled,
+                emulated: {
+                    webRequestBlocking: true,
+                    navigatorOnLine: false,
+                    serviceWorkerCache: false,
+                    socketState: false,
+                },
+            },
+            warnings: [offlineModeWarning()],
+        };
+    }
+    function parseOfflineMode(args) {
+        if (args.length > 1) {
+            return { error: { code: "invalid_args", message: "set offline accepts on|off" } };
+        }
+        const value = (args[0] ?? "on").toLowerCase();
+        if (value === "on" || value === "true" || value === "1")
+            return { enabled: true };
+        if (value === "off" || value === "false" || value === "0")
+            return { enabled: false };
+        return { error: { code: "invalid_args", message: "set offline accepts on|off" } };
+    }
+    function offlineModeWarning() {
+        return bestEffortWarning("set offline", "Firefox WebExtensions can cancel future network requests for managed tabs, but this is not full CDP offline emulation: navigator.onLine, service worker cache behavior, DNS, and socket state are not controlled.");
     }
     function normalizeContentColorScheme(value) {
         if (value == null || value === "")
@@ -4445,6 +4481,10 @@
         return type === "websocket";
     }
     function applyNetworkRoute(details) {
+        if (offlineModeEnabled && requestBelongsToManagedTab(details)) {
+            rememberOfflineNetworkBlock(details);
+            return { cancel: true };
+        }
         const route = matchingNetworkRoute(details);
         if (!route)
             return {};
@@ -4471,6 +4511,10 @@
         }
         return undefined;
     }
+    function requestBelongsToManagedTab(details) {
+        const tabId = typeof details?.tabId === "number" ? details.tabId : -1;
+        return tabId >= 0 && tabsByBrowserId.has(tabId);
+    }
     function rememberNetworkRouteMatch(details, route, action) {
         const requestId = String(details?.requestId ?? "");
         if (!requestId)
@@ -4480,6 +4524,17 @@
         if (record) {
             record.routeId = route.id;
             record.routeAction = action;
+        }
+    }
+    function rememberOfflineNetworkBlock(details) {
+        const requestId = String(details?.requestId ?? "");
+        if (!requestId)
+            return;
+        networkRouteMatchesByRequestId.set(requestId, { routeId: "offline", action: "abort" });
+        const record = networkRequestsById.get(requestId);
+        if (record) {
+            record.routeId = "offline";
+            record.routeAction = "abort";
         }
     }
     function networkRouteDataUrl(route) {
