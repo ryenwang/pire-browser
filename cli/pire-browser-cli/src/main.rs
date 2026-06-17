@@ -78,7 +78,6 @@ const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &[
     "connect",
     "dashboard",
     "device",
-    "diff",
     "install",
     "pdf",
     "profiler",
@@ -111,6 +110,7 @@ struct UploadCommandPlan {
 }
 
 const MAX_INIT_SCRIPT_BYTES: u64 = 256 * 1024;
+const MAX_DIFF_BASELINE_BYTES: u64 = 1_048_576;
 
 struct ConfirmationGate<'a> {
     confirmation_decision: &'a ConfirmationPolicyDecision,
@@ -3459,6 +3459,7 @@ fn build_command_request_with_domain_policy(
 ) -> Result<RpcRequest> {
     let mut request = build_command_request(args.clone());
     attach_init_scripts(&mut request, &args)?;
+    attach_diff_baseline(&mut request, &args)?;
     if let Some(context) = domain_policy_request_context(decision) {
         if let Some(object) = request.params.as_object_mut() {
             object.insert("domainPolicy".to_string(), serde_json::to_value(context)?);
@@ -3599,6 +3600,7 @@ fn build_command_request_with_captured_policies(
 ) -> Result<RpcRequest> {
     let mut request = build_command_request(args.clone());
     attach_init_scripts(&mut request, &args)?;
+    attach_diff_baseline(&mut request, &args)?;
     if let Some(object) = request.params.as_object_mut() {
         if let Some(context) = domain_context {
             object.insert("domainPolicy".to_string(), serde_json::to_value(context)?);
@@ -3754,6 +3756,69 @@ fn attach_init_scripts(request: &mut RpcRequest, args: &[String]) -> Result<()> 
         object.insert("initScripts".to_string(), Value::Array(scripts));
     }
     Ok(())
+}
+
+fn attach_diff_baseline(request: &mut RpcRequest, args: &[String]) -> Result<()> {
+    let Some(path) = diff_snapshot_baseline_path(args)? else {
+        return Ok(());
+    };
+    let metadata = fs::metadata(&path).with_context(|| {
+        format!(
+            "invalid_args: failed to read diff baseline {}",
+            path.display()
+        )
+    })?;
+    if metadata.len() > MAX_DIFF_BASELINE_BYTES {
+        bail!(
+            "invalid_args: diff baseline {} is larger than {} bytes",
+            path.display(),
+            MAX_DIFF_BASELINE_BYTES
+        );
+    }
+    let text = fs::read_to_string(&path).with_context(|| {
+        format!(
+            "invalid_args: failed to read diff baseline {}",
+            path.display()
+        )
+    })?;
+    if let Some(object) = request.params.as_object_mut() {
+        object.insert("diffBaselineText".to_string(), json!(text));
+        object.insert(
+            "diffBaselinePath".to_string(),
+            json!(path.to_string_lossy().to_string()),
+        );
+    }
+    Ok(())
+}
+
+fn diff_snapshot_baseline_path(args: &[String]) -> Result<Option<PathBuf>> {
+    if args.first().map(String::as_str) != Some("diff")
+        || args.get(1).map(String::as_str) != Some("snapshot")
+    {
+        return Ok(None);
+    }
+    let mut index = 2;
+    while index < args.len() {
+        let arg = &args[index];
+        if arg == "--baseline" {
+            let Some(value) = args.get(index + 1) else {
+                bail!("invalid_args: diff snapshot --baseline requires a path");
+            };
+            if value.starts_with('-') {
+                bail!("invalid_args: diff snapshot --baseline requires a path");
+            }
+            return Ok(Some(PathBuf::from(value)));
+        }
+        index += if diff_snapshot_value_flag(arg) { 2 } else { 1 };
+    }
+    Ok(None)
+}
+
+fn diff_snapshot_value_flag(arg: &str) -> bool {
+    matches!(
+        arg,
+        "--selector" | "--scope" | "-s" | "--depth" | "-d" | "-o"
+    )
 }
 
 fn init_script_payloads(args: &[String]) -> Result<Vec<Value>> {
@@ -4802,6 +4867,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "window"
             | "frame"
             | "dialog"
+            | "diff"
             | "batch"
             | "cookies"
             | "storage"
@@ -5196,6 +5262,54 @@ mod tests {
     }
 
     #[test]
+    fn diff_snapshot_baseline_path_parses_baseline_file() {
+        assert_eq!(
+            diff_snapshot_baseline_path(&s(&["diff", "snapshot", "--baseline", "before.txt"]))
+                .unwrap(),
+            Some(PathBuf::from("before.txt"))
+        );
+        assert_eq!(
+            diff_snapshot_baseline_path(&s(&[
+                "diff",
+                "snapshot",
+                "--selector",
+                "#main",
+                "--baseline",
+                "before.txt"
+            ]))
+            .unwrap(),
+            Some(PathBuf::from("before.txt"))
+        );
+        assert!(diff_snapshot_baseline_path(&s(&["diff", "snapshot"]))
+            .unwrap()
+            .is_none());
+        assert!(
+            diff_snapshot_baseline_path(&s(&["snapshot", "--baseline", "before.txt"]))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn attaches_diff_snapshot_baseline_text() {
+        let path = std::env::temp_dir().join(format!("pire-browser-diff-{}.txt", Uuid::new_v4()));
+        fs::write(&path, "before snapshot").unwrap();
+        let path_string = path.to_string_lossy().to_string();
+        let mut request =
+            build_command_request(s(&["diff", "snapshot", "--baseline", &path_string]));
+
+        attach_diff_baseline(
+            &mut request,
+            &s(&["diff", "snapshot", "--baseline", &path_string]),
+        )
+        .unwrap();
+
+        assert_eq!(request.params["diffBaselineText"], json!("before snapshot"));
+        assert_eq!(request.params["diffBaselinePath"], json!(path_string));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn firefox_path_override_parses_global_executable_flag() {
         assert_eq!(
             firefox_path_override_from_args(&s(&[
@@ -5385,6 +5499,7 @@ mod tests {
     fn loads_documented_not_available_roots_from_public_list() {
         assert!(DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"stream"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"download"));
+        assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"diff"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"open"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"click"));
     }
@@ -5416,6 +5531,7 @@ mod tests {
             "mouse",
             "download",
             "upload",
+            "diff",
             "addinitscript",
             "removeinitscript",
             "skills",

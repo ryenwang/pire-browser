@@ -172,6 +172,21 @@ pire-browser screenshot --screenshot-dir screenshots
 
 Use `highlight <target>` with the same refs, selectors, text, and semantic targets you would use for `click` or `fill`. Use `screenshot --full` when the report needs the whole page, and `screenshot --annotate` when numbered element evidence is more useful than a single target overlay. `screenshot` with no path writes a generated file under the local `pire-browser/screenshots` data directory and prints the resolved path. `--screenshot-dir <dir>` generates a timestamped filename inside that directory when no filename is provided. Relative screenshot paths resolve from the command's current working directory. These are visual QA helpers; styling is Firefox-specific, so do not rely on pixel-identical annotation behavior across browsers.
 
+Compare page structure before and after an action:
+
+```bash
+pire-browser snapshot -i
+pire-browser click '@e4'
+pire-browser diff snapshot
+pire-browser diff snapshot --baseline before.txt
+pire-browser diff snapshot --selector "#main" --compact
+```
+
+Use `diff snapshot` after a baseline snapshot and an action to see structural
+changes without leaving the CLI. `--baseline <path>` compares against a saved
+snapshot text file. Snapshot diffing is text-based; screenshot, URL, and visual
+pixel diff commands are not available in the Firefox backend yet.
+
 Authenticate a page or API route with request headers:
 
 ```bash

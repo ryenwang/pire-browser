@@ -38,6 +38,13 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "diff snapshot maps to snapshot",
+      "args": ["diff", "snapshot"],
+      "policy": { "default": "deny", "allow": ["snapshot"] },
+      "expectedCategory": "snapshot",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "launch without url bypasses as meta",
       "args": ["launch"],
       "policy": { "default": "deny" },

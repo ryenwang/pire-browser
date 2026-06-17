@@ -124,7 +124,7 @@ export const commandRootStatus = {
   dashboard: "not_available",
   deny: "available",
   device: "not_available",
-  diff: "not_available",
+  diff: "partial",
   dialog: "best_effort",
   download: "best_effort",
   drag: "best_effort",

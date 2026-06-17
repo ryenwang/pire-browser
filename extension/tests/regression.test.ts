@@ -889,6 +889,20 @@ describe("command shape parity", () => {
     expect(contentBody).toContain("function hrefFor");
   });
 
+  it("supports text-based snapshot diffs", () => {
+    const body = background();
+    expect(body).toContain('case "diff":');
+    expect(body).toContain("return diffCommand(rest, params);");
+    expect(body).toContain("const lastSnapshotTextByTabId = new Map");
+    expect(body).toContain("lastSnapshotTextByTabId.set(tab.tabId, text);");
+    expect(body).toContain("async function diffSnapshotCommand");
+    expect(body).toContain("diffBaselineText");
+    expect(body).toContain("No previous snapshot is available");
+    expect(body).toContain("function unifiedTextDiff");
+    expect(body).toContain("function compactDiffContext");
+    expect(body).toContain("Screenshot, URL, and visual pixel diff commands are not supported yet.");
+  });
+
   it("parses plain waits with positional milliseconds before timeout fallback", () => {
     const body = background();
     expect(body).toContain('firstPositionalArg(args, ["--selector", "--timeout", "--state"])');

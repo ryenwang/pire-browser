@@ -27,6 +27,7 @@
     const refs = new Map();
     const selectedFramesByTabId = new Map();
     const recentDialogsByTabId = new Map();
+    const lastSnapshotTextByTabId = new Map();
     const runtimeInitScripts = new Map();
     const headersByOrigin = new Map();
     const networkRequestsById = new Map();
@@ -344,6 +345,8 @@
             case "snapshot":
             case "screenshot":
                 return "snapshot";
+            case "diff":
+                return subcommand === "snapshot" ? "snapshot" : null;
             case "addinitscript":
             case "removeinitscript":
                 return "eval";
@@ -433,7 +436,6 @@
             "connect",
             "dashboard",
             "device",
-            "diff",
             "install",
             "pdf",
             "profiler",
@@ -596,6 +598,8 @@
                 return openCommand(rest, command || "open", params);
             case "snapshot":
                 return snapshotCommand(rest);
+            case "diff":
+                return diffCommand(rest, params);
             case "find":
                 return findCommand(rest);
             case "click":
@@ -698,7 +702,6 @@
             case "vitals":
             case "pdf":
             case "connect":
-            case "diff":
             case "device":
             case "tap":
             case "swipe":
@@ -980,7 +983,157 @@
                     : `  ${ref} ${summarizeElement(element, options)}`);
             }
         }
-        return withDialogs({ text: lines.join("\n"), frames: printableFrames, refs: Array.from(refs.keys()) }, printableFrames);
+        const text = lines.join("\n");
+        lastSnapshotTextByTabId.set(tab.tabId, text);
+        return withDialogs({ text, frames: printableFrames, refs: Array.from(refs.keys()) }, printableFrames);
+    }
+    async function diffCommand(args, params = {}) {
+        const [subcommand, ...rest] = args;
+        if (subcommand !== "snapshot") {
+            return {
+                error: {
+                    code: "invalid_args",
+                    message: "diff requires snapshot. Screenshot, URL, and visual pixel diff commands are not supported yet.",
+                },
+            };
+        }
+        return diffSnapshotCommand(rest, params);
+    }
+    async function diffSnapshotCommand(args, params) {
+        const invalid = invalidDiffSnapshotArgs(args);
+        if (invalid)
+            return invalid;
+        const tab = await targetTab();
+        const baselineText = typeof params.diffBaselineText === "string"
+            ? params.diffBaselineText
+            : lastSnapshotTextByTabId.get(tab.tabId);
+        const baselinePath = typeof params.diffBaselinePath === "string" ? params.diffBaselinePath : undefined;
+        if (baselineText === undefined) {
+            return {
+                error: {
+                    code: "invalid_state",
+                    message: "No previous snapshot is available. Run `snapshot -i` first or pass `diff snapshot --baseline <path>`.",
+                },
+            };
+        }
+        const snapshotArgs = diffSnapshotArgs(args);
+        const current = await snapshotCommand(snapshotArgs);
+        if ("error" in current)
+            return current;
+        const currentText = typeof current.text === "string" ? current.text : "";
+        const diff = unifiedTextDiff(baselineText, currentText, baselinePath ?? "previous snapshot", "current snapshot");
+        const added = diff.filter((line) => line.startsWith("+") && !line.startsWith("+++")).length;
+        const removed = diff.filter((line) => line.startsWith("-") && !line.startsWith("---")).length;
+        const changed = added > 0 || removed > 0;
+        return {
+            ...current,
+            text: changed ? diff.join("\n") : "No snapshot differences",
+            diff: diff.join("\n"),
+            changed,
+            added,
+            removed,
+            baseline: {
+                source: baselinePath ? "file" : "previous",
+                path: baselinePath,
+            },
+            currentSnapshot: currentText,
+        };
+    }
+    function invalidDiffSnapshotArgs(args) {
+        const valueFlags = new Set(["--baseline", "--selector", "--scope", "-s", "--depth", "-d"]);
+        const boolFlags = new Set(["-i", "--interactive", "-c", "--compact", "-u", "--urls", "--json"]);
+        for (let index = 0; index < args.length; index++) {
+            const arg = args[index];
+            if (valueFlags.has(arg)) {
+                const value = args[index + 1];
+                if (!value || value.startsWith("-")) {
+                    return { error: { code: "invalid_args", message: `diff snapshot ${arg} requires a value` } };
+                }
+                index += 1;
+                continue;
+            }
+            if (boolFlags.has(arg))
+                continue;
+            if (arg.startsWith("--depth="))
+                continue;
+            return { error: { code: "invalid_args", message: `diff snapshot does not support argument: ${arg}` } };
+        }
+        return null;
+    }
+    function diffSnapshotArgs(args) {
+        const snapshotArgs = [];
+        for (let index = 0; index < args.length; index++) {
+            const arg = args[index];
+            if (arg === "--baseline") {
+                index += 1;
+                continue;
+            }
+            if (arg === "--selector") {
+                snapshotArgs.push("--scope", args[index + 1]);
+                index += 1;
+                continue;
+            }
+            snapshotArgs.push(arg);
+        }
+        return snapshotArgs;
+    }
+    function unifiedTextDiff(before, after, beforeName, afterName) {
+        if (before === after)
+            return [];
+        const beforeLines = before.split(/\r?\n/);
+        const afterLines = after.split(/\r?\n/);
+        return [`--- ${beforeName}`, `+++ ${afterName}`, ...diffLines(beforeLines, afterLines)];
+    }
+    function diffLines(before, after) {
+        const table = Array.from({ length: before.length + 1 }, () => Array(after.length + 1).fill(0));
+        for (let i = before.length - 1; i >= 0; i--) {
+            for (let j = after.length - 1; j >= 0; j--) {
+                table[i][j] = before[i] === after[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+            }
+        }
+        const lines = [];
+        let i = 0;
+        let j = 0;
+        while (i < before.length && j < after.length) {
+            if (before[i] === after[j]) {
+                lines.push(` ${before[i]}`);
+                i += 1;
+                j += 1;
+            }
+            else if (table[i + 1][j] >= table[i][j + 1]) {
+                lines.push(`-${before[i]}`);
+                i += 1;
+            }
+            else {
+                lines.push(`+${after[j]}`);
+                j += 1;
+            }
+        }
+        while (i < before.length)
+            lines.push(`-${before[i++]}`);
+        while (j < after.length)
+            lines.push(`+${after[j++]}`);
+        return compactDiffContext(lines, 3);
+    }
+    function compactDiffContext(lines, contextSize) {
+        const changed = lines.map((line, index) => ({ line, index })).filter((item) => item.line.startsWith("+") || item.line.startsWith("-"));
+        if (!changed.length)
+            return [];
+        const keep = new Set();
+        for (const item of changed) {
+            for (let index = Math.max(0, item.index - contextSize); index <= Math.min(lines.length - 1, item.index + contextSize); index++) {
+                keep.add(index);
+            }
+        }
+        const compacted = [];
+        let previous = -1;
+        for (const index of Array.from(keep).sort((left, right) => left - right)) {
+            if (previous >= 0 && index > previous + 1)
+                compacted.push("...");
+            compacted.push(lines[index]);
+            previous = index;
+        }
+        return compacted;
     }
     function parseSnapshotOptions(args) {
         let selector;
@@ -3989,6 +4142,7 @@
             const record = tabsByBrowserId.get(tabId);
             if (record)
                 record.closed = true;
+            lastSnapshotTextByTabId.delete(tabId);
             clearNetworkStateForTab(tabId);
             void postSessionEvent("tabs_changed", {});
         });

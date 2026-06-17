@@ -166,6 +166,7 @@ pire-browser get title               # Get page title
 pire-browser get url                 # Get current URL
 pire-browser get count <sel>         # Count matching elements
 pire-browser get box <sel>           # Get bounding box
+pire-browser get styles <sel>        # Get computed styles
 ```
 
 ### Check State
@@ -341,6 +342,16 @@ Dialog support is Firefox-extension mediated and best effort when a browser prom
 ### Diff
 
 ```bash
+pire-browser snapshot -i
+pire-browser click '@e4'
+pire-browser diff snapshot
+
+pire-browser snapshot -i > before.txt
+pire-browser click '@e4'
+pire-browser diff snapshot --baseline before.txt
+
+pire-browser diff snapshot --selector "#main" --compact
+
 pire-browser snapshot -i > before.txt
 pire-browser click '@e4'
 pire-browser snapshot -i > after.txt
@@ -351,7 +362,9 @@ pire-browser screenshot before.png
 pire-browser screenshot after.png
 ```
 
-Built-in snapshot and screenshot diff commands are not implemented yet.
+`diff snapshot` compares a fresh active-page snapshot to the previous snapshot
+captured in the active tab, or to a local baseline text file. Screenshot, URL,
+and visual pixel diff commands are not implemented yet.
 
 ### Debug
 

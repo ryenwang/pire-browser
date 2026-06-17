@@ -1861,6 +1861,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "install" => INSTALL_HELP,
         "open" | "goto" | "navigate" => OPEN_HELP,
         "snapshot" => SNAPSHOT_HELP,
+        "diff" => DIFF_HELP,
         "find" => FIND_HELP,
         "click" => CLICK_HELP,
         "fill" => FILL_HELP,
@@ -1915,6 +1916,7 @@ Common commands:
   open <url> --headers '{"Authorization":"Bearer token"}'
   --allow-file-access open file:///path/to/page.html
   snapshot -i                     Inspect the active page and print refs
+  diff snapshot                    Compare current snapshot to previous
   click '@e4'                     Click a ref from snapshot/find output
   fill '@e2' "text"               Fill a ref from snapshot/find output
   find label "Email" fill "x@y"   Find by semantic locator and act
@@ -2049,6 +2051,21 @@ for interaction. `-c`/`--compact` suppresses low-value generic elements,
 `-d`/`--depth` limits DOM depth in the Firefox snapshot model, `-u`/`--urls`
 includes link URLs, and `-s` scopes to a CSS selector. Use quoted refs in
 PowerShell, for example: pire-browser click '@e1'.
+"##;
+
+const DIFF_HELP: &str = r##"
+Usage:
+  pire-browser diff snapshot [--json]
+  pire-browser diff snapshot --baseline before.txt [--json]
+  pire-browser diff snapshot --selector "#main" --compact [--json]
+
+Compares a fresh active-page snapshot against the previous snapshot captured in
+the active tab, or against a local baseline text file when `--baseline` is
+provided. `--selector` scopes the snapshot before diffing, and `--compact`
+uses the same compact snapshot filtering as `snapshot -i -c`.
+
+Only snapshot text diffing is implemented on the Firefox backend today.
+Screenshot, URL, and visual pixel diff commands are not supported yet.
 "##;
 
 const FIND_HELP: &str = r##"
@@ -4031,6 +4048,7 @@ mod tests {
         assert!(text.contains("network requests"));
         assert!(text.contains("network route"));
         assert!(text.contains("network har"));
+        assert!(text.contains("diff snapshot"));
         assert!(text.contains("highlight '#submit'"));
         assert!(text.contains("install [--firefox-path <path>]"));
         assert!(text.contains("--config ./ci-config.json open <url>"));
@@ -4085,6 +4103,12 @@ mod tests {
             .unwrap()
             .contains("snapshot -i -c -d 5"));
         assert!(help_text(Some("snapshot")).unwrap().contains("-s"));
+        assert!(help_text(Some("diff"))
+            .unwrap()
+            .contains("diff snapshot --baseline"));
+        assert!(help_text(Some("diff"))
+            .unwrap()
+            .contains("Only snapshot text diffing"));
         assert!(help_text(Some("wait")).unwrap().contains("wait '@e1'"));
         assert!(help_text(Some("wait"))
             .unwrap()

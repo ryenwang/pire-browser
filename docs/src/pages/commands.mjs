@@ -30,6 +30,12 @@ pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80 page.jp
 pire-browser screenshot --full page.png       # Scroll and stitch full page
 pire-browser screenshot --annotate page.png   # Adds best-effort numbered visible-element overlays
 # PDF capture is still unavailable in the Firefox backend.`),
+  code(`pire-browser snapshot -i
+pire-browser click '@e4'
+pire-browser diff snapshot
+pire-browser diff snapshot --baseline before.txt
+pire-browser diff snapshot --selector "#main" --compact
+# Screenshot and URL visual diff commands are still unavailable in the Firefox backend.`),
 
   h2("Get info", "get-info"),
   code(`pire-browser get text <sel>          # Get text content
@@ -39,7 +45,8 @@ pire-browser get attr <sel> <attr>   # Get attribute
 pire-browser get title               # Get page title
 pire-browser get url                 # Get current URL
 pire-browser get count <sel>         # Count matching elements
-pire-browser get box <sel>           # Get bounding box`),
+pire-browser get box <sel>           # Get bounding box
+pire-browser get styles <sel>        # Get computed styles`),
 
   h2("Check state", "check-state"),
   code(`pire-browser is visible <sel>        # Check if visible
