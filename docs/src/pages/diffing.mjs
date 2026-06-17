@@ -25,7 +25,11 @@ pire-browser screenshot after.png
 pire-browser diff screenshot --baseline before.png after.png`),
   p("<code>diff screenshot</code> compares a baseline image to a freshly captured active-page screenshot, or to an explicit current image path. Use <code>-o</code> to write a red pixel-diff image and <code>-t</code> to set a 0-1 per-channel threshold."),
   h2("URL diff", "url-diff"),
-  p("URL diff commands are not implemented yet. Use explicit open, wait, snapshot, screenshot, and diff commands while URL-level comparison remains a future compatibility target."),
+  code(`pire-browser diff url https://v1.example https://v2.example
+pire-browser diff url https://v1.example https://v2.example --screenshot
+pire-browser diff url https://v1.example https://v2.example --wait-until networkidle
+pire-browser diff url https://v1.example https://v2.example --selector "#main" --compact`),
+  p("<code>diff url</code> opens the first URL, captures an interactive snapshot baseline, opens the second URL, and compares the new snapshot against that baseline. Add <code>--screenshot</code> to include a pixel comparison of screenshots captured from both URLs."),
 ];
 
 export default page({

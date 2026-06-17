@@ -900,8 +900,8 @@ describe("command shape parity", () => {
     expect(body).toContain("No previous snapshot is available");
     expect(body).toContain("function unifiedTextDiff");
     expect(body).toContain("function compactDiffContext");
-    expect(body).toContain("Run `pire-browser diff screenshot --baseline <path>` as a top-level CLI command");
-    expect(body).toContain("URL diff commands are not supported yet.");
+    expect(body).toContain("Run `pire-browser diff screenshot --baseline <path>` or");
+    expect(body).toContain("`pire-browser diff url <url1> <url2>`");
   });
 
   it("parses plain waits with positional milliseconds before timeout fallback", () => {

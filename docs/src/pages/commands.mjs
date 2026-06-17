@@ -38,7 +38,10 @@ pire-browser diff snapshot --selector "#main" --compact
 pire-browser diff screenshot --baseline before.png
 pire-browser diff screenshot --baseline before.png -o diff.png
 pire-browser diff screenshot --baseline before.png -t 0.2
-# URL diff commands are still unavailable in the Firefox backend.`),
+pire-browser diff url https://v1.example https://v2.example
+pire-browser diff url https://v1.example https://v2.example --screenshot
+pire-browser diff url https://v1.example https://v2.example --wait-until networkidle
+pire-browser diff url https://v1.example https://v2.example --selector "#main" --compact`),
 
   h2("Get info", "get-info"),
   code(`pire-browser get text <sel>          # Get text content

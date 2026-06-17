@@ -579,7 +579,9 @@ function actionPolicyCategoryName(args: string[]): string | null {
     case "screenshot":
       return "snapshot";
     case "diff":
-      return subcommand === "snapshot" ? "snapshot" : null;
+      if (subcommand === "snapshot" || subcommand === "screenshot") return "snapshot";
+      if (subcommand === "url") return "navigate";
+      return null;
     case "addinitscript":
     case "removeinitscript":
       return "eval";
@@ -1243,7 +1245,7 @@ async function diffCommand(args: string[], params: Record<string, any> = {}) {
     return {
       error: {
         code: "invalid_args",
-        message: "diff requires snapshot in extension batch mode. Run `pire-browser diff screenshot --baseline <path>` as a top-level CLI command for visual pixel diffing. URL diff commands are not supported yet.",
+        message: "diff requires snapshot in extension batch mode. Run `pire-browser diff screenshot --baseline <path>` or `pire-browser diff url <url1> <url2>` as top-level CLI commands for visual and URL diff workflows.",
       },
     };
   }

@@ -1918,6 +1918,7 @@ Common commands:
   snapshot -i                     Inspect the active page and print refs
   diff snapshot                    Compare current snapshot to previous
   diff screenshot --baseline before.png Compare current screenshot to baseline
+  diff url <url1> <url2>           Compare two URLs by snapshot
   click '@e4'                     Click a ref from snapshot/find output
   fill '@e2' "text"               Fill a ref from snapshot/find output
   find label "Email" fill "x@y"   Find by semantic locator and act
@@ -2063,6 +2064,10 @@ Usage:
   pire-browser diff screenshot --baseline before.png after.png [--json]
   pire-browser diff screenshot --baseline before.png -o diff.png
   pire-browser diff screenshot --baseline before.png -t 0.2
+  pire-browser diff url https://v1.example https://v2.example [--json]
+  pire-browser diff url https://v1.example https://v2.example --screenshot
+  pire-browser diff url https://v1.example https://v2.example --wait-until networkidle
+  pire-browser diff url https://v1.example https://v2.example --selector "#main" --compact
 
 Compares a fresh active-page snapshot against the previous snapshot captured in
 the active tab, or against a local baseline text file when `--baseline` is
@@ -2073,7 +2078,9 @@ uses the same compact snapshot filtering as `snapshot -i -c`.
 screenshot, or to an explicit current image path. `-o`/`--output` writes a red
 pixel-diff image. `-t`/`--threshold` accepts a 0-1 per-channel color threshold.
 
-URL diff commands are not supported yet.
+`diff url` opens the first URL, captures an interactive snapshot baseline, opens
+the second URL, and compares the new snapshot against that baseline. Add
+`--screenshot` to also capture both pages and include a pixel comparison.
 "##;
 
 const FIND_HELP: &str = r##"
@@ -4119,7 +4126,8 @@ mod tests {
             .contains("diff screenshot --baseline before.png"));
         assert!(help_text(Some("diff"))
             .unwrap()
-            .contains("URL diff commands"));
+            .contains("diff url https://v1.example https://v2.example"));
+        assert!(help_text(None).unwrap().contains("diff url <url1> <url2>"));
         assert!(help_text(Some("wait")).unwrap().contains("wait '@e1'"));
         assert!(help_text(Some("wait"))
             .unwrap()

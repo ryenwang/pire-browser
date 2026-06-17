@@ -45,6 +45,13 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "diff url maps to navigate",
+      "args": ["diff", "url", "https://before.example", "https://after.example"],
+      "policy": { "default": "deny", "allow": ["navigate"] },
+      "expectedCategory": "navigate",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "launch without url bypasses as meta",
       "args": ["launch"],
       "policy": { "default": "deny" },

@@ -48,7 +48,7 @@ export const featureStatuses = {
   },
   screenshots: {
     status: "partial",
-    summary: "Visible viewport PNG/JPEG screenshots, stitched `--full` captures, generated screenshot directories, best-effort numbered `--annotate` overlays, and screenshot pixel diffing are supported; PDF and URL-level visual diff remain unavailable.",
+    summary: "Visible viewport PNG/JPEG screenshots, stitched `--full` captures, generated screenshot directories, best-effort numbered `--annotate` overlays, screenshot pixel diffing, and URL snapshot diffing with optional screenshot comparison are supported; PDF remains unavailable.",
     sources: ["README.md", "cli/pire-browser-core/src/cli.rs", "extension/src/background.ts"],
   },
   mouseAndDrag: {

@@ -365,12 +365,19 @@ pire-browser diff screenshot --baseline before.png -t 0.2
 
 pire-browser screenshot after.png
 pire-browser diff screenshot --baseline before.png after.png
+
+pire-browser diff url https://v1.example https://v2.example
+pire-browser diff url https://v1.example https://v2.example --screenshot
+pire-browser diff url https://v1.example https://v2.example --wait-until networkidle
+pire-browser diff url https://v1.example https://v2.example --selector "#main" --compact
 ```
 
 `diff snapshot` compares a fresh active-page snapshot to the previous snapshot
 captured in the active tab, or to a local baseline text file. `diff screenshot`
 compares a baseline image to the current active-page screenshot, or to an
-explicit current image path. URL diff commands are not implemented yet.
+explicit current image path. `diff url` opens two URLs in sequence, compares
+their interactive snapshots, and adds screenshot pixel comparison when
+`--screenshot` is passed.
 
 ### Debug
 

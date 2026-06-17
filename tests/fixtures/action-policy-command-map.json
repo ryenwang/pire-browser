@@ -271,6 +271,33 @@
       "source": "upstream"
     },
     {
+      "root": "diff",
+      "subcommand": "snapshot",
+      "signature": "diff snapshot [--baseline <path>]",
+      "category": "snapshot",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream"
+    },
+    {
+      "root": "diff",
+      "subcommand": "screenshot",
+      "signature": "diff screenshot --baseline <path>",
+      "category": "snapshot",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
+      "root": "diff",
+      "subcommand": "url",
+      "signature": "diff url <url1> <url2>",
+      "category": "navigate",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
       "root": "scroll",
       "signature": "scroll [direction] [amount]",
       "category": "scroll",
@@ -776,14 +803,6 @@
     {
       "root": "pdf",
       "signature": "pdf <path>",
-      "category": "snapshot",
-      "implementationStatus": "reserved",
-      "enforcementLocus": "extension",
-      "source": "upstream"
-    },
-    {
-      "root": "diff",
-      "signature": "diff <subcommand>",
       "category": "snapshot",
       "implementationStatus": "reserved",
       "enforcementLocus": "extension",

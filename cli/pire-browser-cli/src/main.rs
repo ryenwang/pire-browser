@@ -119,6 +119,18 @@ struct DiffScreenshotOptions {
     full_page: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DiffUrlOptions {
+    first_url: String,
+    second_url: String,
+    screenshot: bool,
+    full_page: bool,
+    wait_until: Option<String>,
+    selector: Option<String>,
+    compact: bool,
+    depth: Option<u32>,
+}
+
 const MAX_INIT_SCRIPT_BYTES: u64 = 256 * 1024;
 const MAX_DIFF_BASELINE_BYTES: u64 = 1_048_576;
 
@@ -593,6 +605,20 @@ fn run() -> Result<()> {
             }
             let domain_decision =
                 resolve_domain_policy_or_exit(&domain_policy, json, &ignored_global_flags)?;
+            let diff_url_options = diff_url_options(&args)?;
+            if let Some(options) = &diff_url_options {
+                for url in [&options.first_url, &options.second_url] {
+                    if let Err(err) = ensure_url_allowed(&domain_decision, url) {
+                        exit_with_anyhow_error_with_domain_policy(
+                            err,
+                            json,
+                            &ignored_global_flags,
+                            &domain_decision.warnings,
+                        )?;
+                        unreachable!();
+                    }
+                }
+            }
             if let Some(url) = navigation_url_for_remote_args(&args) {
                 if let Err(err) = ensure_url_allowed(&domain_decision, &url) {
                     exit_with_anyhow_error_with_domain_policy(
@@ -635,6 +661,26 @@ fn run() -> Result<()> {
             };
             if let Some(options) = diff_screenshot_options(&args)? {
                 let mut result = handle_diff_screenshot(
+                    &target,
+                    &options,
+                    json,
+                    &ignored_global_flags,
+                    &domain_decision,
+                    &action_decision,
+                    &confirmation_decision,
+                    interactively_approved,
+                    firefox_path_override.as_deref(),
+                    color_scheme.as_deref(),
+                )?;
+                append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
+                append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
+                apply_output_guards(&mut result, &output_guards, json);
+                println!("{}", format_cli_result(&result, json)?);
+                print_config_warnings(&config_warnings);
+                return Ok(());
+            }
+            if let Some(options) = diff_url_options {
+                let mut result = handle_diff_url(
                     &target,
                     &options,
                     json,
@@ -2631,7 +2677,7 @@ fn handle_deny(id: String, json_output: bool) -> Result<()> {
 fn execute_confirmed_record(record: PendingConfirmation, json_output: bool) -> Result<()> {
     let domain_decision = domain_decision_from_request_context(record.domain_policy.as_ref())?;
     let action_decision = action_decision_from_request_context(record.action_policy.as_ref())?;
-    let _confirmation_decision =
+    let confirmation_decision =
         confirmation_decision_from_context(record.confirmation_policy.as_ref());
     ensure_policy_sequences_allowed(&action_decision, &record.args)?;
     if let Some(url) = navigation_url_for_remote_args(&record.args) {
@@ -2640,6 +2686,21 @@ fn execute_confirmed_record(record: PendingConfirmation, json_output: bool) -> R
     let target = session_target_from_pending(&record.target);
     match record.args.first().map(String::as_str) {
         Some("launch") => execute_confirmed_launch(&record, &domain_decision, &action_decision),
+        Some("diff")
+            if matches!(
+                record.args.get(1).map(String::as_str),
+                Some("screenshot" | "url")
+            ) =>
+        {
+            execute_confirmed_diff(
+                record,
+                target,
+                domain_decision,
+                action_decision,
+                confirmation_decision,
+                json_output,
+            )
+        }
         Some("download") => execute_confirmed_download(
             record,
             target,
@@ -2691,6 +2752,51 @@ fn execute_confirmed_record(record: PendingConfirmation, json_output: bool) -> R
             json_output,
         ),
     }
+}
+
+fn execute_confirmed_diff(
+    record: PendingConfirmation,
+    target: SessionTarget,
+    domain_decision: DomainPolicyDecision,
+    action_decision: ActionPolicyDecision,
+    confirmation_decision: ConfirmationPolicyDecision,
+    json_output: bool,
+) -> Result<()> {
+    let mut result = if let Some(options) = diff_screenshot_options(&record.args)? {
+        handle_diff_screenshot(
+            &target,
+            &options,
+            json_output,
+            &[],
+            &domain_decision,
+            &action_decision,
+            &confirmation_decision,
+            true,
+            None,
+            None,
+        )?
+    } else if let Some(options) = diff_url_options(&record.args)? {
+        for url in [&options.first_url, &options.second_url] {
+            ensure_url_allowed(&domain_decision, url)?;
+        }
+        handle_diff_url(
+            &target,
+            &options,
+            json_output,
+            &[],
+            &domain_decision,
+            &action_decision,
+            &confirmation_decision,
+            true,
+            None,
+            None,
+        )?
+    } else {
+        bail!("invalid_args: pending confirmation record is not a local diff command");
+    };
+    append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json_output)?;
+    println!("{}", format_cli_result(&result, json_output)?);
+    Ok(())
 }
 
 fn confirmed_state_path(record: &PendingConfirmation) -> Result<PathBuf> {
@@ -3816,7 +3922,7 @@ fn diff_screenshot_options(args: &[String]) -> Result<Option<DiffScreenshotOptio
                 }
                 index += 2;
             }
-            "--full" => {
+            "--full" | "-f" => {
                 full_page = true;
                 index += 1;
             }
@@ -3851,6 +3957,92 @@ fn diff_screenshot_options(args: &[String]) -> Result<Option<DiffScreenshotOptio
     }))
 }
 
+fn diff_url_options(args: &[String]) -> Result<Option<DiffUrlOptions>> {
+    if args.first().map(String::as_str) != Some("diff")
+        || args.get(1).map(String::as_str) != Some("url")
+    {
+        return Ok(None);
+    }
+    let Some(first_url) = args.get(2).cloned() else {
+        bail!("invalid_args: diff url requires <url1> <url2>");
+    };
+    let Some(second_url) = args.get(3).cloned() else {
+        bail!("invalid_args: diff url requires <url1> <url2>");
+    };
+
+    let mut screenshot = false;
+    let mut full_page = false;
+    let mut wait_until = None;
+    let mut selector = None;
+    let mut compact = false;
+    let mut depth = None;
+    let mut index = 4;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--screenshot" => {
+                screenshot = true;
+                index += 1;
+            }
+            "--full" | "-f" => {
+                full_page = true;
+                index += 1;
+            }
+            "--wait-until" => {
+                let value = required_diff_url_value(args, index, "--wait-until")?;
+                let normalized = normalize_diff_url_wait_until(value)?;
+                wait_until = Some(normalized);
+                index += 2;
+            }
+            "--selector" | "-s" => {
+                let flag = args[index].clone();
+                selector = Some(required_diff_url_value(args, index, &flag)?.to_string());
+                index += 2;
+            }
+            "--compact" | "-c" => {
+                compact = true;
+                index += 1;
+            }
+            "--depth" | "-d" => {
+                let flag = args[index].clone();
+                let value = required_diff_url_value(args, index, &flag)?;
+                let parsed = value.parse::<u32>().with_context(|| {
+                    format!("invalid_args: diff url {flag} must be a non-negative integer")
+                })?;
+                depth = Some(parsed);
+                index += 2;
+            }
+            "--json" => {
+                index += 1;
+            }
+            arg if arg.starts_with("--depth=") => {
+                let value = &arg["--depth=".len()..];
+                let parsed = value
+                    .parse::<u32>()
+                    .context("invalid_args: diff url --depth must be a non-negative integer")?;
+                depth = Some(parsed);
+                index += 1;
+            }
+            arg if arg.starts_with('-') => {
+                bail!("invalid_args: diff url does not support option: {arg}");
+            }
+            arg => {
+                bail!("invalid_args: diff url does not support argument: {arg}");
+            }
+        }
+    }
+
+    Ok(Some(DiffUrlOptions {
+        first_url,
+        second_url,
+        screenshot,
+        full_page,
+        wait_until,
+        selector,
+        compact,
+        depth,
+    }))
+}
+
 fn required_diff_screenshot_value<'a>(
     args: &'a [String],
     index: usize,
@@ -3863,6 +4055,27 @@ fn required_diff_screenshot_value<'a>(
         bail!("invalid_args: diff screenshot {flag} requires a value");
     }
     Ok(value)
+}
+
+fn required_diff_url_value<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a str> {
+    let Some(value) = args.get(index + 1) else {
+        bail!("invalid_args: diff url {flag} requires a value");
+    };
+    if value.starts_with('-') {
+        bail!("invalid_args: diff url {flag} requires a value");
+    }
+    Ok(value)
+}
+
+fn normalize_diff_url_wait_until(value: &str) -> Result<String> {
+    let normalized = value.to_ascii_lowercase();
+    match normalized.as_str() {
+        "load" | "domcontentloaded" | "networkidle" => Ok(normalized),
+        "network-idle" => Ok("networkidle".to_string()),
+        _ => bail!(
+            "invalid_args: diff url --wait-until must be load, domcontentloaded, or networkidle"
+        ),
+    }
 }
 
 fn handle_diff_screenshot(
@@ -3900,6 +4113,134 @@ fn handle_diff_screenshot(
         options.threshold,
         options.current_path.is_none(),
     )
+}
+
+fn handle_diff_url(
+    target: &SessionTarget,
+    options: &DiffUrlOptions,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
+    firefox_path_override: Option<&str>,
+    color_scheme: Option<&str>,
+) -> Result<Value> {
+    let baseline_screenshot_path = if options.screenshot {
+        Some(diff_url_temp_path("baseline", "png"))
+    } else {
+        None
+    };
+    let current_screenshot_path = if options.screenshot {
+        Some(diff_url_temp_path("current", "png"))
+    } else {
+        None
+    };
+
+    let baseline_snapshot = capture_diff_url_baseline(
+        target,
+        &options.first_url,
+        options,
+        baseline_screenshot_path.as_deref(),
+        json_output,
+        ignored_global_flags,
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+        firefox_path_override,
+        color_scheme,
+    )?;
+    let baseline_path = diff_url_temp_path("snapshot-baseline", "txt");
+    fs::write(&baseline_path, &baseline_snapshot).with_context(|| {
+        format!(
+            "failed to write diff URL baseline {}",
+            baseline_path.display()
+        )
+    })?;
+
+    let mut snapshot_diff = capture_diff_url_current(
+        target,
+        &options.second_url,
+        options,
+        &baseline_path,
+        current_screenshot_path.as_deref(),
+        json_output,
+        ignored_global_flags,
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+        firefox_path_override,
+        color_scheme,
+    )?;
+    let _ = fs::remove_file(&baseline_path);
+
+    let screenshot_diff = match (
+        baseline_screenshot_path.as_deref(),
+        current_screenshot_path.as_deref(),
+    ) {
+        (Some(baseline), Some(current)) => Some(compare_screenshot_files(
+            baseline, current, None, 0.0, true,
+        )?),
+        _ => None,
+    };
+
+    let snapshot_changed = snapshot_diff
+        .get("changed")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let screenshot_changed = screenshot_diff
+        .as_ref()
+        .and_then(|value| value.get("changed"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let changed = snapshot_changed || screenshot_changed;
+    let mut text = snapshot_diff
+        .get("text")
+        .and_then(Value::as_str)
+        .unwrap_or(if snapshot_changed {
+            "Snapshot differences"
+        } else {
+            "No snapshot differences"
+        })
+        .to_string();
+    if let Some(screenshot_diff) = &screenshot_diff {
+        let screenshot_text = screenshot_diff
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or("Screenshot diff complete");
+        if !text.is_empty() {
+            text.push_str("\n\n");
+        }
+        text.push_str(screenshot_text);
+    }
+
+    if let Some(object) = snapshot_diff.as_object_mut() {
+        object.insert("text".to_string(), json!(text));
+        object.insert("changed".to_string(), json!(changed));
+        object.insert(
+            "urlDiff".to_string(),
+            json!({
+                "firstUrl": options.first_url,
+                "secondUrl": options.second_url,
+                "waitUntil": options.wait_until,
+                "selector": options.selector,
+                "compact": options.compact,
+                "depth": options.depth,
+                "screenshot": options.screenshot,
+                "fullPage": options.full_page,
+                "snapshotChanged": snapshot_changed,
+                "screenshotChanged": screenshot_changed,
+            }),
+        );
+        object.insert("baselineSnapshot".to_string(), json!(baseline_snapshot));
+        if let Some(screenshot_diff) = screenshot_diff {
+            object.insert("screenshotDiff".to_string(), screenshot_diff);
+        }
+    }
+    Ok(snapshot_diff)
 }
 
 fn capture_diff_screenshot_current(
@@ -3955,6 +4296,288 @@ fn capture_diff_screenshot_current(
         .map(PathBuf::from)
         .unwrap_or(path);
     Ok(resolved)
+}
+
+fn capture_diff_url_baseline(
+    target: &SessionTarget,
+    url: &str,
+    options: &DiffUrlOptions,
+    screenshot_path: Option<&Path>,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
+    firefox_path_override: Option<&str>,
+    color_scheme: Option<&str>,
+) -> Result<String> {
+    execute_diff_url_open_and_wait(
+        target,
+        url,
+        options,
+        json_output,
+        ignored_global_flags,
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+        firefox_path_override,
+        color_scheme,
+    )?;
+    let snapshot_args = diff_url_snapshot_args(options);
+    let snapshot = execute_remote_value_with_policies(
+        target,
+        snapshot_args,
+        json_output,
+        ignored_global_flags,
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+        firefox_path_override,
+        color_scheme,
+    )?;
+    if let Some(path) = screenshot_path {
+        capture_diff_url_screenshot(
+            target,
+            path,
+            options.full_page,
+            json_output,
+            ignored_global_flags,
+            domain_decision,
+            action_decision,
+            confirmation_decision,
+            interactively_approved,
+            firefox_path_override,
+            color_scheme,
+        )?;
+    }
+    Ok(snapshot
+        .get("text")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string())
+}
+
+fn capture_diff_url_current(
+    target: &SessionTarget,
+    url: &str,
+    options: &DiffUrlOptions,
+    baseline_path: &Path,
+    screenshot_path: Option<&Path>,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
+    firefox_path_override: Option<&str>,
+    color_scheme: Option<&str>,
+) -> Result<Value> {
+    execute_diff_url_open_and_wait(
+        target,
+        url,
+        options,
+        json_output,
+        ignored_global_flags,
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+        firefox_path_override,
+        color_scheme,
+    )?;
+    let diff_args = diff_url_snapshot_diff_args(options, baseline_path);
+    let diff = execute_remote_value_with_policies(
+        target,
+        diff_args,
+        json_output,
+        ignored_global_flags,
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+        firefox_path_override,
+        color_scheme,
+    )?;
+    if let Some(path) = screenshot_path {
+        capture_diff_url_screenshot(
+            target,
+            path,
+            options.full_page,
+            json_output,
+            ignored_global_flags,
+            domain_decision,
+            action_decision,
+            confirmation_decision,
+            interactively_approved,
+            firefox_path_override,
+            color_scheme,
+        )?;
+    }
+    Ok(diff)
+}
+
+fn execute_diff_url_open_and_wait(
+    target: &SessionTarget,
+    url: &str,
+    options: &DiffUrlOptions,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
+    firefox_path_override: Option<&str>,
+    color_scheme: Option<&str>,
+) -> Result<()> {
+    execute_remote_value_with_policies(
+        target,
+        vec!["open".to_string(), url.to_string()],
+        json_output,
+        ignored_global_flags,
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+        firefox_path_override,
+        color_scheme,
+    )?;
+    if let Some(wait_until) = &options.wait_until {
+        execute_remote_value_with_policies(
+            target,
+            vec![
+                "wait".to_string(),
+                "--load".to_string(),
+                wait_until.to_string(),
+            ],
+            json_output,
+            ignored_global_flags,
+            domain_decision,
+            action_decision,
+            confirmation_decision,
+            interactively_approved,
+            firefox_path_override,
+            color_scheme,
+        )?;
+    }
+    Ok(())
+}
+
+fn capture_diff_url_screenshot(
+    target: &SessionTarget,
+    path: &Path,
+    full_page: bool,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
+    firefox_path_override: Option<&str>,
+    color_scheme: Option<&str>,
+) -> Result<()> {
+    let mut args = vec!["screenshot".to_string(), path.to_string_lossy().to_string()];
+    if full_page {
+        args.push("--full".to_string());
+    }
+    execute_remote_value_with_policies(
+        target,
+        args,
+        json_output,
+        ignored_global_flags,
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+        firefox_path_override,
+        color_scheme,
+    )?;
+    Ok(())
+}
+
+fn execute_remote_value_with_policies(
+    target: &SessionTarget,
+    args: Vec<String>,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
+    firefox_path_override: Option<&str>,
+    color_scheme: Option<&str>,
+) -> Result<Value> {
+    let mut request = build_command_request_with_policies(
+        args.clone(),
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+    )?;
+    attach_color_scheme(&mut request, color_scheme)?;
+    let (response, _) = dispatch_remote_request_or_exit(
+        target,
+        &args,
+        &request,
+        domain_decision,
+        json_output,
+        ignored_global_flags,
+        firefox_path_override,
+    )?;
+    response_result_or_exit_with_domain_policy(
+        response,
+        json_output,
+        ignored_global_flags,
+        &domain_decision.warnings,
+    )
+}
+
+fn diff_url_snapshot_args(options: &DiffUrlOptions) -> Vec<String> {
+    let mut args = vec!["snapshot".to_string(), "-i".to_string()];
+    if options.compact {
+        args.push("-c".to_string());
+    }
+    if let Some(selector) = &options.selector {
+        args.push("-s".to_string());
+        args.push(selector.clone());
+    }
+    if let Some(depth) = options.depth {
+        args.push("-d".to_string());
+        args.push(depth.to_string());
+    }
+    args
+}
+
+fn diff_url_snapshot_diff_args(options: &DiffUrlOptions, baseline_path: &Path) -> Vec<String> {
+    let mut args = vec![
+        "diff".to_string(),
+        "snapshot".to_string(),
+        "--baseline".to_string(),
+        baseline_path.to_string_lossy().to_string(),
+        "-i".to_string(),
+    ];
+    if options.compact {
+        args.push("-c".to_string());
+    }
+    if let Some(selector) = &options.selector {
+        args.push("--selector".to_string());
+        args.push(selector.clone());
+    }
+    if let Some(depth) = options.depth {
+        args.push("-d".to_string());
+        args.push(depth.to_string());
+    }
+    args
+}
+
+fn diff_url_temp_path(kind: &str, extension: &str) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "pire-browser-diff-url-{kind}-{}.{}",
+        Uuid::new_v4(),
+        extension
+    ))
 }
 
 fn compare_screenshot_files(
@@ -5740,6 +6363,95 @@ mod tests {
         assert!(diff_screenshot_options(&s(&["diff", "snapshot"]))
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn diff_url_options_parse_agent_browser_shape() {
+        let options = diff_url_options(&s(&[
+            "diff",
+            "url",
+            "https://before.example",
+            "https://after.example",
+            "--screenshot",
+            "--full",
+            "--wait-until",
+            "network-idle",
+            "--selector",
+            "#main",
+            "--compact",
+            "--depth",
+            "3",
+        ]))
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(options.first_url, "https://before.example");
+        assert_eq!(options.second_url, "https://after.example");
+        assert!(options.screenshot);
+        assert!(options.full_page);
+        assert_eq!(options.wait_until.as_deref(), Some("networkidle"));
+        assert_eq!(options.selector.as_deref(), Some("#main"));
+        assert!(options.compact);
+        assert_eq!(options.depth, Some(3));
+    }
+
+    #[test]
+    fn diff_url_options_validate_wait_and_required_urls() {
+        assert!(
+            diff_url_options(&s(&["diff", "url", "https://before.example"]))
+                .unwrap_err()
+                .to_string()
+                .contains("requires <url1> <url2>")
+        );
+        assert!(diff_url_options(&s(&[
+            "diff",
+            "url",
+            "https://before.example",
+            "https://after.example",
+            "--wait-until",
+            "interactive",
+        ]))
+        .unwrap_err()
+        .to_string()
+        .contains("must be load, domcontentloaded, or networkidle"));
+        assert!(diff_url_options(&s(&["diff", "snapshot"]))
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn diff_url_snapshot_args_include_scope_compact_and_depth() {
+        let options = DiffUrlOptions {
+            first_url: "https://before.example".to_string(),
+            second_url: "https://after.example".to_string(),
+            screenshot: false,
+            full_page: false,
+            wait_until: None,
+            selector: Some("#main".to_string()),
+            compact: true,
+            depth: Some(3),
+        };
+        let baseline_path = PathBuf::from("before.txt");
+
+        assert_eq!(
+            diff_url_snapshot_args(&options),
+            s(&["snapshot", "-i", "-c", "-s", "#main", "-d", "3"])
+        );
+        assert_eq!(
+            diff_url_snapshot_diff_args(&options, &baseline_path),
+            s(&[
+                "diff",
+                "snapshot",
+                "--baseline",
+                "before.txt",
+                "-i",
+                "-c",
+                "--selector",
+                "#main",
+                "-d",
+                "3",
+            ])
+        );
     }
 
     #[test]

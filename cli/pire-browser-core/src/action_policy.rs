@@ -303,6 +303,7 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
         "eval" => "eval",
         "snapshot" | "screenshot" => "snapshot",
         "diff" if matches!(subcommand, Some("snapshot" | "screenshot")) => "snapshot",
+        "diff" if subcommand == Some("url") => "navigate",
         "highlight" => "snapshot",
         "addinitscript" | "removeinitscript" => "eval",
         "scroll" | "scrollintoview" => "scroll",
@@ -377,6 +378,9 @@ pub fn is_cli_action_precheckable(args: &[String]) -> bool {
 }
 
 pub fn policy_command_sequences(args: &[String]) -> Result<Vec<Vec<String>>> {
+    if args.first().map(String::as_str) == Some("diff") {
+        return diff_policy_command_sequences(args);
+    }
     if args.first().map(String::as_str) != Some("batch") {
         return Ok(vec![args.to_vec()]);
     }
@@ -388,6 +392,32 @@ pub fn policy_command_sequences(args: &[String]) -> Result<Vec<Vec<String>>> {
         sequences.push(split_command_text(item)?);
     }
     Ok(sequences)
+}
+
+fn diff_policy_command_sequences(args: &[String]) -> Result<Vec<Vec<String>>> {
+    match args.get(1).map(String::as_str) {
+        Some("snapshot") => Ok(vec![args.to_vec()]),
+        Some("screenshot") => Ok(vec![vec!["screenshot".to_string()]]),
+        Some("url") => {
+            let Some(first_url) = args.get(2) else {
+                return Ok(vec![args.to_vec()]);
+            };
+            let Some(second_url) = args.get(3) else {
+                return Ok(vec![args.to_vec()]);
+            };
+            let mut sequences = vec![
+                vec!["open".to_string(), first_url.clone()],
+                vec!["snapshot".to_string()],
+                vec!["open".to_string(), second_url.clone()],
+                vec!["snapshot".to_string()],
+            ];
+            if args.iter().any(|arg| arg == "--screenshot") {
+                sequences.push(vec!["screenshot".to_string()]);
+            }
+            Ok(sequences)
+        }
+        _ => Ok(vec![args.to_vec()]),
+    }
 }
 
 pub fn split_command_text(command: &str) -> Result<Vec<String>> {
@@ -907,6 +937,32 @@ mod tests {
         );
         assert!(
             policy_command_sequences(&["batch".to_string(), "\"unterminated".to_string()]).is_err()
+        );
+    }
+
+    #[test]
+    fn diff_url_policy_sequences_expose_composite_actions() {
+        let args = vec![
+            "diff".to_string(),
+            "url".to_string(),
+            "https://before.example".to_string(),
+            "https://after.example".to_string(),
+            "--screenshot".to_string(),
+        ];
+
+        assert_eq!(
+            resolve_command_policy(&args),
+            CommandPolicyResolution::Category("navigate".to_string())
+        );
+        assert_eq!(
+            policy_command_sequences(&args).unwrap(),
+            vec![
+                vec!["open".to_string(), "https://before.example".to_string()],
+                vec!["snapshot".to_string()],
+                vec!["open".to_string(), "https://after.example".to_string()],
+                vec!["snapshot".to_string()],
+                vec!["screenshot".to_string()],
+            ]
         );
     }
 }

@@ -183,6 +183,10 @@ pire-browser diff snapshot --selector "#main" --compact
 pire-browser diff screenshot --baseline before.png
 pire-browser diff screenshot --baseline before.png -o diff.png
 pire-browser diff screenshot --baseline before.png -t 0.2
+pire-browser diff url https://v1.example https://v2.example
+pire-browser diff url https://v1.example https://v2.example --screenshot
+pire-browser diff url https://v1.example https://v2.example --wait-until networkidle
+pire-browser diff url https://v1.example https://v2.example --selector "#main" --compact
 ```
 
 Use `diff snapshot` after a baseline snapshot and an action to see structural
@@ -190,7 +194,9 @@ changes without leaving the CLI. `--baseline <path>` compares against a saved
 snapshot text file. Use `diff screenshot --baseline <path>` after capturing a
 visual baseline to compare the current active-page screenshot. Add `-o <path>`
 for a red diff image and `-t <0..1>` when small rendering differences should be
-ignored. URL diff commands are not available in the Firefox backend yet.
+ignored. Use `diff url <url1> <url2>` for before/after page comparisons without
+manually opening each page; add `--screenshot` when the report needs pixel
+evidence in addition to snapshot differences.
 
 Authenticate a page or API route with request headers:
 
