@@ -741,6 +741,7 @@ fn run() -> Result<()> {
                 std::process::exit(exit_code_for_error(&error.code));
             }
             let mut result = response.result.unwrap_or_else(|| json!({ "text": "ok" }));
+            maybe_write_network_har(&args, &mut result)?;
             append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
             append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
             apply_output_guards(&mut result, &output_guards, json);
@@ -758,6 +759,39 @@ fn run() -> Result<()> {
 
 fn defer_config_warnings(command: &LocalCommand) -> bool {
     matches!(command, LocalCommand::Remote { .. })
+}
+
+fn maybe_write_network_har(args: &[String], result: &mut Value) -> Result<()> {
+    let Some(path) = network_har_output_path(args) else {
+        return Ok(());
+    };
+    let Some(har) = result.get("har") else {
+        return Ok(());
+    };
+    if let Some(parent) = Path::new(&path)
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).with_context(|| {
+            format!("failed to create HAR output directory {}", parent.display())
+        })?;
+    }
+    let body = serde_json::to_string_pretty(har)?;
+    fs::write(&path, body).with_context(|| format!("failed to write HAR output {}", path))?;
+    result["path"] = json!(path);
+    result["text"] = json!(format!("Wrote HAR to {}", path));
+    Ok(())
+}
+
+fn network_har_output_path(args: &[String]) -> Option<String> {
+    if args.first().map(String::as_str) != Some("network") {
+        return None;
+    }
+    let subcommand = args.get(1).map(String::as_str)?;
+    if subcommand != "har" && subcommand != "export-har" {
+        return None;
+    }
+    first_positional_arg(&args[2..], &["--filter", "--type", "--method", "--status"])
 }
 
 fn print_config_warnings(warnings: &[ConfigWarning]) {
@@ -5047,6 +5081,54 @@ mod tests {
 
     fn s(values: &[&str]) -> Vec<String> {
         values.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn network_har_output_path_parses_positional_output() {
+        assert_eq!(
+            network_har_output_path(&s(&["network", "har", "out.har"])),
+            Some("out.har".to_string())
+        );
+        assert_eq!(
+            network_har_output_path(&s(&["network", "har", "out.har", "--filter", "/api/"])),
+            Some("out.har".to_string())
+        );
+        assert_eq!(
+            network_har_output_path(&s(&["network", "har", "--filter", "/api/"])),
+            None
+        );
+        assert_eq!(
+            network_har_output_path(&s(&["network", "export-har", "target/out.har"])),
+            Some("target/out.har".to_string())
+        );
+        assert_eq!(
+            network_har_output_path(&s(&["network", "requests", "target/out.har"])),
+            None
+        );
+    }
+
+    #[test]
+    fn maybe_write_network_har_writes_file_and_updates_result() {
+        let path = std::env::temp_dir().join(format!("pire-browser-har-{}.har", Uuid::new_v4()));
+        let path_string = path.to_string_lossy().to_string();
+        let mut result = json!({
+            "har": {
+                "log": {
+                    "version": "1.2"
+                }
+            }
+        });
+
+        maybe_write_network_har(&s(&["network", "har", &path_string]), &mut result).unwrap();
+
+        let written = fs::read_to_string(&path).unwrap();
+        assert!(written.contains("\"version\": \"1.2\""));
+        assert_eq!(result["path"], json!(path_string));
+        assert_eq!(
+            result["text"],
+            json!(format!("Wrote HAR to {}", path_string))
+        );
+        let _ = fs::remove_file(path);
     }
 
     #[test]

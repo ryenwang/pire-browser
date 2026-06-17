@@ -1923,6 +1923,7 @@ Common commands:
   console                         Show recent page console messages
   errors                          Show recent page errors
   network requests                Show recent page network requests
+  network har network.har         Export recent request metadata as HAR
   network route "**/api/**" --body '{}' Mock or block active-tab requests
   highlight '#submit'             Draw a visible overlay around a target
   set viewport 1280 720           Approximate the active page viewport
@@ -2134,6 +2135,8 @@ Usage:
   pire-browser network requests --filter <pattern> [--type xhr,fetch] [--method POST] [--status 2xx]
   pire-browser network requests --clear [--json]
   pire-browser network request <requestId> [--json]
+  pire-browser network har [path] [--filter <pattern>] [--json]
+  pire-browser network export-har <path> [--json]
   pire-browser network route <pattern> [--json]
   pire-browser network route <pattern> --body <json-or-text> [--content-type <mime>] [--json]
   pire-browser network route <pattern> --abort [--resource-type script,xhr] [--json]
@@ -2146,8 +2149,10 @@ type, HTTP method, and status (`200`, `2xx`, or `400-499`).
 
 Route rules are active-tab scoped. They can mark pass-through requests, abort
 matching requests, or mock with a simple body redirect. Use `network unroute`
-before returning to normal behavior. Full HAR export and CDP-style response
-control are not supported on the Firefox WebExtension backend.
+before returning to normal behavior. `network har` exports a metadata-only HAR
+from captured WebExtension request records; request/response bodies, cookies,
+and raw headers are not captured. Full CDP-style response control is not
+supported on the Firefox WebExtension backend.
 "##;
 
 const HIGHLIGHT_HELP: &str = r##"
@@ -4021,6 +4026,7 @@ mod tests {
         assert!(text.contains("errors"));
         assert!(text.contains("network requests"));
         assert!(text.contains("network route"));
+        assert!(text.contains("network har"));
         assert!(text.contains("highlight '#submit'"));
         assert!(text.contains("install [--firefox-path <path>]"));
         assert!(text.contains("--config ./ci-config.json open <url>"));
@@ -4091,6 +4097,10 @@ mod tests {
         assert!(help_text(Some("network"))
             .unwrap()
             .contains("network request <requestId>"));
+        assert!(help_text(Some("network")).unwrap().contains("network har"));
+        assert!(help_text(Some("network"))
+            .unwrap()
+            .contains("metadata-only HAR"));
         assert!(help_text(Some("network"))
             .unwrap()
             .contains("network route <pattern> --body"));

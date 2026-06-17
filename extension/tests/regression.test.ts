@@ -931,6 +931,20 @@ describe("command shape parity", () => {
     expect(body).toContain("networkRouteMatchesByRequestId.delete(id)");
   });
 
+  it("exports metadata-only HAR files from captured network requests", () => {
+    const body = background();
+    expect(body).toContain('if (subcommand === "har" || subcommand === "export-har") return networkHarCommand(rest);');
+    expect(body).toContain("async function networkHarCommand");
+    expect(body).toContain("function invalidNetworkHarArgs");
+    expect(body).toContain("function networkHarForRecords");
+    expect(body).toContain("function networkHarEntry");
+    expect(body).toContain("function harQueryString");
+    expect(body).toContain("Firefox WebExtension metadata export; bodies and headers are not captured.");
+    expect(body).toContain("HAR export is built from Firefox WebExtension request metadata.");
+    expect(body).toContain("Request/response headers");
+    expect(body).toContain('"network requires requests|request|route|unroute|har|export-har"');
+  });
+
   it("routes mouse commands through page-dispatched best-effort events", () => {
     const body = background();
     expect(body).toContain('case "mouse":');

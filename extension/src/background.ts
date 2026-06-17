@@ -2655,13 +2655,8 @@ async function networkCommand(args: string[]) {
   if (subcommand === "request") return networkRequestDetailCommand(rest);
   if (subcommand === "route") return networkRouteCommand(rest);
   if (subcommand === "unroute") return networkUnrouteCommand(rest);
-  if (subcommand === "har") {
-    return notAvailable(
-      "network har",
-      "HAR recording is not implemented on the Firefox WebExtension backend yet. Use `network requests` for captured request diagnostics."
-    );
-  }
-  return { error: { code: "invalid_args", message: "network requires requests|request|route|unroute|har" } };
+  if (subcommand === "har" || subcommand === "export-har") return networkHarCommand(rest);
+  return { error: { code: "invalid_args", message: "network requires requests|request|route|unroute|har|export-har" } };
 }
 
 async function networkRouteCommand(args: string[]) {
@@ -2796,6 +2791,57 @@ async function networkRequestsCommand(args: string[]) {
     requests: records,
     count: records.length,
   };
+}
+
+async function networkHarCommand(args: string[]) {
+  const tab = await targetTab();
+  const invalid = invalidNetworkHarArgs(args);
+  if (invalid) return invalid;
+  const path = firstPositionalArg(args, ["--filter", "--type", "--method", "--status"]);
+  const filter = valueAfter(args, "--filter");
+  const typeFilter = valueAfter(args, "--type");
+  const methodFilter = valueAfter(args, "--method");
+  const statusFilter = valueAfter(args, "--status");
+  const records = networkRecordsForTab(tab.tabId)
+    .filter((record) => networkRecordMatches(record, { filter, typeFilter, methodFilter, statusFilter }))
+    .map(publicNetworkRecord);
+  const har = networkHarForRecords(records, tab);
+  return {
+    text: path ? `Prepared HAR with ${records.length} request${records.length === 1 ? "" : "s"} for ${path}` : JSON.stringify(har, null, 2),
+    har,
+    path,
+    count: records.length,
+    warnings: [
+      bestEffortWarning(
+        "network har",
+        "HAR export is built from Firefox WebExtension request metadata. Request/response headers, cookies, and response bodies are not captured."
+      ),
+    ],
+  };
+}
+
+function invalidNetworkHarArgs(args: string[]) {
+  const valueFlags = new Set(["--filter", "--type", "--method", "--status"]);
+  let positionalCount = 0;
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (valueFlags.has(arg)) {
+      const value = args[index + 1];
+      if (!value || value.startsWith("--")) {
+        return { error: { code: "invalid_args", message: `${arg} requires a value` } };
+      }
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--")) {
+      return { error: { code: "invalid_args", message: `network har does not support argument: ${arg}` } };
+    }
+    positionalCount += 1;
+    if (positionalCount > 1) {
+      return { error: { code: "invalid_args", message: `network har unexpected argument: ${arg}` } };
+    }
+  }
+  return null;
 }
 
 function invalidNetworkRequestsArgs(args: string[]) {
@@ -2945,6 +2991,114 @@ function formatNetworkDetail(record: ReturnType<typeof publicNetworkRecord>) {
     record.error ? `Error: ${record.error}` : "",
     typeof record.durationMs === "number" ? `Duration: ${record.durationMs}ms` : "",
   ].filter(Boolean).join("\n");
+}
+
+function networkHarForRecords(records: ReturnType<typeof publicNetworkRecord>[], tab: TabRecord) {
+  return {
+    log: {
+      version: "1.2",
+      creator: {
+        name: "pire-browser",
+        version: browser.runtime.getManifest().version,
+        comment: "Firefox WebExtension metadata export; bodies and headers are not captured.",
+      },
+      browser: {
+        name: "Firefox",
+        version: "",
+      },
+      pages: [
+        {
+          startedDateTime: new Date(Math.min(...records.map((record) => record.startedAt).filter(Number.isFinite), Date.now())).toISOString(),
+          id: `page_${tab.agentId}`,
+          title: tab.title ?? "",
+          pageTimings: {
+            onContentLoad: -1,
+            onLoad: -1,
+          },
+          _url: tab.url,
+        },
+      ],
+      entries: records.map((record) => networkHarEntry(record, tab)),
+    },
+  };
+}
+
+function networkHarEntry(record: ReturnType<typeof publicNetworkRecord>, tab: TabRecord) {
+  const startedAt = typeof record.startedAt === "number" ? record.startedAt : Date.now();
+  const duration = typeof record.durationMs === "number" ? record.durationMs : record.active ? Math.max(0, Date.now() - startedAt) : 0;
+  const status = typeof record.statusCode === "number" ? record.statusCode : 0;
+  return {
+    pageref: `page_${tab.agentId}`,
+    startedDateTime: new Date(startedAt).toISOString(),
+    time: duration,
+    request: {
+      method: record.method ?? "GET",
+      url: record.url ?? "",
+      httpVersion: "HTTP/1.1",
+      cookies: [],
+      headers: [],
+      queryString: harQueryString(record.url),
+      headersSize: -1,
+      bodySize: -1,
+    },
+    response: {
+      status,
+      statusText: harStatusText(record),
+      httpVersion: "HTTP/1.1",
+      cookies: [],
+      headers: [],
+      content: {
+        size: -1,
+        mimeType: "x-unknown",
+      },
+      redirectURL: "",
+      headersSize: -1,
+      bodySize: -1,
+      _error: record.error,
+      _fromCache: record.fromCache,
+    },
+    cache: {},
+    timings: {
+      blocked: -1,
+      dns: -1,
+      connect: -1,
+      send: 0,
+      wait: duration,
+      receive: 0,
+      ssl: -1,
+    },
+    _pireBrowser: {
+      requestId: record.requestId,
+      type: record.type,
+      active: record.active,
+      frameId: record.frameId,
+      parentFrameId: record.parentFrameId,
+      documentUrl: record.documentUrl,
+      initiator: record.initiator,
+      routeId: record.routeId,
+      routeAction: record.routeAction,
+    },
+  };
+}
+
+function harStatusText(record: ReturnType<typeof publicNetworkRecord>) {
+  if (record.error) return record.error;
+  if (record.active) return "active";
+  if (record.statusLine) return record.statusLine.replace(/^HTTP\/\S+\s+\d+\s*/, "");
+  return "";
+}
+
+function harQueryString(url?: string) {
+  if (!url) return [];
+  try {
+    const params: { name: string; value: string }[] = [];
+    new URL(url).searchParams.forEach((value, name) => {
+      params.push({ name, value });
+    });
+    return params;
+  } catch {
+    return [];
+  }
 }
 
 function clearNetworkLog(tabId: number) {
