@@ -272,6 +272,74 @@ const networkRouteMatchesByRequestId = new Map<string, { routeId: string; action
 let nextRuntimeInitScriptNumber = 1;
 let nextNetworkRouteNumber = 1;
 type ContentColorScheme = "light" | "dark" | "auto";
+type DeviceProfile = {
+  name: string;
+  aliases: string[];
+  width: number;
+  height: number;
+  scale: number;
+  userAgent: string;
+  isMobile: boolean;
+  hasTouch: boolean;
+};
+
+const DEVICE_PROFILES: DeviceProfile[] = [
+  {
+    name: "iPhone 14",
+    aliases: ["iphone 14", "iphone14"],
+    width: 390,
+    height: 844,
+    scale: 3,
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+    isMobile: true,
+    hasTouch: true,
+  },
+  {
+    name: "iPhone 15 Pro",
+    aliases: ["iphone 15 pro", "iphone15pro"],
+    width: 393,
+    height: 852,
+    scale: 3,
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+    isMobile: true,
+    hasTouch: true,
+  },
+  {
+    name: "Pixel 7",
+    aliases: ["pixel 7", "pixel7", "google pixel 7"],
+    width: 412,
+    height: 915,
+    scale: 2.625,
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Mobile Safari/537.36",
+    isMobile: true,
+    hasTouch: true,
+  },
+  {
+    name: "Galaxy S22",
+    aliases: ["galaxy s22", "samsung galaxy s22", "galaxys22"],
+    width: 360,
+    height: 780,
+    scale: 3,
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 12; SAMSUNG SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/16.0 Chrome/96.0.4664.45 Mobile Safari/537.36",
+    isMobile: true,
+    hasTouch: true,
+  },
+  {
+    name: "iPad",
+    aliases: ["ipad"],
+    width: 768,
+    height: 1024,
+    scale: 2,
+    userAgent:
+      "Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+    isMobile: true,
+    hasTouch: true,
+  },
+];
 
 connectNative();
 void applyContentColorScheme("auto").catch(() => undefined);
@@ -2417,15 +2485,61 @@ async function setCommand(args: string[]) {
   const [subcommand, ...rest] = args;
   if (subcommand === "headers") return setHeadersCommand(rest);
   if (subcommand === "media") return setMediaCommand(rest);
+  if (subcommand === "device") return setDeviceCommand(rest);
   if (subcommand !== "viewport") {
     return notAvailable(
       `set ${subcommand || ""}`.trim(),
-      "Only `set viewport <w> <h> [scale]`, `set headers <json>`, and `set media dark|light|auto` are implemented on the Firefox WebExtension backend. device, geo, offline, and credentials still require a CDP-capable backend."
+      "Only `set viewport <w> <h> [scale]`, `set device <name>`, `set headers <json>`, and `set media dark|light|auto` are implemented on the Firefox WebExtension backend. geo, offline, and credentials still require a CDP-capable backend."
     );
   }
   const parsed = parseViewportArgs(rest);
   if ("error" in parsed) return parsed;
 
+  const resized = await resizeViewport(parsed.width, parsed.height, parsed.scale, "set viewport");
+  const page = resized.viewport.page;
+  return {
+    text: `Viewport resize requested ${parsed.width}x${parsed.height}${parsed.scale ? ` scale ${parsed.scale}` : ""}; measured ${page?.innerWidth ?? "unknown"}x${page?.innerHeight ?? "unknown"}`,
+    viewport: resized.viewport,
+    warnings: resized.warnings,
+  };
+}
+
+async function setDeviceCommand(args: string[]) {
+  const parsed = parseDeviceArgs(args);
+  if ("error" in parsed) return parsed;
+  const resized = await resizeViewport(parsed.profile.width, parsed.profile.height, parsed.profile.scale, "set device");
+  const page = resized.viewport.page;
+  return {
+    text: `Device ${parsed.profile.name} requested ${parsed.profile.width}x${parsed.profile.height} scale ${parsed.profile.scale}; measured ${page?.innerWidth ?? "unknown"}x${page?.innerHeight ?? "unknown"}`,
+    device: {
+      name: parsed.profile.name,
+      viewport: {
+        width: parsed.profile.width,
+        height: parsed.profile.height,
+        scale: parsed.profile.scale,
+      },
+      userAgent: parsed.profile.userAgent,
+      isMobile: parsed.profile.isMobile,
+      hasTouch: parsed.profile.hasTouch,
+      emulated: {
+        viewport: true,
+        deviceScaleFactor: false,
+        userAgent: false,
+        touch: false,
+      },
+    },
+    viewport: resized.viewport,
+    warnings: mergeWarnings(
+      resized.warnings,
+      bestEffortWarning(
+        "set device",
+        "Firefox WebExtensions approximate device emulation by resizing the content viewport only. User-Agent, touch events, mobile browser chrome, and deviceScaleFactor are reported but not enforced."
+      )
+    ),
+  };
+}
+
+async function resizeViewport(width: number, height: number, scale: number | undefined, feature: string) {
   const tab = await targetTab();
   await activatePage(tab);
   const beforeWindow = await browser.windows.get(tab.windowId);
@@ -2436,38 +2550,34 @@ async function setCommand(args: string[]) {
   const chromeHeight = finitePositiveNumber(beforeWindow.height) && finitePositiveNumber(beforeMetrics?.innerHeight)
     ? Number(beforeWindow.height) - Number(beforeMetrics?.innerHeight)
     : 0;
-  const targetOuterWidth = Math.max(100, Math.round(parsed.width + Math.max(0, chromeWidth)));
-  const targetOuterHeight = Math.max(100, Math.round(parsed.height + Math.max(0, chromeHeight)));
+  const targetOuterWidth = Math.max(100, Math.round(width + Math.max(0, chromeWidth)));
+  const targetOuterHeight = Math.max(100, Math.round(height + Math.max(0, chromeHeight)));
 
   await browser.windows.update(tab.windowId, { focused: true, width: targetOuterWidth, height: targetOuterHeight });
   await delay(150);
-  await tuneViewportWindow(tab.tabId, tab.windowId, parsed.width, parsed.height);
+  await tuneViewportWindow(tab.tabId, tab.windowId, width, height);
   const updatedWindow = await browser.windows.get(tab.windowId);
   const page = await viewportMetrics(tab.tabId).catch(() => null);
   const warnings = [
     bestEffortWarning(
-      "set viewport",
+      feature,
       "Firefox WebExtensions resize the browser window to approximate the requested content viewport. Check the returned page.innerWidth/page.innerHeight before relying on pixel-perfect screenshots."
     ),
   ];
-  if (parsed.scale !== undefined && parsed.scale !== 1) {
+  if (scale !== undefined && scale !== 1) {
     warnings.push(
       bestEffortWarning(
-        "set viewport",
+        feature,
         "Firefox WebExtensions cannot set deviceScaleFactor for an existing page; the requested scale is reported but not enforced."
       )
     );
   }
   const viewport = {
-    requested: { width: parsed.width, height: parsed.height, scale: parsed.scale ?? 1 },
+    requested: { width, height, scale: scale ?? 1 },
     window: { id: updatedWindow.id, width: updatedWindow.width, height: updatedWindow.height },
     page,
   };
-  return {
-    text: `Viewport resize requested ${parsed.width}x${parsed.height}${parsed.scale ? ` scale ${parsed.scale}` : ""}; measured ${page?.innerWidth ?? "unknown"}x${page?.innerHeight ?? "unknown"}`,
-    viewport,
-    warnings,
-  };
+  return { viewport, warnings };
 }
 
 async function setMediaCommand(args: string[]) {
@@ -2612,6 +2722,46 @@ function parseViewportArgs(args: string[]): { width: number; height: number; sca
     return { error: { code: "InvalidArgumentError", message: "set viewport scale must be a positive number" } };
   }
   return { width, height, scale };
+}
+
+function parseDeviceArgs(args: string[]): { profile: DeviceProfile } | { error: RpcResponse["error"] } {
+  if (args.some((arg) => arg.startsWith("-") && arg !== "--json")) {
+    return { error: { code: "InvalidArgumentError", message: "set device does not support options" } };
+  }
+  const name = args.filter((arg) => arg !== "--json").join(" ").trim();
+  if (!name) {
+    return {
+      error: {
+        code: "InvalidArgumentError",
+        message: `set device requires <name>. Supported devices: ${supportedDeviceNames()}`,
+      },
+    };
+  }
+  const profile = findDeviceProfile(name);
+  if (!profile) {
+    return {
+      error: {
+        code: "InvalidArgumentError",
+        message: `Unknown device "${name}". Supported devices: ${supportedDeviceNames()}`,
+      },
+    };
+  }
+  return { profile };
+}
+
+function findDeviceProfile(name: string) {
+  const normalized = normalizeDeviceName(name);
+  return DEVICE_PROFILES.find((profile) =>
+    [profile.name, ...profile.aliases].some((alias) => normalizeDeviceName(alias) === normalized)
+  );
+}
+
+function normalizeDeviceName(name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function supportedDeviceNames() {
+  return DEVICE_PROFILES.map((profile) => profile.name).join(", ");
 }
 
 async function tuneViewportWindow(tabId: number, windowId: number, width: number, height: number) {

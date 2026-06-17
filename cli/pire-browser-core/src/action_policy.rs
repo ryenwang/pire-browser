@@ -352,7 +352,7 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
         },
         "set" => match subcommand {
             Some("headers") => "network",
-            Some("viewport") => "state",
+            Some("viewport" | "device" | "media") => "state",
             _ => return CommandPolicyResolution::NotAvailable,
         },
         "clipboard" => match subcommand {
@@ -900,6 +900,10 @@ mod tests {
             vec!["wait"],
             vec!["wait", "--download", "file.txt"],
             vec!["screenshot"],
+            vec!["set", "viewport", "1280", "720"],
+            vec!["set", "device", "iPhone 14"],
+            vec!["set", "media", "dark"],
+            vec!["set", "headers", "{\"X-Custom-Header\":\"value\"}"],
             vec!["get", "title"],
             vec!["is", "visible", "@e1"],
             vec!["eval", "document.title"],

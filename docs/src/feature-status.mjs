@@ -13,7 +13,7 @@ export const featureStatuses = {
   },
   settings: {
     status: "partial",
-    summary: "`set viewport`, `set headers`, and `set media` are implemented; device, geolocation, offline mode, credentials, and CDP-exact viewport metrics remain unavailable on the Firefox backend.",
+    summary: "`set viewport`, best-effort `set device` viewport presets, `set headers`, and `set media` are implemented; geolocation, offline mode, credentials, and CDP-exact viewport metrics remain unavailable on the Firefox backend.",
     sources: ["README.md", "skill-data/core/SKILL.md", "extension/src/background.ts"],
   },
   headers: {

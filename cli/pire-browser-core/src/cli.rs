@@ -2220,6 +2220,7 @@ element the agent is inspecting or about to act on.
 const SET_HELP: &str = r##"
 Usage:
   pire-browser set viewport <w> <h> [scale]
+  pire-browser set device "iPhone 14"
   pire-browser set headers <json>
   pire-browser set media dark|light|auto
 
@@ -2229,12 +2230,17 @@ innerHeight. Firefox WebExtensions cannot enforce deviceScaleFactor or exact
 CDP viewport metrics; `scale` is accepted and reported with a best-effort
 warning.
 
+`set device <name>` applies a best-effort preset viewport for common devices
+such as iPhone 14, iPhone 15 Pro, Pixel 7, Galaxy S22, and iPad. User-Agent,
+touch, mobile browser chrome, and exact deviceScaleFactor are reported but not
+enforced on the Firefox backend.
+
 `set headers <json>` applies request headers to the active page's origin for the
 current managed Firefox session. Passing `{}` clears headers for that origin.
 Values are not echoed; output reports header names only.
 
 `set media dark|light|auto` applies Firefox's webpage content color-scheme
-override for the managed session. Device, geo, offline, and credentials
+override for the managed session. Geolocation, offline, and credentials
 settings are not supported on this backend.
 "##;
 
@@ -4182,6 +4188,9 @@ mod tests {
         assert!(help_text(Some("set"))
             .unwrap()
             .contains("set viewport <w> <h> [scale]"));
+        assert!(help_text(Some("set"))
+            .unwrap()
+            .contains("set device \"iPhone 14\""));
         assert!(help_text(Some("set"))
             .unwrap()
             .contains("set headers <json>"));

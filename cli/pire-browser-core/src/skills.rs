@@ -171,6 +171,7 @@ mod tests {
         assert!(skill.content.contains("pire-browser mouse move"));
         assert!(skill.content.contains("pire-browser drag"));
         assert!(skill.content.contains("pire-browser set viewport"));
+        assert!(skill.content.contains("pire-browser set device"));
         assert!(skill.content.contains("pire-browser set headers"));
         assert!(skill.content.contains("pire-browser vitals"));
         assert!(skill

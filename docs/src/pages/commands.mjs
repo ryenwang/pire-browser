@@ -113,10 +113,11 @@ pire-browser clipboard paste`),
 pire-browser --color-scheme dark open https://example.com
 pire-browser set media light
 pire-browser set viewport 1280 720
+pire-browser set device "iPhone 14"
 pire-browser set headers '{"X-Custom-Header":"value"}'
 pire-browser open https://api.example.com --headers '{"Authorization":"Bearer token"}'
 pire-browser --executable-path /path/to/firefox open https://example.com
-# Device, geolocation, offline, credentials, and TLS-ignore launch flags are not available`),
+# set device is best-effort viewport-only. Geolocation, offline, credentials, and TLS-ignore launch flags are not available`),
   code(`pire-browser launch --profile Default
 pire-browser launch --url https://example.com
 PIRE_BROWSER_FIREFOX_PATH=/path/to/firefox pire-browser launch

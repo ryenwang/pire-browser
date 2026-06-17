@@ -442,8 +442,21 @@ describe("pire-browser command foundations", () => {
     expect(body).toContain("return setCommand(rest);");
     expect(body).toContain("async function setCommand");
     expect(body).toContain("function parseViewportArgs");
+    expect(body).toContain("async function resizeViewport");
     expect(body).toContain('type: "viewport_metrics"');
     expect(body).toContain("Firefox WebExtensions resize the browser window to approximate the requested content viewport");
+  });
+
+  it("implements set device as a best-effort viewport preset", () => {
+    const body = background();
+    expect(body).toContain('if (subcommand === "device") return setDeviceCommand(rest);');
+    expect(body).toContain("const DEVICE_PROFILES");
+    expect(body).toContain('"iPhone 14"');
+    expect(body).toContain('"Pixel 7"');
+    expect(body).toContain("async function setDeviceCommand");
+    expect(body).toContain("function parseDeviceArgs");
+    expect(body).toContain("function findDeviceProfile");
+    expect(body).toContain("User-Agent, touch events, mobile browser chrome, and deviceScaleFactor are reported but not enforced");
   });
 
   it("implements color scheme media emulation through Firefox browser settings", () => {
@@ -699,6 +712,8 @@ describe("pire-browser command foundations", () => {
       ["scroll"],
       ["scrollintoview", "@e1"],
       ["set", "viewport", "1280", "720"],
+      ["set", "device", "iPhone 14"],
+      ["set", "media", "dark"],
       ["set", "headers", "{\"X-Custom-Header\":\"value\"}"],
       ["wait"],
       ["wait", "--download", "file.txt"],

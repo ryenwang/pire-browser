@@ -279,6 +279,42 @@
       "source": "upstream"
     },
     {
+      "root": "set",
+      "subcommand": "viewport",
+      "signature": "set viewport <w> <h> [scale]",
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
+      "root": "set",
+      "subcommand": "device",
+      "signature": "set device <name>",
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
+      "root": "set",
+      "subcommand": "media",
+      "signature": "set media dark|light|auto",
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
+      "root": "set",
+      "subcommand": "headers",
+      "signature": "set headers <json>",
+      "category": "network",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream"
+    },
+    {
       "root": "diff",
       "subcommand": "snapshot",
       "signature": "diff snapshot [--baseline <path>]",

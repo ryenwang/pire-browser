@@ -33,12 +33,13 @@ pire-browser --executable-path /path/to/firefox open https://example.com`),
   h2("Runtime settings", "runtime-settings"),
   statusNote("settings"),
   code(`pire-browser set viewport 1280 720
+pire-browser set device "iPhone 14"
 pire-browser set viewport 390 844 3
 pire-browser --color-scheme dark open https://example.com
 pire-browser set media light
 pire-browser open https://api.example.com --headers '{"Authorization":"Bearer token"}'
 pire-browser set headers '{"X-Custom-Header":"value"}'`),
-  p("Header values are scoped to the current origin and are not echoed in output. Viewport sizing is approximate because Firefox WebExtensions resize the browser window rather than a CDP viewport."),
+  p("Header values are scoped to the current origin and are not echoed in output. Viewport and device sizing are approximate because Firefox WebExtensions resize the browser window rather than a CDP viewport."),
   h2("Environment variables", "environment-variables"),
   table(["Variable", "Purpose"], [
     ["<code>PIRE_BROWSER_FIREFOX_PATH</code>", "Custom Firefox executable for setup or launch."],

@@ -151,12 +151,12 @@ Set a responsive viewport before QA screenshots:
 pire-browser set viewport 1280 720
 pire-browser snapshot -i --compact
 pire-browser screenshot desktop.png
-pire-browser set viewport 390 844 3
+pire-browser set device "iPhone 14"
 pire-browser snapshot -i --compact
 pire-browser screenshot mobile.png
 ```
 
-`set viewport` is a Firefox best-effort path. It resizes the browser window to approximate the requested content viewport and returns measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. Device, geo, offline, and credentials are not available on the Firefox backend yet.
+`set viewport` and `set device` are Firefox best-effort paths. They resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `set device` reports a preset User-Agent/touch/scale profile but does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. Geo, offline, and credentials are not available on the Firefox backend yet.
 
 ```sh
 pire-browser --color-scheme dark open https://example.com
