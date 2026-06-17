@@ -434,6 +434,16 @@ pire-browser skills get --all --json
 
 Installed agents should use the bundled skill command for version-matched guidance instead of relying on stale copied instructions. `skills get` is an agent-browser-style alias for `skills cat`; `skills get --all` returns all bundled skill content. The package also ships compact routing context under `agent/`.
 
+### MCP Server
+
+```bash
+pire-browser mcp
+pire-browser mcp --tools core
+pire-browser mcp --tools all
+```
+
+The stdio MCP server exposes the core browser workflow as typed tools: open, snapshot, click, fill, type, press, wait, screenshot, status, tabs, close, eval, and skill guidance. `--tools all` is accepted as an alias for all currently available MCP tools. The MCP tools call the same installed CLI binary, so setup, policies, sessions, profiles, and Firefox runtime behavior stay shared with normal `pire-browser` commands.
+
 ## Authentication
 
 ### Quick summary
@@ -798,6 +808,12 @@ The installed npm package also serves the bundled core skill:
 
 ```bash
 pire-browser skills get core
+```
+
+Agent hosts that support MCP can use the typed stdio server:
+
+```bash
+pire-browser mcp --tools core
 ```
 
 ### AGENTS.md / CLAUDE.md

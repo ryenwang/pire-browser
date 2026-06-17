@@ -287,6 +287,19 @@ Use the packaged schema for autocomplete when creating project configs:
 }
 ```
 
+Use MCP when the agent host prefers typed tools:
+
+```bash
+pire-browser mcp --tools core
+pire-browser mcp --tools all
+```
+
+The MCP core profile exposes open, snapshot, click, fill, type, press, wait,
+screenshot, status, tabs, close, eval, and skill guidance. It invokes the same
+installed CLI binary, so setup, policies, sessions, profiles, and Firefox
+runtime behavior stay shared with normal `pire-browser` commands. `--tools all`
+is accepted as an alias for all currently available MCP tools.
+
 ## Snapshot Options
 
 ```bash
@@ -339,6 +352,8 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 pire-browser --help
 pire-browser open --help
 pire-browser snapshot --help
+pire-browser mcp --tools core
+pire-browser mcp --tools all
 pire-browser skills list
 pire-browser skills cat core
 pire-browser skills get core

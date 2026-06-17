@@ -5,6 +5,7 @@ This is a public, product-facing status summary for `pire-browser@0.2.2`. Detail
 | Area | Status | Notes |
 | --- | --- | --- |
 | Install and setup | Supported | Global, project, and source installs are documented for the Firefox-backed package. |
+| MCP agent integration | Supported | `pire-browser mcp --tools core` exposes the main browser workflow as stdio MCP tools. |
 | Core navigation and refs | Supported | Open, snapshot, refs, click, fill, get, wait, and tab workflows are available. |
 | Selectors and snapshots | Supported | CSS, text-style selectors, semantic locators, interactive snapshots, and compact output are available. |
 | Sessions, profiles, and state | Partial | Named sessions, managed profiles, and state files are available with Firefox-specific behavior. |

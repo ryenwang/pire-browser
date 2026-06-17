@@ -10,7 +10,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 | --- | --- | --- |
 | `cli/Cargo.toml`, `cli/Cargo.lock` | Rust workspace | Workspace root for the CLI, core library, and Native Messaging host. Run Rust commands from `cli/`, for example `cd cli && cargo test -q`. |
 | `cli/pire-browser-core/` | Core Rust implementation | CLI parsing, launch/session lifecycle, IPC, setup/status, state, policy guardrails, Firefox integration, and shared protocol behavior. |
-| `cli/pire-browser-cli/` | User-facing executable | Thin CLI entrypoint and command/error presentation over the core crate. |
+| `cli/pire-browser-cli/` | User-facing executable | CLI entrypoint, command/error presentation over the core crate, and the stdio MCP server. |
 | `cli/pire-browser-host/` | Native Messaging host | Firefox extension bridge to the Rust core and per-user CLI IPC. |
 | `extension/src/` | Firefox WebExtension source | Browser-side command handling, DOM inspection/actions, dialogs, refs, frames, and screenshot capture. |
 | `pi/extensions/` | Pi extension adapters | Pi-facing runtime wrapper/helpers for `pire-browser`; tests are repository-only. |

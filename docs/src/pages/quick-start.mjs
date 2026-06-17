@@ -48,6 +48,9 @@ pire-browser open https://example.com && pire-browser screenshot page.png`),
   code(`pire-browser snapshot -i --json
 pire-browser get text '@e1' --json`),
   p("The default text output is more compact and preferred for AI agents."),
+  h2("MCP", "mcp"),
+  code(`pire-browser mcp --tools core`),
+  p("Use the stdio MCP server when an agent host prefers typed tools instead of shell command strings. The MCP core profile exposes the same inspect-before-act workflow as the CLI."),
 ];
 
 export default page({

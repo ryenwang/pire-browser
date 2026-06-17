@@ -63,6 +63,9 @@ pub enum LocalCommand {
         action_policy: ActionPolicyArgs,
         confirmation_policy: ConfirmationPolicyArgs,
     },
+    Mcp {
+        tools: String,
+    },
     ProfilesList {
         json: bool,
     },
@@ -1018,6 +1021,26 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         });
     }
 
+    if command == "mcp" {
+        args.remove(0);
+        let mut tools = "core".to_string();
+        let mut i = 0;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--tools" => {
+                    i += 1;
+                    let Some(value) = args.get(i).cloned() else {
+                        bail!("--tools requires a profile name");
+                    };
+                    tools = value;
+                }
+                other => bail!("unsupported mcp option: {other}"),
+            }
+            i += 1;
+        }
+        return Ok(LocalCommand::Mcp { tools });
+    }
+
     if command == "install-status" || command == "doctor" {
         let doctorish = command.clone();
         args.remove(0);
@@ -1867,6 +1890,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "close" | "quit" | "exit" => CLOSE_HELP,
         "setup" => SETUP_HELP,
         "launch" => LAUNCH_HELP,
+        "mcp" => MCP_HELP,
         "skills" | "skill" => SKILLS_HELP,
         _ => return None,
     };
@@ -1885,6 +1909,7 @@ Common commands:
   status [--json]                 Show live Firefox sessions and default target
   install [--firefox-path <path>]  Register the Firefox Native Messaging host
   doctor [--json] [--offline]     Check setup health and PATH/install hints
+  mcp [--tools core|all]          Start the MCP stdio server
   --config ./ci-config.json open <url>
   open <url> [--label <name>]      Open a URL, auto-launching Firefox if needed
   open <url> --headers '{"Authorization":"Bearer token"}'
@@ -2427,6 +2452,18 @@ Starts the managed Firefox profile and waits for the extension to connect.
 For reusable named command workflows, use `--profile <name-or-path> <command>`,
 `--session <name> <command>`, or `--session-name <name> <command>`.
 `launch --profile <name-or-path>` only starts or reuses the profile.
+"##;
+
+const MCP_HELP: &str = r##"
+Usage:
+  pire-browser mcp
+  pire-browser mcp --tools core
+  pire-browser mcp --tools all
+
+Starts a Model Context Protocol server over stdio. The current public MCP
+profile is `core`: open, inspect, interact, wait, capture screenshots, inspect
+tabs/status, close sessions, and fetch installed skill guidance. `all` is
+accepted as an alias for all currently available MCP tools.
 "##;
 
 const SKILLS_HELP: &str = r##"
@@ -3675,6 +3712,30 @@ mod tests {
     }
 
     #[test]
+    fn parses_mcp_command() {
+        assert_eq!(
+            parse_cli_args(&s(&["mcp"])).unwrap(),
+            LocalCommand::Mcp {
+                tools: "core".to_string()
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["mcp", "--tools", "core"])).unwrap(),
+            LocalCommand::Mcp {
+                tools: "core".to_string()
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["mcp", "--tools", "all"])).unwrap(),
+            LocalCommand::Mcp {
+                tools: "all".to_string()
+            }
+        );
+        assert!(parse_cli_args(&s(&["mcp", "--tools"])).is_err());
+        assert!(parse_cli_args(&s(&["mcp", "--bad"])).is_err());
+    }
+
+    #[test]
     fn parses_state_save_and_load_commands() {
         assert_eq!(
             parse_cli_args(&s(&["state", "save", "state.json", "--json"])).unwrap(),
@@ -4072,6 +4133,9 @@ mod tests {
         assert!(help_text(Some("state")).unwrap().contains("state save"));
         assert!(help_text(Some("state")).unwrap().contains("state list"));
         assert!(help_text(Some("state")).unwrap().contains("state show"));
+        assert!(help_text(Some("mcp"))
+            .unwrap()
+            .contains("Model Context Protocol server"));
         assert!(help_text(Some("skills"))
             .unwrap()
             .contains("skills get core"));

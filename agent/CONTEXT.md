@@ -20,7 +20,8 @@ Use this folder when you are operating an installed `pire-browser` package. It i
 - Treat snapshot refs as short lived. Use fresh refs after navigation, DOM changes, dialogs, downloads, uploads, or errors.
 - Do not claim success until `pire-browser` output confirms it.
 - If output returns `confirm <id>`, ask the user before running it.
-- Prefer `pire-browser skills cat core` when an agent skill needs complete operational guidance.
+- Prefer `pire-browser skills get core` when an agent skill needs complete operational guidance.
+- If your host supports MCP tools, `pire-browser mcp --tools core` exposes the core browser workflow through stdio.
 
 ## Installed Package Boundaries
 

@@ -26,6 +26,11 @@ export const featureStatuses = {
     summary: "`--config`, `PIRE_BROWSER_CONFIG`, auto-discovered config files, and the packaged JSON Schema are supported for pire-browser defaults.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/cli.rs", "pire-browser.schema.json"],
   },
+  mcp: {
+    status: "available",
+    summary: "`pire-browser mcp --tools core` starts a stdio MCP server with typed tools for the core open, inspect, interact, wait, screenshot, status, tabs, close, and skill-guidance workflow.",
+    sources: ["README.md", "docs/src/pages/mcp.mjs", "cli/pire-browser-cli/src/mcp.rs", "cli/pire-browser-core/src/cli.rs"],
+  },
   managedProfiles: {
     status: "best_effort",
     summary: "`profiles --json`, `--profile <name-or-path>`, and `PIRE_BROWSER_PROFILE` provide managed Firefox profile support; raw browser profile import/reuse is still unavailable.",
@@ -137,6 +142,7 @@ export const commandRootStatus = {
   is: "available",
   launch: "available",
   mouse: "best_effort",
+  mcp: "available",
   navigate: "available",
   network: "partial",
   open: "available",

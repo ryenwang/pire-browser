@@ -20,6 +20,7 @@ export const navGroups = [
       { title: "Installation", path: "/installation/" },
       { title: "Quick Start", path: "/quick-start/" },
       { title: "Skills", path: "/skills/" },
+      { title: "MCP", path: "/mcp/" },
     ],
   },
   {

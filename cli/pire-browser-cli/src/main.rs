@@ -1,3 +1,5 @@
+mod mcp;
+
 use anyhow::{bail, Context, Result};
 use pire_browser_core::action_policy::{
     action_policy_diagnostic_from_args, action_policy_text,
@@ -69,6 +71,8 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+
+use crate::mcp::{run_mcp_server, McpToolsProfile};
 
 const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &[
     "connect",
@@ -516,6 +520,9 @@ fn run() -> Result<()> {
                 ));
             }
             println!("{text}");
+        }
+        LocalCommand::Mcp { tools } => {
+            run_mcp_server(McpToolsProfile::parse(&tools)?)?;
         }
         LocalCommand::InstallStatus {
             json,

@@ -262,6 +262,13 @@ pire-browser install-status --json`),
 pire-browser skills cat core
 pire-browser help commands`),
 
+  h2("MCP", "mcp"),
+  statusNote("mcp"),
+  code(`pire-browser mcp
+pire-browser mcp --tools core
+pire-browser mcp --tools all`),
+  p("The stdio MCP server exposes typed tools for the core open, snapshot, interact, wait, screenshot, status, tabs, close, eval, and skill-guidance workflow."),
+
   h2("Navigation", "navigation"),
   code(`pire-browser back
 pire-browser forward

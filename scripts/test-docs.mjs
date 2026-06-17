@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pages } from "../docs/src/content.mjs";
 
-const EXPECTED_ROUTE_COUNT = 33;
+const EXPECTED_ROUTE_COUNT = 34;
 
 execFileSync(process.execPath, ["scripts/build-pages-site.mjs"], {
   stdio: "inherit",

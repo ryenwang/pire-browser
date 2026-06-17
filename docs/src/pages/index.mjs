@@ -2,6 +2,7 @@ import introductionPage from "./introduction.mjs";
 import installationPage from "./installation.mjs";
 import quickStartPage from "./quick-start.mjs";
 import skillsPage from "./skills.mjs";
+import mcpPage from "./mcp.mjs";
 import commandsPage from "./commands.mjs";
 import configurationPage from "./configuration.mjs";
 import selectorsPage from "./selectors.mjs";
@@ -37,6 +38,7 @@ export const pages = [
   installationPage,
   quickStartPage,
   skillsPage,
+  mcpPage,
   commandsPage,
   configurationPage,
   selectorsPage,
