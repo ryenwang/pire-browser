@@ -575,8 +575,9 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 - `pire-browser setup` is the lower-level setup command.
 - `--firefox-path` and `PIRE_BROWSER_FIREFOX_PATH` may point to the Firefox executable, a directory containing it, or `/Applications/Firefox.app` on macOS. If discovery fails, follow the platform repair command in the error output.
 - `pire-browser upgrade` checks for the latest package and applies a safe update when the install method allows it.
-- `pire-browser status` reports install and session state without fixing anything.
-- `pire-browser doctor` gives read-only diagnostics.
+- `pire-browser status` reports live session and policy state without fixing anything.
+- `pire-browser doctor` and `pire-browser install-status` give read-only install diagnostics.
+- `pire-browser doctor --json` and `pire-browser install-status --json` include `nextActions`; follow those concrete repair commands before guessing.
 - `pire-browser doctor --fix` explicitly reruns native host setup and verifies status; use it when the user wants repair, not for observation.
 - In MCP, use debug-profile `pire_browser_install` for explicit native-host setup or repair, and `pire_browser_upgrade` for user-requested package update; keep `pire_browser_status` and plain `pire_browser_doctor` observational.
 - Browser commands that need auto-launch may run lazy setup when native host registration is missing or mismatched.

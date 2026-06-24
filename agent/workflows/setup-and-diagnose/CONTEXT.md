@@ -11,6 +11,7 @@ Use this when install, launch, native messaging, optional native package resolut
 ## Process
 
 1. Run read-only diagnostics first: `pire-browser status` or `pire-browser doctor`.
+   - Prefer `pire-browser doctor --json` when available; follow `data.nextActions` before guessing a repair.
 2. If native messaging registration is missing or mismatched, run `pire-browser doctor --fix` or the lower-level `pire-browser setup`.
    - In MCP, use debug-profile `pire_browser_install` for explicit native-host setup or repair.
    - If Firefox discovery fails, follow the platform repair command printed by the error. `--firefox-path` may point to the Firefox executable, a directory containing it, or `/Applications/Firefox.app` on macOS.

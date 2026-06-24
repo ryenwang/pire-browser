@@ -42,7 +42,7 @@ pire-browser doctor --fix
 pire-browser doctor --fix --firefox-path /path/to/firefox
 pire-browser doctor --offline --quick
 pire-browser doctor --json`),
-  p("Doctor checks Firefox discovery, Native Messaging registration, extension build files, profile state, live sessions, PATH hints, and local policy diagnostics. Plain doctor is read-only; <code>doctor --fix</code> explicitly reruns native host setup and verifies the follow-up status."),
+  p("Doctor checks Firefox discovery, Native Messaging registration, extension build files, profile state, live sessions, PATH hints, and local policy diagnostics. Plain doctor is read-only; <code>doctor --json</code> and <code>install-status --json</code> include <code>nextActions</code> with concrete repair commands, while <code>doctor --fix</code> explicitly reruns native host setup and verifies the follow-up status."),
   h2("Custom Firefox", "custom-firefox"),
   code(`# macOS/Linux
 PIRE_BROWSER_FIREFOX_PATH=/path/to/firefox pire-browser install

@@ -13,7 +13,8 @@ use crate::confirmation_policy::{
 };
 use crate::domain_policy::{collect_domain_policy, domain_policy_text, DomainPolicyDiagnostic};
 use crate::firefox::{
-    discover_firefox, firefox_install_kind, sandboxed_firefox_message, FirefoxInstallKind,
+    discover_firefox, firefox_install_kind, platform_firefox_install_hint,
+    sandboxed_firefox_message, FirefoxInstallKind,
 };
 use crate::launch::{default_profile_status, firefox_startup_policy_status, DEFAULT_PROFILE_NAME};
 use crate::protocol::{EXTENSION_ID, NATIVE_HOST_NAME};
@@ -48,6 +49,34 @@ pub struct InstallStatusReport {
     pub domain_policy: DomainPolicyDiagnostic,
     pub state_policy: StatePolicyDiagnostic,
     pub live_sessions: Vec<SessionInfo>,
+    pub next_actions: Vec<InstallNextAction>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallNextAction {
+    pub code: String,
+    pub reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+impl InstallNextAction {
+    fn new(
+        code: impl Into<String>,
+        reason: impl Into<String>,
+        command: Option<impl Into<String>>,
+        note: Option<impl Into<String>>,
+    ) -> Self {
+        Self {
+            code: code.into(),
+            reason: reason.into(),
+            command: command.map(Into::into),
+            note: note.map(Into::into),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -111,7 +140,7 @@ pub fn collect_install_status() -> Result<InstallStatusReport> {
         && extension_source.ok
         && extension_build.ok;
 
-    Ok(InstallStatusReport {
+    let mut report = InstallStatusReport {
         ok,
         firefox_path,
         firefox_install_kind,
@@ -131,7 +160,10 @@ pub fn collect_install_status() -> Result<InstallStatusReport> {
         domain_policy,
         state_policy,
         live_sessions,
-    })
+        next_actions: Vec::new(),
+    };
+    report.next_actions = install_next_actions(&report);
+    Ok(report)
 }
 
 pub fn install_status_text(report: &InstallStatusReport) -> String {
@@ -178,7 +210,70 @@ pub fn install_status_text(report: &InstallStatusReport) -> String {
             session.last_heartbeat_at
         ));
     }
+    if !report.next_actions.is_empty() {
+        lines.push("Next actions:".to_string());
+        for action in &report.next_actions {
+            lines.push(format!("  - [{}] {}", action.code, action.reason));
+            if let Some(command) = &action.command {
+                lines.push(format!("    command: {command}"));
+            }
+            if let Some(note) = &action.note {
+                lines.push(format!("    note: {note}"));
+            }
+        }
+    }
     lines.join("\n")
+}
+
+fn install_next_actions(report: &InstallStatusReport) -> Vec<InstallNextAction> {
+    let mut actions = Vec::new();
+    if report.firefox_path.is_none() {
+        actions.push(InstallNextAction::new(
+            "install_firefox",
+            "Firefox was not discovered, so native host setup and browser launch cannot complete.",
+            Some("pire-browser install --firefox-path <path-to-firefox>"),
+            Some(platform_firefox_install_hint()),
+        ));
+        return actions;
+    }
+
+    if !report.native_host.ok {
+        actions.push(InstallNextAction::new(
+            "build_or_reinstall_native_host",
+            "The pire-browser native host binary is missing.",
+            Some("cargo build"),
+            Some("For npm/Pi installs, reinstall pire-browser with optional dependencies enabled."),
+        ));
+    }
+
+    if !report.native_manifest.ok || !report.native_registry.ok {
+        actions.push(InstallNextAction::new(
+            "repair_native_messaging",
+            "Firefox Native Messaging registration is missing or mismatched.",
+            Some("pire-browser doctor --fix"),
+            Some("Use `--firefox-path <path>` if Firefox is installed in a custom location."),
+        ));
+    }
+
+    if !report.extension_source.ok || !report.extension_build.ok {
+        actions.push(InstallNextAction::new(
+            "repair_extension_assets",
+            "Firefox extension assets are missing or incomplete.",
+            Some("npm run build:extension"),
+            Some("For npm/Pi installs, reinstall pire-browser if packaged extension files are missing."),
+        ));
+    }
+
+    if actions.is_empty() && !report.ok {
+        actions.push(InstallNextAction::new(
+            "run_doctor_fix",
+            "Install status still needs attention.",
+            Some("pire-browser doctor --fix"),
+            Option::<String>::None,
+        ));
+    }
+
+    actions
 }
 
 fn check_cli_executable() -> CheckStatus {
@@ -529,6 +624,7 @@ mod tests {
             domain_policy: crate::domain_policy::domain_policy_from_env_value(None),
             state_policy: crate::state_policy::state_policy_from_env_value(None),
             live_sessions: Vec::new(),
+            next_actions: Vec::new(),
         };
         let text = install_status_text(&report);
         assert!(text.contains("0 live Firefox session"));
@@ -539,6 +635,76 @@ mod tests {
         assert!(text.contains("Confirmation policy"));
         assert!(text.contains("Domain policy"));
         assert!(text.contains("State policy"));
+    }
+
+    #[test]
+    fn missing_firefox_status_includes_next_action() {
+        let mut report = InstallStatusReport {
+            ok: false,
+            firefox_path: None,
+            firefox_install_kind: None,
+            cli_executable: CheckStatus::ok(
+                "CLI executable",
+                Some(PathBuf::from("pire-browser")),
+                None,
+            ),
+            cli_on_path: CheckStatus::ok("CLI on PATH", Some(PathBuf::from("pire-browser")), None),
+            native_host: CheckStatus::ok(
+                "Native host binary",
+                Some(PathBuf::from("pire-browser-host")),
+                None,
+            ),
+            native_manifest: CheckStatus::fail("Native manifest", None, "run setup"),
+            native_registry: CheckStatus::fail("Native registry", None, "missing"),
+            extension_source: CheckStatus::ok(
+                "Extension source",
+                Some(PathBuf::from("extension/manifest.json")),
+                None,
+            ),
+            extension_build: CheckStatus::ok(
+                "Extension build",
+                Some(PathBuf::from("extension/dist")),
+                None,
+            ),
+            default_profile: CheckStatus::fail("Managed Firefox profile Default", None, "missing"),
+            default_profile_launcher: CheckStatus::fail(
+                "Profile launcher Default",
+                None,
+                "missing",
+            ),
+            firefox_startup_policy: CheckStatus::fail(
+                "Firefox startup popup suppression",
+                None,
+                "missing",
+            ),
+            auth_handoff: crate::auth_handoff::auth_handoff_from_data_dir(
+                &PathBuf::from("/tmp/pire-browser"),
+                DEFAULT_PROFILE_NAME,
+            ),
+            action_policy: crate::action_policy::action_policy_from_env_value(None),
+            confirmation_policy: crate::confirmation_policy::confirmation_policy_from_env_values(
+                None, None,
+            ),
+            domain_policy: crate::domain_policy::domain_policy_from_env_value(None),
+            state_policy: crate::state_policy::state_policy_from_env_value(None),
+            live_sessions: Vec::new(),
+            next_actions: Vec::new(),
+        };
+        report.next_actions = install_next_actions(&report);
+
+        assert_eq!(report.next_actions.len(), 1);
+        assert_eq!(report.next_actions[0].code, "install_firefox");
+        assert!(report.next_actions[0]
+            .command
+            .as_deref()
+            .unwrap()
+            .contains("--firefox-path"));
+        let json = install_status_json(&report).unwrap();
+        assert!(json.contains("\"nextActions\""));
+        assert!(json.contains("\"install_firefox\""));
+        let text = install_status_text(&report);
+        assert!(text.contains("Next actions:"));
+        assert!(text.contains("pire-browser install --firefox-path"));
     }
 
     #[test]
