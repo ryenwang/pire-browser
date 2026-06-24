@@ -112,7 +112,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots, transfers, clipboard, tabs/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs, mouse/debugging tools, transfers, clipboard, tabs/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -317,6 +317,34 @@ fn tool_command_args(
             args.push(required_string(object, "source")?);
             args.push(required_string(object, "target")?);
         }
+        (_, "pire_browser_mouse_move") => {
+            args.push("mouse".to_string());
+            args.push("move".to_string());
+            args.push(required_u64(object, "x")?.to_string());
+            args.push(required_u64(object, "y")?.to_string());
+        }
+        (_, "pire_browser_mouse_down") => {
+            args.push("mouse".to_string());
+            args.push("down".to_string());
+            if let Some(button) = optional_mouse_button(object)? {
+                args.push(button);
+            }
+        }
+        (_, "pire_browser_mouse_up") => {
+            args.push("mouse".to_string());
+            args.push("up".to_string());
+            if let Some(button) = optional_mouse_button(object)? {
+                args.push(button);
+            }
+        }
+        (_, "pire_browser_mouse_wheel") => {
+            args.push("mouse".to_string());
+            args.push("wheel".to_string());
+            args.push(required_i64(object, "dy")?.to_string());
+            if let Some(dx) = optional_i64(object, "dx")? {
+                args.push(dx.to_string());
+            }
+        }
         (_, "pire_browser_wait") => {
             args.push("wait".to_string());
             let condition_count = ["milliseconds", "selector", "text", "url", "loadState"]
@@ -380,6 +408,50 @@ fn tool_command_args(
             if let Some(quality) = optional_u64(object, "quality")? {
                 args.push("--screenshot-quality".to_string());
                 args.push(quality.to_string());
+            }
+        }
+        (_, "pire_browser_pdf") => {
+            args.push("pdf".to_string());
+            args.push(required_string(object, "path")?);
+            if optional_bool(object, "viewport")? {
+                args.push("--viewport".to_string());
+            }
+        }
+        (_, "pire_browser_console") => {
+            args.push("console".to_string());
+            if optional_bool(object, "clear")? {
+                args.push("--clear".to_string());
+            }
+        }
+        (_, "pire_browser_errors") => {
+            args.push("errors".to_string());
+            if optional_bool(object, "clear")? {
+                args.push("--clear".to_string());
+            }
+        }
+        (_, "pire_browser_dialog_status") => {
+            args.push("dialog".to_string());
+            args.push("status".to_string());
+        }
+        (_, "pire_browser_dialog_accept") => {
+            args.push("dialog".to_string());
+            args.push("accept".to_string());
+            if let Some(text) = optional_string(object, "text")? {
+                args.push(text);
+            }
+        }
+        (_, "pire_browser_dialog_dismiss") => {
+            args.push("dialog".to_string());
+            args.push("dismiss".to_string());
+        }
+        (_, "pire_browser_highlight") => {
+            args.push("highlight".to_string());
+            args.push(required_string(object, "selector")?);
+        }
+        (_, "pire_browser_vitals") => {
+            args.push("vitals".to_string());
+            if let Some(url) = optional_string(object, "url")? {
+                args.push(url);
             }
         }
         (_, "pire_browser_download") => {
@@ -724,6 +796,40 @@ fn optional_u64(
     }
 }
 
+fn required_u64(object: &Map<String, Value>, key: &str) -> std::result::Result<u64, String> {
+    optional_u64(object, key)?.ok_or_else(|| format!("{key} is required"))
+}
+
+fn optional_i64(
+    object: &Map<String, Value>,
+    key: &str,
+) -> std::result::Result<Option<i64>, String> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(value)) => value
+            .as_i64()
+            .map(Some)
+            .ok_or_else(|| format!("{key} must be an integer")),
+        Some(_) => Err(format!("{key} must be a number")),
+    }
+}
+
+fn required_i64(object: &Map<String, Value>, key: &str) -> std::result::Result<i64, String> {
+    optional_i64(object, key)?.ok_or_else(|| format!("{key} is required"))
+}
+
+fn optional_mouse_button(
+    object: &Map<String, Value>,
+) -> std::result::Result<Option<String>, String> {
+    let button = optional_string(object, "button")?;
+    if let Some(button) = &button {
+        if !matches!(button.as_str(), "left" | "middle" | "right") {
+            return Err("button must be left, middle, or right".to_string());
+        }
+    }
+    Ok(button)
+}
+
 fn optional_string_array(
     object: &Map<String, Value>,
     key: &str,
@@ -979,6 +1085,52 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_mouse_move",
+            "Mouse move",
+            "Dispatch a page-level mousemove event at viewport coordinates.",
+            tool_schema(
+                vec![
+                    ("x", number_prop("Viewport x coordinate.")),
+                    ("y", number_prop("Viewport y coordinate.")),
+                ],
+                &["x", "y"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_mouse_down",
+            "Mouse down",
+            "Dispatch a page-level mouse button down event.",
+            tool_schema(
+                vec![("button", string_prop("Optional button: left, middle, or right."))],
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_mouse_up",
+            "Mouse up",
+            "Dispatch a page-level mouse button up event.",
+            tool_schema(
+                vec![("button", string_prop("Optional button: left, middle, or right."))],
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_mouse_wheel",
+            "Mouse wheel",
+            "Dispatch a page-level mouse wheel event.",
+            tool_schema(
+                vec![
+                    ("dy", integer_prop("Vertical wheel delta.")),
+                    ("dx", integer_prop("Optional horizontal wheel delta.")),
+                ],
+                &["dy"],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_wait",
             "Wait",
             "Wait for milliseconds, selector, text, URL pattern, or load state.",
@@ -1012,6 +1164,68 @@ fn core_tools() -> Vec<Value> {
                 &[],
             ),
             true,
+        ),
+        tool(
+            "pire_browser_pdf",
+            "PDF evidence",
+            "Capture the active page into an image-backed PDF evidence file.",
+            tool_schema(
+                vec![
+                    ("path", string_prop("Output PDF path.")),
+                    ("viewport", bool_prop("Capture only the visible viewport.")),
+                ],
+                &["path"],
+            ),
+            true,
+        ),
+        tool(
+            "pire_browser_console",
+            "Console messages",
+            "Show or clear recent page console messages captured by the Firefox extension.",
+            tool_schema(vec![("clear", bool_prop("Clear captured console messages."))], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_errors",
+            "Page errors",
+            "Show or clear recent page errors and unhandled promise rejections.",
+            tool_schema(vec![("clear", bool_prop("Clear captured page errors."))], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_dialog_status",
+            "Dialog status",
+            "Report recently observed JavaScript dialogs.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
+            "pire_browser_dialog_accept",
+            "Accept dialog",
+            "Configure the next shimmed confirm or prompt to accept, optionally with prompt text.",
+            tool_schema(vec![("text", string_prop("Optional prompt text."))], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_dialog_dismiss",
+            "Dismiss dialog",
+            "Configure the next shimmed confirm or prompt to dismiss.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_highlight",
+            "Highlight target",
+            "Draw a visible overlay around a ref or selector before screenshot evidence.",
+            tool_schema(vec![("selector", string_prop("Ref or selector to highlight."))], &["selector"]),
+            false,
+        ),
+        tool(
+            "pire_browser_vitals",
+            "Web vitals",
+            "Measure best-effort page performance signals from Firefox Performance APIs.",
+            tool_schema(vec![("url", string_prop("Optional URL to open before measuring."))], &[]),
+            false,
         ),
         tool(
             "pire_browser_download",
@@ -1264,6 +1478,10 @@ fn number_prop(description: &str) -> Value {
     json!({ "type": "integer", "minimum": 0, "description": description })
 }
 
+fn integer_prop(description: &str) -> Value {
+    json!({ "type": "integer", "description": description })
+}
+
 fn jsonrpc_result(id: Value, result: Value) -> Value {
     json!({
         "jsonrpc": "2.0",
@@ -1320,6 +1538,19 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_clipboard"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_mouse_move"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_console"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_dialog_status"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_highlight"));
+        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_pdf"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_tabs_select"));
@@ -1540,6 +1771,34 @@ mod tests {
         assert_eq!(args, vec!["--json", "drag", "@e1", "@e2"]);
 
         let args = tool_command_args(
+            "pire_browser_mouse_move",
+            &json!({ "x": 80, "y": 120 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "mouse", "move", "80", "120"]);
+
+        let args = tool_command_args(
+            "pire_browser_mouse_down",
+            &json!({ "button": "right" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "mouse", "down", "right"]);
+
+        let args =
+            tool_command_args("pire_browser_mouse_up", &json!({}), McpToolsProfile::Core).unwrap();
+        assert_eq!(args, vec!["--json", "mouse", "up"]);
+
+        let args = tool_command_args(
+            "pire_browser_mouse_wheel",
+            &json!({ "dy": -400, "dx": 20 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "mouse", "wheel", "-400", "20"]);
+
+        let args = tool_command_args(
             "pire_browser_download",
             &json!({ "selector": "@e3", "path": "report.csv", "timeout": 60000 }),
             McpToolsProfile::Core,
@@ -1593,6 +1852,66 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "clipboard", "write", "hello"]);
+
+        let args = tool_command_args(
+            "pire_browser_pdf",
+            &json!({ "path": "page.pdf", "viewport": true }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "pdf", "page.pdf", "--viewport"]);
+
+        let args = tool_command_args(
+            "pire_browser_console",
+            &json!({ "clear": true }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "console", "--clear"]);
+
+        let args =
+            tool_command_args("pire_browser_errors", &json!({}), McpToolsProfile::Core).unwrap();
+        assert_eq!(args, vec!["--json", "errors"]);
+
+        let args = tool_command_args(
+            "pire_browser_dialog_status",
+            &json!({}),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "dialog", "status"]);
+
+        let args = tool_command_args(
+            "pire_browser_dialog_accept",
+            &json!({ "text": "ok" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "dialog", "accept", "ok"]);
+
+        let args = tool_command_args(
+            "pire_browser_dialog_dismiss",
+            &json!({}),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "dialog", "dismiss"]);
+
+        let args = tool_command_args(
+            "pire_browser_highlight",
+            &json!({ "selector": "@e4" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "highlight", "@e4"]);
+
+        let args = tool_command_args(
+            "pire_browser_vitals",
+            &json!({ "url": "https://example.com" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "vitals", "https://example.com"]);
 
         let args = tool_command_args(
             "pire_browser_tab_new",
@@ -1718,6 +2037,22 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("direction must be up"));
+
+        let error = tool_command_args(
+            "pire_browser_mouse_down",
+            &json!({ "button": "primary" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("button must be left"));
+
+        let error = tool_command_args(
+            "pire_browser_mouse_wheel",
+            &json!({ "dx": 20 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("dy is required"));
 
         let error = tool_command_args(
             "pire_browser_upload",

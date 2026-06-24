@@ -19,10 +19,12 @@ pire-browser mcp --tools all`),
       ["pire_browser_keyboard_type / key_down / key_up", "Type or dispatch key edges at the current focus."],
       ["pire_browser_hover / focus / select / check / uncheck", "Handle common form and interaction controls."],
       ["pire_browser_scroll / scroll_into_view / drag", "Move around the page and dispatch page-level drag/drop events."],
+      ["pire_browser_mouse_move / mouse_down / mouse_up / mouse_wheel", "Dispatch page-level mouse events at viewport coordinates."],
       ["pire_browser_get", "Read page or element text, HTML, values, attributes, title, URL, counts, boxes, or styles."],
       ["pire_browser_is", "Check whether a ref or selector is visible, enabled, or checked."],
       ["pire_browser_wait", "Wait for time, selector, text, URL, or load state."],
-      ["pire_browser_screenshot", "Capture screenshot evidence."],
+      ["pire_browser_screenshot / pdf", "Capture screenshot or image-backed PDF evidence."],
+      ["pire_browser_console / errors / dialog_* / highlight / vitals", "Inspect page logs, errors, JavaScript dialogs, visual targets, and best-effort performance signals."],
       ["pire_browser_download / wait_download / upload", "Trigger or wait for browser downloads, or assign small local files to file inputs."],
       ["pire_browser_clipboard", "Read, write, copy, or paste text through the Firefox extension path."],
       ["pire_browser_status", "Inspect install/session state."],
@@ -35,10 +37,11 @@ pire-browser mcp --tools all`),
   h2("Agent Loop", "agent-loop"),
   code(`1. Call pire_browser_open with a URL.
 2. Call pire_browser_snapshot with compact=true, or use pire_browser_find when labels/roles are clear.
-3. Use fresh refs or semantic find locators in click/double-click/fill/type/press/select/check/scroll/drag/download/upload tools.
+3. Use fresh refs or semantic find locators in click/double-click/fill/type/press/select/check/scroll/drag/mouse/download/upload tools.
 4. Use pire_browser_get or pire_browser_is for targeted verification when you already have a fresh target.
-5. Call pire_browser_wait when page state needs time.
-6. Re-run pire_browser_snapshot or capture a screenshot before reporting success.`),
+5. Use console/errors/dialog/highlight/vitals when a page is stuck, blocked, or needs visual evidence.
+6. Call pire_browser_wait when page state needs time.
+7. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
   p("MCP tool calls return text content for compatibility and structured command output when the underlying CLI emits JSON."),
 ];
 
