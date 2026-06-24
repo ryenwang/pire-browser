@@ -3093,7 +3093,9 @@ lower-level launch, install/repair, safe upgrade, typed batch, doctor/activity
 diagnostics, console/errors, dialogs, highlight, and vitals. `react` is accepted for
 compatibility but currently only returns profile guidance because pire-browser
 does not ship React DevTools introspection. Use `all` for every currently
-implemented MCP tool. Tool discovery is paginated for large profiles.
+implemented MCP tool. The server defaults to MCP protocol 2025-11-25 and
+accepts older supported client protocol versions during initialization. Tool
+discovery is paginated for large profiles.
 "##;
 
 const SKILLS_HELP: &str = r##"
@@ -5127,6 +5129,7 @@ mod tests {
         assert!(help_text(Some("mcp")).unwrap().contains("mobile"));
         assert!(help_text(Some("mcp")).unwrap().contains("react"));
         assert!(help_text(Some("mcp")).unwrap().contains("semantic find"));
+        assert!(help_text(Some("mcp")).unwrap().contains("2025-11-25"));
         assert!(help_text(Some("mcp")).unwrap().contains("paginated"));
         assert!(help_text(Some("mcp")).unwrap().contains("React DevTools"));
         assert!(help_text(Some("cookies"))

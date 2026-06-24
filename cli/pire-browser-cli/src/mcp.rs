@@ -5,6 +5,8 @@ use std::io::{self, BufRead, Write};
 use std::process::{Command, Output};
 
 const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
+    &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const SERVER_NAME: &str = "pire-browser";
 const TOOL_LIST_PAGE_SIZE: usize = 64;
 
@@ -325,7 +327,9 @@ fn handle_value(value: &Value, profile: McpToolsProfile) -> Option<Value> {
     let is_notification = id.is_none();
 
     match method {
-        Some("initialize") => id.map(|id| jsonrpc_result(id, initialize_result())),
+        Some("initialize") => {
+            id.map(|id| jsonrpc_result(id, initialize_result(value.get("params"))))
+        }
         Some("notifications/initialized" | "notifications/cancelled") => None,
         Some("ping") => id.map(|id| jsonrpc_result(id, json!({}))),
         Some("tools/list") => {
@@ -364,9 +368,18 @@ fn handle_value(value: &Value, profile: McpToolsProfile) -> Option<Value> {
     }
 }
 
-fn initialize_result() -> Value {
+fn initialize_result(params: Option<&Value>) -> Value {
+    let requested = params
+        .and_then(|params| params.get("protocolVersion"))
+        .and_then(Value::as_str)
+        .unwrap_or(MCP_PROTOCOL_VERSION);
+    let protocol_version = if SUPPORTED_PROTOCOL_VERSIONS.contains(&requested) {
+        requested
+    } else {
+        MCP_PROTOCOL_VERSION
+    };
     json!({
-        "protocolVersion": MCP_PROTOCOL_VERSION,
+        "protocolVersion": protocol_version,
         "capabilities": {
             "tools": {
                 "listChanged": false
@@ -3515,11 +3528,28 @@ mod tests {
 
     #[test]
     fn initialize_advertises_core_tools_and_version() {
-        let result = initialize_result();
+        let result = initialize_result(None);
         assert_eq!(result["protocolVersion"], MCP_PROTOCOL_VERSION);
         assert_eq!(result["serverInfo"]["name"], "pire-browser");
         assert_eq!(result["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
         assert!(result["capabilities"]["tools"].is_object());
+    }
+
+    #[test]
+    fn initialize_negotiates_supported_protocol_versions() {
+        for version in SUPPORTED_PROTOCOL_VERSIONS {
+            let result = initialize_result(Some(&json!({ "protocolVersion": version })));
+            assert_eq!(result["protocolVersion"], *version);
+        }
+
+        let unsupported = initialize_result(Some(&json!({ "protocolVersion": "2099-01-01" })));
+        assert_eq!(unsupported["protocolVersion"], MCP_PROTOCOL_VERSION);
+
+        let missing = initialize_result(Some(&json!({})));
+        assert_eq!(missing["protocolVersion"], MCP_PROTOCOL_VERSION);
+
+        let non_string = initialize_result(Some(&json!({ "protocolVersion": 20251125 })));
+        assert_eq!(non_string["protocolVersion"], MCP_PROTOCOL_VERSION);
     }
 
     #[test]
@@ -3839,6 +3869,14 @@ mod tests {
         .unwrap();
         assert_eq!(init["id"], 1);
         assert_eq!(init["result"]["serverInfo"]["name"], "pire-browser");
+
+        let legacy_init = handle_message(
+            r#"{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#,
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(legacy_init["id"], 2);
+        assert_eq!(legacy_init["result"]["protocolVersion"], "2024-11-05");
 
         let list = handle_message(
             r#"{"jsonrpc":"2.0","id":"tools","method":"tools/list"}"#,

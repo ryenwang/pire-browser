@@ -508,9 +508,11 @@ helpers. `react` is accepted for compatibility but currently has no React
 DevTools introspection tools. Use `all` only when the host can tolerate the full
 tool surface. The `pire_browser_tools_profiles` MCP tool returns this profile
 list in-band.
-MCP tool discovery is paginated for large profiles. Tool annotations mark local
-maintenance/context tools such as install, upgrade, status, sessions, profiles,
-and skills as non-open-world so hosts can show clearer approval prompts.
+The MCP server defaults to protocol `2025-11-25` and accepts older supported
+client protocol versions during initialization. Tool discovery is paginated for
+large profiles. Tool annotations mark local maintenance/context tools such as
+install, upgrade, status, sessions, profiles, and skills as non-open-world so
+hosts can show clearer approval prompts.
 
 For MCP guardrails and launch context, prefer typed common fields over
 `extraArgs`: `statePath`, `allowFileAccess`, `allowedDomains`,
