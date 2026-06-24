@@ -354,6 +354,7 @@ Inspect or adjust active-origin cookies and Web Storage:
 ```bash
 pire-browser cookies
 pire-browser cookies set preview enabled
+pire-browser cookies set --curl ./cookies.curl --domain localhost
 pire-browser storage local
 pire-browser storage local featureFlag
 pire-browser storage local set featureFlag on
@@ -362,7 +363,10 @@ pire-browser storage session clear
 
 Cookies and Web Storage values may contain session secrets. Prefer targeted key
 reads and do not paste raw values back to the user unless they explicitly asked
-for state debugging output.
+for state debugging output. Use `cookies set --curl <file-or-cookie-data>
+--domain <domain>` when staging cookies before navigation; it accepts a
+Copy-as-cURL dump, JSON cookie array, object with a `cookies` array, or bare
+`Cookie:` header and reports counts instead of echoing values.
 
 Use page-level mouse events when a custom widget needs coordinates:
 

@@ -998,8 +998,17 @@ fn tool_command_args(
         (_, "pire_browser_cookies_set") => {
             args.push("cookies".to_string());
             args.push("set".to_string());
-            args.push(required_string(object, "name")?);
-            args.push(required_string(object, "value")?);
+            if let Some(curl) = optional_string(object, "curl")? {
+                args.push("--curl".to_string());
+                args.push(curl);
+                if let Some(domain) = optional_string(object, "domain")? {
+                    args.push("--domain".to_string());
+                    args.push(domain);
+                }
+            } else {
+                args.push(required_string(object, "name")?);
+                args.push(required_string(object, "value")?);
+            }
         }
         (_, "pire_browser_cookies_clear") => {
             args.push("cookies".to_string());
@@ -2306,14 +2315,16 @@ fn core_tools() -> Vec<Value> {
         ),
         tool(
             "pire_browser_cookies_set",
-            "Set cookie",
-            "Set a cookie for the active tab URL.",
+            "Set or import cookies",
+            "Set one cookie for the active tab URL, or import cookies from Copy-as-cURL/JSON/Cookie header text. Values may contain secrets.",
             tool_schema(
                 vec![
-                    ("name", string_prop("Cookie name.")),
-                    ("value", string_prop("Cookie value.")),
+                    ("name", string_prop("Cookie name for single-cookie set.")),
+                    ("value", string_prop("Cookie value for single-cookie set.")),
+                    ("curl", string_prop("Copy-as-cURL dump, JSON cookie array, object with cookies array, or bare Cookie header text.")),
+                    ("domain", string_prop("Domain or URL to scope imported cookies when no active page URL should be used.")),
                 ],
-                &["name", "value"],
+                &[],
             ),
             false,
         ),
@@ -3543,6 +3554,25 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "cookies", "set", "preview", "enabled"]);
+
+        let args = tool_command_args(
+            "pire_browser_cookies_set",
+            &json!({ "curl": "Cookie: sid=secret", "domain": "localhost" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "cookies",
+                "set",
+                "--curl",
+                "Cookie: sid=secret",
+                "--domain",
+                "localhost"
+            ]
+        );
 
         let args = tool_command_args(
             "pire_browser_cookies_clear",

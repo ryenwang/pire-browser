@@ -680,6 +680,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         } => {
             prepare_auth_password_stdin(&mut args)?;
             prepare_batch_stdin(&mut args)?;
+            prepare_cookies_curl_imports(&mut args)?;
             if let Some(result) = local_not_available_result(&args, json, &ignored_global_flags)? {
                 println!("{result}");
                 std::process::exit(exit_code_for_error("NotAvailableError"));
@@ -2554,6 +2555,7 @@ fn handle_state_shortcut(
 ) -> Result<()> {
     prepare_auth_password_stdin(&mut args)?;
     prepare_batch_stdin(&mut args)?;
+    prepare_cookies_curl_imports(&mut args)?;
     if args.is_empty() {
         exit_with_anyhow_error(
             anyhow::anyhow!("invalid_args: --state requires a browser command"),
@@ -4585,6 +4587,90 @@ fn rewrite_auth_password_stdin(args: &mut Vec<String>, mut password: String) -> 
     };
     args.splice(index..=index, ["--password".to_string(), password]);
     Ok(())
+}
+
+fn prepare_cookies_curl_imports(args: &mut Vec<String>) -> Result<()> {
+    if args.first().map(String::as_str) == Some("batch") {
+        rewrite_batch_cookies_curl_imports(args)
+    } else {
+        rewrite_cookies_curl_import(args)
+    }
+}
+
+fn rewrite_batch_cookies_curl_imports(args: &mut [String]) -> Result<()> {
+    if args.first().map(String::as_str) != Some("batch") {
+        return Ok(());
+    }
+    for command in args.iter_mut().skip(1) {
+        if command == "--bail" {
+            continue;
+        }
+        let mut command_args = split_command_text(command)?;
+        rewrite_cookies_curl_import(&mut command_args)?;
+        *command = command_args
+            .iter()
+            .map(|arg| quote_batch_arg(arg))
+            .collect::<Vec<_>>()
+            .join(" ");
+    }
+    Ok(())
+}
+
+fn rewrite_cookies_curl_import(args: &mut Vec<String>) -> Result<()> {
+    if !cookies_set_uses_curl(args) {
+        return Ok(());
+    }
+    let Some(index) = args.iter().position(|arg| arg == "--curl") else {
+        return Ok(());
+    };
+    let Some(value) = args.get(index + 1).cloned() else {
+        bail!("invalid_args: cookies set --curl requires <file-or-cookie-data>");
+    };
+    let Some(payload) = cookies_curl_payload_from_cli_arg(&value)? else {
+        return Ok(());
+    };
+    args.splice(index..=index + 1, ["--curl-data".to_string(), payload]);
+    Ok(())
+}
+
+fn cookies_set_uses_curl(args: &[String]) -> bool {
+    matches!(
+        (
+            args.first().map(String::as_str),
+            args.get(1).map(String::as_str)
+        ),
+        (Some("cookies"), Some("set"))
+    ) && args.iter().any(|arg| arg == "--curl")
+}
+
+fn cookies_curl_payload_from_cli_arg(value: &str) -> Result<Option<String>> {
+    if value == "-" {
+        let mut input = String::new();
+        io::stdin()
+            .read_to_string(&mut input)
+            .context("invalid_args: failed to read cookies set --curl payload from stdin")?;
+        return Ok(Some(input));
+    }
+    if looks_like_inline_cookie_import_payload(value) {
+        return Ok(None);
+    }
+    match fs::read_to_string(value) {
+        Ok(content) => Ok(Some(content)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error)
+            .with_context(|| format!("invalid_args: failed to read cookies set --curl {}", value)),
+    }
+}
+
+fn looks_like_inline_cookie_import_payload(value: &str) -> bool {
+    let trimmed = value.trim_start();
+    let lower = trimmed.to_ascii_lowercase();
+    trimmed.starts_with('[')
+        || trimmed.starts_with('{')
+        || lower.starts_with("curl ")
+        || lower.starts_with("cookie:")
+        || (trimmed.contains('=')
+            && (trimmed.contains(';') || (!trimmed.contains('\\') && !trimmed.contains('/'))))
 }
 
 fn prepare_batch_stdin(args: &mut Vec<String>) -> Result<()> {
@@ -8350,6 +8436,83 @@ mod tests {
             "--password-stdin",
         ]);
         assert!(rewrite_auth_password_stdin(&mut duplicate, "two".to_string()).is_err());
+    }
+
+    #[test]
+    fn rewrites_cookies_curl_file_for_dispatch() {
+        let path =
+            std::env::temp_dir().join(format!("pire-browser-cookies-curl-{}.txt", Uuid::new_v4()));
+        let payload = "curl 'https://example.com' -H 'Cookie: sid=secret; theme=dark'";
+        fs::write(&path, payload).unwrap();
+        let path_text = path.display().to_string();
+
+        let mut args = vec![
+            "cookies".to_string(),
+            "set".to_string(),
+            "--curl".to_string(),
+            path_text,
+            "--domain".to_string(),
+            "localhost".to_string(),
+        ];
+        rewrite_cookies_curl_import(&mut args).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "cookies".to_string(),
+                "set".to_string(),
+                "--curl-data".to_string(),
+                payload.to_string(),
+                "--domain".to_string(),
+                "localhost".to_string(),
+            ]
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn rewrites_batch_cookies_curl_file_for_dispatch() {
+        let path = std::env::temp_dir().join(format!(
+            "pire-browser-batch-cookies-curl-{}.txt",
+            Uuid::new_v4()
+        ));
+        let payload = "Cookie: sid=secret; theme=dark";
+        fs::write(&path, payload).unwrap();
+        let command = format!(
+            "cookies set --curl {} --domain localhost",
+            quote_batch_arg(&path.display().to_string())
+        );
+        let mut args = vec![
+            "batch".to_string(),
+            "--bail".to_string(),
+            command,
+            "open http://localhost:3000".to_string(),
+        ];
+
+        prepare_cookies_curl_imports(&mut args).unwrap();
+        let rewritten = split_command_text(&args[2]).unwrap();
+        assert_eq!(
+            rewritten,
+            vec![
+                "cookies".to_string(),
+                "set".to_string(),
+                "--curl-data".to_string(),
+                payload.to_string(),
+                "--domain".to_string(),
+                "localhost".to_string(),
+            ]
+        );
+        assert_eq!(args[3], "open http://localhost:3000");
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn leaves_inline_cookies_curl_payload_for_extension_parse() {
+        let mut args = s(&["cookies", "set", "--curl", "sid=abc; theme=dark"]);
+        rewrite_cookies_curl_import(&mut args).unwrap();
+        assert_eq!(
+            args,
+            s(&["cookies", "set", "--curl", "sid=abc; theme=dark"])
+        );
     }
 
     #[test]

@@ -160,12 +160,14 @@ PIRE_BROWSER_EXTENSION_MODE=xpi pire-browser launch`),
   h2("Cookies & storage", "cookies-storage"),
   code(`pire-browser cookies
 pire-browser cookies set <name> <value>
+pire-browser cookies set --curl ./cookies.curl --domain localhost
 pire-browser cookies clear
 pire-browser storage local
 pire-browser storage local <key>
 pire-browser storage local set <key> <value>
 pire-browser storage local clear
 pire-browser storage session`),
+  p("<code>cookies set --curl</code> imports cookies from a Copy-as-cURL dump, JSON cookie array, object with a <code>cookies</code> array, or bare <code>Cookie:</code> header. Use <code>--domain</code> when staging cookies before navigating from an empty tab. Import commands report counts instead of echoing cookie values."),
 
   h2("Network", "network"),
   statusNote("networkControls"),

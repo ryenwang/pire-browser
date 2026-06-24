@@ -571,7 +571,7 @@
     {
       "root": "cookies",
       "subcommand": "set",
-      "signature": "cookies set <name> <value>",
+      "signature": "cookies set <name> <value>|--curl <payload>",
       "category": "state",
       "implementationStatus": "implemented",
       "enforcementLocus": "extension",

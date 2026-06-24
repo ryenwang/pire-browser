@@ -229,9 +229,30 @@ fn is_sensitive_positional(args: &[String], index: usize) -> bool {
     }
     let relative_index = index - start;
     matches_command(args, start, &["set", "credentials"]) && relative_index >= 3
-        || matches_command(args, start, &["cookies", "set"]) && relative_index >= 3
+        || is_sensitive_cookie_set_positional(args, start, relative_index)
         || matches_command(args, start, &["storage", "local", "set"]) && relative_index >= 4
         || matches_command(args, start, &["storage", "session", "set"]) && relative_index >= 4
+}
+
+fn is_sensitive_cookie_set_positional(
+    args: &[String],
+    start: usize,
+    relative_index: usize,
+) -> bool {
+    if !matches_command(args, start, &["cookies", "set"]) {
+        return false;
+    }
+    if relative_index == 3 {
+        return true;
+    }
+    let absolute_index = start + relative_index;
+    if absolute_index == 0 {
+        return false;
+    }
+    matches!(
+        args.get(absolute_index - 1).map(String::as_str),
+        Some("--curl" | "--curl-data")
+    )
 }
 
 fn matches_command(args: &[String], start: usize, prefix: &[&str]) -> bool {
@@ -283,6 +304,26 @@ mod tests {
 
         let redacted = redacted_args(&s(&["cookies", "set", "session", "abc"]));
         assert_eq!(redacted, s(&["cookies", "set", "session", "[REDACTED]"]));
+
+        let redacted = redacted_args(&s(&[
+            "cookies",
+            "set",
+            "--curl-data",
+            "Cookie: sid=secret",
+            "--domain",
+            "localhost",
+        ]));
+        assert_eq!(
+            redacted,
+            s(&[
+                "cookies",
+                "set",
+                "--curl-data",
+                "[REDACTED]",
+                "--domain",
+                "localhost"
+            ])
+        );
     }
 
     #[test]

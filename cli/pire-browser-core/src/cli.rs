@@ -2667,11 +2667,15 @@ const COOKIES_HELP: &str = r##"
 Usage:
   pire-browser cookies [--json]
   pire-browser cookies set <name> <value> [--json]
+  pire-browser cookies set --curl <file-or-cookie-data> [--domain <domain>] [--json]
   pire-browser cookies clear [--json]
 
 Lists, sets, or clears cookies visible to the active Firefox tab URL. Cookie
 values may contain secrets; only print or share them when the user explicitly
-needs that state for debugging.
+needs that state for debugging. `cookies set --curl` imports cookies from a
+Copy-as-cURL dump, JSON cookie array, object with a `cookies` array, or bare
+Cookie header. Use `--domain <domain>` when staging cookies before navigation
+from an about:blank tab.
 "##;
 
 const STORAGE_HELP: &str = r##"
@@ -5123,6 +5127,9 @@ mod tests {
         assert!(help_text(Some("cookies"))
             .unwrap()
             .contains("cookies set <name> <value>"));
+        assert!(help_text(Some("cookies"))
+            .unwrap()
+            .contains("cookies set --curl <file-or-cookie-data>"));
         assert!(help_text(Some("storage"))
             .unwrap()
             .contains("storage session set <key> <value>"));

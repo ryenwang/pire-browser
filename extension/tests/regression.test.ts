@@ -26,6 +26,9 @@ type ConfirmationPolicyErrorForCommand = (
   policy: { enabled: boolean; categories: string[]; approvedConfirmationId?: string } | null
 ) => { code: string; data?: { phase?: string; category?: string }; message: string } | null;
 
+type CookieImportParser = (payload: string) => { cookies: { name: string; value: string; secure?: boolean }[] } | { error: { message: string } };
+type CookieImportTargetUrl = (activeUrl?: string, domain?: string) => { url: string; host: string } | { error: { message: string } };
+
 function extensionFile(path: string) {
   return readFileSync(resolve(import.meta.dirname, "..", path), "utf8");
 }
@@ -118,6 +121,32 @@ function loadConfirmationPolicyErrorForCommand(): ConfirmationPolicyErrorForComm
   runInNewContext(js, sandbox);
   if (!sandbox.__confirmationPolicyErrorForCommand) throw new Error("confirmationPolicyErrorForCommand did not load");
   return sandbox.__confirmationPolicyErrorForCommand;
+}
+
+function loadCookieImportHelpers(): { parseCookieImportPayload: CookieImportParser; cookieImportTargetUrl: CookieImportTargetUrl } {
+  const body = backgroundSource();
+  const start = body.indexOf("type CookieImport = {");
+  const end = body.indexOf("\nasync function storageCommand(", start);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  const source = body.slice(start, end);
+  const js = transpileModule(
+    `${source}\nthis.__parseCookieImportPayload = parseCookieImportPayload;\nthis.__cookieImportTargetUrl = cookieImportTargetUrl;`,
+    {
+      compilerOptions: { module: ModuleKind.ES2020, target: ScriptTarget.ES2020 },
+    }
+  ).outputText;
+  const sandbox: {
+    __parseCookieImportPayload?: CookieImportParser;
+    __cookieImportTargetUrl?: CookieImportTargetUrl;
+    URL: typeof URL;
+  } = { URL };
+  runInNewContext(js, sandbox);
+  if (!sandbox.__parseCookieImportPayload || !sandbox.__cookieImportTargetUrl) throw new Error("cookie import helpers did not load");
+  return {
+    parseCookieImportPayload: sandbox.__parseCookieImportPayload,
+    cookieImportTargetUrl: sandbox.__cookieImportTargetUrl,
+  };
 }
 
 describe("compiled MV2 scripts", () => {
@@ -251,6 +280,31 @@ describe("pire-browser command foundations", () => {
     ]) {
       expect(body).toContain(`case "${command}":`);
     }
+  });
+
+  it("parses cookies set --curl payload formats", () => {
+    const { parseCookieImportPayload, cookieImportTargetUrl } = loadCookieImportHelpers();
+
+    const curl = parseCookieImportPayload("curl 'https://example.com' -H 'Cookie: sid=abc; theme=dark'");
+    expect("error" in curl ? curl.error.message : curl.cookies.map((cookie) => cookie.name)).toEqual(["sid", "theme"]);
+
+    const bare = parseCookieImportPayload("Cookie: a=1; b=two=2");
+    expect("error" in bare ? bare.error.message : bare.cookies).toMatchObject([
+      { name: "a", value: "1" },
+      { name: "b", value: "two=2" },
+    ]);
+
+    const cookieFlag = parseCookieImportPayload("curl https://example.com --cookie 'flag=one; mode=two'");
+    expect("error" in cookieFlag ? cookieFlag.error.message : cookieFlag.cookies.map((cookie) => cookie.name)).toEqual(["flag", "mode"]);
+
+    const json = parseCookieImportPayload(JSON.stringify([{ name: "jsonSid", value: "secret", secure: true }]));
+    expect("error" in json ? json.error.message : json.cookies[0]).toMatchObject({ name: "jsonSid", value: "secret", secure: true });
+
+    const bad = parseCookieImportPayload("curl https://example.com -H 'Accept: application/json'");
+    expect("error" in bad ? bad.error.message : "").toContain("could not find cookies");
+
+    expect(cookieImportTargetUrl("about:blank", "localhost")).toMatchObject({ url: "http://localhost/", host: "localhost" });
+    expect(cookieImportTargetUrl("https://example.com/path", undefined)).toMatchObject({ url: "https://example.com/path", host: "example.com" });
   });
 
   it("routes keydown and keyup as focused edge events instead of press-compatible warnings", () => {

@@ -46,7 +46,7 @@ pire-browser mcp --tools all`),
       ["pire_browser_diff_snapshot / pire_browser_diff_screenshot / pire_browser_diff_url", "Compare snapshot text, screenshot pixels, or two URL states for QA evidence."],
       ["pire_browser_console / errors / dialog_* / highlight / vitals", "Inspect page logs, errors, JavaScript dialogs, visual targets, and best-effort performance signals."],
       ["pire_browser_set_viewport / pire_browser_set_device / pire_browser_set_geo / pire_browser_set_headers / pire_browser_set_credentials / pire_browser_set_media / pire_browser_set_offline", "Apply Firefox-backed settings and best-effort emulation controls."],
-      ["pire_browser_cookies_* / pire_browser_storage_*", "Read or mutate active URL cookies and active-origin Web Storage."],
+      ["pire_browser_cookies_* / pire_browser_storage_*", "Read, set, clear, or import active URL cookies and active-origin Web Storage."],
       ["pire_browser_network_requests / request / har_* / route / unroute", "Inspect active-tab network metadata, record/export metadata HAR, and register best-effort routes."],
       ["pire_browser_auth_save / pire_browser_auth_login / pire_browser_auth_list / pire_browser_auth_show / pire_browser_auth_delete", "Save and reuse selector-driven auth profiles without printing passwords in list/show output."],
       ["pire_browser_state_*", "Save, load, list, show, inspect, rename, clear, or clean plaintext active-origin state files."],
@@ -72,7 +72,7 @@ pire-browser mcp --tools all`),
 8. Use diff tools when comparing before/after UI, screenshots, or two URLs for QA evidence.
 9. Use console/errors/dialog/highlight/vitals/network tools when a page is stuck, blocked, or needs evidence.
 10. Use auth tools only with user-approved credentials, then verify login with a fresh snapshot, URL, or page state.
-11. Use cookies/storage/state tools only when needed for user-approved state debugging; values may contain secrets.
+11. Use cookies/storage/state tools only when needed for user-approved state debugging or auth handoff; cookie import payloads and values may contain secrets.
 12. Call pire_browser_wait when page state needs time.
 13. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
   p("MCP tool calls return text content for compatibility and structured command output when the underlying CLI emits JSON. If a tool is missing from the active profile, restart the MCP server with <code>--tools all</code> or a comma-separated profile list such as <code>--tools core,network</code>."),

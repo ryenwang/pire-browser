@@ -3730,14 +3730,272 @@
             return { text: `Cleared ${cookies.length} cookie(s)` };
         }
         if (args[0] === "set") {
-            const [, name, value] = args;
-            if (!name)
-                return { error: { code: "InvalidArgumentError", message: "cookies set requires <name> <value>" } };
-            await browser.cookies.set({ url: tab.url, name, value: value ?? "" });
-            return { text: `Set cookie ${name}` };
+            const parsed = parseCookiesSetArgs(args.slice(1));
+            if ("error" in parsed)
+                return parsed;
+            if (parsed.kind === "import")
+                return importCookies(tab.url, parsed);
+            await browser.cookies.set({ url: tab.url, name: parsed.name, value: parsed.value });
+            return { text: `Set cookie ${parsed.name}` };
         }
         const cookies = await browser.cookies.getAll({ url: tab.url });
         return { text: cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("\n"), cookies };
+    }
+    function parseCookiesSetArgs(args) {
+        const curlIndex = args.findIndex((arg) => arg === "--curl" || arg === "--curl-data");
+        if (curlIndex >= 0) {
+            const payload = args[curlIndex + 1];
+            if (payload === undefined) {
+                return { error: { code: "InvalidArgumentError", message: "cookies set --curl requires <file-or-cookie-data>" } };
+            }
+            let domain;
+            for (let index = 0; index < args.length; index += 1) {
+                if (index === curlIndex || index === curlIndex + 1)
+                    continue;
+                const arg = args[index];
+                if (arg === "--domain") {
+                    domain = args[index + 1];
+                    if (!domain)
+                        return { error: { code: "InvalidArgumentError", message: "cookies set --curl --domain requires <domain>" } };
+                    index += 1;
+                    continue;
+                }
+                return { error: { code: "InvalidArgumentError", message: `cookies set --curl does not accept ${arg}` } };
+            }
+            return { kind: "import", payload, domain };
+        }
+        const [name, value] = args;
+        if (!name)
+            return { error: { code: "InvalidArgumentError", message: "cookies set requires <name> <value>" } };
+        return { kind: "single", name, value: value ?? "" };
+    }
+    async function importCookies(activeUrl, parsed) {
+        const target = cookieImportTargetUrl(activeUrl, parsed.domain);
+        if ("error" in target)
+            return target;
+        const imported = parseCookieImportPayload(parsed.payload);
+        if ("error" in imported)
+            return imported;
+        let cookiesSet = 0;
+        let cookiesSkipped = 0;
+        for (const cookie of imported.cookies) {
+            if (await restoreCookie(target.url, cookie))
+                cookiesSet += 1;
+            else
+                cookiesSkipped += 1;
+        }
+        const warning = cookiesSkipped > 0
+            ? [bestEffortWarning("cookies set --curl", `Skipped ${cookiesSkipped} cookie(s) whose metadata Firefox would not accept for ${target.host}.`)]
+            : [];
+        return {
+            text: `Imported ${cookiesSet} cookie(s)${cookiesSkipped ? `; skipped ${cookiesSkipped}` : ""}`,
+            cookiesImported: cookiesSet,
+            cookiesSkipped,
+            targetUrl: target.url,
+            warnings: warning,
+        };
+    }
+    function cookieImportTargetUrl(activeUrl, domain) {
+        if (domain) {
+            const normalized = normalizeCookieImportDomain(domain);
+            if ("error" in normalized)
+                return normalized;
+            return normalized;
+        }
+        if (activeUrl) {
+            try {
+                const url = new URL(activeUrl);
+                if (url.protocol === "http:" || url.protocol === "https:")
+                    return { url: url.toString(), host: url.host };
+            }
+            catch {
+                // Fall through to the explicit error below.
+            }
+        }
+        return {
+            error: {
+                code: "InvalidArgumentError",
+                message: "cookies set --curl requires an active http(s) tab or --domain <domain>",
+            },
+        };
+    }
+    function normalizeCookieImportDomain(domain) {
+        const trimmed = domain.trim();
+        if (!trimmed)
+            return { error: { code: "InvalidArgumentError", message: "cookies set --curl --domain requires a non-empty domain" } };
+        try {
+            const hostInput = trimmed === "::1" ? "[::1]" : trimmed.replace(/^\./, "");
+            const url = trimmed.includes("://")
+                ? new URL(trimmed)
+                : new URL(`${isLocalCookieDomain(trimmed) ? "http" : "https"}://${hostInput}`);
+            if (url.protocol !== "http:" && url.protocol !== "https:") {
+                return { error: { code: "InvalidArgumentError", message: "cookies set --curl --domain must be http(s)" } };
+            }
+            if (!url.pathname || url.pathname === "")
+                url.pathname = "/";
+            return { url: url.toString(), host: url.host };
+        }
+        catch (error) {
+            return { error: { code: "InvalidArgumentError", message: `Invalid cookies set --curl --domain value: ${error instanceof Error ? error.message : String(error)}` } };
+        }
+    }
+    function isLocalCookieDomain(domain) {
+        const raw = domain.replace(/^\./, "");
+        const host = raw.startsWith("[") ? raw.slice(1, raw.indexOf("]")) : raw === "::1" ? raw : raw.split(/[/:]/, 1)[0].toLowerCase();
+        return host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".localhost");
+    }
+    function parseCookieImportPayload(payload) {
+        const trimmed = payload.trim();
+        if (!trimmed)
+            return { error: { code: "InvalidArgumentError", message: "cookies set --curl payload is empty" } };
+        const jsonCookies = parseCookieImportJson(trimmed);
+        if (jsonCookies)
+            return jsonCookies;
+        const header = extractCookieHeader(trimmed);
+        if (!header) {
+            return {
+                error: {
+                    code: "InvalidArgumentError",
+                    message: "cookies set --curl could not find cookies in Copy-as-cURL, JSON, or Cookie header input",
+                },
+            };
+        }
+        return parseCookieHeader(header);
+    }
+    function parseCookieImportJson(input) {
+        if (!input.startsWith("[") && !input.startsWith("{"))
+            return null;
+        try {
+            const value = JSON.parse(input);
+            const items = Array.isArray(value) ? value : Array.isArray(value?.cookies) ? value.cookies : null;
+            if (!items)
+                return { error: { code: "InvalidArgumentError", message: "cookies set --curl JSON must be an array or an object with a cookies array" } };
+            const cookies = items.map(normalizeImportedCookie).filter((cookie) => Boolean(cookie));
+            if (cookies.length === 0)
+                return { error: { code: "InvalidArgumentError", message: "cookies set --curl JSON did not contain valid cookies" } };
+            return { cookies };
+        }
+        catch (error) {
+            return { error: { code: "InvalidArgumentError", message: `cookies set --curl JSON parse failed: ${error instanceof Error ? error.message : String(error)}` } };
+        }
+    }
+    function normalizeImportedCookie(value) {
+        if (!value || typeof value.name !== "string")
+            return null;
+        const cookie = {
+            name: value.name,
+            value: typeof value.value === "string" ? value.value : String(value.value ?? ""),
+        };
+        if (typeof value.path === "string")
+            cookie.path = value.path;
+        if (typeof value.domain === "string")
+            cookie.domain = value.domain;
+        if (typeof value.secure === "boolean")
+            cookie.secure = value.secure;
+        if (typeof value.httpOnly === "boolean")
+            cookie.httpOnly = value.httpOnly;
+        if (typeof value.sameSite === "string")
+            cookie.sameSite = value.sameSite;
+        if (typeof value.expirationDate === "number")
+            cookie.expirationDate = value.expirationDate;
+        if (typeof value.storeId === "string")
+            cookie.storeId = value.storeId;
+        if (typeof value.hostOnly === "boolean")
+            cookie.hostOnly = value.hostOnly;
+        return cookie;
+    }
+    function extractCookieHeader(input) {
+        const direct = cookieHeaderValue(input);
+        if (direct)
+            return direct;
+        const tokens = splitCookieShellTokens(input);
+        for (let index = 0; index < tokens.length; index += 1) {
+            const token = tokens[index];
+            if ((token === "-H" || token === "--header") && tokens[index + 1]) {
+                const header = cookieHeaderValue(tokens[index + 1]);
+                if (header)
+                    return header;
+            }
+            if ((token === "-b" || token === "--cookie") && tokens[index + 1]) {
+                return tokens[index + 1];
+            }
+            const inlineHeader = token.match(/^(?:-H|--header)=(.+)$/);
+            if (inlineHeader) {
+                const header = cookieHeaderValue(inlineHeader[1]);
+                if (header)
+                    return header;
+            }
+            const inlineCookie = token.match(/^(?:-b|--cookie)=(.+)$/);
+            if (inlineCookie)
+                return inlineCookie[1];
+        }
+        return null;
+    }
+    function cookieHeaderValue(value) {
+        const trimmed = value.trim();
+        const match = /^cookie\s*:\s*(.+)$/i.exec(trimmed);
+        if (match)
+            return match[1].trim();
+        if (!/^curl\s/i.test(trimmed) && trimmed.includes("=") && !trimmed.includes("\n"))
+            return trimmed;
+        return null;
+    }
+    function parseCookieHeader(header) {
+        const cookies = header
+            .split(";")
+            .map((part) => part.trim())
+            .filter(Boolean)
+            .map((part) => {
+            const equals = part.indexOf("=");
+            if (equals <= 0)
+                return null;
+            return { name: part.slice(0, equals).trim(), value: part.slice(equals + 1).trim() };
+        })
+            .filter((cookie) => Boolean(cookie?.name));
+        if (cookies.length === 0)
+            return { error: { code: "InvalidArgumentError", message: "cookies set --curl Cookie header did not contain name=value pairs" } };
+        return { cookies };
+    }
+    function splitCookieShellTokens(input) {
+        const tokens = [];
+        let current = "";
+        let quote = null;
+        let escaped = false;
+        for (const char of input) {
+            if (escaped) {
+                current += char;
+                escaped = false;
+                continue;
+            }
+            if (char === "\\") {
+                escaped = true;
+                continue;
+            }
+            if (quote) {
+                if (char === quote)
+                    quote = null;
+                else
+                    current += char;
+                continue;
+            }
+            if (char === "'" || char === "\"") {
+                quote = char;
+                continue;
+            }
+            if (/\s/.test(char)) {
+                if (current) {
+                    tokens.push(current);
+                    current = "";
+                }
+                continue;
+            }
+            current += char;
+        }
+        if (escaped)
+            current += "\\";
+        if (current)
+            tokens.push(current);
+        return tokens;
     }
     async function storageCommand(args) {
         const area = args[0] === "session" ? "sessionStorage" : "localStorage";

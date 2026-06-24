@@ -323,6 +323,7 @@ pire-browser --executable-path /path/to/firefox open https://example.com
 ```bash
 pire-browser cookies
 pire-browser cookies set <name> <val>
+pire-browser cookies set --curl ./cookies.curl --domain localhost
 pire-browser cookies clear
 
 pire-browser storage local
@@ -332,6 +333,11 @@ pire-browser storage local clear
 
 pire-browser storage session
 ```
+
+`cookies set --curl` imports cookies from a Copy-as-cURL dump, JSON cookie
+array, object with a `cookies` array, or bare `Cookie:` header. Use `--domain`
+when staging cookies before navigating from an empty tab. Cookie values may
+contain session secrets; import commands report counts instead of echoing values.
 
 ### Network
 
