@@ -19,6 +19,9 @@ pire-browser snapshot -i
 ```
 
 Always inspect before page actions. Use refs only from the latest snapshot or find output. Quote refs in PowerShell, for example `click '@e4'`.
+If a click reports that the target is covered by another element, dismiss or
+interact with the reported covering element, then run `snapshot -i` before
+retrying the original ref.
 
 ## Core Loop
 

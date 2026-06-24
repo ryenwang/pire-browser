@@ -329,6 +329,9 @@
             return { error: { code: "not_enabled", message: `${describeElement(element)} is disabled` }, dialogs: drainDialogs() };
         }
         element.scrollIntoView({ block: "center", inline: "center" });
+        const hitTest = clickHitTest(element);
+        if ("error" in hitTest)
+            return { ...hitTest, dialogs: drainDialogs() };
         element.focus({ preventScroll: true });
         element.click();
         return {
@@ -355,6 +358,9 @@
             };
         }
         element.scrollIntoView({ block: "center", inline: "center" });
+        const hitTest = clickHitTest(element);
+        if ("error" in hitTest)
+            return { ...hitTest, dialogs: drainDialogs() };
         element.focus({ preventScroll: true });
         for (const type of ["mousedown", "mouseup", "click"]) {
             element.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ctrlKey: true }));
@@ -375,6 +381,9 @@
             return { error: { code: "not_enabled", message: `${describeElement(element)} is disabled` }, dialogs: drainDialogs() };
         }
         element.scrollIntoView({ block: "center", inline: "center" });
+        const hitTest = clickHitTest(element);
+        if ("error" in hitTest)
+            return { ...hitTest, dialogs: drainDialogs() };
         element.focus({ preventScroll: true });
         for (const detail of [1, 2]) {
             element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, detail }));
@@ -386,6 +395,77 @@
             text: `Double-clicked ${describeElement(element)}`,
             dialogs: drainDialogs(),
         };
+    }
+    function clickHitTest(element) {
+        const point = visibleClickPoint(element);
+        if ("error" in point)
+            return point;
+        const hit = document.elementFromPoint(point.x, point.y);
+        if (!hit) {
+            return {
+                error: {
+                    code: "click_blocked",
+                    message: `${describeElement(element)} is not hit-testable at click point (${point.x}, ${point.y})`,
+                    data: { target: describeElement(element), point },
+                },
+            };
+        }
+        if (isElementOrShadowDescendant(element, hit))
+            return { point, hit };
+        return {
+            error: {
+                code: "click_blocked",
+                message: `${describeElement(element)} is covered by ${describeDomElement(hit)} at click point (${point.x}, ${point.y}). Dismiss or interact with the covering element, then run snapshot -i before retrying.`,
+                data: {
+                    target: describeElement(element),
+                    coveredBy: describeDomElement(hit),
+                    point,
+                },
+            },
+        };
+    }
+    function visibleClickPoint(element) {
+        const rect = element.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
+            return { error: { code: "not_visible", message: `${describeElement(element)} has no visible click area` } };
+        }
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        const left = Math.max(0, rect.left);
+        const top = Math.max(0, rect.top);
+        const right = Math.min(viewportWidth, rect.right);
+        const bottom = Math.min(viewportHeight, rect.bottom);
+        if (right <= left || bottom <= top) {
+            return {
+                error: {
+                    code: "not_visible",
+                    message: `${describeElement(element)} is outside the visible viewport after scrolling`,
+                },
+            };
+        }
+        return {
+            x: Math.max(0, Math.min(viewportWidth - 1, Math.round((left + right) / 2))),
+            y: Math.max(0, Math.min(viewportHeight - 1, Math.round((top + bottom) / 2))),
+        };
+    }
+    function isElementOrShadowDescendant(target, hit) {
+        if (target === hit || target.contains(hit))
+            return true;
+        const root = hit.getRootNode();
+        return root instanceof ShadowRoot && (target === root.host || target.contains(root.host));
+    }
+    function describeDomElement(element) {
+        const tag = element.tagName.toLowerCase();
+        const id = attr(element, "id");
+        const classNames = attr(element, "class")
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((name) => `.${name.replace(/[^a-zA-Z0-9_-]/g, "_")}`)
+            .join("");
+        const role = attr(element, "role");
+        const name = accessibleName(element) || clean(element.textContent ?? "").slice(0, 60);
+        return `<${tag}${id ? `#${id.replace(/[^a-zA-Z0-9_-]/g, "_")}` : ""}${classNames}>${role ? ` role=${role}` : ""}${name ? ` "${name}"` : ""}`;
     }
     function highlightLocator(locator) {
         const resolved = resolveOne(locator);

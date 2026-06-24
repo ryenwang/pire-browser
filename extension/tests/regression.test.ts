@@ -1103,6 +1103,16 @@ describe("command shape parity", () => {
     expect(contentBody).toContain("document.elementFromPoint");
   });
 
+  it("fails clicks early when another element covers the click point", () => {
+    const contentBody = content();
+    expect(contentBody).toContain("function clickHitTest");
+    expect(contentBody).toContain("document.elementFromPoint(point.x, point.y)");
+    expect(contentBody).toContain('code: "click_blocked"');
+    expect(contentBody).toContain("is covered by");
+    expect(contentBody).toContain("Dismiss or interact with the covering element");
+    expect(contentBody).toContain("function describeDomElement");
+  });
+
   it("routes drag commands through same-frame page drag/drop events", () => {
     const body = background();
     expect(body).toContain('case "drag":');

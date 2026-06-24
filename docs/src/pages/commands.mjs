@@ -24,7 +24,7 @@ pire-browser pdf page.pdf            # Capture image-backed PDF evidence
 pire-browser snapshot -i             # Accessibility tree with refs
 pire-browser eval <js>               # Run JavaScript with policy checks
 pire-browser close                   # Close targeted session`),
-  p("Refs must usually be quoted in PowerShell, for example <code>pire-browser click '@e2'</code>. Re-run <code>snapshot -i</code> after navigation, DOM changes, dialogs, downloads, or failed actions."),
+  p("Refs must usually be quoted in PowerShell, for example <code>pire-browser click '@e2'</code>. Re-run <code>snapshot -i</code> after navigation, DOM changes, dialogs, downloads, or failed actions. If a click reports that the target is covered by another element, handle the covering element first, then re-snapshot before retrying."),
   code(`pire-browser screenshot page.png
 pire-browser screenshot --screenshot-dir ./shots page.png
 pire-browser screenshot --screenshot-dir ./shots

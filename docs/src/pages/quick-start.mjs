@@ -17,6 +17,7 @@ pire-browser click '@e2'
 
 # 4. Re-snapshot after page changes
 pire-browser snapshot -i`),
+  p("If a click reports that the target is covered by another element, dismiss or interact with the reported covering element, then run <code>snapshot -i</code> before retrying the original ref."),
   h2("Common commands", "common-commands"),
   code(`pire-browser open https://example.com
 pire-browser read https://example.com/docs   # Read docs/articles without launching Firefox

@@ -20,6 +20,7 @@ Use this after a page action or when deciding whether a browser task is complete
 - Treat action output as provisional when it says the page may still be changing.
 - If navigation or reload occurs, discard old refs.
 - If an action returns a warning, include it in your reasoning.
+- If a click fails because the target is covered, handle the reported covering element and re-run `snapshot -i` before retrying the original ref.
 - If an action fails, inspect before retrying.
 
 ## Outputs

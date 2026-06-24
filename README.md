@@ -117,6 +117,10 @@ pire-browser close
 
 PowerShell treats `@` specially, so quote refs such as `'@e1'`.
 
+Clicks fail early when another element covers the target's click point, such as
+a consent banner or modal. Dismiss or interact with the reported covering
+element, then run `snapshot -i` before retrying the original ref.
+
 ### Traditional Selectors (also supported)
 
 ```bash
