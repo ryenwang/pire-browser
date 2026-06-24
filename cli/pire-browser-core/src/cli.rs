@@ -2658,7 +2658,8 @@ matching requests, or mock with a simple body redirect. Use `network unroute`
 before returning to normal behavior. `network har start` and `network har stop`
 match agent-browser's recording loop; `network har [path]` exports currently
 captured records directly. HAR output is metadata-only from WebExtension request
-records; request/response bodies, cookies, and raw headers are not captured.
+records; request/response headers are redacted, and bodies/cookies are not
+captured.
 Full CDP-style response control is not supported on the Firefox WebExtension
 backend.
 "##;
@@ -5014,7 +5015,7 @@ mod tests {
             .contains("network har stop [output.har]"));
         assert!(help_text(Some("network"))
             .unwrap()
-            .contains("HAR output is metadata-only"));
+            .contains("request/response headers are redacted"));
         assert!(help_text(Some("network"))
             .unwrap()
             .contains("network route <pattern> --body"));

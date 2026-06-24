@@ -28,6 +28,7 @@ type ConfirmationPolicyErrorForCommand = (
 
 type CookieImportParser = (payload: string) => { cookies: { name: string; value: string; secure?: boolean }[] } | { error: { message: string } };
 type CookieImportTargetUrl = (activeUrl?: string, domain?: string) => { url: string; host: string } | { error: { message: string } };
+type HeaderSanitizer = (headers: { name: string; value?: string }[]) => { name: string; value: string; redacted?: boolean }[];
 
 function extensionFile(path: string) {
   return readFileSync(resolve(import.meta.dirname, "..", path), "utf8");
@@ -147,6 +148,24 @@ function loadCookieImportHelpers(): { parseCookieImportPayload: CookieImportPars
     parseCookieImportPayload: sandbox.__parseCookieImportPayload,
     cookieImportTargetUrl: sandbox.__cookieImportTargetUrl,
   };
+}
+
+function loadNetworkHeaderSanitizer(): HeaderSanitizer {
+  const body = backgroundSource();
+  const start = body.indexOf("function sanitizeNetworkHeaders(");
+  const end = body.indexOf("\nfunction rememberNetworkRecord(", start);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  const source = body.slice(start, end);
+  const js = transpileModule(`${source}\nthis.__sanitizeNetworkHeaders = sanitizeNetworkHeaders;`, {
+    compilerOptions: { module: ModuleKind.ES2020, target: ScriptTarget.ES2020 },
+  }).outputText;
+  const sandbox: { __sanitizeNetworkHeaders?: HeaderSanitizer; truncate: (value: string, max: number) => string } = {
+    truncate: (value, max) => (value.length > max ? `${value.slice(0, max - 3)}...` : value),
+  };
+  runInNewContext(js, sandbox);
+  if (!sandbox.__sanitizeNetworkHeaders) throw new Error("network header sanitizer did not load");
+  return sandbox.__sanitizeNetworkHeaders;
 }
 
 describe("compiled MV2 scripts", () => {
@@ -305,6 +324,39 @@ describe("pire-browser command foundations", () => {
 
     expect(cookieImportTargetUrl("about:blank", "localhost")).toMatchObject({ url: "http://localhost/", host: "localhost" });
     expect(cookieImportTargetUrl("https://example.com/path", undefined)).toMatchObject({ url: "https://example.com/path", host: "example.com" });
+  });
+
+  it("captures network request and response headers with secret redaction", () => {
+    const body = background();
+    const sanitize = loadNetworkHeaderSanitizer();
+
+    expect(body).toContain("browser.webRequest.onBeforeSendHeaders");
+    expect(body).toContain("browser.webRequest.onHeadersReceived");
+    expect(body).toContain("trackNetworkRequestHeaders");
+    expect(body).toContain("trackNetworkResponseHeaders");
+    expect(body).toContain("requestHeaders: record.requestHeaders ?? []");
+    expect(body).toContain("responseHeaders: record.responseHeaders ?? []");
+    expect(body).toContain("headers: harHeaders(record.requestHeaders)");
+    expect(body).toContain("headers: harHeaders(record.responseHeaders)");
+    expect(body).toContain('rememberNetworkHeaders(details, "requestHeaders", requestHeaders);');
+
+    expect(
+      sanitize([
+        { name: "Content-Type", value: "application/json" },
+        { name: "Authorization", value: "Bearer secret" },
+        { name: "Set-Cookie", value: "sid=secret" },
+        { name: "X-Session-Id", value: "session-secret" },
+        { name: "X-ApiKey", value: "api-secret" },
+        { name: "X-Request-Id", value: "req_123" },
+      ])
+    ).toEqual([
+      { name: "Content-Type", value: "application/json" },
+      { name: "Authorization", value: "[REDACTED]", redacted: true },
+      { name: "Set-Cookie", value: "[REDACTED]", redacted: true },
+      { name: "X-Session-Id", value: "[REDACTED]", redacted: true },
+      { name: "X-ApiKey", value: "[REDACTED]", redacted: true },
+      { name: "X-Request-Id", value: "req_123" },
+    ]);
   });
 
   it("routes keydown and keyup as focused edge events instead of press-compatible warnings", () => {
@@ -1133,7 +1185,7 @@ describe("command shape parity", () => {
     expect(body).toContain("function networkHarForRecords");
     expect(body).toContain("function networkHarEntry");
     expect(body).toContain("function harQueryString");
-    expect(body).toContain("Firefox WebExtension metadata export; bodies and headers are not captured.");
+    expect(body).toContain("Firefox WebExtension metadata export; request/response headers are redacted and bodies are not captured.");
     expect(body).toContain("HAR export is built from Firefox WebExtension request metadata.");
     expect(body).toContain("Request/response headers");
     expect(body).toContain('"network requires requests|request|route|unroute|har|export-har"');

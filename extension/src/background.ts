@@ -197,6 +197,12 @@ type HeaderRule = {
   value: string;
 };
 
+type NetworkHeaderRecord = {
+  name: string;
+  value: string;
+  redacted?: boolean;
+};
+
 type BasicCredentialRule = {
   username: string;
   password: string;
@@ -228,6 +234,8 @@ type NetworkActivityRecord = {
   statusCode?: number;
   statusLine?: string;
   fromCache?: boolean;
+  requestHeaders?: NetworkHeaderRecord[];
+  responseHeaders?: NetworkHeaderRecord[];
   error?: string;
   frameId?: number;
   parentFrameId?: number;
@@ -3770,7 +3778,7 @@ function networkHarCommandArgs(args: string[], mode: "export" | "start" | "stop"
 function networkHarMetadataWarning() {
   return bestEffortWarning(
     "network har",
-    "HAR export is built from Firefox WebExtension request metadata. Request/response headers, cookies, and response bodies are not captured."
+    "HAR export is built from Firefox WebExtension request metadata. Request/response headers are redacted; cookies and response bodies are not captured."
   );
 }
 
@@ -3918,6 +3926,8 @@ function publicNetworkRecord(record: NetworkActivityRecord) {
     startedAt: record.startedAt,
     completedAt: record.completedAt,
     durationMs: record.durationMs,
+    requestHeaders: record.requestHeaders ?? [],
+    responseHeaders: record.responseHeaders ?? [],
     routeId: record.routeId,
     routeAction: record.routeAction,
   };
@@ -3947,7 +3957,14 @@ function formatNetworkDetail(record: ReturnType<typeof publicNetworkRecord>) {
     record.routeAction ? `Route: ${record.routeAction}${record.routeId ? ` (${record.routeId})` : ""}` : "",
     record.error ? `Error: ${record.error}` : "",
     typeof record.durationMs === "number" ? `Duration: ${record.durationMs}ms` : "",
+    formatNetworkHeaders("Request headers", record.requestHeaders),
+    formatNetworkHeaders("Response headers", record.responseHeaders),
   ].filter(Boolean).join("\n");
+}
+
+function formatNetworkHeaders(label: string, headers: NetworkHeaderRecord[] | undefined) {
+  if (!headers?.length) return "";
+  return `${label}:\n${headers.map((header) => `  ${header.name}: ${header.value}`).join("\n")}`;
 }
 
 function networkHarForRecords(records: ReturnType<typeof publicNetworkRecord>[], tab: TabRecord, options: { startedAt?: number } = {}) {
@@ -3958,7 +3975,7 @@ function networkHarForRecords(records: ReturnType<typeof publicNetworkRecord>[],
       creator: {
         name: "pire-browser",
         version: browser.runtime.getManifest().version,
-        comment: "Firefox WebExtension metadata export; bodies and headers are not captured.",
+        comment: "Firefox WebExtension metadata export; request/response headers are redacted and bodies are not captured.",
       },
       browser: {
         name: "Firefox",
@@ -3994,7 +4011,7 @@ function networkHarEntry(record: ReturnType<typeof publicNetworkRecord>, tab: Ta
       url: record.url ?? "",
       httpVersion: "HTTP/1.1",
       cookies: [],
-      headers: [],
+      headers: harHeaders(record.requestHeaders),
       queryString: harQueryString(record.url),
       headersSize: -1,
       bodySize: -1,
@@ -4004,7 +4021,7 @@ function networkHarEntry(record: ReturnType<typeof publicNetworkRecord>, tab: Ta
       statusText: harStatusText(record),
       httpVersion: "HTTP/1.1",
       cookies: [],
-      headers: [],
+      headers: harHeaders(record.responseHeaders),
       content: {
         size: -1,
         mimeType: "x-unknown",
@@ -4037,6 +4054,14 @@ function networkHarEntry(record: ReturnType<typeof publicNetworkRecord>, tab: Ta
       routeAction: record.routeAction,
     },
   };
+}
+
+function harHeaders(headers?: NetworkHeaderRecord[]) {
+  return (headers ?? []).map((header) => ({
+    name: header.name,
+    value: header.value,
+    ...(header.redacted ? { _redacted: true } : {}),
+  }));
 }
 
 function harStatusText(record: ReturnType<typeof publicNetworkRecord>) {
@@ -5557,6 +5582,16 @@ function registerNetworkActivityListeners() {
     trackNetworkRequestStart,
     { urls: ["<all_urls>"] }
   );
+  browser.webRequest.onBeforeSendHeaders?.addListener?.(
+    trackNetworkRequestHeaders,
+    { urls: ["<all_urls>"] },
+    ["requestHeaders"]
+  );
+  browser.webRequest.onHeadersReceived?.addListener?.(
+    trackNetworkResponseHeaders,
+    { urls: ["<all_urls>"] },
+    ["responseHeaders"]
+  );
   browser.webRequest.onCompleted?.addListener?.(
     trackNetworkRequestEnd,
     { urls: ["<all_urls>"] }
@@ -5597,6 +5632,16 @@ function trackNetworkRequestStart(details: any) {
   return {};
 }
 
+function trackNetworkRequestHeaders(details: any) {
+  rememberNetworkHeaders(details, "requestHeaders", details?.requestHeaders);
+  return {};
+}
+
+function trackNetworkResponseHeaders(details: any) {
+  rememberNetworkHeaders(details, "responseHeaders", details?.responseHeaders);
+  return {};
+}
+
 function trackNetworkRequestEnd(details: any) {
   const requestId = String(details?.requestId ?? "");
   const record = requestId ? networkRequestsById.get(requestId) : undefined;
@@ -5627,6 +5672,77 @@ function trackNetworkRequestEnd(details: any) {
     networkRequestIdsByTabId.get(tabId)?.delete(requestId);
   }
   lastNetworkActivityAtByTabId.set(tabId, now);
+}
+
+function rememberNetworkHeaders(details: any, field: "requestHeaders" | "responseHeaders", rawHeaders: any) {
+  const requestId = String(details?.requestId ?? "");
+  const tabId = typeof details?.tabId === "number" ? details.tabId : -1;
+  if (!requestId || tabId < 0 || shouldIgnoreNetworkActivity(details)) return;
+  const now = Date.now();
+  const current: NetworkActivityRecord = networkRequestsById.get(requestId) ?? {
+    requestId,
+    tabId,
+    url: typeof details.url === "string" ? details.url : undefined,
+    type: typeof details.type === "string" ? details.type : undefined,
+    method: typeof details.method === "string" ? details.method : undefined,
+    frameId: typeof details.frameId === "number" ? details.frameId : undefined,
+    parentFrameId: typeof details.parentFrameId === "number" ? details.parentFrameId : undefined,
+    documentUrl: typeof details.documentUrl === "string" ? details.documentUrl : undefined,
+    initiator: typeof details.originUrl === "string" ? details.originUrl : typeof details.initiator === "string" ? details.initiator : undefined,
+    startedAt: now,
+    active: true,
+  };
+  current[field] = sanitizeNetworkHeaders(rawHeaders);
+  networkRequestsById.set(requestId, current);
+  rememberNetworkRecord(tabId, requestId);
+  lastNetworkActivityAtByTabId.set(tabId, now);
+}
+
+function sanitizeNetworkHeaders(rawHeaders: any): NetworkHeaderRecord[] {
+  if (!Array.isArray(rawHeaders)) return [];
+  return rawHeaders
+    .map((header: any) => sanitizeNetworkHeader(header))
+    .filter((header): header is NetworkHeaderRecord => Boolean(header));
+}
+
+function sanitizeNetworkHeader(header: any): NetworkHeaderRecord | null {
+  const name = typeof header?.name === "string" ? header.name : "";
+  if (!name) return null;
+  const value = networkHeaderValue(header);
+  if (isSensitiveNetworkHeader(name)) {
+    return { name, value: "[REDACTED]", redacted: true };
+  }
+  return { name, value: truncate(value, 1000) };
+}
+
+function networkHeaderValue(header: any) {
+  if (typeof header?.value === "string") return header.value;
+  if (typeof header?.binaryValue === "string") return "[binary]";
+  return "";
+}
+
+function isSensitiveNetworkHeader(name: string) {
+  const lower = name.toLowerCase();
+  return (
+    lower === "authorization" ||
+    lower === "proxy-authorization" ||
+    lower === "cookie" ||
+    lower === "set-cookie" ||
+    lower === "x-csrf-token" ||
+    lower === "x-xsrf-token" ||
+    lower === "x-auth-token" ||
+    lower === "x-api-key" ||
+    lower.includes("auth") ||
+    lower.includes("session") ||
+    lower.includes("token") ||
+    lower.includes("secret") ||
+    lower.includes("credential") ||
+    lower.includes("csrf") ||
+    lower.includes("xsrf") ||
+    lower.includes("jwt") ||
+    lower.includes("api-key") ||
+    lower.includes("apikey")
+  );
 }
 
 function rememberNetworkRecord(tabId: number, requestId: string) {
@@ -5751,6 +5867,7 @@ function applyScopedRequestHeaders(details: any) {
   if (credentials) {
     upsertRequestHeader(requestHeaders, "Authorization", basicAuthorizationValue(credentials));
   }
+  rememberNetworkHeaders(details, "requestHeaders", requestHeaders);
   return { requestHeaders };
 }
 
