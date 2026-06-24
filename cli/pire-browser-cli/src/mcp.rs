@@ -112,7 +112,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs, mouse/debugging tools, settings/emulation, cookies/storage, network/state/session/profile tools, transfers, clipboard, tabs/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs, mouse/debugging tools, settings/emulation, cookies/storage, network/state/session/profile tools, transfers, clipboard, tabs/frames/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -797,6 +797,14 @@ fn tool_command_args(
             args.push("label".to_string());
             args.push(required_string(object, "target")?);
             args.push(required_string(object, "label")?);
+        }
+        (_, "pire_browser_frame_select") => {
+            args.push("frame".to_string());
+            args.push(required_string(object, "target")?);
+        }
+        (_, "pire_browser_frame_main") => {
+            args.push("frame".to_string());
+            args.push("main".to_string());
         }
         (_, "pire_browser_window_new") => {
             args.push("window".to_string());
@@ -2018,6 +2026,23 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_frame_select",
+            "Select iframe",
+            "Scope snapshots and selector-based actions to an iframe selected by ref or CSS selector.",
+            tool_schema(
+                vec![("target", string_prop("Iframe ref such as @e3, or CSS selector."))],
+                &["target"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_frame_main",
+            "Select main frame",
+            "Return snapshots and selector-based actions to the main page frame.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
             "pire_browser_window_new",
             "New window",
             "Open a separate Firefox window in the active managed session.",
@@ -2248,6 +2273,9 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_tabs_select"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_frame_select"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_window_new"));
@@ -3025,6 +3053,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "tabs", "label", "t2", "checkout"]);
+
+        let args = tool_command_args(
+            "pire_browser_frame_select",
+            &json!({ "target": "@e3" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "frame", "@e3"]);
+
+        let args = tool_command_args("pire_browser_frame_main", &json!({}), McpToolsProfile::Core)
+            .unwrap();
+        assert_eq!(args, vec!["--json", "frame", "main"]);
 
         let args = tool_command_args("pire_browser_window_new", &json!({}), McpToolsProfile::Core)
             .unwrap();

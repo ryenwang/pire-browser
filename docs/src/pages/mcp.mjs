@@ -34,6 +34,7 @@ pire-browser mcp --tools all`),
       ["pire_browser_clipboard", "Read, write, copy, or paste text through the Firefox extension path."],
       ["pire_browser_status", "Inspect install/session state."],
       ["pire_browser_tabs_list / tab_new / tabs_select / tabs_label / tabs_close", "Inspect, create, switch, label, and close tabs."],
+      ["pire_browser_frame_select / pire_browser_frame_main", "Scope snapshots and selector-based actions to an iframe, or return to the main page frame."],
       ["pire_browser_window_new", "Open a separate Firefox window."],
       ["pire_browser_close", "Close managed sessions."],
       ["pire_browser_skills_get_core", "Return version-matched agent guidance."],
@@ -44,11 +45,12 @@ pire-browser mcp --tools all`),
 2. Call pire_browser_snapshot with compact=true, or use pire_browser_find when labels/roles are clear.
 3. Use fresh refs or semantic find locators in click/double-click/fill/type/press/select/check/scroll/drag/mouse/download/upload tools.
 4. Use pire_browser_get or pire_browser_is for targeted verification when you already have a fresh target.
-5. Use settings tools before screenshots or stateful QA when viewport, device preset, geolocation, headers, credentials, media, or offline mode matters.
-6. Use console/errors/dialog/highlight/vitals/network tools when a page is stuck, blocked, or needs evidence.
-7. Use cookies/storage/state tools only when needed for user-approved state debugging; values may contain secrets.
-8. Call pire_browser_wait when page state needs time.
-9. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
+5. Use frame_select when a snapshot shows an iframe you need to work inside; run frame_main before returning to outer-page controls.
+6. Use settings tools before screenshots or stateful QA when viewport, device preset, geolocation, headers, credentials, media, or offline mode matters.
+7. Use console/errors/dialog/highlight/vitals/network tools when a page is stuck, blocked, or needs evidence.
+8. Use cookies/storage/state tools only when needed for user-approved state debugging; values may contain secrets.
+9. Call pire_browser_wait when page state needs time.
+10. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
   p("MCP tool calls return text content for compatibility and structured command output when the underlying CLI emits JSON."),
 ];
 

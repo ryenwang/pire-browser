@@ -417,7 +417,7 @@ scroll, drag, mouse events, get, state checks, wait, screenshot/PDF evidence,
 console/errors/dialog/highlight/vitals diagnostics, download, wait-download,
 upload, clipboard, settings/emulation, cookies/storage, network
 requests/routes/HAR, plaintext state file management, session/profile
-inspection, status, tab/window controls, close, eval, and skill guidance. It
+inspection, status, tab/frame/window controls, close, eval, and skill guidance. It
 invokes the same installed CLI binary, so setup, policies, sessions, profiles,
 and Firefox runtime behavior stay shared with normal `pire-browser` commands.
 `--tools all` is accepted as an alias for all currently available MCP tools.
@@ -447,7 +447,7 @@ pire-browser click @e4
 pire-browser frame main
 ```
 
-After `frame @e2`, snapshots and selector-based actions are scoped to that iframe. Use `frame main` before returning to controls outside the iframe. Re-run `snapshot -i` after each frame switch and use the fresh refs from the new context.
+After `frame @e2`, snapshots and selector-based actions are scoped to that iframe. Use `frame main` before returning to controls outside the iframe. When using MCP, prefer `pire_browser_frame_select` to enter an iframe and `pire_browser_frame_main` before returning to outer-page controls. Re-run `snapshot -i` after each frame switch and use the fresh refs from the new context.
 
 ## Setup And Diagnostics
 

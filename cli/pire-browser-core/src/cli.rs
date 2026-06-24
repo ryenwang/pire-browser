@@ -1905,6 +1905,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "profiles" => PROFILES_HELP,
         "screenshot" => SCREENSHOT_HELP,
         "tabs" | "tab" => TABS_HELP,
+        "frame" | "frames" | "iframe" | "iframes" => FRAME_HELP,
         "window" => WINDOW_HELP,
         "close" | "quit" | "exit" => CLOSE_HELP,
         "setup" => SETUP_HELP,
@@ -1989,6 +1990,7 @@ Common commands:
   pdf page.pdf                    Capture an image-backed PDF of the page
   tab new <url>                   Open a new tab and switch to it
   tabs list                       List tracked tabs
+  frame '@e3'                     Scope snapshots/actions to an iframe
   window new                      Open a separate Firefox window
   close                           Close the targeted managed Firefox session
   close --all                     Close all live pire-browser sessions
@@ -2603,6 +2605,18 @@ Usage:
 Firefox window.
 "##;
 
+const FRAME_HELP: &str = r##"
+Usage:
+  pire-browser frame <selector-or-ref>
+  pire-browser frame '@e3'
+  pire-browser frame main
+
+Selects an iframe context for subsequent snapshots and selector-based actions
+in the active Firefox tab. Use an iframe ref from `snapshot -i`, or a selector
+that targets an iframe element. Run `frame main` to return to the main page.
+Re-run `snapshot -i` after switching frames and use fresh refs.
+"##;
+
 const WINDOW_HELP: &str = r##"
 Usage:
   pire-browser window new
@@ -2666,9 +2680,9 @@ helpers, double-click, wait, capture screenshots/PDFs, inspect console/errors,
 handle JavaScript dialogs, highlight targets, measure Web Vitals, transfer
 files, use clipboard text, control settings/emulation, inspect cookies/storage,
 inspect network requests/routes/HAR, manage plaintext state files, inspect
-sessions/profiles, inspect/switch/label/close tabs, open windows, inspect
-status, close sessions, and fetch installed skill guidance. `all` is accepted as
-an alias for all currently available MCP tools.
+sessions/profiles, inspect/switch/label/close tabs, select iframe contexts,
+open windows, inspect status, close sessions, and fetch installed skill
+guidance. `all` is accepted as an alias for all currently available MCP tools.
 "##;
 
 const SKILLS_HELP: &str = r##"
@@ -4265,6 +4279,7 @@ mod tests {
         assert!(text.contains("open <url> --headers"));
         assert!(text.contains("--proxy http://proxy.example:8080 open <url>"));
         assert!(text.contains("tab new <url>"));
+        assert!(text.contains("frame '@e3'"));
         assert!(text.contains("window new"));
         assert!(text.contains("close"));
         assert!(text.contains("close --all"));
@@ -4445,12 +4460,14 @@ mod tests {
         assert!(help_text(Some("mcp"))
             .unwrap()
             .contains("sessions/profiles"));
+        assert!(help_text(Some("mcp")).unwrap().contains("iframe contexts"));
         assert!(help_text(Some("cookies"))
             .unwrap()
             .contains("cookies set <name> <value>"));
         assert!(help_text(Some("storage"))
             .unwrap()
             .contains("storage session set <key> <value>"));
+        assert!(help_text(Some("frame")).unwrap().contains("frame main"));
         assert!(help_text(Some("skills"))
             .unwrap()
             .contains("skills get core"));
