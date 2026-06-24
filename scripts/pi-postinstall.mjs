@@ -25,7 +25,10 @@ function scheduleMigrationIfNeeded() {
   const migration = schedulePiPackageMigration(root);
   if (migration.scheduled) {
     console.log(
-      "pire-browser: detected legacy GitHub Pi install; scheduled migration to npm:pire-browser."
+      "pire-browser: detected legacy GitHub Pi install; scheduled fast migration to npm:pire-browser."
+    );
+    console.log(
+      "pire-browser: if Pi reports a duplicate pire-browser tool immediately after install, wait a moment and rerun `pi`."
     );
   }
 }

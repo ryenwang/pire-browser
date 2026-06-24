@@ -580,6 +580,7 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 - In MCP, use debug-profile `pire_browser_install` for explicit native-host setup or repair, and `pire_browser_upgrade` for user-requested package update; keep `pire_browser_status` and plain `pire_browser_doctor` observational.
 - Browser commands that need auto-launch may run lazy setup when native host registration is missing or mismatched.
 - If `open` reports a recoverable page-readiness warning, continue with `pire-browser snapshot -i`.
+- If Pi reports a duplicate `pire-browser` tool from `npm:pire-browser` and a legacy GitHub install immediately after `pi install npm:pire-browser`, wait a moment and rerun `pi`; if it remains, run `pi remove git:github.com/ryenwang/pire-browser` and then `pi install npm:pire-browser`.
 - If an installed command reports a missing optional native package, reinstall with optional dependencies enabled.
 
 ## Safety Rules

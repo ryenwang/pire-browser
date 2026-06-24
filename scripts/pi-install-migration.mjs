@@ -13,8 +13,8 @@ export const KNOWN_LEGACY_PI_SOURCES = [
 ];
 
 const PACKAGE_SOURCE = "npm:pire-browser";
-const DEFAULT_DELAY_MS = 1500;
-const DEFAULT_POLL_MS = 500;
+export const DEFAULT_DELAY_MS = 100;
+export const DEFAULT_POLL_MS = 100;
 const DEFAULT_TIMEOUT_MS = 30000;
 
 export function detectPiInstallContext(packageRoot) {
@@ -184,7 +184,16 @@ function parseArgs(argv) {
   return options;
 }
 
-async function runWorker(options) {
+export function shouldRetryMigrationReason(reason) {
+  return (
+    reason === "missing_settings" ||
+    reason === "missing_packages" ||
+    reason === "missing_npm_source" ||
+    String(reason).startsWith("invalid_settings:")
+  );
+}
+
+export async function runWorker(options) {
   if (!options.settingsPath) throw new Error("--settings is required");
   await sleep(Number.isFinite(options.delayMs) ? options.delayMs : DEFAULT_DELAY_MS);
   const startedAt = Date.now();
@@ -193,7 +202,7 @@ async function runWorker(options) {
 
   while (Date.now() - startedAt <= timeoutMs) {
     const result = migratePiSettingsForKnownLegacySources(options.settingsPath, { requireNpmSource: true });
-    if (result.changed || result.reason !== "missing_npm_source") return result;
+    if (result.changed || !shouldRetryMigrationReason(result.reason)) return result;
     await sleep(pollMs);
   }
 

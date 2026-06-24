@@ -25,7 +25,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 | `docs/src/feature-status.mjs` | Public docs reality map | Curated site-facing feature status derived from README, skill content, CLI/help surface, and extension behavior. |
 | `docs/compatibility-summary.md` | Public compatibility summary | Coarse product-facing status table. Do not use it for detailed planning or implementation priority. |
 | `tests` fixture tree | Test fixtures | Local HTML/session fixtures and shared policy contract fixtures. |
-| `scripts/` | Maintainer automation | Install, package, smoke, state/session/policy/download/upload lifecycle, trusted npm publishing helpers, and release validation. |
+| `scripts/` | Maintainer automation | Install, package, smoke, state/session/policy/download/upload lifecycle, trusted npm publishing helpers, release validation, and repository-only tests for packaged install helpers. |
 | `.github/workflows/` | Public CI/release automation | Pages deployment, platform package builds, trusted npm publish, and packed-release smoke checks. |
 | `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `.gitattributes` | Public entry points | Product scope, usage, release notes, package scripts, license terms, npm package shape, and repository line-ending/binary policy. |
 
