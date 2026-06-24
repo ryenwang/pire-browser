@@ -1865,7 +1865,7 @@ fn ignored_with_warning_global_flag(flag: &str) -> bool {
 
 pub fn help_text(topic: Option<&str>) -> Option<String> {
     let text = match topic.unwrap_or("").to_ascii_lowercase().as_str() {
-        "" => TOP_LEVEL_HELP,
+        "" | "commands" => TOP_LEVEL_HELP,
         "status" => STATUS_HELP,
         "doctor" | "install-status" => DOCTOR_HELP,
         "config" | "--config" => CONFIG_HELP,
@@ -4245,6 +4245,7 @@ mod tests {
         assert!(text.contains("addinitscript <js>"));
         assert!(text.contains("--allow-file-access open file:///path/to/page.html"));
         assert!(text.contains("auth login"));
+        assert_eq!(help_text(Some("commands")), Some(text));
         assert!(help_text(Some("status")).unwrap().contains("status"));
         assert!(help_text(Some("install"))
             .unwrap()
