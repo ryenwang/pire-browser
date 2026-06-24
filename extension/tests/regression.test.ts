@@ -216,6 +216,18 @@ describe("pire-browser command foundations", () => {
     expect(contentBody).toContain("textMatches(text || name, locator.text, locator.exact)");
   });
 
+  it("supports agent-browser-style wait --fn page predicates", () => {
+    const body = background();
+    const contentBody = content();
+
+    expect(body).toContain('const fn = valueAfter(args, "--fn");');
+    expect(body).toContain('{ type: "wait_fn", expression: fn, timeout }');
+    expect(contentBody).toContain('if (message.type === "wait_fn")');
+    expect(contentBody).toContain("function waitForFunction(expression: string, timeout: number)");
+    expect(contentBody).toContain("evaluatePageExpression(expression)");
+    expect(contentBody).toContain("Function condition satisfied");
+  });
+
   it("routes common legacy aliases and core actions", () => {
     const body = background();
     for (const command of [

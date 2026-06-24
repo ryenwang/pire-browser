@@ -351,13 +351,20 @@ fn tool_command_args(
         }
         (_, "pire_browser_wait") => {
             args.push("wait".to_string());
-            let condition_count = ["milliseconds", "selector", "text", "url", "loadState"]
-                .iter()
-                .filter(|key| object.contains_key(**key))
-                .count();
+            let condition_count = [
+                "milliseconds",
+                "selector",
+                "text",
+                "url",
+                "loadState",
+                "function",
+            ]
+            .iter()
+            .filter(|key| object.contains_key(**key))
+            .count();
             if condition_count == 0 {
                 return Err(
-                    "pire_browser_wait requires one of milliseconds, selector, text, url, or loadState"
+                    "pire_browser_wait requires one of milliseconds, selector, text, url, loadState, or function"
                         .to_string(),
                 );
             }
@@ -380,6 +387,9 @@ fn tool_command_args(
             } else if let Some(load_state) = optional_string(object, "loadState")? {
                 args.push("--load".to_string());
                 args.push(load_state);
+            } else if let Some(function) = optional_string(object, "function")? {
+                args.push("--fn".to_string());
+                args.push(function);
             }
             if let Some(state) = optional_string(object, "state")? {
                 args.push("--state".to_string());
@@ -1586,13 +1596,14 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_wait",
             "Wait",
-            "Wait for milliseconds, selector, text, URL pattern, or load state.",
+            "Wait for milliseconds, selector, text, URL pattern, page function condition, or load state.",
             tool_schema(
                 vec![
                     ("milliseconds", number_prop("Milliseconds to wait.")),
                     ("selector", string_prop("Selector/ref to wait for.")),
                     ("text", string_prop("Text to wait for.")),
                     ("url", string_prop("URL glob/pattern to wait for.")),
+                    ("function", string_prop("Page-world JavaScript predicate expression to wait until truthy.")),
                     ("loadState", string_prop("Load state such as networkidle.")),
                     ("state", string_prop("Element state such as visible or hidden.")),
                     ("timeout", number_prop("Timeout in milliseconds.")),
@@ -2557,6 +2568,14 @@ mod tests {
             snapshot["inputSchema"]["properties"]["extraArgs"]["type"],
             "array"
         );
+        let wait = tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_wait")
+            .unwrap();
+        assert_eq!(
+            wait["inputSchema"]["properties"]["function"]["type"],
+            "string"
+        );
     }
 
     #[test]
@@ -2842,6 +2861,24 @@ mod tests {
                 "report.csv",
                 "--timeout",
                 "60000"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_wait",
+            &json!({ "function": "window.appReady === true", "timeout": 15000 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "wait",
+                "--fn",
+                "window.appReady === true",
+                "--timeout",
+                "15000"
             ]
         );
 
@@ -3543,6 +3580,14 @@ mod tests {
         let error = tool_command_args(
             "pire_browser_wait",
             &json!({ "selector": "#done", "text": "Done" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("only one wait condition"));
+
+        let error = tool_command_args(
+            "pire_browser_wait",
+            &json!({ "function": "window.ready", "url": "**/ready" }),
             McpToolsProfile::Core,
         )
         .unwrap_err();

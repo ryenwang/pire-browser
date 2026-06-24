@@ -2241,11 +2241,14 @@ Usage:
   pire-browser wait --text "Saved"
   pire-browser wait --url "**/dashboard"
   pire-browser wait --load networkidle
+  pire-browser wait --fn "window.appReady === true"
   pire-browser wait --download out.txt --timeout 60000
 
 Waits for a millisecond duration, ref, selector, text, URL pattern, function,
 load state, or download. `--load networkidle` waits for document completion and
 then for Firefox WebRequest activity in the active tab to stay quiet briefly.
+`--fn <expression>` evaluates a page-world JavaScript expression until it is
+truthy, so prefer short predicate expressions and avoid side effects.
 Positional refs and selectors use the same locator handling as click/fill. Quote
 refs in PowerShell, for example: pire-browser wait '@e1'.
 "##;
@@ -4433,6 +4436,10 @@ mod tests {
         assert!(help_text(Some("wait"))
             .unwrap()
             .contains("wait --load networkidle"));
+        assert!(help_text(Some("wait")).unwrap().contains("wait --fn"));
+        assert!(help_text(Some("wait"))
+            .unwrap()
+            .contains("page-world JavaScript expression"));
         assert!(help_text(Some("pushstate"))
             .unwrap()
             .contains("history.pushState"));

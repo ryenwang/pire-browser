@@ -217,9 +217,15 @@ pire-browser wait <ms>               # Wait for time in milliseconds
 pire-browser wait --text "Welcome"   # Wait for text to appear
 pire-browser wait --url "**/dash"    # Wait for URL pattern
 pire-browser wait --load networkidle # Wait for load state
+pire-browser wait --fn "window.appReady === true" # Wait for JS condition
 pire-browser wait --download [path]  # Wait for download
 pire-browser wait "#spinner" --state hidden
 ```
+
+`wait --fn <expression>` polls a page-world JavaScript expression until it is
+truthy. Use short, side-effect-free predicates such as
+`document.querySelector("#ready")` or `window.appReady === true`, then re-run
+`snapshot -i` before acting on refs.
 
 ### Batch Execution
 
@@ -495,7 +501,7 @@ pire-browser mcp --tools core
 pire-browser mcp --tools all
 ```
 
-The stdio MCP server exposes the core browser workflow as typed tools: open, snapshot, semantic find, click, double-click, fill, type, press, keyboard typing, hover/focus/select/check/scroll/drag/mouse, get page/element info, check element state, wait, screenshot, PDF, snapshot/screenshot/URL diffs, console/errors/dialog/highlight/vitals, settings/emulation, cookies/storage, network requests/routes/HAR, auth save/login/list/show/delete, plaintext state save/load/list/show/inspect/rename/clear/clean, session/profile inspection, download, wait-download, upload, clipboard, status, tab list/new/select/label/close, frame select/main, window new, close, eval, and skill guidance. `--tools all` is accepted as an alias for all currently available MCP tools. The MCP tools call the same installed CLI binary, so setup, policies, sessions, profiles, and Firefox runtime behavior stay shared with normal `pire-browser` commands.
+The stdio MCP server exposes the core browser workflow as typed tools: open, snapshot, semantic find, click, double-click, fill, type, press, keyboard typing, hover/focus/select/check/scroll/drag/mouse, get page/element info, check element state, wait including page function predicates, screenshot, PDF, snapshot/screenshot/URL diffs, console/errors/dialog/highlight/vitals, settings/emulation, cookies/storage, network requests/routes/HAR, auth save/login/list/show/delete, plaintext state save/load/list/show/inspect/rename/clear/clean, session/profile inspection, download, wait-download, upload, clipboard, status, tab list/new/select/label/close, frame select/main, window new, close, eval, and skill guidance. `--tools all` is accepted as an alias for all currently available MCP tools. The MCP tools call the same installed CLI binary, so setup, policies, sessions, profiles, and Firefox runtime behavior stay shared with normal `pire-browser` commands.
 
 ## Authentication
 

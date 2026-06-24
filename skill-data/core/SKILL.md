@@ -95,11 +95,14 @@ pire-browser wait --selector "#done" --timeout 10000
 pire-browser wait '@e7'
 pire-browser wait --text "Saved"
 pire-browser wait --url "**/dashboard"
+pire-browser wait --fn "window.appReady === true"
 pire-browser wait --load networkidle
 ```
 
 Use `wait --load networkidle` after opening dynamic apps when fetch/XHR work must
-settle before `snapshot -i`, `find`, or `screenshot`. Reinspect after the wait.
+settle before `snapshot -i`, `find`, or `screenshot`. Use `wait --fn` for a
+short, side-effect-free page-world JavaScript predicate when the app exposes a
+clear readiness signal. Reinspect after the wait.
 
 Navigate inside an SPA without a full page load:
 

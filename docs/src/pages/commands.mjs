@@ -85,7 +85,9 @@ pire-browser find nth 2 ".card" hover`),
 pire-browser wait --selector "#done" --timeout 5000
 pire-browser wait --text "Saved"
 pire-browser wait --url "**/dashboard"
+pire-browser wait --fn "window.appReady === true"
 pire-browser wait --download out.txt --timeout 60000`),
+  p("<code>wait --fn &lt;expression&gt;</code> polls a page-world JavaScript expression until it is truthy. Prefer short, side-effect-free predicates, then re-run <code>snapshot -i</code> before acting on refs."),
 
   h2("Downloads", "downloads"),
   code(`pire-browser download <sel> <path> [--timeout <ms>]

@@ -39,6 +39,7 @@ pire-browser find role button --name "Submit" click`),
   code(`pire-browser wait '@e1'                  # Wait for element
 pire-browser wait --load networkidle    # Wait for active-tab network idle
 pire-browser wait --url "**/dashboard"  # Wait for URL pattern
+pire-browser wait --fn "window.appReady === true"
 pire-browser wait 2000                  # Wait milliseconds`),
   h2("Command chaining", "command-chaining"),
   code(`pire-browser open https://example.com && pire-browser wait --selector "#main" && pire-browser snapshot -i
