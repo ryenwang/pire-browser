@@ -392,12 +392,12 @@ pire-browser mcp --tools all
 ```
 
 The MCP core profile exposes open, snapshot, click, fill, type, press, keyboard
-typing, hover, focus, select, check, uncheck, scroll, drag, get, state checks,
-wait, screenshot, download, wait-download, upload, clipboard, status, tabs,
-close, eval, and skill guidance. It invokes the same installed CLI binary, so
-setup, policies, sessions, profiles, and Firefox runtime behavior stay shared
-with normal `pire-browser` commands. `--tools all` is accepted as an alias for
-all currently available MCP tools.
+typing, semantic find, double-click, hover, focus, select, check, uncheck,
+scroll, drag, get, state checks, wait, screenshot, download, wait-download,
+upload, clipboard, status, tab/window controls, close, eval, and skill guidance.
+It invokes the same installed CLI binary, so setup, policies, sessions, profiles,
+and Firefox runtime behavior stay shared with normal `pire-browser` commands.
+`--tools all` is accepted as an alias for all currently available MCP tools.
 
 ## Snapshot Options
 

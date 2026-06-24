@@ -112,7 +112,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use pire_browser_open, pire_browser_snapshot, action tools, pire_browser_get, pire_browser_is, waits, screenshots, transfers, clipboard, tabs/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots, transfers, clipboard, tabs/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -228,8 +228,15 @@ fn tool_command_args(
                 args.push(selector);
             }
         }
+        (_, "pire_browser_find") => {
+            push_find_args(&mut args, object)?;
+        }
         (_, "pire_browser_click") => {
             args.push("click".to_string());
+            args.push(required_string(object, "selector")?);
+        }
+        (_, "pire_browser_double_click") => {
+            args.push("dblclick".to_string());
             args.push(required_string(object, "selector")?);
         }
         (_, "pire_browser_fill") => {
@@ -472,6 +479,28 @@ fn tool_command_args(
                 args.push(label);
             }
         }
+        (_, "pire_browser_tabs_select") => {
+            args.push("tabs".to_string());
+            args.push("select".to_string());
+            args.push(required_string(object, "target")?);
+        }
+        (_, "pire_browser_tabs_close") => {
+            args.push("tabs".to_string());
+            args.push("close".to_string());
+            if let Some(target) = optional_string(object, "target")? {
+                args.push(target);
+            }
+        }
+        (_, "pire_browser_tabs_label") => {
+            args.push("tabs".to_string());
+            args.push("label".to_string());
+            args.push(required_string(object, "target")?);
+            args.push(required_string(object, "label")?);
+        }
+        (_, "pire_browser_window_new") => {
+            args.push("window".to_string());
+            args.push("new".to_string());
+        }
         (_, "pire_browser_eval") => {
             args.push("eval".to_string());
             args.push(required_string(object, "script")?);
@@ -494,6 +523,135 @@ fn tool_command_args(
     }
     args.extend(optional_string_array(object, "extraArgs")?);
     Ok(args)
+}
+
+fn push_find_args(
+    args: &mut Vec<String>,
+    object: &Map<String, Value>,
+) -> std::result::Result<(), String> {
+    args.push("find".to_string());
+    let kind = required_string(object, "kind")?;
+    match kind.as_str() {
+        "role" => {
+            args.push(kind);
+            args.push(required_string(object, "query")?);
+            if let Some(name) = optional_string(object, "name")? {
+                args.push("--name".to_string());
+                args.push(name);
+            }
+            push_find_index_and_exact(args, object, true)?;
+        }
+        "label" | "text" | "placeholder" | "alt" | "title" => {
+            args.push(kind);
+            args.push(required_string(object, "query")?);
+            push_find_index_and_exact(args, object, true)?;
+        }
+        "testid" => {
+            args.push(kind);
+            args.push(required_string(object, "query")?);
+            push_find_index_and_exact(args, object, false)?;
+        }
+        "first" | "last" => {
+            args.push(kind);
+            args.push(required_string(object, "query")?);
+            reject_unscoped_find_options(object, &["index", "exact", "name", "nth"])?;
+        }
+        "nth" => {
+            args.push(kind);
+            if object.contains_key("nth") && object.contains_key("index") {
+                return Err("use nth or index for kind nth, not both".to_string());
+            }
+            let nth = optional_u64(object, "nth")?
+                .or(optional_u64(object, "index")?)
+                .ok_or_else(|| "nth is required when kind is nth".to_string())?;
+            args.push(nth.to_string());
+            args.push(required_string(object, "query")?);
+            reject_unscoped_find_options(object, &["exact", "name"])?;
+        }
+        _ => {
+            return Err(
+                "kind must be role, label, text, placeholder, alt, title, testid, first, last, or nth"
+                    .to_string(),
+            );
+        }
+    }
+
+    if let Some(action) = optional_string(object, "action")? {
+        push_find_action(args, object, action)?;
+    } else if object.contains_key("value") {
+        return Err("value requires an action".to_string());
+    }
+    Ok(())
+}
+
+fn push_find_index_and_exact(
+    args: &mut Vec<String>,
+    object: &Map<String, Value>,
+    allow_exact: bool,
+) -> std::result::Result<(), String> {
+    if let Some(index) = optional_u64(object, "index")? {
+        args.push("--index".to_string());
+        args.push(index.to_string());
+    }
+    if optional_bool(object, "exact")? {
+        if !allow_exact {
+            return Err("exact is only supported for role, label, text, placeholder, alt, and title find locators".to_string());
+        }
+        args.push("--exact".to_string());
+    }
+    if object.contains_key("nth") {
+        return Err("nth is only supported when kind is nth".to_string());
+    }
+    Ok(())
+}
+
+fn reject_unscoped_find_options(
+    object: &Map<String, Value>,
+    keys: &[&str],
+) -> std::result::Result<(), String> {
+    for key in keys {
+        if object.contains_key(*key) {
+            return Err(format!("{key} is not supported for this find kind"));
+        }
+    }
+    Ok(())
+}
+
+fn push_find_action(
+    args: &mut Vec<String>,
+    object: &Map<String, Value>,
+    action: String,
+) -> std::result::Result<(), String> {
+    let needs_value = matches!(action.as_str(), "fill" | "type" | "select" | "attr");
+    let allows_no_value = matches!(
+        action.as_str(),
+        "click"
+            | "dblclick"
+            | "hover"
+            | "focus"
+            | "check"
+            | "uncheck"
+            | "text"
+            | "html"
+            | "value"
+            | "box"
+            | "styles"
+            | "highlight"
+            | "scrollintoview"
+    );
+    if !needs_value && !allows_no_value {
+        return Err("action must be click, dblclick, fill, type, hover, focus, select, check, uncheck, text, html, value, attr, box, styles, highlight, or scrollintoview".to_string());
+    }
+    let value = optional_string(object, "value")?;
+    args.push(action.clone());
+    if needs_value {
+        args.push(value.ok_or_else(|| format!("value is required when find action is {action}"))?);
+    } else if value.is_some() {
+        return Err(
+            "value is only supported for fill, type, select, and attr find actions".to_string(),
+        );
+    }
+    Ok(())
 }
 
 fn target_args(object: &Map<String, Value>) -> std::result::Result<Vec<String>, String> {
@@ -624,10 +782,58 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_find",
+            "Find by semantic locator",
+            "Find elements by role, label, text, placeholder, alt text, title, test id, or selector position; optionally act on the single match.",
+            tool_schema(
+                vec![
+                    (
+                        "kind",
+                        string_prop(
+                            "role, label, text, placeholder, alt, title, testid, first, last, or nth.",
+                        ),
+                    ),
+                    (
+                        "query",
+                        string_prop(
+                            "Role/text/test id/selector value. For nth, this is the selector.",
+                        ),
+                    ),
+                    ("name", string_prop("Accessible name filter for role locators.")),
+                    ("exact", bool_prop("Require exact normalized text/name matching.")),
+                    (
+                        "index",
+                        number_prop("Zero-based match index for semantic locators."),
+                    ),
+                    ("nth", number_prop("Zero-based index when kind is nth.")),
+                    (
+                        "action",
+                        string_prop("Optional action: click, dblclick, fill, type, hover, focus, select, check, uncheck, text, html, value, attr, box, styles, highlight, or scrollintoview."),
+                    ),
+                    (
+                        "value",
+                        string_prop("Action value for fill, type, select, or attr."),
+                    ),
+                ],
+                &["kind", "query"],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_click",
             "Click",
             "Click a ref or selector from the current page.",
             tool_schema(vec![("selector", string_prop("Ref or selector to click."))], &["selector"]),
+            false,
+        ),
+        tool(
+            "pire_browser_double_click",
+            "Double-click",
+            "Double-click a ref or selector from the current page.",
+            tool_schema(
+                vec![("selector", string_prop("Ref or selector to double-click."))],
+                &["selector"],
+            ),
             false,
         ),
         tool(
@@ -932,6 +1138,43 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_tabs_select",
+            "Select tab",
+            "Switch to an existing tab by tab id or label.",
+            tool_schema(
+                vec![("target", string_prop("Tab id such as t2, or tab label."))],
+                &["target"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_tabs_close",
+            "Close tab",
+            "Close an existing tab by tab id or label, or the active tab when target is omitted.",
+            tool_schema(vec![("target", string_prop("Optional tab id or label."))], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_tabs_label",
+            "Label tab",
+            "Assign or replace a stable label for an existing tab.",
+            tool_schema(
+                vec![
+                    ("target", string_prop("Tab id such as t2.")),
+                    ("label", string_prop("Stable tab label.")),
+                ],
+                &["target", "label"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_window_new",
+            "New window",
+            "Open a separate Firefox window in the active managed session.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
             "pire_browser_eval",
             "Evaluate JavaScript",
             "Evaluate JavaScript in the active page. Existing action/confirmation policies still apply.",
@@ -1061,6 +1304,10 @@ mod tests {
             .any(|tool| tool["name"] == "pire_browser_snapshot"));
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_get"));
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_is"));
+        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_find"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_double_click"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_hover"));
@@ -1073,6 +1320,12 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_clipboard"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_tabs_select"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_window_new"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_skills_get_core"));
@@ -1133,6 +1386,59 @@ mod tests {
 
     #[test]
     fn maps_tool_arguments_to_cli_args() {
+        let args = tool_command_args(
+            "pire_browser_find",
+            &json!({
+                "kind": "role",
+                "query": "button",
+                "name": "Submit",
+                "exact": true,
+                "action": "click"
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "find", "role", "button", "--name", "Submit", "--exact", "click"]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_find",
+            &json!({
+                "kind": "label",
+                "query": "Email",
+                "action": "fill",
+                "value": "agent@example.com"
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "find",
+                "label",
+                "Email",
+                "fill",
+                "agent@example.com"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_find",
+            &json!({
+                "kind": "nth",
+                "query": ".card",
+                "nth": 2,
+                "action": "hover"
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "find", "nth", "2", ".card", "hover"]);
+
         let args = tool_command_args(
             "pire_browser_snapshot",
             &json!({
@@ -1218,6 +1524,14 @@ mod tests {
         );
 
         let args = tool_command_args(
+            "pire_browser_double_click",
+            &json!({ "selector": "@e7" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "dblclick", "@e7"]);
+
+        let args = tool_command_args(
             "pire_browser_drag",
             &json!({ "source": "@e1", "target": "@e2" }),
             McpToolsProfile::Core,
@@ -1279,6 +1593,52 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "clipboard", "write", "hello"]);
+
+        let args = tool_command_args(
+            "pire_browser_tab_new",
+            &json!({ "url": "https://example.com", "label": "docs" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "tab",
+                "new",
+                "https://example.com",
+                "--label",
+                "docs"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_tabs_select",
+            &json!({ "target": "docs" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "tabs", "select", "docs"]);
+
+        let args = tool_command_args(
+            "pire_browser_tabs_close",
+            &json!({ "target": "t2" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "tabs", "close", "t2"]);
+
+        let args = tool_command_args(
+            "pire_browser_tabs_label",
+            &json!({ "target": "t2", "label": "checkout" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "tabs", "label", "t2", "checkout"]);
+
+        let args = tool_command_args("pire_browser_window_new", &json!({}), McpToolsProfile::Core)
+            .unwrap();
+        assert_eq!(args, vec!["--json", "window", "new"]);
     }
 
     #[test]
@@ -1286,6 +1646,38 @@ mod tests {
         let error =
             tool_command_args("pire_browser_click", &json!({}), McpToolsProfile::Core).unwrap_err();
         assert!(error.contains("selector is required"));
+
+        let error = tool_command_args(
+            "pire_browser_find",
+            &json!({ "kind": "css", "query": "#submit" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("kind must be"));
+
+        let error = tool_command_args(
+            "pire_browser_find",
+            &json!({ "kind": "nth", "query": ".card" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("nth is required"));
+
+        let error = tool_command_args(
+            "pire_browser_find",
+            &json!({ "kind": "label", "query": "Email", "action": "fill" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("value is required"));
+
+        let error = tool_command_args(
+            "pire_browser_find",
+            &json!({ "kind": "text", "query": "Save", "action": "click", "value": "extra" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("value is only supported"));
 
         let error = tool_command_args(
             "pire_browser_wait",

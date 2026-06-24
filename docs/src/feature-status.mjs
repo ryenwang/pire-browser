@@ -28,7 +28,7 @@ export const featureStatuses = {
   },
   mcp: {
     status: "available",
-    summary: "`pire-browser mcp --tools core` starts a stdio MCP server with typed tools for the core open, inspect, interact, get/check, wait, screenshot, download/wait-download/upload, clipboard, status, tabs, close, and skill-guidance workflow.",
+    summary: "`pire-browser mcp --tools core` starts a stdio MCP server with typed tools for the core open, inspect, semantic find, interact, get/check, wait, screenshot, download/wait-download/upload, clipboard, status, tab/window, close, and skill-guidance workflow.",
     sources: ["README.md", "docs/src/pages/mcp.mjs", "cli/pire-browser-cli/src/mcp.rs", "cli/pire-browser-core/src/cli.rs"],
   },
   managedProfiles: {
