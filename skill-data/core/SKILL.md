@@ -154,6 +154,12 @@ settle before `snapshot -i`, `find`, or `screenshot`. Use `wait --fn` for a
 short, side-effect-free page-world JavaScript predicate when the app exposes a
 clear readiness signal. Reinspect after the wait.
 
+When using MCP, prefer the agent-browser-style typed wait tools instead of the
+generic compatibility tool: `pire_browser_wait_ms`, `pire_browser_wait_for_selector`,
+`pire_browser_wait_for_text`, `pire_browser_wait_for_url`,
+`pire_browser_wait_for_load`, and `pire_browser_wait_for_function`. Use
+`waitTimeoutMs` on typed condition waits when the default timeout is too short.
+
 Navigate inside an SPA without a full page load:
 
 ```bash
@@ -497,7 +503,7 @@ pire-browser mcp --tools all
 
 Use the smallest MCP profile that fits the task. `core` is the default
 inspect-before-act workflow: open, snapshot, semantic find, interact, get/check,
-wait, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff
+typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff
 evidence, eval, status, confirmation follow-up, basic tabs, profile discovery,
 close, and skill guidance. Add comma-separated profiles only when needed:
 `network` for request diagnostics/routes/HAR, `state` for cookies/storage/auth

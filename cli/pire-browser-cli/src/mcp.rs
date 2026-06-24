@@ -217,6 +217,12 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_scroll_into_view"
         | "pire_browser_drag"
         | "pire_browser_wait"
+        | "pire_browser_wait_ms"
+        | "pire_browser_wait_for_selector"
+        | "pire_browser_wait_for_text"
+        | "pire_browser_wait_for_url"
+        | "pire_browser_wait_for_load"
+        | "pire_browser_wait_for_function"
         | "pire_browser_pdf"
         | "pire_browser_get"
         | "pire_browser_is"
@@ -807,6 +813,43 @@ fn tool_command_args(
             if let Some(dx) = optional_i64(object, "dx")? {
                 args.push(dx.to_string());
             }
+        }
+        (_, "pire_browser_wait_ms") => {
+            args.push("wait".to_string());
+            args.push(required_u64(object, "ms")?.to_string());
+        }
+        (_, "pire_browser_wait_for_selector") => {
+            args.push("wait".to_string());
+            args.push(required_string(object, "selector")?);
+            push_wait_timeout_arg(&mut args, object)?;
+        }
+        (_, "pire_browser_wait_for_text") => {
+            args.push("wait".to_string());
+            args.push("--text".to_string());
+            args.push(required_string(object, "text")?);
+            push_wait_timeout_arg(&mut args, object)?;
+        }
+        (_, "pire_browser_wait_for_url") => {
+            args.push("wait".to_string());
+            args.push("--url".to_string());
+            args.push(required_string(object, "url")?);
+            push_wait_timeout_arg(&mut args, object)?;
+        }
+        (_, "pire_browser_wait_for_load") => {
+            args.push("wait".to_string());
+            args.push("--load".to_string());
+            let state = required_string(object, "state")?;
+            if !matches!(state.as_str(), "load" | "domcontentloaded" | "networkidle") {
+                return Err("state must be load, domcontentloaded, or networkidle".to_string());
+            }
+            args.push(state);
+            push_wait_timeout_arg(&mut args, object)?;
+        }
+        (_, "pire_browser_wait_for_function") => {
+            args.push("wait".to_string());
+            args.push("--fn".to_string());
+            args.push(required_string(object, "expression")?);
+            push_wait_timeout_arg(&mut args, object)?;
         }
         (_, "pire_browser_wait") => {
             args.push("wait".to_string());
@@ -1489,6 +1532,20 @@ fn tool_command_args(
         args.extend(optional_string_array(object, "extraArgs")?);
     }
     Ok(args)
+}
+
+fn push_wait_timeout_arg(
+    args: &mut Vec<String>,
+    object: &Map<String, Value>,
+) -> std::result::Result<(), String> {
+    if let Some(timeout) = optional_u64(object, "waitTimeoutMs")? {
+        if timeout == 0 {
+            return Err("waitTimeoutMs must be at least 1".to_string());
+        }
+        args.push("--timeout".to_string());
+        args.push(timeout.to_string());
+    }
+    Ok(())
 }
 
 fn push_find_args(
@@ -2375,6 +2432,70 @@ fn core_tools() -> Vec<Value> {
                     ("timeout", number_prop("Timeout in milliseconds.")),
                 ],
                 &[],
+            ),
+            true,
+        ),
+        tool(
+            "pire_browser_wait_ms",
+            "Wait milliseconds",
+            "Wait for a fixed number of milliseconds.",
+            tool_schema(vec![("ms", number_prop("Milliseconds to wait."))], &["ms"]),
+            true,
+        ),
+        tool(
+            "pire_browser_wait_for_selector",
+            "Wait for selector",
+            "Wait for an element selector or ref to appear.",
+            wait_tool_schema(
+                vec![("selector", string_prop("Selector/ref to wait for."))],
+                &["selector"],
+            ),
+            true,
+        ),
+        tool(
+            "pire_browser_wait_for_text",
+            "Wait for text",
+            "Wait for text to appear on the page.",
+            wait_tool_schema(vec![("text", string_prop("Text to wait for."))], &["text"]),
+            true,
+        ),
+        tool(
+            "pire_browser_wait_for_url",
+            "Wait for URL",
+            "Wait for the current URL to match a glob or pattern.",
+            wait_tool_schema(
+                vec![("url", string_prop("URL glob/pattern to wait for."))],
+                &["url"],
+            ),
+            true,
+        ),
+        tool(
+            "pire_browser_wait_for_load",
+            "Wait for load state",
+            "Wait for a page load state.",
+            wait_tool_schema(
+                vec![(
+                    "state",
+                    json!({
+                        "type": "string",
+                        "enum": ["load", "domcontentloaded", "networkidle"],
+                        "description": "Load state to wait for."
+                    }),
+                )],
+                &["state"],
+            ),
+            true,
+        ),
+        tool(
+            "pire_browser_wait_for_function",
+            "Wait for function",
+            "Wait for a JavaScript expression to become truthy.",
+            wait_tool_schema(
+                vec![(
+                    "expression",
+                    string_prop("Page-world JavaScript predicate expression to wait until truthy."),
+                )],
+                &["expression"],
             ),
             true,
         ),
@@ -3289,6 +3410,19 @@ fn tool_schema_without_extra_args(properties: Vec<(&str, Value)>, required: &[&s
     schema
 }
 
+fn wait_tool_schema(properties: Vec<(&str, Value)>, required: &[&str]) -> Value {
+    let mut properties = properties;
+    properties.push((
+        "waitTimeoutMs",
+        json!({
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximum time for the browser wait condition."
+        }),
+    ));
+    tool_schema(properties, required)
+}
+
 fn launch_tool_schema() -> Value {
     tool_schema_without_common(
         vec![
@@ -3575,6 +3709,16 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_wait_download"));
+        for name in [
+            "pire_browser_wait_ms",
+            "pire_browser_wait_for_selector",
+            "pire_browser_wait_for_text",
+            "pire_browser_wait_for_url",
+            "pire_browser_wait_for_load",
+            "pire_browser_wait_for_function",
+        ] {
+            assert!(tools.iter().any(|tool| tool["name"] == name), "{name}");
+        }
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_mouse_move"));
@@ -3641,6 +3785,23 @@ mod tests {
         assert_eq!(
             wait["inputSchema"]["properties"]["function"]["type"],
             "string"
+        );
+        let wait_for_selector = tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_wait_for_selector")
+            .unwrap();
+        assert_eq!(wait_for_selector["inputSchema"]["required"][0], "selector");
+        assert_eq!(
+            wait_for_selector["inputSchema"]["properties"]["waitTimeoutMs"]["minimum"],
+            1
+        );
+        let wait_for_load = tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_wait_for_load")
+            .unwrap();
+        assert_eq!(
+            wait_for_load["inputSchema"]["properties"]["state"]["enum"],
+            json!(["load", "domcontentloaded", "networkidle"])
         );
         let open = tools
             .iter()
@@ -3824,6 +3985,10 @@ mod tests {
         let read = tool_named(&tools, "pire_browser_read");
         assert_eq!(read["annotations"]["readOnlyHint"], true);
         assert_eq!(read["annotations"]["openWorldHint"], true);
+
+        let wait_for_selector = tool_named(&tools, "pire_browser_wait_for_selector");
+        assert_eq!(wait_for_selector["annotations"]["readOnlyHint"], true);
+        assert_eq!(wait_for_selector["annotations"]["openWorldHint"], true);
 
         let get_url = tool_named(&tools, "pire_browser_get_url");
         assert_eq!(get_url["annotations"]["readOnlyHint"], true);
@@ -4483,6 +4648,78 @@ mod tests {
                 "--timeout",
                 "60000"
             ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_wait_ms",
+            &json!({ "ms": 250 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "wait", "250"]);
+
+        let args = tool_command_args(
+            "pire_browser_wait_for_selector",
+            &json!({ "selector": "#ready", "waitTimeoutMs": 5000, "profile": "Work" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "--profile",
+                "Work",
+                "wait",
+                "#ready",
+                "--timeout",
+                "5000"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_wait_for_text",
+            &json!({ "text": "Saved" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "wait", "--text", "Saved"]);
+
+        let args = tool_command_args(
+            "pire_browser_wait_for_url",
+            &json!({ "url": "**/dashboard", "waitTimeoutMs": 15000 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "wait",
+                "--url",
+                "**/dashboard",
+                "--timeout",
+                "15000"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_wait_for_load",
+            &json!({ "state": "networkidle" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "wait", "--load", "networkidle"]);
+
+        let args = tool_command_args(
+            "pire_browser_wait_for_function",
+            &json!({ "expression": "window.appReady === true" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "wait", "--fn", "window.appReady === true"]
         );
 
         let args = tool_command_args(
@@ -5312,6 +5549,30 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("only one wait condition"));
+
+        let error = tool_command_args(
+            "pire_browser_wait_ms",
+            &json!({ "milliseconds": 250 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("ms is required"));
+
+        let error = tool_command_args(
+            "pire_browser_wait_for_load",
+            &json!({ "state": "interactive" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("state must be load"));
+
+        let error = tool_command_args(
+            "pire_browser_wait_for_text",
+            &json!({ "text": "Ready", "waitTimeoutMs": 0 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("waitTimeoutMs must be at least 1"));
 
         let error = tool_command_args(
             "pire_browser_status",

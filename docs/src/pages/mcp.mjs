@@ -14,7 +14,7 @@ pire-browser mcp --tools all`),
   table(
     ["Profile", "Purpose"],
     [
-      ["core", "Open, read, inspect, semantic find, interact, get/check, wait, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff evidence, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and skill guidance."],
+      ["core", "Open, read, inspect, semantic find, interact, get/check, typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff evidence, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and skill guidance."],
       ["network", "Headers, credentials, offline toggle, network request inspection with redacted request/response headers, metadata HAR, and route/unroute controls."],
       ["state", "Cookies, storage, auth helpers, plaintext state files, sessions, profiles, downloads/uploads, clipboard, and skills."],
       ["debug", "Lower-level launch, explicit install/repair, safe upgrade, batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions/profiles, and close."],
@@ -60,7 +60,8 @@ pire-browser mcp --tools all`),
       ["pire_browser_mouse_move / mouse_down / mouse_up / mouse_wheel", "Dispatch page-level mouse events at viewport coordinates."],
       ["pire_browser_get", "Read page or element text, HTML, values, attributes, title, URL, counts, boxes, or styles."],
       ["pire_browser_is", "Check whether a ref or selector is visible, enabled, or checked."],
-      ["pire_browser_wait", "Wait for time, selector, text, URL, page function condition, or load state."],
+      ["pire_browser_wait_ms / wait_for_selector / wait_for_text / wait_for_url / wait_for_load / wait_for_function", "Agent-browser-style typed wait tools. Use these before the generic compatibility wait tool."],
+      ["pire_browser_wait", "Compatibility wait tool for time, selector, text, URL, page function condition, or load state."],
       ["pire_browser_back / forward / reload / pushstate", "Use browser history, reload the active tab, or perform same-origin SPA client-side navigation."],
       ["pire_browser_add_init_script / remove_init_script", "Register or remove document-start scripts for future navigations in the managed session."],
       ["pire_browser_screenshot / pdf", "Capture screenshot or image-backed PDF evidence."],
@@ -99,7 +100,7 @@ pire-browser mcp --tools all`),
 12. Use debug-profile pire_browser_install only when the user wants explicit native-host setup or repair; use pire_browser_upgrade only when the user wants package update.
 13. Keep pire_browser_status and plain pire_browser_doctor observational.
 14. Use debug-profile pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output.
-15. Call pire_browser_wait when page state needs time.
+15. Call the typed wait tool that matches the condition: wait_ms, wait_for_selector, wait_for_text, wait_for_url, wait_for_load, or wait_for_function. Use pire_browser_wait only for compatibility.
 16. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
   p("MCP tool calls return text content for compatibility and structured command output when the underlying CLI emits JSON. If a tool is missing from the active profile, restart the MCP server with <code>--tools all</code> or a comma-separated profile list such as <code>--tools core,network</code>."),
 ];

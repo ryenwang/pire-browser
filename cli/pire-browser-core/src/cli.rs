@@ -3085,7 +3085,7 @@ Usage:
 
 Starts a Model Context Protocol server over stdio. Use the smallest tools
 profile that fits the task. `core` is the default inspect-before-act workflow:
-open, inspect, interact, get/check state, semantic find, wait, navigation
+open, inspect, interact, get/check state, semantic find, typed waits, navigation
 helpers, screenshots/PDFs, diffs, eval, status, basic tabs, profiles, close, and
 installed skill guidance. Add comma-separated profiles when needed: `network`,
 `state`, `debug`, `tabs`, `mobile`, or `react`. The `debug` profile includes
