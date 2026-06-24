@@ -499,10 +499,14 @@ Installed agents should use the bundled skill command for version-matched guidan
 ```bash
 pire-browser mcp
 pire-browser mcp --tools core
+pire-browser mcp --tools core,network
+pire-browser mcp --tools core,state
 pire-browser mcp --tools all
 ```
 
-The stdio MCP server exposes the core browser workflow as typed tools: open, snapshot, semantic find, click, double-click, fill, type, press, keyboard typing, hover/focus/select/check/scroll/drag/mouse, get page/element info, check element state, wait including page function predicates, screenshot, PDF, snapshot/screenshot/URL diffs, console/errors/dialog/highlight/vitals, settings/emulation, cookies/storage, network requests/routes/HAR, auth save/login/list/show/delete, plaintext state save/load/list/show/inspect/rename/clear/clean, session/profile inspection, download, wait-download, upload, clipboard, status, tab list/new/select/label/close, frame select/main, window new, close, eval, and skill guidance. `--tools all` is accepted as an alias for all currently available MCP tools. The MCP tools call the same installed CLI binary, so setup, policies, sessions, profiles, and Firefox runtime behavior stay shared with normal `pire-browser` commands.
+The stdio MCP server exposes typed tools through agent-browser-style profiles. `core` is the default inspect-before-act workflow: open, snapshot, semantic find, click, double-click, fill, type, press, keyboard/mouse basics, get page/element info, check element state, wait including page function predicates, screenshot, PDF, snapshot/screenshot/URL diffs, eval, status, basic tabs, profile discovery, close, and skill guidance. Add comma-separated profiles only when needed: `network`, `state`, `debug`, `tabs`, `mobile`, or `react`. `react` is accepted for compatibility but currently only returns profile guidance because pire-browser does not ship React DevTools introspection. Use `--tools all` for every currently implemented MCP tool. The `pire_browser_tools_profiles` tool describes the available profiles in-band.
+
+The MCP tools call the same installed CLI binary, so setup, policies, sessions, profiles, and Firefox runtime behavior stay shared with normal `pire-browser` commands.
 
 ## Authentication
 

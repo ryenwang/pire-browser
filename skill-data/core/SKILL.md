@@ -435,19 +435,22 @@ Use MCP when the agent host prefers typed tools:
 
 ```bash
 pire-browser mcp --tools core
+pire-browser mcp --tools core,network
+pire-browser mcp --tools core,state
 pire-browser mcp --tools all
 ```
 
-The MCP core profile exposes open, snapshot, click, fill, type, press, keyboard
-typing, semantic find, double-click, hover, focus, select, check, uncheck,
-scroll, drag, mouse events, get, state checks, wait, screenshot/PDF evidence,
-diff evidence, console/errors/dialog/highlight/vitals diagnostics, download, wait-download,
-upload, clipboard, settings/emulation, cookies/storage, network
-requests/routes/HAR, auth helpers, plaintext state file management, session/profile
-inspection, status, tab/frame/window controls, close, eval, and skill guidance. It
-invokes the same installed CLI binary, so setup, policies, sessions, profiles,
-and Firefox runtime behavior stay shared with normal `pire-browser` commands.
-`--tools all` is accepted as an alias for all currently available MCP tools.
+Use the smallest MCP profile that fits the task. `core` is the default
+inspect-before-act workflow: open, snapshot, semantic find, interact, get/check,
+wait, screenshot/PDF/diff evidence, eval, status, basic tabs, profile discovery,
+close, and skill guidance. Add comma-separated profiles only when needed:
+`network` for request diagnostics/routes/HAR, `state` for cookies/storage/auth
+and state files, `debug` for console/errors/dialog/highlight/vitals, `tabs` for
+tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
+helpers. `react` is accepted for compatibility but currently has no React
+DevTools introspection tools. Use `all` only when the host can tolerate the full
+tool surface. The `pire_browser_tools_profiles` MCP tool returns this profile
+list in-band.
 
 ## Snapshot Options
 
@@ -502,6 +505,7 @@ pire-browser --help
 pire-browser open --help
 pire-browser snapshot --help
 pire-browser mcp --tools core
+pire-browser mcp --tools core,network
 pire-browser mcp --tools all
 pire-browser skills list
 pire-browser skills cat core

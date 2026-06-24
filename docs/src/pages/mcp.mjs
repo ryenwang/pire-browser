@@ -6,12 +6,30 @@ const mcpBlocks = [
   h2("Start The Server", "start-the-server"),
   code(`pire-browser mcp
 pire-browser mcp --tools core
+pire-browser mcp --tools core,network
+pire-browser mcp --tools core,state
 pire-browser mcp --tools all`),
-  p("The current public MCP profile is <code>core</code>. <code>--tools all</code> is accepted as an alias for all currently available MCP tools. The server uses the same installed binary and command behavior as the CLI, so policies, setup, sessions, profiles, and Firefox runtime behavior stay shared."),
-  h2("Core Tools", "core-tools"),
+  p("Use the smallest MCP profile that fits the task. <code>core</code> is the default inspect-before-act workflow. Add comma-separated profiles only when a workflow needs more surface, such as <code>core,network</code> for request diagnostics or <code>core,state</code> for cookies, storage, auth, and state files. The <code>pire_browser_tools_profiles</code> tool describes available profiles in-band."),
+  h2("Profiles", "profiles"),
+  table(
+    ["Profile", "Purpose"],
+    [
+      ["core", "Open, inspect, semantic find, interact, get/check, wait, screenshot/PDF/diff evidence, eval, basic tabs, profile discovery, status, close, and skill guidance."],
+      ["network", "Headers, credentials, offline toggle, network request inspection, metadata HAR, and route/unroute controls."],
+      ["state", "Cookies, storage, auth helpers, plaintext state files, sessions, profiles, downloads/uploads, clipboard, and skills."],
+      ["debug", "Console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions, and close."],
+      ["tabs", "Tab list/new/select/label/close, iframe selection, JavaScript dialogs, windows, and close."],
+      ["mobile", "Viewport, device preset, geolocation, media/offline settings, keyboard, mouse, scroll, and screenshot helpers."],
+      ["react", "Compatibility profile only; React DevTools introspection is not shipped by the Firefox backend."],
+      ["all", "Every currently implemented pire-browser MCP tool."],
+    ]
+  ),
+  p("The server uses the same installed binary and command behavior as the CLI, so policies, setup, sessions, profiles, and Firefox runtime behavior stay shared."),
+  h2("Tool Surface", "tool-surface"),
   table(
     ["Tool", "Purpose"],
     [
+      ["pire_browser_tools_profiles", "Describe MCP profiles and active selection."],
       ["pire_browser_open", "Launch Firefox and optionally navigate."],
       ["pire_browser_snapshot", "Inspect the page and return refs."],
       ["pire_browser_find", "Find by role, label, text, placeholder, alt text, title, test id, first, last, or nth; optionally act on the single match."],
@@ -55,7 +73,7 @@ pire-browser mcp --tools all`),
 10. Use cookies/storage/state tools only when needed for user-approved state debugging; values may contain secrets.
 11. Call pire_browser_wait when page state needs time.
 12. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
-  p("MCP tool calls return text content for compatibility and structured command output when the underlying CLI emits JSON."),
+  p("MCP tool calls return text content for compatibility and structured command output when the underlying CLI emits JSON. If a tool is missing from the active profile, restart the MCP server with <code>--tools all</code> or a comma-separated profile list such as <code>--tools core,network</code>."),
 ];
 
 export default page({

@@ -2013,7 +2013,8 @@ Common commands:
   status [--json]                 Show live Firefox sessions and default target
   install [--firefox-path <path>]  Register the Firefox Native Messaging host
   doctor [--json] [--offline]     Check setup health and PATH/install hints
-  mcp [--tools core|all]          Start the MCP stdio server
+  mcp [--tools core|network|state|debug|tabs|mobile|react|all]
+                                  Start the MCP stdio server
   dashboard start [--port 4848]   Start a local status/session/activity dashboard
   activity list [--json]          Show recent redacted CLI command activity
   --config ./ci-config.json open <url>
@@ -2786,19 +2787,17 @@ const MCP_HELP: &str = r##"
 Usage:
   pire-browser mcp
   pire-browser mcp --tools core
+  pire-browser mcp --tools core,network
   pire-browser mcp --tools all
 
-Starts a Model Context Protocol server over stdio. The current public MCP
-profile is `core`: open, inspect, interact, get page/element info, check
-element state, semantic find, keyboard/focus/scroll/dropdown/checkbox/mouse
-helpers, double-click, wait, capture screenshots/PDFs, compare snapshot,
-screenshot, and URL diffs, inspect console/errors, handle JavaScript dialogs,
-highlight targets, measure Web Vitals, transfer files, use clipboard text,
-control settings/emulation, inspect cookies/storage, inspect network requests/routes/HAR,
-manage plaintext state files, inspect
-sessions/profiles, inspect/switch/label/close tabs, select iframe contexts,
-open windows, inspect status, close sessions, and fetch installed skill
-guidance. `all` is accepted as an alias for all currently available MCP tools.
+Starts a Model Context Protocol server over stdio. Use the smallest tools
+profile that fits the task. `core` is the default inspect-before-act workflow:
+open, inspect, interact, get/check state, semantic find, wait, screenshots/PDFs,
+diffs, eval, status, basic tabs, profiles, close, and installed skill guidance.
+Add comma-separated profiles when needed: `network`, `state`, `debug`, `tabs`,
+`mobile`, or `react`. `react` is accepted for compatibility but currently only
+returns profile guidance because pire-browser does not ship React DevTools
+introspection. Use `all` for every currently implemented MCP tool.
 "##;
 
 const SKILLS_HELP: &str = r##"
@@ -4092,6 +4091,18 @@ mod tests {
                 tools: "all".to_string()
             }
         );
+        assert_eq!(
+            parse_cli_args(&s(&["mcp", "--tools", "core,network"])).unwrap(),
+            LocalCommand::Mcp {
+                tools: "core,network".to_string()
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["mcp", "--tools", "tabs"])).unwrap(),
+            LocalCommand::Mcp {
+                tools: "tabs".to_string()
+            }
+        );
         assert!(parse_cli_args(&s(&["mcp", "--tools"])).is_err());
         assert!(parse_cli_args(&s(&["mcp", "--bad"])).is_err());
     }
@@ -4627,26 +4638,16 @@ mod tests {
         assert!(help_text(Some("dashboard"))
             .unwrap()
             .contains("does not provide live viewport"));
-        assert!(help_text(Some("mcp")).unwrap().contains("get page/element"));
-        assert!(help_text(Some("mcp")).unwrap().contains("transfer"));
+        assert!(help_text(Some("mcp")).unwrap().contains("smallest tools"));
+        assert!(help_text(Some("mcp")).unwrap().contains("core,network"));
+        assert!(help_text(Some("mcp")).unwrap().contains("network"));
+        assert!(help_text(Some("mcp")).unwrap().contains("state"));
+        assert!(help_text(Some("mcp")).unwrap().contains("debug"));
+        assert!(help_text(Some("mcp")).unwrap().contains("tabs"));
+        assert!(help_text(Some("mcp")).unwrap().contains("mobile"));
+        assert!(help_text(Some("mcp")).unwrap().contains("react"));
         assert!(help_text(Some("mcp")).unwrap().contains("semantic find"));
-        assert!(help_text(Some("mcp")).unwrap().contains("open windows"));
-        assert!(help_text(Some("mcp")).unwrap().contains("mouse"));
-        assert!(help_text(Some("mcp")).unwrap().contains("console/errors"));
-        assert!(help_text(Some("mcp")).unwrap().contains("screenshots/PDFs"));
-        assert!(help_text(Some("mcp"))
-            .unwrap()
-            .contains("requests/routes/HAR"));
-        assert!(help_text(Some("mcp"))
-            .unwrap()
-            .contains("settings/emulation"));
-        assert!(help_text(Some("mcp")).unwrap().contains("cookies/storage"));
-        assert!(help_text(Some("mcp")).unwrap().contains("state files"));
-        assert!(help_text(Some("mcp"))
-            .unwrap()
-            .contains("sessions/profiles"));
-        assert!(help_text(Some("mcp")).unwrap().contains("URL diffs"));
-        assert!(help_text(Some("mcp")).unwrap().contains("iframe contexts"));
+        assert!(help_text(Some("mcp")).unwrap().contains("React DevTools"));
         assert!(help_text(Some("cookies"))
             .unwrap()
             .contains("cookies set <name> <value>"));

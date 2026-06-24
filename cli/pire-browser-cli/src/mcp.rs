@@ -10,16 +10,265 @@ const SERVER_NAME: &str = "pire-browser";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum McpToolsProfile {
     Core,
+    Network,
+    State,
+    Debug,
+    Tabs,
+    Mobile,
+    React,
+    All,
+    Combined(u16),
 }
+
+const PROFILE_CORE: u16 = 1 << 0;
+const PROFILE_NETWORK: u16 = 1 << 1;
+const PROFILE_STATE: u16 = 1 << 2;
+const PROFILE_DEBUG: u16 = 1 << 3;
+const PROFILE_TABS: u16 = 1 << 4;
+const PROFILE_MOBILE: u16 = 1 << 5;
+const PROFILE_REACT: u16 = 1 << 6;
+const PROFILE_ALL: u16 = PROFILE_CORE
+    | PROFILE_NETWORK
+    | PROFILE_STATE
+    | PROFILE_DEBUG
+    | PROFILE_TABS
+    | PROFILE_MOBILE
+    | PROFILE_REACT;
+const TOOLS_PROFILES_TOOL: &str = "pire_browser_tools_profiles";
 
 impl McpToolsProfile {
     pub fn parse(value: &str) -> Result<Self> {
-        match value {
-            "core" | "all" => Ok(Self::Core),
-            other => bail!(
-                "unsupported mcp tools profile `{other}`; the current public MCP profile is `core`"
-            ),
+        let value = value.trim();
+        if value.is_empty() {
+            bail!("--tools requires a non-empty profile name");
         }
+        let mut bits = 0u16;
+        let mut count = 0usize;
+        for item in value.split(',') {
+            let item = item.trim();
+            if item.is_empty() {
+                bail!("unsupported mcp tools profile list `{value}`");
+            }
+            count += 1;
+            bits |= profile_bits_for_name(item).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "unsupported mcp tools profile `{item}`; supported profiles are core, network, state, debug, tabs, mobile, react, and all"
+                )
+            })?;
+        }
+        if bits == PROFILE_ALL {
+            return Ok(Self::All);
+        }
+        if count == 1 {
+            return Ok(match bits {
+                PROFILE_CORE => Self::Core,
+                PROFILE_NETWORK => Self::Network,
+                PROFILE_STATE => Self::State,
+                PROFILE_DEBUG => Self::Debug,
+                PROFILE_TABS => Self::Tabs,
+                PROFILE_MOBILE => Self::Mobile,
+                PROFILE_REACT => Self::React,
+                _ => Self::Combined(bits),
+            });
+        }
+        Ok(Self::Combined(bits))
+    }
+
+    fn bits(self) -> u16 {
+        match self {
+            Self::Core => PROFILE_CORE,
+            Self::Network => PROFILE_NETWORK,
+            Self::State => PROFILE_STATE,
+            Self::Debug => PROFILE_DEBUG,
+            Self::Tabs => PROFILE_TABS,
+            Self::Mobile => PROFILE_MOBILE,
+            Self::React => PROFILE_REACT,
+            Self::All => PROFILE_ALL,
+            Self::Combined(bits) => bits,
+        }
+    }
+
+    fn label(self) -> String {
+        if self == Self::All {
+            return "all".to_string();
+        }
+        profile_descriptors()
+            .into_iter()
+            .filter(|profile| profile.name != "all")
+            .filter(|profile| self.bits() & profile.bits != 0)
+            .map(|profile| profile.name)
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    fn allows_tool(self, name: &str) -> bool {
+        name == TOOLS_PROFILES_TOOL || (self.bits() & tool_profile_bits(name) != 0)
+    }
+}
+
+fn profile_bits_for_name(name: &str) -> Option<u16> {
+    match name {
+        "core" => Some(PROFILE_CORE),
+        "network" => Some(PROFILE_NETWORK),
+        "state" => Some(PROFILE_STATE),
+        "debug" => Some(PROFILE_DEBUG),
+        "tabs" => Some(PROFILE_TABS),
+        "mobile" => Some(PROFILE_MOBILE),
+        "react" => Some(PROFILE_REACT),
+        "all" => Some(PROFILE_ALL),
+        _ => None,
+    }
+}
+
+struct McpProfileDescriptor {
+    name: &'static str,
+    bits: u16,
+    description: &'static str,
+}
+
+fn profile_descriptors() -> Vec<McpProfileDescriptor> {
+    vec![
+        McpProfileDescriptor {
+            name: "core",
+            bits: PROFILE_CORE,
+            description: "Default inspect-before-act workflow: open, snapshots, semantic find, interactions, waits, reads, screenshots/PDFs, diffs, eval, status, basic tabs, profiles, close, and skill guidance.",
+        },
+        McpProfileDescriptor {
+            name: "network",
+            bits: PROFILE_NETWORK,
+            description: "Headers, credentials, offline toggle, network request inspection, metadata HAR, and route/unroute controls.",
+        },
+        McpProfileDescriptor {
+            name: "state",
+            bits: PROFILE_STATE,
+            description: "Cookies, storage, auth helpers, plaintext state files, sessions, profiles, downloads/uploads, clipboard, and skills.",
+        },
+        McpProfileDescriptor {
+            name: "debug",
+            bits: PROFILE_DEBUG,
+            description: "Console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions, dashboard-adjacent diagnostics, and close.",
+        },
+        McpProfileDescriptor {
+            name: "tabs",
+            bits: PROFILE_TABS,
+            description: "Tab list/new/select/label/close, iframe selection, JavaScript dialogs, windows, and close.",
+        },
+        McpProfileDescriptor {
+            name: "mobile",
+            bits: PROFILE_MOBILE,
+            description: "Viewport, device preset, geolocation, media/offline settings, keyboard, mouse, scroll, and screenshot helpers.",
+        },
+        McpProfileDescriptor {
+            name: "react",
+            bits: PROFILE_REACT,
+            description: "Reserved compatibility profile. pire-browser does not currently ship React DevTools introspection tools.",
+        },
+        McpProfileDescriptor {
+            name: "all",
+            bits: PROFILE_ALL,
+            description: "Every currently implemented pire-browser MCP tool.",
+        },
+    ]
+}
+
+fn tool_profile_bits(name: &str) -> u16 {
+    match name {
+        TOOLS_PROFILES_TOOL => PROFILE_ALL,
+        "pire_browser_tabs_list" | "pire_browser_tab_new" => PROFILE_CORE | PROFILE_TABS,
+        "pire_browser_profiles_list" | "pire_browser_skills_get_core" => {
+            PROFILE_CORE | PROFILE_STATE
+        }
+        "pire_browser_status" => PROFILE_CORE | PROFILE_DEBUG,
+        "pire_browser_close" => PROFILE_CORE | PROFILE_DEBUG | PROFILE_TABS,
+        "pire_browser_diff_snapshot" | "pire_browser_diff_screenshot" | "pire_browser_diff_url" => {
+            PROFILE_CORE | PROFILE_DEBUG
+        }
+        "pire_browser_keyboard_type"
+        | "pire_browser_keyboard_insert_text"
+        | "pire_browser_key_down"
+        | "pire_browser_key_up"
+        | "pire_browser_mouse_move"
+        | "pire_browser_mouse_down"
+        | "pire_browser_mouse_up"
+        | "pire_browser_mouse_wheel"
+        | "pire_browser_scroll" => PROFILE_CORE | PROFILE_MOBILE,
+        "pire_browser_open"
+        | "pire_browser_snapshot"
+        | "pire_browser_find"
+        | "pire_browser_click"
+        | "pire_browser_double_click"
+        | "pire_browser_fill"
+        | "pire_browser_type"
+        | "pire_browser_press"
+        | "pire_browser_hover"
+        | "pire_browser_focus"
+        | "pire_browser_select"
+        | "pire_browser_check"
+        | "pire_browser_uncheck"
+        | "pire_browser_scroll_into_view"
+        | "pire_browser_drag"
+        | "pire_browser_wait"
+        | "pire_browser_screenshot"
+        | "pire_browser_pdf"
+        | "pire_browser_get"
+        | "pire_browser_is"
+        | "pire_browser_get_url"
+        | "pire_browser_eval" => PROFILE_CORE,
+        "pire_browser_download" | "pire_browser_wait_download" | "pire_browser_upload" => {
+            PROFILE_CORE | PROFILE_STATE
+        }
+        "pire_browser_set_headers" | "pire_browser_set_credentials" => {
+            PROFILE_NETWORK | PROFILE_STATE
+        }
+        "pire_browser_set_offline" => PROFILE_NETWORK | PROFILE_MOBILE,
+        "pire_browser_network_requests"
+        | "pire_browser_network_request"
+        | "pire_browser_network_har_start"
+        | "pire_browser_network_har_stop"
+        | "pire_browser_network_har_export"
+        | "pire_browser_network_route"
+        | "pire_browser_network_unroute" => PROFILE_NETWORK,
+        "pire_browser_cookies_list"
+        | "pire_browser_cookies_set"
+        | "pire_browser_cookies_clear"
+        | "pire_browser_storage_get"
+        | "pire_browser_storage_set"
+        | "pire_browser_storage_clear"
+        | "pire_browser_auth_save"
+        | "pire_browser_auth_login"
+        | "pire_browser_auth_list"
+        | "pire_browser_auth_show"
+        | "pire_browser_auth_delete"
+        | "pire_browser_state_save"
+        | "pire_browser_state_load"
+        | "pire_browser_state_list"
+        | "pire_browser_state_show"
+        | "pire_browser_state_inspect"
+        | "pire_browser_state_rename"
+        | "pire_browser_state_clear"
+        | "pire_browser_state_clean"
+        | "pire_browser_session_list"
+        | "pire_browser_session_attach"
+        | "pire_browser_session_cleanup"
+        | "pire_browser_clipboard" => PROFILE_STATE,
+        "pire_browser_console"
+        | "pire_browser_errors"
+        | "pire_browser_dialog_status"
+        | "pire_browser_dialog_accept"
+        | "pire_browser_dialog_dismiss"
+        | "pire_browser_highlight"
+        | "pire_browser_vitals" => PROFILE_DEBUG,
+        "pire_browser_tabs_select"
+        | "pire_browser_tabs_close"
+        | "pire_browser_tabs_label"
+        | "pire_browser_frame_select"
+        | "pire_browser_frame_main"
+        | "pire_browser_window_new" => PROFILE_TABS,
+        "pire_browser_set_viewport"
+        | "pire_browser_set_device"
+        | "pire_browser_set_geo"
+        | "pire_browser_set_media" => PROFILE_MOBILE,
+        _ => 0,
     }
 }
 
@@ -112,7 +361,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs/diffs, mouse/debugging tools, settings/emulation, cookies/storage, network/auth/state/session/profile tools, transfers, clipboard, tabs/frames/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, screenshots/PDFs/diffs, eval, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -128,6 +377,15 @@ fn handle_tools_call(
         .get("arguments")
         .cloned()
         .unwrap_or_else(|| json!({}));
+    if name == TOOLS_PROFILES_TOOL {
+        return Ok(tool_profiles_result(profile));
+    }
+    if !profile.allows_tool(name) {
+        return Err(format!(
+            "tool `{name}` is not available in MCP tools profile `{}`; start pire-browser with `mcp --tools all` or combine profiles such as `--tools core,network`",
+            profile.label()
+        ));
+    }
     let args = tool_command_args(name, &arguments, profile)?;
     Ok(run_cli_tool(args))
 }
@@ -168,6 +426,33 @@ fn run_cli_tool(args: Vec<String>) -> Value {
         result["structuredContent"] = parsed;
     }
     result
+}
+
+fn tool_profiles_result(active: McpToolsProfile) -> Value {
+    let profiles = profile_descriptors()
+        .into_iter()
+        .map(|profile| {
+            let count = mcp_tools(McpToolsProfile::Combined(profile.bits)).len();
+            json!({
+                "name": profile.name,
+                "active": active.bits() & profile.bits != 0,
+                "toolCount": count,
+                "description": profile.description
+            })
+        })
+        .collect::<Vec<_>>();
+    let data = json!({
+        "active": active.label(),
+        "profiles": profiles
+    });
+    json!({
+        "content": [{
+            "type": "text",
+            "text": format!("pire-browser MCP tool profiles: {}", active.label())
+        }],
+        "structuredContent": data,
+        "isError": false
+    })
 }
 
 fn exit_status_text(code: Option<i32>) -> String {
@@ -1312,13 +1597,25 @@ fn optional_string_array(
 }
 
 fn mcp_tools(profile: McpToolsProfile) -> Vec<Value> {
-    match profile {
-        McpToolsProfile::Core => core_tools(),
-    }
+    core_tools()
+        .into_iter()
+        .filter(|tool| {
+            tool.get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| profile.allows_tool(name))
+        })
+        .collect()
 }
 
 fn core_tools() -> Vec<Value> {
     vec![
+        tool(
+            TOOLS_PROFILES_TOOL,
+            "List MCP tool profiles",
+            "Describe available pire-browser MCP tool profiles and the active profile selection.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
         tool(
             "pire_browser_open",
             "Open or launch Firefox",
@@ -2477,6 +2774,7 @@ mod tests {
     #[test]
     fn lists_core_tools_with_schemas() {
         let tools = mcp_tools(McpToolsProfile::Core);
+        assert!(tools.iter().any(|tool| tool["name"] == TOOLS_PROFILES_TOOL));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_snapshot"));
@@ -2497,68 +2795,26 @@ mod tests {
             .any(|tool| tool["name"] == "pire_browser_wait_download"));
         assert!(tools
             .iter()
-            .any(|tool| tool["name"] == "pire_browser_clipboard"));
-        assert!(tools
-            .iter()
             .any(|tool| tool["name"] == "pire_browser_mouse_move"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_console"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_dialog_status"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_highlight"));
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_pdf"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_diff_url"));
         assert!(tools
             .iter()
-            .any(|tool| tool["name"] == "pire_browser_network_requests"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_set_viewport"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_set_headers"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_cookies_list"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_storage_get"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_network_route"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_state_save"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_auth_login"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_state_load"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_session_list"));
-        assert!(tools
-            .iter()
             .any(|tool| tool["name"] == "pire_browser_profiles_list"));
         assert!(tools
             .iter()
-            .any(|tool| tool["name"] == "pire_browser_tabs_select"));
-        assert!(tools
+            .any(|tool| tool["name"] == "pire_browser_skills_get_core"));
+        assert!(!tools
             .iter()
-            .any(|tool| tool["name"] == "pire_browser_frame_select"));
-        assert!(tools
+            .any(|tool| tool["name"] == "pire_browser_network_route"));
+        assert!(!tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_auth_login"));
+        assert!(!tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_window_new"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_skills_get_core"));
         let snapshot = tools
             .iter()
             .find(|tool| tool["name"] == "pire_browser_snapshot")
@@ -2576,6 +2832,45 @@ mod tests {
             wait["inputSchema"]["properties"]["function"]["type"],
             "string"
         );
+    }
+
+    #[test]
+    fn lists_profile_specific_tools() {
+        let network = mcp_tools(McpToolsProfile::Network);
+        assert!(network
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_network_route"));
+        assert!(!network
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_click"));
+
+        let state = mcp_tools(McpToolsProfile::State);
+        assert!(state
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_auth_login"));
+        assert!(state
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_clipboard"));
+
+        let tabs = mcp_tools(McpToolsProfile::Tabs);
+        assert!(tabs
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_window_new"));
+        assert!(tabs
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_tab_new"));
+
+        let combined = mcp_tools(McpToolsProfile::parse("core,network").unwrap());
+        assert!(combined
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_click"));
+        assert!(combined
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_network_route"));
+
+        let react = mcp_tools(McpToolsProfile::React);
+        assert_eq!(react.len(), 1);
+        assert_eq!(react[0]["name"], TOOLS_PROFILES_TOOL);
     }
 
     #[test]
@@ -2611,6 +2906,41 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("selector is required"));
+    }
+
+    #[test]
+    fn rejects_profile_unavailable_tool_calls() {
+        let result = handle_message(
+            r#"{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"pire_browser_network_route","arguments":{"pattern":"**/api/**"}}}"#,
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(result["id"], 8);
+        assert_eq!(result["result"]["isError"], true);
+        assert!(result["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("not available in MCP tools profile `core`"));
+    }
+
+    #[test]
+    fn tools_profiles_tool_returns_structured_profile_list() {
+        let result = handle_message(
+            r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"pire_browser_tools_profiles","arguments":{}}}"#,
+            McpToolsProfile::parse("core,network").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result["id"], 9);
+        assert_eq!(result["result"]["isError"], false);
+        assert_eq!(
+            result["result"]["structuredContent"]["active"],
+            "core,network"
+        );
+        assert!(result["result"]["structuredContent"]["profiles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|profile| profile["name"] == "network" && profile["active"] == true));
     }
 
     #[test]
@@ -3732,9 +4062,18 @@ mod tests {
             McpToolsProfile::parse("core").unwrap(),
             McpToolsProfile::Core
         );
+        assert_eq!(McpToolsProfile::parse("all").unwrap(), McpToolsProfile::All);
         assert_eq!(
-            McpToolsProfile::parse("all").unwrap(),
-            McpToolsProfile::Core
+            McpToolsProfile::parse("core,network").unwrap(),
+            McpToolsProfile::Combined(PROFILE_CORE | PROFILE_NETWORK)
+        );
+        assert_eq!(
+            McpToolsProfile::parse("mobile").unwrap(),
+            McpToolsProfile::Mobile
+        );
+        assert_eq!(
+            McpToolsProfile::parse("react").unwrap(),
+            McpToolsProfile::React
         );
         assert!(McpToolsProfile::parse("browserless").is_err());
     }
