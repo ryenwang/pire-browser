@@ -112,7 +112,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs, mouse/debugging tools, cookies/storage, network/state/session/profile tools, transfers, clipboard, tabs/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs, mouse/debugging tools, settings/emulation, cookies/storage, network/state/session/profile tools, transfers, clipboard, tabs/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -196,6 +196,10 @@ fn tool_command_args(
     let mut args = target_args(object)?;
     match (profile, name) {
         (_, "pire_browser_open") => {
+            if let Some(color_scheme) = optional_color_scheme(object, "colorScheme")? {
+                args.push("--color-scheme".to_string());
+                args.push(color_scheme);
+            }
             args.push("open".to_string());
             if let Some(url) = optional_string(object, "url")? {
                 args.push(url);
@@ -535,6 +539,54 @@ fn tool_command_args(
         }
         (_, "pire_browser_status") => {
             args.push("status".to_string());
+        }
+        (_, "pire_browser_set_viewport") => {
+            args.push("set".to_string());
+            args.push("viewport".to_string());
+            args.push(required_u64(object, "width")?.to_string());
+            args.push(required_u64(object, "height")?.to_string());
+            if let Some(scale) = optional_string_or_number(object, "scale")? {
+                args.push(scale);
+            }
+        }
+        (_, "pire_browser_set_device") => {
+            args.push("set".to_string());
+            args.push("device".to_string());
+            args.push(required_string(object, "name")?);
+        }
+        (_, "pire_browser_set_geo") => {
+            args.push("set".to_string());
+            args.push("geo".to_string());
+            args.push(required_f64(object, "latitude")?.to_string());
+            args.push(required_f64(object, "longitude")?.to_string());
+        }
+        (_, "pire_browser_set_headers") => {
+            args.push("set".to_string());
+            args.push("headers".to_string());
+            args.push(required_headers_json(object)?);
+        }
+        (_, "pire_browser_set_credentials") => {
+            args.push("set".to_string());
+            args.push("credentials".to_string());
+            args.push(required_string(object, "username")?);
+            args.push(required_string(object, "password")?);
+        }
+        (_, "pire_browser_set_media") => {
+            args.push("set".to_string());
+            args.push("media".to_string());
+            args.push(required_color_scheme(object, "scheme")?);
+        }
+        (_, "pire_browser_set_offline") => {
+            args.push("set".to_string());
+            args.push("offline".to_string());
+            args.push(
+                if optional_bool_default(object, "enabled", true)? {
+                    "on"
+                } else {
+                    "off"
+                }
+                .to_string(),
+            );
         }
         (_, "pire_browser_cookies_list") => {
             args.push("cookies".to_string());
@@ -924,6 +976,59 @@ fn required_storage_area(object: &Map<String, Value>) -> std::result::Result<Str
     Ok(area)
 }
 
+fn optional_color_scheme(
+    object: &Map<String, Value>,
+    key: &str,
+) -> std::result::Result<Option<String>, String> {
+    optional_string(object, key)?
+        .map(validate_color_scheme)
+        .transpose()
+}
+
+fn required_color_scheme(
+    object: &Map<String, Value>,
+    key: &str,
+) -> std::result::Result<String, String> {
+    validate_color_scheme(required_string(object, key)?)
+}
+
+fn validate_color_scheme(value: String) -> std::result::Result<String, String> {
+    if matches!(value.as_str(), "dark" | "light" | "auto") {
+        Ok(value)
+    } else {
+        Err("color scheme must be dark, light, or auto".to_string())
+    }
+}
+
+fn optional_string_or_number(
+    object: &Map<String, Value>,
+    key: &str,
+) -> std::result::Result<Option<String>, String> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        Some(Value::Number(value)) => Ok(Some(value.to_string())),
+        Some(_) => Err(format!("{key} must be a string or number")),
+    }
+}
+
+fn required_headers_json(object: &Map<String, Value>) -> std::result::Result<String, String> {
+    let value = object
+        .get("headers")
+        .ok_or_else(|| "headers is required".to_string())?;
+    let Some(headers) = value.as_object() else {
+        return Err("headers must be an object".to_string());
+    };
+    for (name, value) in headers {
+        if !matches!(value, Value::String(_) | Value::Number(_) | Value::Bool(_)) {
+            return Err(format!(
+                "headers.{name} must be a string, number, or boolean"
+            ));
+        }
+    }
+    serde_json::to_string(value).map_err(|err| err.to_string())
+}
+
 fn target_args(object: &Map<String, Value>) -> std::result::Result<Vec<String>, String> {
     let session = optional_string(object, "session")?;
     let session_name = optional_string(object, "sessionName")?;
@@ -998,6 +1103,24 @@ fn required_u64(object: &Map<String, Value>, key: &str) -> std::result::Result<u
     optional_u64(object, key)?.ok_or_else(|| format!("{key} is required"))
 }
 
+fn optional_f64(
+    object: &Map<String, Value>,
+    key: &str,
+) -> std::result::Result<Option<f64>, String> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(value)) => value
+            .as_f64()
+            .map(Some)
+            .ok_or_else(|| format!("{key} must be a number")),
+        Some(_) => Err(format!("{key} must be a number")),
+    }
+}
+
+fn required_f64(object: &Map<String, Value>, key: &str) -> std::result::Result<f64, String> {
+    optional_f64(object, key)?.ok_or_else(|| format!("{key} is required"))
+}
+
 fn optional_i64(
     object: &Map<String, Value>,
     key: &str,
@@ -1064,6 +1187,7 @@ fn core_tools() -> Vec<Value> {
                     ("url", string_prop("URL to open. Omit to just launch or reuse Firefox.")),
                     ("newTab", bool_prop("Open in a new tab.")),
                     ("label", string_prop("Optional stable tab label.")),
+                    ("colorScheme", string_prop("Optional page color scheme: dark, light, or auto.")),
                 ],
                 &[],
             ),
@@ -1530,6 +1654,74 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_set_viewport",
+            "Set viewport",
+            "Approximate the active page viewport by resizing the managed Firefox window.",
+            tool_schema(
+                vec![
+                    ("width", number_prop("Requested viewport width in CSS pixels.")),
+                    ("height", number_prop("Requested viewport height in CSS pixels.")),
+                    ("scale", scalar_prop("Optional requested device scale factor; reported but not enforced by Firefox.")),
+                ],
+                &["width", "height"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_set_device",
+            "Set device preset",
+            "Apply a best-effort viewport preset such as iPhone 14, Pixel 7, Galaxy S22, or iPad.",
+            tool_schema(vec![("name", string_prop("Device preset name."))], &["name"]),
+            false,
+        ),
+        tool(
+            "pire_browser_set_geo",
+            "Set geolocation",
+            "Install a best-effort page-level geolocation shim for managed Firefox pages.",
+            tool_schema(
+                vec![
+                    ("latitude", float_prop("Latitude from -90 to 90.")),
+                    ("longitude", float_prop("Longitude from -180 to 180.")),
+                ],
+                &["latitude", "longitude"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_set_headers",
+            "Set request headers",
+            "Set or clear extra request headers for the active page origin. Values may contain secrets.",
+            tool_schema(vec![("headers", headers_prop())], &["headers"]),
+            false,
+        ),
+        tool(
+            "pire_browser_set_credentials",
+            "Set HTTP Basic credentials",
+            "Set memory-only HTTP Basic credentials for the active page origin. Passwords are not echoed.",
+            tool_schema(
+                vec![
+                    ("username", string_prop("HTTP Basic username.")),
+                    ("password", string_prop("HTTP Basic password.")),
+                ],
+                &["username", "password"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_set_media",
+            "Set media color scheme",
+            "Set the managed Firefox content color scheme to dark, light, or auto.",
+            tool_schema(vec![("scheme", string_prop("dark, light, or auto."))], &["scheme"]),
+            false,
+        ),
+        tool(
+            "pire_browser_set_offline",
+            "Set offline mode",
+            "Toggle best-effort request blocking for managed Firefox tabs.",
+            tool_schema(vec![("enabled", bool_prop("true for offline, false for online."))], &["enabled"]),
+            false,
+        ),
+        tool(
             "pire_browser_cookies_list",
             "List cookies",
             "Return cookies for the active tab URL. Values may contain secrets.",
@@ -1922,6 +2114,34 @@ fn number_prop(description: &str) -> Value {
     json!({ "type": "integer", "minimum": 0, "description": description })
 }
 
+fn float_prop(description: &str) -> Value {
+    json!({ "type": "number", "description": description })
+}
+
+fn scalar_prop(description: &str) -> Value {
+    json!({
+        "oneOf": [
+            { "type": "string" },
+            { "type": "number" }
+        ],
+        "description": description
+    })
+}
+
+fn headers_prop() -> Value {
+    json!({
+        "type": "object",
+        "description": "Header names to string, number, or boolean values. Empty object clears headers for the active origin.",
+        "additionalProperties": {
+            "oneOf": [
+                { "type": "string" },
+                { "type": "number" },
+                { "type": "boolean" }
+            ]
+        }
+    })
+}
+
 fn integer_prop(description: &str) -> Value {
     json!({ "type": "integer", "description": description })
 }
@@ -1998,6 +2218,12 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_network_requests"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_set_viewport"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_set_headers"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_cookies_list"));
@@ -2085,6 +2311,29 @@ mod tests {
 
     #[test]
     fn maps_tool_arguments_to_cli_args() {
+        let args = tool_command_args(
+            "pire_browser_open",
+            &json!({
+                "url": "https://example.com",
+                "colorScheme": "dark",
+                "label": "docs"
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "--color-scheme",
+                "dark",
+                "open",
+                "https://example.com",
+                "--label",
+                "docs"
+            ]
+        );
+
         let args = tool_command_args(
             "pire_browser_find",
             &json!({
@@ -2380,6 +2629,67 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "vitals", "https://example.com"]);
+
+        let args = tool_command_args(
+            "pire_browser_set_viewport",
+            &json!({ "width": 1280, "height": 720, "scale": 2 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "set", "viewport", "1280", "720", "2"]);
+
+        let args = tool_command_args(
+            "pire_browser_set_device",
+            &json!({ "name": "iPhone 14" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "set", "device", "iPhone 14"]);
+
+        let args = tool_command_args(
+            "pire_browser_set_geo",
+            &json!({ "latitude": 37.7749, "longitude": -122.4194 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "set", "geo", "37.7749", "-122.4194"]);
+
+        let args = tool_command_args(
+            "pire_browser_set_headers",
+            &json!({ "headers": { "X-Preview": "on", "X-Trace": 42, "X-Enabled": true } }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args[0..3], ["--json", "set", "headers"]);
+        let headers: Value = serde_json::from_str(&args[3]).unwrap();
+        assert_eq!(
+            headers,
+            json!({ "X-Preview": "on", "X-Trace": 42, "X-Enabled": true })
+        );
+
+        let args = tool_command_args(
+            "pire_browser_set_credentials",
+            &json!({ "username": "user", "password": "pass" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "set", "credentials", "user", "pass"]);
+
+        let args = tool_command_args(
+            "pire_browser_set_media",
+            &json!({ "scheme": "dark" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "set", "media", "dark"]);
+
+        let args = tool_command_args(
+            "pire_browser_set_offline",
+            &json!({ "enabled": false }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "set", "offline", "off"]);
 
         let args = tool_command_args(
             "pire_browser_cookies_list",
@@ -2814,6 +3124,30 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("dy is required"));
+
+        let error = tool_command_args(
+            "pire_browser_open",
+            &json!({ "colorScheme": "sepia" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("color scheme must be"));
+
+        let error = tool_command_args(
+            "pire_browser_set_headers",
+            &json!({ "headers": { "X-Test": ["bad"] } }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("headers.X-Test must be"));
+
+        let error = tool_command_args(
+            "pire_browser_set_media",
+            &json!({ "scheme": "sepia" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("color scheme must be"));
 
         let error = tool_command_args(
             "pire_browser_network_route",

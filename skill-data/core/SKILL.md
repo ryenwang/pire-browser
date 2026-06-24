@@ -191,6 +191,11 @@ pire-browser screenshot mobile.png
 
 `set viewport`, `set device`, and `set geo` are Firefox best-effort paths. Viewport and device settings resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `set device` reports a preset User-Agent/touch/scale profile but does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. `set geo` installs a page-level `navigator.geolocation` shim for managed Firefox pages; it does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state.
 
+When using MCP, prefer the typed setting tools (`pire_browser_set_viewport`,
+`pire_browser_set_device`, `pire_browser_set_geo`, `pire_browser_set_headers`,
+`pire_browser_set_credentials`, `pire_browser_set_media`, and
+`pire_browser_set_offline`) instead of raw command strings.
+
 ```sh
 pire-browser --color-scheme dark open https://example.com
 pire-browser set media light
@@ -410,12 +415,12 @@ The MCP core profile exposes open, snapshot, click, fill, type, press, keyboard
 typing, semantic find, double-click, hover, focus, select, check, uncheck,
 scroll, drag, mouse events, get, state checks, wait, screenshot/PDF evidence,
 console/errors/dialog/highlight/vitals diagnostics, download, wait-download,
-upload, clipboard, cookies/storage, network requests/routes/HAR, plaintext state
-file management, session/profile inspection, status, tab/window controls, close,
-eval, and skill guidance. It invokes the same installed CLI binary, so setup,
-policies, sessions, profiles, and Firefox runtime behavior stay shared with
-normal `pire-browser` commands. `--tools all` is accepted as an alias for all
-currently available MCP tools.
+upload, clipboard, settings/emulation, cookies/storage, network
+requests/routes/HAR, plaintext state file management, session/profile
+inspection, status, tab/window controls, close, eval, and skill guidance. It
+invokes the same installed CLI binary, so setup, policies, sessions, profiles,
+and Firefox runtime behavior stay shared with normal `pire-browser` commands.
+`--tools all` is accepted as an alias for all currently available MCP tools.
 
 ## Snapshot Options
 
