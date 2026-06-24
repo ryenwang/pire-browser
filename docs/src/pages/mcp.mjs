@@ -25,6 +25,7 @@ pire-browser mcp --tools all`),
     ]
   ),
   p("The server uses the same installed binary and command behavior as the CLI, so policies, setup, sessions, profiles, and Firefox runtime behavior stay shared."),
+  p("Tool annotations distinguish read-only browser inspection from mutating actions and mark local maintenance/context tools such as install, upgrade, status, sessions, profiles, and skills as non-open-world for clearer host approval prompts."),
   h2("Common Typed Fields", "common-typed-fields"),
   p("Most browser-command MCP tools accept common typed fields for CLI-global behavior that must be placed before the command. Prefer these fields over <code>extraArgs</code> when setting guardrails or launch context. The lower-level debug-profile <code>pire_browser_launch</code> tool has a narrower launch-specific schema; prefer <code>pire_browser_open</code> for normal launch/navigation."),
   table(

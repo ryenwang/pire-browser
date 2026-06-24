@@ -3164,11 +3164,32 @@ fn tool(name: &str, title: &str, description: &str, input_schema: Value, read_on
         "title": title,
         "description": description,
         "inputSchema": input_schema,
-        "annotations": {
-            "readOnlyHint": read_only,
-            "openWorldHint": true
-        }
+        "annotations": tool_annotations(name, read_only)
     })
+}
+
+fn tool_annotations(name: &str, read_only: bool) -> Value {
+    json!({
+        "readOnlyHint": read_only,
+        "openWorldHint": is_open_world_tool(name)
+    })
+}
+
+fn is_open_world_tool(name: &str) -> bool {
+    !matches!(
+        name,
+        TOOLS_PROFILES_TOOL
+            | "pire_browser_status"
+            | "pire_browser_doctor"
+            | "pire_browser_activity_list"
+            | "pire_browser_install"
+            | "pire_browser_upgrade"
+            | "pire_browser_session_list"
+            | "pire_browser_session_attach"
+            | "pire_browser_session_cleanup"
+            | "pire_browser_profiles_list"
+            | "pire_browser_skills_get_core"
+    )
 }
 
 fn tool_schema(properties: Vec<(&str, Value)>, required: &[&str]) -> Value {
@@ -3450,6 +3471,13 @@ mod tests {
         values.iter().map(|value| value.to_string()).collect()
     }
 
+    fn tool_named<'a>(tools: &'a [Value], name: &str) -> &'a Value {
+        tools
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap_or_else(|| panic!("missing tool {name}"))
+    }
+
     #[test]
     fn initialize_advertises_core_tools_and_version() {
         let result = initialize_result();
@@ -3719,6 +3747,52 @@ mod tests {
         let react = mcp_tools(McpToolsProfile::React);
         assert_eq!(react.len(), 1);
         assert_eq!(react[0]["name"], TOOLS_PROFILES_TOOL);
+    }
+
+    #[test]
+    fn tool_annotations_mark_local_context_tools_closed_world() {
+        let tools = mcp_tools(McpToolsProfile::All);
+        let open = tool_named(&tools, "pire_browser_open");
+        assert_eq!(open["annotations"]["readOnlyHint"], false);
+        assert_eq!(open["annotations"]["openWorldHint"], true);
+
+        let read = tool_named(&tools, "pire_browser_read");
+        assert_eq!(read["annotations"]["readOnlyHint"], true);
+        assert_eq!(read["annotations"]["openWorldHint"], true);
+
+        let get_url = tool_named(&tools, "pire_browser_get_url");
+        assert_eq!(get_url["annotations"]["readOnlyHint"], true);
+        assert_eq!(get_url["annotations"]["openWorldHint"], true);
+
+        for name in [
+            TOOLS_PROFILES_TOOL,
+            "pire_browser_status",
+            "pire_browser_doctor",
+            "pire_browser_activity_list",
+            "pire_browser_install",
+            "pire_browser_upgrade",
+            "pire_browser_session_list",
+            "pire_browser_session_attach",
+            "pire_browser_session_cleanup",
+            "pire_browser_profiles_list",
+            "pire_browser_skills_get_core",
+        ] {
+            let tool = tool_named(&tools, name);
+            assert_eq!(tool["annotations"]["openWorldHint"], false, "{name}");
+        }
+
+        assert_eq!(
+            tool_named(&tools, "pire_browser_install")["annotations"]["readOnlyHint"],
+            false
+        );
+        assert_eq!(
+            tool_named(&tools, "pire_browser_upgrade")["annotations"]["readOnlyHint"],
+            false
+        );
+        assert_eq!(
+            tool_named(&tools, "pire_browser_skills_get_core")["annotations"]["readOnlyHint"],
+            true
+        );
     }
 
     #[test]
