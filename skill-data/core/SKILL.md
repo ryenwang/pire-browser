@@ -270,6 +270,21 @@ pire-browser open https://api.example.com/dashboard
 
 `open --headers` applies headers to the opened URL's origin for the current managed Firefox session. `set headers` applies headers to the active page's origin; use `set headers '{}'` to clear that origin. `set credentials <username> <password>` applies memory-only HTTP Basic auth to the active page's origin. Header values and passwords are not echoed in command output. Reinspect after navigation and do not assume auth applies to other hosts or ports.
 
+Inspect or adjust active-origin cookies and Web Storage:
+
+```bash
+pire-browser cookies
+pire-browser cookies set preview enabled
+pire-browser storage local
+pire-browser storage local featureFlag
+pire-browser storage local set featureFlag on
+pire-browser storage session clear
+```
+
+Cookies and Web Storage values may contain session secrets. Prefer targeted key
+reads and do not paste raw values back to the user unless they explicitly asked
+for state debugging output.
+
 Use page-level mouse events when a custom widget needs coordinates:
 
 ```bash
@@ -395,12 +410,12 @@ The MCP core profile exposes open, snapshot, click, fill, type, press, keyboard
 typing, semantic find, double-click, hover, focus, select, check, uncheck,
 scroll, drag, mouse events, get, state checks, wait, screenshot/PDF evidence,
 console/errors/dialog/highlight/vitals diagnostics, download, wait-download,
-upload, clipboard, network requests/routes/HAR, plaintext state file management,
-session/profile inspection, status, tab/window controls, close, eval, and skill
-guidance. It invokes the same installed CLI binary, so setup, policies, sessions,
-profiles, and Firefox runtime behavior stay shared with normal `pire-browser`
-commands. `--tools all` is accepted as an alias for all currently available MCP
-tools.
+upload, clipboard, cookies/storage, network requests/routes/HAR, plaintext state
+file management, session/profile inspection, status, tab/window controls, close,
+eval, and skill guidance. It invokes the same installed CLI binary, so setup,
+policies, sessions, profiles, and Firefox runtime behavior stay shared with
+normal `pire-browser` commands. `--tools all` is accepted as an alias for all
+currently available MCP tools.
 
 ## Snapshot Options
 

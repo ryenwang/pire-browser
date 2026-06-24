@@ -112,7 +112,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs, mouse/debugging tools, network/state/session/profile tools, transfers, clipboard, tabs/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs, mouse/debugging tools, cookies/storage, network/state/session/profile tools, transfers, clipboard, tabs/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -536,6 +536,38 @@ fn tool_command_args(
         (_, "pire_browser_status") => {
             args.push("status".to_string());
         }
+        (_, "pire_browser_cookies_list") => {
+            args.push("cookies".to_string());
+        }
+        (_, "pire_browser_cookies_set") => {
+            args.push("cookies".to_string());
+            args.push("set".to_string());
+            args.push(required_string(object, "name")?);
+            args.push(required_string(object, "value")?);
+        }
+        (_, "pire_browser_cookies_clear") => {
+            args.push("cookies".to_string());
+            args.push("clear".to_string());
+        }
+        (_, "pire_browser_storage_get") => {
+            args.push("storage".to_string());
+            args.push(required_storage_area(object)?);
+            if let Some(key) = optional_string(object, "key")? {
+                args.push(key);
+            }
+        }
+        (_, "pire_browser_storage_set") => {
+            args.push("storage".to_string());
+            args.push(required_storage_area(object)?);
+            args.push("set".to_string());
+            args.push(required_string(object, "key")?);
+            args.push(required_string(object, "value")?);
+        }
+        (_, "pire_browser_storage_clear") => {
+            args.push("storage".to_string());
+            args.push(required_storage_area(object)?);
+            args.push("clear".to_string());
+        }
         (_, "pire_browser_network_requests") => {
             args.push("network".to_string());
             args.push("requests".to_string());
@@ -882,6 +914,14 @@ fn push_optional_flag_value(
         args.push(value);
     }
     Ok(())
+}
+
+fn required_storage_area(object: &Map<String, Value>) -> std::result::Result<String, String> {
+    let area = required_string(object, "area")?;
+    if !matches!(area.as_str(), "local" | "session") {
+        return Err("area must be local or session".to_string());
+    }
+    Ok(area)
 }
 
 fn target_args(object: &Map<String, Value>) -> std::result::Result<Vec<String>, String> {
@@ -1490,6 +1530,70 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_cookies_list",
+            "List cookies",
+            "Return cookies for the active tab URL. Values may contain secrets.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
+            "pire_browser_cookies_set",
+            "Set cookie",
+            "Set a cookie for the active tab URL.",
+            tool_schema(
+                vec![
+                    ("name", string_prop("Cookie name.")),
+                    ("value", string_prop("Cookie value.")),
+                ],
+                &["name", "value"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_cookies_clear",
+            "Clear cookies",
+            "Clear cookies visible to the active tab URL.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_storage_get",
+            "Read web storage",
+            "Read localStorage or sessionStorage for the active origin. Values may contain secrets.",
+            tool_schema(
+                vec![
+                    ("area", string_prop("Storage area: local or session.")),
+                    ("key", string_prop("Optional key; omit to return the full area.")),
+                ],
+                &["area"],
+            ),
+            true,
+        ),
+        tool(
+            "pire_browser_storage_set",
+            "Set web storage",
+            "Set a localStorage or sessionStorage key for the active origin.",
+            tool_schema(
+                vec![
+                    ("area", string_prop("Storage area: local or session.")),
+                    ("key", string_prop("Storage key.")),
+                    ("value", string_prop("Storage value.")),
+                ],
+                &["area", "key", "value"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_storage_clear",
+            "Clear web storage",
+            "Clear localStorage or sessionStorage for the active origin.",
+            tool_schema(
+                vec![("area", string_prop("Storage area: local or session."))],
+                &["area"],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_network_requests",
             "Network requests",
             "List or clear recent active-tab network requests with optional filters.",
@@ -1896,6 +2000,12 @@ mod tests {
             .any(|tool| tool["name"] == "pire_browser_network_requests"));
         assert!(tools
             .iter()
+            .any(|tool| tool["name"] == "pire_browser_cookies_list"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_storage_get"));
+        assert!(tools
+            .iter()
             .any(|tool| tool["name"] == "pire_browser_network_route"));
         assert!(tools
             .iter()
@@ -2270,6 +2380,65 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "vitals", "https://example.com"]);
+
+        let args = tool_command_args(
+            "pire_browser_cookies_list",
+            &json!({}),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "cookies"]);
+
+        let args = tool_command_args(
+            "pire_browser_cookies_set",
+            &json!({ "name": "preview", "value": "enabled" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "cookies", "set", "preview", "enabled"]);
+
+        let args = tool_command_args(
+            "pire_browser_cookies_clear",
+            &json!({}),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "cookies", "clear"]);
+
+        let args = tool_command_args(
+            "pire_browser_storage_get",
+            &json!({ "area": "local", "key": "feature" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "storage", "local", "feature"]);
+
+        let args = tool_command_args(
+            "pire_browser_storage_get",
+            &json!({ "area": "session" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "storage", "session"]);
+
+        let args = tool_command_args(
+            "pire_browser_storage_set",
+            &json!({ "area": "local", "key": "feature", "value": "on" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "storage", "local", "set", "feature", "on"]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_storage_clear",
+            &json!({ "area": "session" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "storage", "session", "clear"]);
 
         let args = tool_command_args(
             "pire_browser_network_requests",
@@ -2653,6 +2822,14 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("cannot combine abort and body"));
+
+        let error = tool_command_args(
+            "pire_browser_storage_get",
+            &json!({ "area": "indexeddb" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("area must be local or session"));
 
         let error = tool_command_args(
             "pire_browser_state_load",

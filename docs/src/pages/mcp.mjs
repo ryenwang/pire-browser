@@ -25,6 +25,7 @@ pire-browser mcp --tools all`),
       ["pire_browser_wait", "Wait for time, selector, text, URL, or load state."],
       ["pire_browser_screenshot / pdf", "Capture screenshot or image-backed PDF evidence."],
       ["pire_browser_console / errors / dialog_* / highlight / vitals", "Inspect page logs, errors, JavaScript dialogs, visual targets, and best-effort performance signals."],
+      ["pire_browser_cookies_* / pire_browser_storage_*", "Read or mutate active URL cookies and active-origin Web Storage."],
       ["pire_browser_network_requests / request / har_* / route / unroute", "Inspect active-tab network metadata, record/export metadata HAR, and register best-effort routes."],
       ["pire_browser_state_*", "Save, load, list, show, inspect, rename, clear, or clean plaintext active-origin state files."],
       ["pire_browser_session_* / profiles_list", "Inspect live sessions and managed Firefox profiles."],
@@ -43,7 +44,7 @@ pire-browser mcp --tools all`),
 3. Use fresh refs or semantic find locators in click/double-click/fill/type/press/select/check/scroll/drag/mouse/download/upload tools.
 4. Use pire_browser_get or pire_browser_is for targeted verification when you already have a fresh target.
 5. Use console/errors/dialog/highlight/vitals/network tools when a page is stuck, blocked, or needs evidence.
-6. Use state tools only for user-approved active-origin state files; state values are plaintext.
+6. Use cookies/storage/state tools only when needed for user-approved state debugging; values may contain secrets.
 7. Call pire_browser_wait when page state needs time.
 8. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
   p("MCP tool calls return text content for compatibility and structured command output when the underlying CLI emits JSON."),

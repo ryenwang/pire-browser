@@ -1884,6 +1884,8 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "console" => CONSOLE_HELP,
         "errors" => ERRORS_HELP,
         "dialog" | "dialogs" => DIALOG_HELP,
+        "cookies" | "cookie" => COOKIES_HELP,
+        "storage" => STORAGE_HELP,
         "network" => NETWORK_HELP,
         "vitals" => VITALS_HELP,
         "highlight" => HIGHLIGHT_HELP,
@@ -1946,6 +1948,8 @@ Common commands:
   console                         Show recent page console messages
   errors                          Show recent page errors
   dialog status                   Show recently observed JavaScript dialogs
+  cookies                         Show active URL cookies
+  storage local [key]             Read active-origin localStorage
   network requests                Show recent page network requests
   network har network.har         Export recent request metadata as HAR
   network route "**/api/**" --body '{}' Mock or block active-tab requests
@@ -2279,6 +2283,31 @@ captured records directly. HAR output is metadata-only from WebExtension request
 records; request/response bodies, cookies, and raw headers are not captured.
 Full CDP-style response control is not supported on the Firefox WebExtension
 backend.
+"##;
+
+const COOKIES_HELP: &str = r##"
+Usage:
+  pire-browser cookies [--json]
+  pire-browser cookies set <name> <value> [--json]
+  pire-browser cookies clear [--json]
+
+Lists, sets, or clears cookies visible to the active Firefox tab URL. Cookie
+values may contain secrets; only print or share them when the user explicitly
+needs that state for debugging.
+"##;
+
+const STORAGE_HELP: &str = r##"
+Usage:
+  pire-browser storage local [key] [--json]
+  pire-browser storage local set <key> <value> [--json]
+  pire-browser storage local clear [--json]
+  pire-browser storage session [key] [--json]
+  pire-browser storage session set <key> <value> [--json]
+  pire-browser storage session clear [--json]
+
+Reads or mutates active-origin Web Storage in the page context. `local` maps to
+localStorage and `session` maps to sessionStorage. Values may contain secrets;
+prefer targeted key reads over dumping the full storage area.
 "##;
 
 const VITALS_HELP: &str = r##"
@@ -2635,10 +2664,11 @@ profile is `core`: open, inspect, interact, get page/element info, check
 element state, semantic find, keyboard/focus/scroll/dropdown/checkbox/mouse
 helpers, double-click, wait, capture screenshots/PDFs, inspect console/errors,
 handle JavaScript dialogs, highlight targets, measure Web Vitals, transfer
-files, use clipboard text, inspect network requests/routes/HAR, manage
-plaintext state files, inspect sessions/profiles, inspect/switch/label/close
-tabs, open windows, inspect status, close sessions, and fetch installed skill
-guidance. `all` is accepted as an alias for all currently available MCP tools.
+files, use clipboard text, inspect cookies/storage, inspect network
+requests/routes/HAR, manage plaintext state files, inspect sessions/profiles,
+inspect/switch/label/close tabs, open windows, inspect status, close sessions,
+and fetch installed skill guidance. `all` is accepted as an alias for all
+currently available MCP tools.
 "##;
 
 const SKILLS_HELP: &str = r##"
@@ -4223,6 +4253,8 @@ mod tests {
         assert!(text.contains("console"));
         assert!(text.contains("errors"));
         assert!(text.contains("dialog status"));
+        assert!(text.contains("cookies"));
+        assert!(text.contains("storage local [key]"));
         assert!(text.contains("network requests"));
         assert!(text.contains("network route"));
         assert!(text.contains("network har"));
@@ -4402,11 +4434,20 @@ mod tests {
         assert!(help_text(Some("mcp")).unwrap().contains("mouse"));
         assert!(help_text(Some("mcp")).unwrap().contains("console/errors"));
         assert!(help_text(Some("mcp")).unwrap().contains("screenshots/PDFs"));
-        assert!(help_text(Some("mcp")).unwrap().contains("network requests"));
+        assert!(help_text(Some("mcp"))
+            .unwrap()
+            .contains("requests/routes/HAR"));
+        assert!(help_text(Some("mcp")).unwrap().contains("cookies/storage"));
         assert!(help_text(Some("mcp")).unwrap().contains("state files"));
         assert!(help_text(Some("mcp"))
             .unwrap()
             .contains("sessions/profiles"));
+        assert!(help_text(Some("cookies"))
+            .unwrap()
+            .contains("cookies set <name> <value>"));
+        assert!(help_text(Some("storage"))
+            .unwrap()
+            .contains("storage session set <key> <value>"));
         assert!(help_text(Some("skills"))
             .unwrap()
             .contains("skills get core"));
