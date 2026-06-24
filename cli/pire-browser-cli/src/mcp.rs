@@ -112,7 +112,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs, mouse/debugging tools, settings/emulation, cookies/storage, network/auth/state/session/profile tools, transfers, clipboard, tabs/frames/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs/diffs, mouse/debugging tools, settings/emulation, cookies/storage, network/auth/state/session/profile tools, transfers, clipboard, tabs/frames/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -419,6 +419,87 @@ fn tool_command_args(
             args.push(required_string(object, "path")?);
             if optional_bool(object, "viewport")? {
                 args.push("--viewport".to_string());
+            }
+        }
+        (_, "pire_browser_diff_snapshot") => {
+            args.push("diff".to_string());
+            args.push("snapshot".to_string());
+            if let Some(baseline) = optional_string(object, "baselinePath")? {
+                args.push("--baseline".to_string());
+                args.push(baseline);
+            }
+            if let Some(selector) = optional_string(object, "selector")? {
+                args.push("--selector".to_string());
+                args.push(selector);
+            }
+            if optional_bool(object, "compact")? {
+                args.push("--compact".to_string());
+            }
+            if optional_bool(object, "urls")? {
+                args.push("--urls".to_string());
+            }
+            if let Some(depth) = optional_u64(object, "depth")? {
+                args.push("--depth".to_string());
+                args.push(depth.to_string());
+            }
+        }
+        (_, "pire_browser_diff_screenshot") => {
+            args.push("diff".to_string());
+            args.push("screenshot".to_string());
+            args.push("--baseline".to_string());
+            args.push(required_string(object, "baselinePath")?);
+            if let Some(current) = optional_string(object, "currentPath")? {
+                args.push(current);
+            }
+            if let Some(output) = optional_string(object, "outputPath")? {
+                args.push("--output".to_string());
+                args.push(output);
+            }
+            if let Some(threshold) = optional_f64(object, "threshold")? {
+                if !(0.0..=1.0).contains(&threshold) {
+                    return Err("threshold must be between 0 and 1".to_string());
+                }
+                args.push("--threshold".to_string());
+                args.push(threshold.to_string());
+            }
+            if optional_bool(object, "full")? {
+                args.push("--full".to_string());
+            }
+        }
+        (_, "pire_browser_diff_url") => {
+            args.push("diff".to_string());
+            args.push("url".to_string());
+            args.push(required_string(object, "baselineUrl")?);
+            args.push(required_string(object, "currentUrl")?);
+            if optional_bool(object, "screenshot")? {
+                args.push("--screenshot".to_string());
+            }
+            if optional_bool(object, "full")? {
+                args.push("--full".to_string());
+            }
+            if let Some(wait_until) = optional_string(object, "waitUntil")? {
+                let normalized = match wait_until.as_str() {
+                    "load" | "domcontentloaded" | "networkidle" => wait_until,
+                    "network-idle" => "networkidle".to_string(),
+                    _ => {
+                        return Err(
+                            "waitUntil must be load, domcontentloaded, or networkidle".to_string()
+                        )
+                    }
+                };
+                args.push("--wait-until".to_string());
+                args.push(normalized);
+            }
+            if let Some(selector) = optional_string(object, "selector")? {
+                args.push("--selector".to_string());
+                args.push(selector);
+            }
+            if optional_bool(object, "compact")? {
+                args.push("--compact".to_string());
+            }
+            if let Some(depth) = optional_u64(object, "depth")? {
+                args.push("--depth".to_string());
+                args.push(depth.to_string());
             }
         }
         (_, "pire_browser_console") => {
@@ -1551,6 +1632,97 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_diff_snapshot",
+            "Diff snapshot",
+            "Compare a fresh active-page snapshot to the previous snapshot or to a baseline text file.",
+            tool_schema(
+                vec![
+                    (
+                        "baselinePath",
+                        string_prop("Optional local text snapshot baseline path."),
+                    ),
+                    (
+                        "selector",
+                        string_prop("Optional CSS selector to scope the snapshot."),
+                    ),
+                    ("compact", bool_prop("Use compact snapshot filtering.")),
+                    ("urls", bool_prop("Include href URLs for links.")),
+                    ("depth", number_prop("Optional snapshot depth limit.")),
+                ],
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_diff_screenshot",
+            "Diff screenshot",
+            "Compare a baseline image to a fresh active-page screenshot or explicit current image path.",
+            tool_schema(
+                vec![
+                    ("baselinePath", string_prop("Baseline image path.")),
+                    (
+                        "currentPath",
+                        string_prop(
+                            "Optional current image path. When omitted, captures the active page.",
+                        ),
+                    ),
+                    (
+                        "outputPath",
+                        string_prop("Optional red pixel-diff output image path."),
+                    ),
+                    (
+                        "threshold",
+                        float_prop("Per-channel color threshold from 0 to 1."),
+                    ),
+                    (
+                        "full",
+                        bool_prop("Capture full-page screenshot when currentPath is omitted."),
+                    ),
+                ],
+                &["baselinePath"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_diff_url",
+            "Diff URLs",
+            "Open two URLs and compare their snapshots, optionally including screenshot pixel comparison.",
+            tool_schema(
+                vec![
+                    (
+                        "baselineUrl",
+                        string_prop("First URL to capture as the baseline."),
+                    ),
+                    (
+                        "currentUrl",
+                        string_prop("Second URL to compare against the baseline."),
+                    ),
+                    (
+                        "screenshot",
+                        bool_prop("Also capture screenshots and compare pixels."),
+                    ),
+                    (
+                        "full",
+                        bool_prop("Use full-page screenshots when screenshot is true."),
+                    ),
+                    (
+                        "waitUntil",
+                        string_prop(
+                            "Optional load state: load, domcontentloaded, or networkidle.",
+                        ),
+                    ),
+                    (
+                        "selector",
+                        string_prop("Optional CSS selector to scope snapshot diffing."),
+                    ),
+                    ("compact", bool_prop("Use compact snapshot filtering.")),
+                    ("depth", number_prop("Optional snapshot depth limit.")),
+                ],
+                &["baselineUrl", "currentUrl"],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_console",
             "Console messages",
             "Show or clear recent page console messages captured by the Firefox extension.",
@@ -2330,6 +2502,9 @@ mod tests {
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_pdf"));
         assert!(tools
             .iter()
+            .any(|tool| tool["name"] == "pire_browser_diff_url"));
+        assert!(tools
+            .iter()
             .any(|tool| tool["name"] == "pire_browser_network_requests"));
         assert!(tools
             .iter()
@@ -2696,6 +2871,107 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "pdf", "page.pdf", "--viewport"]);
+
+        let args = tool_command_args(
+            "pire_browser_diff_snapshot",
+            &json!({
+                "baselinePath": "before.txt",
+                "selector": "#main",
+                "compact": true,
+                "urls": true,
+                "depth": 3
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "diff",
+                "snapshot",
+                "--baseline",
+                "before.txt",
+                "--selector",
+                "#main",
+                "--compact",
+                "--urls",
+                "--depth",
+                "3"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_diff_screenshot",
+            &json!({
+                "baselinePath": "before.png",
+                "currentPath": "after.png",
+                "outputPath": "diff.png",
+                "threshold": 0.2,
+                "full": true
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "diff",
+                "screenshot",
+                "--baseline",
+                "before.png",
+                "after.png",
+                "--output",
+                "diff.png",
+                "--threshold",
+                "0.2",
+                "--full"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_diff_url",
+            &json!({
+                "baselineUrl": "https://v1.example",
+                "currentUrl": "https://v2.example",
+                "screenshot": true,
+                "full": true,
+                "waitUntil": "network-idle",
+                "selector": "#main",
+                "compact": true,
+                "depth": 2
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "diff",
+                "url",
+                "https://v1.example",
+                "https://v2.example",
+                "--screenshot",
+                "--full",
+                "--wait-until",
+                "networkidle",
+                "--selector",
+                "#main",
+                "--compact",
+                "--depth",
+                "2"
+            ]
+        );
+
+        assert!(tool_command_args(
+            "pire_browser_diff_screenshot",
+            &json!({ "baselinePath": "before.png", "threshold": 1.5 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err()
+        .contains("threshold must be between 0 and 1"));
 
         let args = tool_command_args(
             "pire_browser_console",

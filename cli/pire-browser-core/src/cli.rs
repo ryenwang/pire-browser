@@ -2676,10 +2676,11 @@ Usage:
 Starts a Model Context Protocol server over stdio. The current public MCP
 profile is `core`: open, inspect, interact, get page/element info, check
 element state, semantic find, keyboard/focus/scroll/dropdown/checkbox/mouse
-helpers, double-click, wait, capture screenshots/PDFs, inspect console/errors,
-handle JavaScript dialogs, highlight targets, measure Web Vitals, transfer
-files, use clipboard text, control settings/emulation, inspect cookies/storage,
-inspect network requests/routes/HAR, manage plaintext state files, inspect
+helpers, double-click, wait, capture screenshots/PDFs, compare snapshot,
+screenshot, and URL diffs, inspect console/errors, handle JavaScript dialogs,
+highlight targets, measure Web Vitals, transfer files, use clipboard text,
+control settings/emulation, inspect cookies/storage, inspect network requests/routes/HAR,
+manage plaintext state files, inspect
 sessions/profiles, inspect/switch/label/close tabs, select iframe contexts,
 open windows, inspect status, close sessions, and fetch installed skill
 guidance. `all` is accepted as an alias for all currently available MCP tools.
@@ -4460,6 +4461,7 @@ mod tests {
         assert!(help_text(Some("mcp"))
             .unwrap()
             .contains("sessions/profiles"));
+        assert!(help_text(Some("mcp")).unwrap().contains("URL diffs"));
         assert!(help_text(Some("mcp")).unwrap().contains("iframe contexts"));
         assert!(help_text(Some("cookies"))
             .unwrap()

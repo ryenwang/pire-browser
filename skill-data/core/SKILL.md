@@ -262,7 +262,9 @@ visual baseline to compare the current active-page screenshot. Add `-o <path>`
 for a red diff image and `-t <0..1>` when small rendering differences should be
 ignored. Use `diff url <url1> <url2>` for before/after page comparisons without
 manually opening each page; add `--screenshot` when the report needs pixel
-evidence in addition to snapshot differences.
+evidence in addition to snapshot differences. When using MCP, prefer
+`pire_browser_diff_snapshot`, `pire_browser_diff_screenshot`, or
+`pire_browser_diff_url` for these QA comparisons.
 
 Authenticate a page or API route with request headers:
 
@@ -414,7 +416,7 @@ pire-browser mcp --tools all
 The MCP core profile exposes open, snapshot, click, fill, type, press, keyboard
 typing, semantic find, double-click, hover, focus, select, check, uncheck,
 scroll, drag, mouse events, get, state checks, wait, screenshot/PDF evidence,
-console/errors/dialog/highlight/vitals diagnostics, download, wait-download,
+diff evidence, console/errors/dialog/highlight/vitals diagnostics, download, wait-download,
 upload, clipboard, settings/emulation, cookies/storage, network
 requests/routes/HAR, auth helpers, plaintext state file management, session/profile
 inspection, status, tab/frame/window controls, close, eval, and skill guidance. It

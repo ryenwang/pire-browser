@@ -5,7 +5,7 @@ This is a public, product-facing status summary for `pire-browser@0.2.2`. Detail
 | Area | Status | Notes |
 | --- | --- | --- |
 | Install and setup | Supported | Global, project, and source installs are documented for the Firefox-backed package. |
-| MCP agent integration | Supported | `pire-browser mcp --tools core` exposes the main browser workflow as stdio MCP tools, including semantic find, typed interaction, get/check, screenshot/PDF evidence, console/errors/dialog/highlight/vitals, settings/emulation, cookies/storage, network diagnostics/routes/HAR, auth helpers, plaintext state files, sessions/profiles, download/wait-download/upload, clipboard, tab/frame/window, status, and skill helpers. |
+| MCP agent integration | Supported | `pire-browser mcp --tools core` exposes the main browser workflow as stdio MCP tools, including semantic find, typed interaction, get/check, screenshot/PDF/diff evidence, console/errors/dialog/highlight/vitals, settings/emulation, cookies/storage, network diagnostics/routes/HAR, auth helpers, plaintext state files, sessions/profiles, download/wait-download/upload, clipboard, tab/frame/window, status, and skill helpers. |
 | Core navigation and refs | Supported | Open, snapshot, refs, click, fill, get, wait, and tab workflows are available. |
 | Selectors and snapshots | Supported | CSS, text-style selectors, semantic locators, interactive snapshots, compact output, snapshot text diffing, URL snapshot diffing, and screenshot pixel diffing are available. |
 | Sessions, profiles, and state | Partial | Named sessions, managed profiles, and state files are available with Firefox-specific behavior. |
