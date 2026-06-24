@@ -9,7 +9,7 @@ pire-browser fill '@e3' "hello@example.com"`),
   h2("CSS selectors", "css-selectors"),
   code(`pire-browser click "#submit"
 pire-browser fill "input[name=email]" "hello@example.com"
-pire-browser snapshot -s "#main"`),
+pire-browser snapshot --selector "#main"`),
   h2("Semantic locators", "semantic-locators"),
   code(`pire-browser find role button --name "Submit" click
 pire-browser find label "Email" fill "test@example.com"

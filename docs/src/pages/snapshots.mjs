@@ -8,6 +8,7 @@ const snapshotsBlocks = [
 pire-browser snapshot -i --compact
 pire-browser snapshot -i --urls
 pire-browser snapshot -s "#main"
+pire-browser snapshot --selector "#main"
 pire-browser snapshot --json`),
   h2("Output format", "output-format"),
   code(`# @e1 [heading] "Example Domain"

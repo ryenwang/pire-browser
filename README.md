@@ -689,6 +689,7 @@ pire-browser snapshot -i --compact
 pire-browser snapshot -i --urls
 pire-browser snapshot -i -d 5
 pire-browser snapshot -s "#main"
+pire-browser snapshot --selector "#main"
 pire-browser snapshot --json
 ```
 
@@ -833,7 +834,7 @@ pire-browser fill '@e3' "test@example.com"
 ```bash
 pire-browser click "#submit"
 pire-browser fill "input[name=email]" "test@example.com"
-pire-browser snapshot -s "#main"
+pire-browser snapshot --selector "#main"
 ```
 
 ### Text & XPath

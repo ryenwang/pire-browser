@@ -2390,13 +2390,14 @@ Usage:
   pire-browser snapshot -i -c -d 5
   pire-browser snapshot -i -u
   pire-browser snapshot -s "#main"
+  pire-browser snapshot --selector "#main"
   pire-browser snapshot --json
 
 Prints a page snapshot with refs such as @e1. `-i` keeps the output ref-oriented
 for interaction. `-c`/`--compact` suppresses low-value generic elements,
 `-d`/`--depth` limits DOM depth in the Firefox snapshot model, `-u`/`--urls`
-includes link URLs, and `-s` scopes to a CSS selector. Use quoted refs in
-PowerShell, for example: pire-browser click '@e1'.
+includes link URLs, and `-s`/`--selector` scopes to a CSS selector. Use quoted
+refs in PowerShell, for example: pire-browser click '@e1'.
 "##;
 
 const PDF_HELP: &str = r##"

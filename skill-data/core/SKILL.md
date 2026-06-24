@@ -484,9 +484,10 @@ pire-browser snapshot -d 3
 pire-browser snapshot -i -c -d 5
 pire-browser snapshot -i -u
 pire-browser snapshot -s "#main"
+pire-browser snapshot --selector "#main"
 ```
 
-Use `-c`/`--compact` on noisy pages. Use `-d <n>`/`--depth <n>` to limit depth on complex pages. Use `-u`/`--urls` when choosing among links. Use `-s <selector>` to scope inspection to one area. If a ref is stale or a page changes, run `snapshot -i` again.
+Use `-c`/`--compact` on noisy pages. Use `-d <n>`/`--depth <n>` to limit depth on complex pages. Use `-u`/`--urls` when choosing among links. Use `-s <selector>` or `--selector <selector>` to scope inspection to one area. If a ref is stale or a page changes, run `snapshot -i` again.
 
 ## Iframes
 

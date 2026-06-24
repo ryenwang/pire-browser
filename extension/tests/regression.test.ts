@@ -972,7 +972,7 @@ describe("command shape parity", () => {
     expect(body).toContain("interactiveSnapshotFrames(frames)");
     expect(body).toContain("function isInteractiveSnapshotElement");
     expect(body).toContain('["heading", "iframe", "tab", "menuitem"]');
-    expect(body).toContain('arg === "-s" || arg === "--scope"');
+    expect(body).toContain('arg === "-s" || arg === "--scope" || arg === "--selector"');
     expect(body).toContain('arg === "-d" || arg === "--depth"');
     expect(body).toContain('"--compact"');
     expect(body).toContain('"--urls"');

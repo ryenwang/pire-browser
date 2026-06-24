@@ -1634,7 +1634,7 @@ function parseSnapshotOptions(args: string[]): SnapshotOptions | { error: RpcRes
   let depth: number | undefined;
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
-    if (arg === "-s" || arg === "--scope") {
+    if (arg === "-s" || arg === "--scope" || arg === "--selector") {
       selector = args[index + 1];
       if (!selector || selector.startsWith("-")) {
         return { error: { code: "invalid_args", message: `${arg} requires a CSS selector` } };
