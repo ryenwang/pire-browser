@@ -178,6 +178,7 @@ fn tool_profile_bits(name: &str) -> u16 {
         "pire_browser_profiles_list" => PROFILE_CORE | PROFILE_STATE | PROFILE_DEBUG,
         "pire_browser_skills_get_core" => PROFILE_CORE | PROFILE_STATE,
         "pire_browser_status" => PROFILE_CORE | PROFILE_DEBUG,
+        "pire_browser_launch" => PROFILE_DEBUG,
         "pire_browser_doctor" | "pire_browser_activity_list" => PROFILE_DEBUG,
         "pire_browser_confirm" | "pire_browser_deny" => PROFILE_CORE | PROFILE_DEBUG,
         "pire_browser_close" => PROFILE_CORE | PROFILE_DEBUG | PROFILE_TABS,
@@ -370,7 +371,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -487,8 +488,28 @@ fn tool_command_args(
     let object = arguments
         .as_object()
         .ok_or_else(|| "tool arguments must be an object".to_string())?;
-    let mut args = target_args(object)?;
+    let mut args = if name == "pire_browser_launch" {
+        launch_prefix_args(object)?
+    } else {
+        target_args(object)?
+    };
     match (profile, name) {
+        (_, "pire_browser_launch") => {
+            reject_launch_unsupported_fields(object)?;
+            args.push("launch".to_string());
+            if let Some(profile) = optional_string(object, "profile")? {
+                args.push("--profile".to_string());
+                args.push(profile);
+            }
+            if let Some(url) = optional_string(object, "url")? {
+                args.push("--url".to_string());
+                args.push(url);
+            }
+            if let Some(firefox_path) = optional_string(object, "firefoxPath")? {
+                args.push("--firefox-path".to_string());
+                args.push(firefox_path);
+            }
+        }
         (_, "pire_browser_open") => {
             if let Some(color_scheme) = optional_color_scheme(object, "colorScheme")? {
                 args.push("--color-scheme".to_string());
@@ -1618,6 +1639,50 @@ fn target_args(object: &Map<String, Value>) -> std::result::Result<Vec<String>, 
     Ok(args)
 }
 
+fn launch_prefix_args(object: &Map<String, Value>) -> std::result::Result<Vec<String>, String> {
+    let mut args = Vec::new();
+    let allowed_domains = optional_string_or_csv_array(object, "allowedDomains")?;
+    let no_allowed_domains = optional_bool(object, "noAllowedDomains")?;
+    if allowed_domains.is_some() && no_allowed_domains {
+        return Err("cannot use allowedDomains and noAllowedDomains together".to_string());
+    }
+    if let Some(allowed_domains) = allowed_domains {
+        args.push("--allowed-domains".to_string());
+        args.push(allowed_domains);
+    }
+    if no_allowed_domains {
+        args.push("--no-allowed-domains".to_string());
+    }
+    push_optional_flag_value(&mut args, object, "actionPolicy", "--action-policy")?;
+    push_optional_flag_value(&mut args, object, "confirmActions", "--confirm-actions")?;
+    if optional_bool(object, "confirmInteractive")? {
+        args.push("--confirm-interactive".to_string());
+    }
+    Ok(args)
+}
+
+fn reject_launch_unsupported_fields(
+    object: &Map<String, Value>,
+) -> std::result::Result<(), String> {
+    for key in [
+        "session",
+        "sessionName",
+        "statePath",
+        "allowFileAccess",
+        "contentBoundaries",
+        "maxOutput",
+        "proxy",
+        "proxyBypass",
+        "executablePath",
+        "extraArgs",
+    ] {
+        if object.contains_key(key) {
+            return Err(format!("{key} is not supported by pire_browser_launch; use pire_browser_open for normal launch/navigation workflows"));
+        }
+    }
+    Ok(())
+}
+
 fn optional_string_or_csv_array(
     object: &Map<String, Value>,
     key: &str,
@@ -1774,6 +1839,13 @@ fn core_tools() -> Vec<Value> {
             "Describe available pire-browser MCP tool profiles and the active profile selection.",
             tool_schema(vec![], &[]),
             true,
+        ),
+        tool(
+            "pire_browser_launch",
+            "Launch Firefox",
+            "Lower-level launch of managed Firefox. Prefer pire_browser_open for normal launch/navigation workflows.",
+            launch_tool_schema(),
+            false,
         ),
         tool(
             "pire_browser_open",
@@ -2945,6 +3017,63 @@ fn tool_schema(properties: Vec<(&str, Value)>, required: &[&str]) -> Value {
     schema
 }
 
+fn tool_schema_without_common(properties: Vec<(&str, Value)>, required: &[&str]) -> Value {
+    let mut map = Map::new();
+    for (key, value) in properties {
+        map.insert(key.to_string(), value);
+    }
+    let mut schema = json!({
+        "type": "object",
+        "properties": map,
+        "additionalProperties": false
+    });
+    if !required.is_empty() {
+        schema["required"] = json!(required);
+    }
+    schema
+}
+
+fn launch_tool_schema() -> Value {
+    tool_schema_without_common(
+        vec![
+            (
+                "profile",
+                string_prop("Managed Firefox profile to launch. Defaults to Default."),
+            ),
+            ("url", string_prop("Optional URL to open at launch.")),
+            (
+                "firefoxPath",
+                string_prop("Optional Firefox executable path for this launch."),
+            ),
+            (
+                "allowedDomains",
+                string_or_array_prop(
+                    "Comma-separated allowlist or array of domains for the optional launch URL.",
+                ),
+            ),
+            (
+                "noAllowedDomains",
+                bool_prop("Disable configured domain allowlist checks for the optional launch URL."),
+            ),
+            (
+                "actionPolicy",
+                string_prop("Action-policy JSON file path for the optional launch URL."),
+            ),
+            (
+                "confirmActions",
+                string_prop(
+                    "Comma-separated action classes that require explicit confirmation, such as navigate.",
+                ),
+            ),
+            (
+                "confirmInteractive",
+                bool_prop("Also require confirmation for interactive page actions."),
+            ),
+        ],
+        &[],
+    )
+}
+
 fn common_properties() -> Map<String, Value> {
     let mut map = Map::new();
     map.insert(
@@ -3182,6 +3311,9 @@ mod tests {
         assert!(!tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_doctor"));
+        assert!(!tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_launch"));
         let snapshot = tools
             .iter()
             .find(|tool| tool["name"] == "pire_browser_snapshot")
@@ -3219,6 +3351,25 @@ mod tests {
             open["inputSchema"]["properties"]["initScriptPaths"]["type"],
             "array"
         );
+        let debug_tools = mcp_tools(McpToolsProfile::Debug);
+        let launch = debug_tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_launch")
+            .unwrap();
+        assert_eq!(
+            launch["inputSchema"]["properties"]["profile"]["type"],
+            "string"
+        );
+        assert!(launch["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .get("session")
+            .is_none());
+        assert!(launch["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .get("extraArgs")
+            .is_none());
     }
 
     #[test]
@@ -3240,6 +3391,9 @@ mod tests {
             .any(|tool| tool["name"] == "pire_browser_clipboard"));
 
         let debug = mcp_tools(McpToolsProfile::Debug);
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_launch"));
         assert!(debug
             .iter()
             .any(|tool| tool["name"] == "pire_browser_doctor"));
@@ -3364,6 +3518,45 @@ mod tests {
 
     #[test]
     fn maps_tool_arguments_to_cli_args() {
+        let args =
+            tool_command_args("pire_browser_launch", &json!({}), McpToolsProfile::Core).unwrap();
+        assert_eq!(args, vec!["--json", "launch"]);
+
+        let args = tool_command_args(
+            "pire_browser_launch",
+            &json!({
+                "profile": "Work",
+                "url": "https://example.com",
+                "firefoxPath": "C:/Firefox/firefox.exe",
+                "allowedDomains": ["example.com", "*.example.com"],
+                "actionPolicy": "policy.json",
+                "confirmActions": "navigate",
+                "confirmInteractive": true
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "--allowed-domains",
+                "example.com,*.example.com",
+                "--action-policy",
+                "policy.json",
+                "--confirm-actions",
+                "navigate",
+                "--confirm-interactive",
+                "launch",
+                "--profile",
+                "Work",
+                "--url",
+                "https://example.com",
+                "--firefox-path",
+                "C:/Firefox/firefox.exe"
+            ]
+        );
+
         let args = tool_command_args(
             "pire_browser_open",
             &json!({
@@ -4664,6 +4857,46 @@ mod tests {
 
         let error = tool_command_args(
             "pire_browser_open",
+            &json!({ "allowedDomains": "example.com", "noAllowedDomains": true }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("cannot use allowedDomains and noAllowedDomains together"));
+
+        let error = tool_command_args(
+            "pire_browser_launch",
+            &json!({ "statePath": ".pire-state/app.json" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("statePath is not supported by pire_browser_launch"));
+
+        let error = tool_command_args(
+            "pire_browser_launch",
+            &json!({ "sessionName": "qa" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("sessionName is not supported by pire_browser_launch"));
+
+        let error = tool_command_args(
+            "pire_browser_launch",
+            &json!({ "proxy": "http://proxy.example:8080" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("proxy is not supported by pire_browser_launch"));
+
+        let error = tool_command_args(
+            "pire_browser_launch",
+            &json!({ "executablePath": "C:/Firefox/firefox.exe" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("executablePath is not supported by pire_browser_launch"));
+
+        let error = tool_command_args(
+            "pire_browser_launch",
             &json!({ "allowedDomains": "example.com", "noAllowedDomains": true }),
             McpToolsProfile::Core,
         )

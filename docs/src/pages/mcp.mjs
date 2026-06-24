@@ -17,7 +17,7 @@ pire-browser mcp --tools all`),
       ["core", "Open, read, inspect, semantic find, interact, get/check, wait, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff evidence, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and skill guidance."],
       ["network", "Headers, credentials, offline toggle, network request inspection with redacted request/response headers, metadata HAR, and route/unroute controls."],
       ["state", "Cookies, storage, auth helpers, plaintext state files, sessions, profiles, downloads/uploads, clipboard, and skills."],
-      ["debug", "Doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions/profiles, and close."],
+      ["debug", "Lower-level launch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions/profiles, and close."],
       ["tabs", "Back/forward/reload, tab list/new/select/label/close, iframe selection, JavaScript dialogs, windows, and close."],
       ["mobile", "Viewport, device preset, geolocation, media/offline settings, keyboard, mouse, scroll, and screenshot helpers."],
       ["react", "Compatibility profile only; React DevTools introspection is not shipped by the Firefox backend. Use debug for vitals and core/tabs for pushstate."],
@@ -26,7 +26,7 @@ pire-browser mcp --tools all`),
   ),
   p("The server uses the same installed binary and command behavior as the CLI, so policies, setup, sessions, profiles, and Firefox runtime behavior stay shared."),
   h2("Common Typed Fields", "common-typed-fields"),
-  p("Every MCP tool accepts common typed fields for CLI-global behavior that must be placed before the command. Prefer these fields over <code>extraArgs</code> when setting guardrails or launch context."),
+  p("Most browser-command MCP tools accept common typed fields for CLI-global behavior that must be placed before the command. Prefer these fields over <code>extraArgs</code> when setting guardrails or launch context. The lower-level debug-profile <code>pire_browser_launch</code> tool has a narrower launch-specific schema; prefer <code>pire_browser_open</code> for normal launch/navigation."),
   table(
     ["Field", "Purpose"],
     [
@@ -44,6 +44,7 @@ pire-browser mcp --tools all`),
     ["Tool", "Purpose"],
     [
       ["pire_browser_tools_profiles", "Describe MCP profiles and active selection."],
+      ["pire_browser_launch", "Debug-profile lower-level managed Firefox launch with launch-specific profile, URL, Firefox path, and policy fields. Prefer open for normal workflows."],
       ["pire_browser_open", "Launch Firefox and optionally navigate. Supports typed one-shot headers and initScriptPaths for pre-navigation setup."],
       ["pire_browser_read", "Read agent-friendly URL text without launching Firefox, or rendered text from the active tab."],
       ["pire_browser_snapshot", "Inspect the page and return refs."],
@@ -80,7 +81,7 @@ pire-browser mcp --tools all`),
     ]
   ),
   h2("Agent Loop", "agent-loop"),
-  code(`1. Call pire_browser_open with a URL.
+  code(`1. Call pire_browser_open with a URL. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics.
 2. Use pire_browser_read for docs/articles when interaction refs are not needed.
 3. Call pire_browser_snapshot with compact=true, or use pire_browser_find when labels/roles are clear.
 4. Use fresh refs or semantic find locators in click/double-click/fill/type/press/select/check/scroll/drag/mouse/download/upload tools.

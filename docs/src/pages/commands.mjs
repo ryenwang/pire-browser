@@ -156,6 +156,7 @@ pire-browser --executable-path /path/to/firefox open https://example.com
 pire-browser launch --url https://example.com
 PIRE_BROWSER_FIREFOX_PATH=/path/to/firefox pire-browser launch
 PIRE_BROWSER_EXTENSION_MODE=xpi pire-browser launch`),
+  p("For lower-level launch, <code>--profile</code> is a command option after <code>launch</code>: use <code>pire-browser launch --profile Work</code>. For normal agent workflows, prefer <code>pire-browser --profile Work open &lt;url&gt;</code> or <code>pire-browser open &lt;url&gt;</code>."),
 
   h2("Cookies & storage", "cookies-storage"),
   code(`pire-browser cookies

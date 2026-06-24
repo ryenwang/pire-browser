@@ -512,7 +512,9 @@ For MCP guardrails and launch context, prefer typed common fields over
 `contentBoundaries`, `maxOutput`, `proxy`, `proxyBypass`, and
 `executablePath`. Use typed `pire_browser_open.headers` and
 `pire_browser_open.initScriptPaths` when a navigation needs one-shot request
-headers or pre-navigation init scripts.
+headers or pre-navigation init scripts. Prefer `pire_browser_open` for normal
+launch/navigation; add the `debug` profile and use `pire_browser_launch` only
+for lower-level launch diagnostics.
 
 ## Snapshot Options
 
