@@ -395,6 +395,7 @@ pire-browser batch --bail "open https://example.com" "click '@e1'"`),
   ["click", "@e1"],
   ["screenshot", "result.png"]
 ]' | pire-browser batch --json`),
+  p("When using MCP, add the <code>debug</code> profile and call <code>pire_browser_batch</code> with a typed <code>commands</code> array for short sequences. Use individual typed tools when an agent needs to read intermediate output before choosing the next action."),
 
   h2("Command chaining", "command-chaining"),
   code(`pire-browser open https://example.com && pire-browser wait --selector "#main" && pire-browser snapshot -i

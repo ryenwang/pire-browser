@@ -146,7 +146,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "debug",
             bits: PROFILE_DEBUG,
-            description: "Doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions/profiles, confirmation follow-up, and close.",
+            description: "Lower-level launch and batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions/profiles, confirmation follow-up, and close.",
         },
         McpProfileDescriptor {
             name: "tabs",
@@ -178,7 +178,7 @@ fn tool_profile_bits(name: &str) -> u16 {
         "pire_browser_profiles_list" => PROFILE_CORE | PROFILE_STATE | PROFILE_DEBUG,
         "pire_browser_skills_get_core" => PROFILE_CORE | PROFILE_STATE,
         "pire_browser_status" => PROFILE_CORE | PROFILE_DEBUG,
-        "pire_browser_launch" => PROFILE_DEBUG,
+        "pire_browser_launch" | "pire_browser_batch" => PROFILE_DEBUG,
         "pire_browser_doctor" | "pire_browser_activity_list" => PROFILE_DEBUG,
         "pire_browser_confirm" | "pire_browser_deny" => PROFILE_CORE | PROFILE_DEBUG,
         "pire_browser_close" => PROFILE_CORE | PROFILE_DEBUG | PROFILE_TABS,
@@ -371,7 +371,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -509,6 +509,19 @@ fn tool_command_args(
                 args.push("--firefox-path".to_string());
                 args.push(firefox_path);
             }
+        }
+        (_, "pire_browser_batch") => {
+            if object.contains_key("extraArgs") {
+                return Err(
+                    "extraArgs is not supported by pire_browser_batch; use commands entries instead"
+                        .to_string(),
+                );
+            }
+            args.push("batch".to_string());
+            if optional_bool(object, "bail")? {
+                args.push("--bail".to_string());
+            }
+            args.extend(required_batch_commands(object)?);
         }
         (_, "pire_browser_open") => {
             if let Some(color_scheme) = optional_color_scheme(object, "colorScheme")? {
@@ -1704,6 +1717,70 @@ fn optional_string_or_csv_array(
     }
 }
 
+fn required_batch_commands(
+    object: &Map<String, Value>,
+) -> std::result::Result<Vec<String>, String> {
+    let value = object
+        .get("commands")
+        .ok_or_else(|| "commands is required".to_string())?;
+    let Some(items) = value.as_array() else {
+        return Err("commands must be an array".to_string());
+    };
+    if items.is_empty() {
+        return Err("commands must contain at least one command".to_string());
+    }
+    items
+        .iter()
+        .enumerate()
+        .map(batch_command_text_from_value)
+        .collect()
+}
+
+fn batch_command_text_from_value(
+    (index, value): (usize, &Value),
+) -> std::result::Result<String, String> {
+    if let Some(command) = value.as_str() {
+        if command.trim().is_empty() {
+            return Err(format!("commands[{index}] cannot be empty"));
+        }
+        return Ok(command.to_string());
+    }
+    let Some(parts) = value.as_array() else {
+        return Err(format!(
+            "commands[{index}] must be a string or array of strings"
+        ));
+    };
+    if parts.is_empty() {
+        return Err(format!("commands[{index}] cannot be empty"));
+    }
+    let mut args = Vec::new();
+    for part in parts {
+        let Some(text) = part.as_str() else {
+            return Err(format!("commands[{index}] entries must be strings"));
+        };
+        if text.is_empty() {
+            return Err(format!("commands[{index}] entries cannot be empty"));
+        }
+        args.push(text.to_string());
+    }
+    Ok(args
+        .iter()
+        .map(|arg| quote_batch_arg(arg))
+        .collect::<Vec<_>>()
+        .join(" "))
+}
+
+fn quote_batch_arg(arg: &str) -> String {
+    if arg.is_empty()
+        || arg
+            .chars()
+            .any(|ch| ch.is_whitespace() || matches!(ch, '"' | '\\'))
+    {
+        return format!("\"{}\"", arg.replace('\\', "\\\\").replace('"', "\\\""));
+    }
+    arg.to_string()
+}
+
 fn required_string(object: &Map<String, Value>, key: &str) -> std::result::Result<String, String> {
     optional_string(object, key)?.ok_or_else(|| format!("{key} is required"))
 }
@@ -1845,6 +1922,19 @@ fn core_tools() -> Vec<Value> {
             "Launch Firefox",
             "Lower-level launch of managed Firefox. Prefer pire_browser_open for normal launch/navigation workflows.",
             launch_tool_schema(),
+            false,
+        ),
+        tool(
+            "pire_browser_batch",
+            "Run command batch",
+            "Run multiple existing pire-browser browser commands in one invocation. Debug profile only; prefer typed single tools when possible.",
+            tool_schema_without_extra_args(
+                vec![
+                    ("commands", batch_commands_prop()),
+                    ("bail", bool_prop("Stop at the first command error.")),
+                ],
+                &["commands"],
+            ),
             false,
         ),
         tool(
@@ -3033,6 +3123,23 @@ fn tool_schema_without_common(properties: Vec<(&str, Value)>, required: &[&str])
     schema
 }
 
+fn tool_schema_without_extra_args(properties: Vec<(&str, Value)>, required: &[&str]) -> Value {
+    let mut map = common_properties();
+    map.remove("extraArgs");
+    for (key, value) in properties {
+        map.insert(key.to_string(), value);
+    }
+    let mut schema = json!({
+        "type": "object",
+        "properties": map,
+        "additionalProperties": false
+    });
+    if !required.is_empty() {
+        schema["required"] = json!(required);
+    }
+    schema
+}
+
 fn launch_tool_schema() -> Value {
     tool_schema_without_common(
         vec![
@@ -3214,6 +3321,24 @@ fn string_or_array_prop(description: &str) -> Value {
     })
 }
 
+fn batch_commands_prop() -> Value {
+    json!({
+        "type": "array",
+        "minItems": 1,
+        "description": "Commands to run. Each entry may be a command string such as `snapshot -i` or an array of CLI args such as [`snapshot`, `-i`].",
+        "items": {
+            "oneOf": [
+                { "type": "string", "minLength": 1 },
+                {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "minItems": 1
+                }
+            ]
+        }
+    })
+}
+
 fn integer_prop(description: &str) -> Value {
     json!({ "type": "integer", "description": description })
 }
@@ -3314,6 +3439,9 @@ mod tests {
         assert!(!tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_launch"));
+        assert!(!tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_batch"));
         let snapshot = tools
             .iter()
             .find(|tool| tool["name"] == "pire_browser_snapshot")
@@ -3370,6 +3498,23 @@ mod tests {
             .unwrap()
             .get("extraArgs")
             .is_none());
+        let batch = debug_tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_batch")
+            .unwrap();
+        assert_eq!(
+            batch["inputSchema"]["properties"]["commands"]["type"],
+            "array"
+        );
+        assert_eq!(
+            batch["inputSchema"]["properties"]["commands"]["items"]["oneOf"][1]["type"],
+            "array"
+        );
+        assert!(batch["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .get("extraArgs")
+            .is_none());
     }
 
     #[test]
@@ -3394,6 +3539,9 @@ mod tests {
         assert!(debug
             .iter()
             .any(|tool| tool["name"] == "pire_browser_launch"));
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_batch"));
         assert!(debug
             .iter()
             .any(|tool| tool["name"] == "pire_browser_doctor"));
@@ -3431,6 +3579,9 @@ mod tests {
         assert!(combined
             .iter()
             .any(|tool| tool["name"] == "pire_browser_network_route"));
+
+        let all = mcp_tools(McpToolsProfile::All);
+        assert!(all.iter().any(|tool| tool["name"] == "pire_browser_batch"));
 
         let react = mcp_tools(McpToolsProfile::React);
         assert_eq!(react.len(), 1);
@@ -3480,6 +3631,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result["id"], 8);
+        assert_eq!(result["result"]["isError"], true);
+        assert!(result["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("not available in MCP tools profile `core`"));
+
+        let result = handle_message(
+            r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"pire_browser_batch","arguments":{"commands":["snapshot -i"]}}}"#,
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(result["id"], 9);
         assert_eq!(result["result"]["isError"], true);
         assert!(result["result"]["content"][0]["text"]
             .as_str()
@@ -3554,6 +3717,39 @@ mod tests {
                 "https://example.com",
                 "--firefox-path",
                 "C:/Firefox/firefox.exe"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_batch",
+            &json!({
+                "sessionName": "qa",
+                "allowedDomains": ["example.com", "*.example.com"],
+                "bail": true,
+                "commands": [
+                    ["open", "https://example.com"],
+                    ["snapshot", "-i"],
+                    ["screenshot", "result path.png"],
+                    "get url"
+                ]
+            }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "--session-name",
+                "qa",
+                "--allowed-domains",
+                "example.com,*.example.com",
+                "batch",
+                "--bail",
+                "open https://example.com",
+                "snapshot -i",
+                "screenshot \"result path.png\"",
+                "get url"
             ]
         );
 
@@ -4902,6 +5098,66 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("cannot use allowedDomains and noAllowedDomains together"));
+
+        let error = tool_command_args(
+            "pire_browser_batch",
+            &json!({ "commands": [] }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap_err();
+        assert!(error.contains("commands must contain at least one command"));
+
+        let error = tool_command_args("pire_browser_batch", &json!({}), McpToolsProfile::Debug)
+            .unwrap_err();
+        assert!(error.contains("commands is required"));
+
+        let error = tool_command_args(
+            "pire_browser_batch",
+            &json!({ "commands": "snapshot -i" }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap_err();
+        assert!(error.contains("commands must be an array"));
+
+        let error = tool_command_args(
+            "pire_browser_batch",
+            &json!({ "commands": [[]] }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap_err();
+        assert!(error.contains("commands[0] cannot be empty"));
+
+        let error = tool_command_args(
+            "pire_browser_batch",
+            &json!({ "commands": [["open", 1]] }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap_err();
+        assert!(error.contains("commands[0] entries must be strings"));
+
+        let error = tool_command_args(
+            "pire_browser_batch",
+            &json!({ "commands": [["open", ""]] }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap_err();
+        assert!(error.contains("commands[0] entries cannot be empty"));
+
+        let error = tool_command_args(
+            "pire_browser_batch",
+            &json!({ "commands": [""] }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap_err();
+        assert!(error.contains("commands[0] cannot be empty"));
+
+        let error = tool_command_args(
+            "pire_browser_batch",
+            &json!({ "commands": ["snapshot -i"], "extraArgs": ["get url"] }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap_err();
+        assert!(error.contains("extraArgs is not supported by pire_browser_batch"));
 
         let error = tool_command_args(
             "pire_browser_doctor",

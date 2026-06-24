@@ -17,7 +17,7 @@ pire-browser mcp --tools all`),
       ["core", "Open, read, inspect, semantic find, interact, get/check, wait, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff evidence, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and skill guidance."],
       ["network", "Headers, credentials, offline toggle, network request inspection with redacted request/response headers, metadata HAR, and route/unroute controls."],
       ["state", "Cookies, storage, auth helpers, plaintext state files, sessions, profiles, downloads/uploads, clipboard, and skills."],
-      ["debug", "Lower-level launch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions/profiles, and close."],
+      ["debug", "Lower-level launch and batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions/profiles, and close."],
       ["tabs", "Back/forward/reload, tab list/new/select/label/close, iframe selection, JavaScript dialogs, windows, and close."],
       ["mobile", "Viewport, device preset, geolocation, media/offline settings, keyboard, mouse, scroll, and screenshot helpers."],
       ["react", "Compatibility profile only; React DevTools introspection is not shipped by the Firefox backend. Use debug for vitals and core/tabs for pushstate."],
@@ -45,6 +45,7 @@ pire-browser mcp --tools all`),
     [
       ["pire_browser_tools_profiles", "Describe MCP profiles and active selection."],
       ["pire_browser_launch", "Debug-profile lower-level managed Firefox launch with launch-specific profile, URL, Firefox path, and policy fields. Prefer open for normal workflows."],
+      ["pire_browser_batch", "Debug-profile typed batch for short command sequences. Commands may be strings or arrays of args; use bail when later commands depend on earlier success."],
       ["pire_browser_open", "Launch Firefox and optionally navigate. Supports typed one-shot headers and initScriptPaths for pre-navigation setup."],
       ["pire_browser_read", "Read agent-friendly URL text without launching Firefox, or rendered text from the active tab."],
       ["pire_browser_snapshot", "Inspect the page and return refs."],
@@ -92,8 +93,9 @@ pire-browser mcp --tools all`),
 9. Use console/errors/dialog/highlight/vitals/network tools when a page is stuck, blocked, or needs evidence.
 10. Use auth tools only with user-approved credentials, then verify login with a fresh snapshot, URL, or page state.
 11. Use cookies/storage/state tools only when needed for user-approved state debugging or auth handoff; cookie import payloads and values may contain secrets.
-12. Call pire_browser_wait when page state needs time.
-13. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
+12. Use debug-profile pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output.
+13. Call pire_browser_wait when page state needs time.
+14. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
   p("MCP tool calls return text content for compatibility and structured command output when the underlying CLI emits JSON. If a tool is missing from the active profile, restart the MCP server with <code>--tools all</code> or a comma-separated profile list such as <code>--tools core,network</code>."),
 ];
 

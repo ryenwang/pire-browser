@@ -123,6 +123,9 @@ echo '[["open","https://example.com"],["snapshot","-i"],["click","@e1"]]' | pire
 ```
 
 Use `--bail` when later commands depend on earlier commands succeeding. With no inline commands, `batch` reads a JSON array from stdin; entries can be command strings or arrays of args.
+When using MCP, add the `debug` profile and call `pire_browser_batch` with a typed
+`commands` array for short sequences. Prefer individual typed tools when an
+agent needs to inspect intermediate output before choosing the next action.
 
 Reduce prompt-injection and context-flooding ambiguity:
 
@@ -498,9 +501,9 @@ wait, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff
 evidence, eval, status, confirmation follow-up, basic tabs, profile discovery,
 close, and skill guidance. Add comma-separated profiles only when needed:
 `network` for request diagnostics/routes/HAR, `state` for cookies/storage/auth
-and state files, `debug` for doctor/activity diagnostics plus
-console/errors/dialog/highlight/vitals, `tabs` for tab/frame/window controls,
-and `mobile` for viewport/device/geo/media/mouse
+and state files, `debug` for lower-level launch, typed batch, doctor/activity
+diagnostics, console/errors/dialog/highlight/vitals, `tabs` for
+tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
 helpers. `react` is accepted for compatibility but currently has no React
 DevTools introspection tools. Use `all` only when the host can tolerate the full
 tool surface. The `pire_browser_tools_profiles` MCP tool returns this profile
@@ -514,7 +517,9 @@ For MCP guardrails and launch context, prefer typed common fields over
 `pire_browser_open.initScriptPaths` when a navigation needs one-shot request
 headers or pre-navigation init scripts. Prefer `pire_browser_open` for normal
 launch/navigation; add the `debug` profile and use `pire_browser_launch` only
-for lower-level launch diagnostics.
+for lower-level launch diagnostics. Use debug-profile `pire_browser_batch` only
+for short command sequences where later steps do not depend on parsing
+intermediate output.
 
 ## Snapshot Options
 
