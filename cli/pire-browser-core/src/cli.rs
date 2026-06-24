@@ -238,6 +238,8 @@ const GLOBAL_VALUE_FLAGS: &[&str] = &[
     "--executable-path",
     "--engine",
     "--provider",
+    "--proxy",
+    "--proxy-bypass",
     "-p",
     "--model",
 ];
@@ -572,6 +574,15 @@ fn config_args_from_map(config: &Map<String, Value>, raw: &[String]) -> Vec<Stri
         "colorScheme",
         "--color-scheme",
         &["--color-scheme"],
+    );
+    push_value_config(&mut args, config, raw, "proxy", "--proxy", &["--proxy"]);
+    push_value_config(
+        &mut args,
+        config,
+        raw,
+        "proxyBypass",
+        "--proxy-bypass",
+        &["--proxy-bypass"],
     );
     push_value_config(
         &mut args,
@@ -1916,6 +1927,7 @@ Common commands:
   --config ./ci-config.json open <url>
   open <url> [--label <name>]      Open a URL, auto-launching Firefox if needed
   open <url> --headers '{"Authorization":"Bearer token"}'
+  --proxy http://proxy.example:8080 open <url>
   --allow-file-access open file:///path/to/page.html
   snapshot -i                     Inspect the active page and print refs
   diff snapshot                    Compare current snapshot to previous
@@ -2011,14 +2023,17 @@ a JSON object.
 
 Supported camelCase defaults include json, profile, sessionName, session, autoConnect, allowedDomains,
 noAllowedDomains, actionPolicy, confirmActions, confirmInteractive,
-allowFileAccess, headed, headless, colorScheme, maxOutput, contentBoundaries,
-engine, provider, and model. CLI flags override config defaults. Unknown keys are ignored.
+allowFileAccess, headed, headless, colorScheme, proxy, proxyBypass,
+maxOutput, contentBoundaries, engine, provider, and model. CLI flags override
+config defaults. Unknown keys are ignored.
 "##;
 
 const OPEN_HELP: &str = r##"
 Usage:
   pire-browser open <url> [--label <name>] [--new|--new-tab]
   pire-browser open <url> --headers '{"Authorization":"Bearer token"}'
+  pire-browser --proxy http://proxy.example:8080 open <url>
+  pire-browser --proxy http://proxy.example:8080 --proxy-bypass "localhost,*.internal" open <url>
   pire-browser open --init-script <path> <url>
   pire-browser --allow-file-access open file:///path/to/page.html
   pire-browser goto <url>
@@ -2033,6 +2048,12 @@ behavior is not supported yet.
 `--headers <json>` applies request headers to the target URL's origin for the
 current managed Firefox session. Values are not echoed; output reports header
 names only. Headers are not applied to different origins.
+`--proxy <url>` applies Firefox proxy settings through the managed extension for
+browser bridge commands. `--proxy-bypass <list>` maps to Firefox passthrough
+hosts. Proxy credentials may be supplied in the URL or with
+PIRE_BROWSER_PROXY_USERNAME/PIRE_BROWSER_PROXY_PASSWORD; credentials are not
+echoed in command output. Prefer `--proxy ... open <url>` over `launch --url`
+when the first navigation must use the proxy.
 Use `--profile <name-or-path>`, `--session <name>`, or `--session-name <name>`
 before the command to reuse or launch a named managed Firefox profile. Path-like
 `--profile` values are mapped to stable managed Firefox profile names instead
@@ -3222,6 +3243,32 @@ mod tests {
     }
 
     #[test]
+    fn accepts_proxy_global_flags_before_command() {
+        let parsed = parse_cli_args(&s(&[
+            "--proxy",
+            "http://proxy.example:8080",
+            "--proxy-bypass",
+            "localhost,*.internal",
+            "open",
+            "https://example.com",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["open", "https://example.com"])
+            }
+        );
+    }
+
+    #[test]
     fn records_ignored_global_flags_that_need_json_warnings() {
         let parsed = parse_cli_args(&s(&[
             "--headless",
@@ -4122,6 +4169,7 @@ mod tests {
         assert!(text.contains("install [--firefox-path <path>]"));
         assert!(text.contains("--config ./ci-config.json open <url>"));
         assert!(text.contains("open <url> --headers"));
+        assert!(text.contains("--proxy http://proxy.example:8080 open <url>"));
         assert!(text.contains("tab new <url>"));
         assert!(text.contains("window new"));
         assert!(text.contains("close"));
@@ -4143,6 +4191,7 @@ mod tests {
             .unwrap()
             .contains("PIRE_BROWSER_CONFIG"));
         assert!(help_text(Some("config")).unwrap().contains("autoConnect"));
+        assert!(help_text(Some("config")).unwrap().contains("proxyBypass"));
         assert!(help_text(Some("state"))
             .unwrap()
             .contains("--auto-connect state save"));
@@ -4162,6 +4211,7 @@ mod tests {
         assert!(help_text(Some("open"))
             .unwrap()
             .contains("--headers <json>"));
+        assert!(help_text(Some("open")).unwrap().contains("--proxy <url>"));
         assert!(help_text(Some("snapshot"))
             .unwrap()
             .contains("snapshot -i -c"));

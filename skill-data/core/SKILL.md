@@ -178,6 +178,16 @@ pire-browser wait --load networkidle
 
 `set offline on|off` is best-effort Firefox request blocking for managed tabs. It cancels future network requests, but it does not fully emulate Chromium/CDP offline mode: `navigator.onLine`, service worker cache behavior, DNS, and socket state are not controlled.
 
+Route a managed session through a proxy:
+
+```bash
+pire-browser --proxy http://proxy.example:8080 open https://example.com
+pire-browser --proxy socks5://proxy.example:1080 --proxy-bypass "localhost,*.internal" open https://example.com
+PIRE_BROWSER_PROXY=http://proxy.example:8080 pire-browser open https://httpbin.org/ip
+```
+
+Use `--proxy` before `open` or another browser bridge command when proxy routing matters. Proxy credentials can be supplied in the URL or with `PIRE_BROWSER_PROXY_USERNAME` / `PIRE_BROWSER_PROXY_PASSWORD`; agent-browser aliases such as `AGENT_BROWSER_PROXY` and `AGENT_BROWSER_PROXY_BYPASS` also work. Credentials are not echoed. This is a Firefox `browser.proxy.settings` path, not a TLS-ignore or OS-wide proxy setting.
+
 Highlight the visual target before a QA screenshot:
 
 ```bash

@@ -11,12 +11,14 @@ pire-browser --config ./ci-config.json open https://example.com
 PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
   p("Defaults are loaded from <code>~/.pire-browser/config.json</code>, <code>./pire-browser.json</code>, <code>PIRE_BROWSER_CONFIG</code>, and explicit <code>--config</code>, in that order. CLI flags override config defaults. Missing auto-discovered files are ignored; malformed auto-discovered files warn and continue. Explicit config paths must exist and contain a JSON object. Legacy config aliases are accepted for existing installs."),
   h2("Supported defaults", "supported-defaults"),
-  p("Supported camelCase defaults include <code>json</code>, <code>profile</code>, <code>sessionName</code>, <code>session</code>, <code>autoConnect</code>, <code>allowedDomains</code>, <code>noAllowedDomains</code>, <code>actionPolicy</code>, <code>confirmActions</code>, <code>confirmInteractive</code>, <code>allowFileAccess</code>, <code>headed</code>, <code>headless</code>, <code>colorScheme</code>, <code>maxOutput</code>, <code>contentBoundaries</code>, <code>engine</code>, <code>provider</code>, and <code>model</code>. Unknown keys are ignored so newer config files do not fail older installs."),
+  p("Supported camelCase defaults include <code>json</code>, <code>profile</code>, <code>sessionName</code>, <code>session</code>, <code>autoConnect</code>, <code>allowedDomains</code>, <code>noAllowedDomains</code>, <code>actionPolicy</code>, <code>confirmActions</code>, <code>confirmInteractive</code>, <code>allowFileAccess</code>, <code>headed</code>, <code>headless</code>, <code>colorScheme</code>, <code>proxy</code>, <code>proxyBypass</code>, <code>maxOutput</code>, <code>contentBoundaries</code>, <code>engine</code>, <code>provider</code>, and <code>model</code>. Unknown keys are ignored so newer config files do not fail older installs."),
   code(`{
   "$schema": "./node_modules/pire-browser/pire-browser.schema.json",
   "json": true,
   "profile": "Work",
   "allowedDomains": ["app.example.com", "*.example.com"],
+  "proxy": "http://proxy.example:8080",
+  "proxyBypass": "localhost,*.internal",
   "autoConnect": true
 }`, "json"),
   p("The packaged schema lives at <code>pire-browser.schema.json</code> in the repo and <code>./node_modules/pire-browser/pire-browser.schema.json</code> in an installed package."),
@@ -27,6 +29,8 @@ pire-browser --session work open https://example.com
 pire-browser --session-name work open https://example.com
 pire-browser --auto-connect state save ./.pire-state/current.json
 pire-browser --allowed-domains "example.com,*.example.com" snapshot -i
+pire-browser --proxy http://proxy.example:8080 open https://example.com
+pire-browser --proxy http://proxy.example:8080 --proxy-bypass "localhost,*.internal" open https://example.com
 pire-browser --action-policy ./policy.json eval "document.title"
 pire-browser --confirm-actions eval,download eval "document.title"
 pire-browser --executable-path /path/to/firefox open https://example.com`),
@@ -37,13 +41,14 @@ pire-browser set device "iPhone 14"
 pire-browser set viewport 390 844 3
 pire-browser set geo 37.7749 -122.4194
 pire-browser --color-scheme dark open https://example.com
+pire-browser --proxy http://proxy.example:8080 open https://example.com
 pire-browser set media light
 pire-browser open https://api.example.com --headers '{"Authorization":"Bearer token"}'
 pire-browser set headers '{"X-Custom-Header":"value"}'
 pire-browser set credentials user pass
 pire-browser set offline on
 pire-browser set offline off`),
-  p("Header values and HTTP Basic passwords are scoped to the current origin and are not echoed in output. Basic credentials are memory-only for the managed Firefox extension session. Viewport and device sizing are approximate because Firefox WebExtensions resize the browser window rather than a CDP viewport. Geolocation is a best-effort page-level navigator.geolocation shim. Offline mode is best-effort request blocking for managed tabs; it does not control navigator.onLine, service worker cache behavior, DNS, or socket state."),
+  p("Header values, HTTP Basic passwords, and proxy credentials are scoped to the current managed Firefox extension session and are not echoed in output. Viewport and device sizing are approximate because Firefox WebExtensions resize the browser window rather than a CDP viewport. Geolocation is a best-effort page-level navigator.geolocation shim. Offline mode is best-effort request blocking for managed tabs; it does not control navigator.onLine, service worker cache behavior, DNS, or socket state."),
   h2("Environment variables", "environment-variables"),
   table(["Variable", "Purpose"], [
     ["<code>PIRE_BROWSER_FIREFOX_PATH</code>", "Custom Firefox executable for setup or launch."],
@@ -55,6 +60,12 @@ pire-browser set offline off`),
     ["<code>PIRE_BROWSER_SESSION</code>", "Default strict session id or named-session alias."],
     ["<code>PIRE_BROWSER_SESSION_NAME</code>", "Default explicit named Firefox profile/session name."],
     ["<code>PIRE_BROWSER_ALLOWED_DOMAINS</code>", "Cooperative domain allowlist."],
+    ["<code>PIRE_BROWSER_PROXY</code>", "Proxy URL for managed browser bridge commands."],
+    ["<code>PIRE_BROWSER_PROXY_BYPASS</code>", "Firefox proxy passthrough hosts."],
+    ["<code>PIRE_BROWSER_PROXY_USERNAME</code>", "Proxy authentication username."],
+    ["<code>PIRE_BROWSER_PROXY_PASSWORD</code>", "Proxy authentication password."],
+    ["<code>AGENT_BROWSER_PROXY*</code>", "Agent-browser-compatible proxy aliases."],
+    ["<code>HTTP_PROXY</code> / <code>HTTPS_PROXY</code> / <code>ALL_PROXY</code> / <code>NO_PROXY</code>", "Standard proxy environment fallbacks."],
     ["<code>PIRE_BROWSER_ACTION_POLICY</code>", "Path to an action policy file."],
     ["<code>PIRE_BROWSER_CONFIRM_ACTIONS</code>", "Confirmation category list."],
     ["<code>PIRE_BROWSER_CONFIRM_INTERACTIVE</code>", "Enable interactive terminal prompts for confirmation-required actions."],

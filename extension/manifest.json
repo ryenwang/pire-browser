@@ -27,6 +27,7 @@
     "cookies",
     "downloads",
     "browserSettings",
+    "proxy",
     "webRequest",
     "webRequestBlocking"
   ],

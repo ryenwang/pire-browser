@@ -70,8 +70,16 @@
     },
     "colorScheme": {
       "type": "string",
-      "enum": ["light", "dark"],
+      "enum": ["light", "dark", "auto"],
       "description": "Color scheme flag accepted by the managed Firefox session."
+    },
+    "proxy": {
+      "type": "string",
+      "description": "Proxy URL for managed Firefox bridge commands, or off/none/direct to disable Firefox proxy settings."
+    },
+    "proxyBypass": {
+      "type": "string",
+      "description": "Comma-separated Firefox proxy passthrough/bypass list such as localhost,*.internal."
     },
     "maxOutput": {
       "description": "Output cap flag.",

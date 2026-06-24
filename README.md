@@ -265,10 +265,12 @@ pire-browser set credentials <user> <pass>  # HTTP Basic auth for the active ori
 pire-browser set media [dark|light|auto]  # Emulate page color scheme
 pire-browser set offline on|off      # Best-effort request blocking for managed tabs
 pire-browser --color-scheme dark open https://example.com
+pire-browser --proxy http://proxy.example:8080 open https://example.com
+pire-browser --proxy http://proxy.example:8080 --proxy-bypass "localhost,*.internal" open https://example.com
 pire-browser --executable-path /path/to/firefox open https://example.com
 ```
 
-`set device` applies a best-effort viewport preset for common devices. Firefox does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor for this path, so verify the measured `page.innerWidth`/`page.innerHeight` before relying on responsive screenshots. `set geo` installs a page-level `navigator.geolocation` shim for managed Firefox pages, but it does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state. `set credentials` applies memory-only HTTP Basic auth for the active origin and does not echo the password. `set offline` cancels future network requests for managed tabs, but it does not fully emulate Chromium/CDP offline mode: `navigator.onLine`, service worker cache behavior, DNS, and socket state are not controlled. Proxy flags and TLS-ignore launch flags are not implemented in the current Firefox backend.
+`set device` applies a best-effort viewport preset for common devices. Firefox does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor for this path, so verify the measured `page.innerWidth`/`page.innerHeight` before relying on responsive screenshots. `set geo` installs a page-level `navigator.geolocation` shim for managed Firefox pages, but it does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state. `set credentials` applies memory-only HTTP Basic auth for the active origin and does not echo the password. `set offline` cancels future network requests for managed tabs, but it does not fully emulate Chromium/CDP offline mode: `navigator.onLine`, service worker cache behavior, DNS, and socket state are not controlled. `--proxy` applies Firefox proxy settings through the managed extension for browser bridge commands; prefer `--proxy ... open <url>` over `launch --url` when the first navigation must use the proxy. TLS-ignore launch flags are not implemented in the current Firefox backend.
 
 ### Cookies & Storage
 
@@ -289,6 +291,8 @@ pire-browser storage session
 
 ```bash
 pire-browser --allowed-domains "example.com,*.example.com" open https://example.com
+pire-browser --proxy http://proxy.example:8080 open https://example.com
+pire-browser --proxy socks5://proxy.example:1080 --proxy-bypass "localhost,*.internal" open https://example.com
 pire-browser open https://api.example.com --headers '{"Authorization":"Bearer token"}'
 pire-browser set headers '{"X-Custom-Header":"value"}'
 pire-browser set credentials user pass
@@ -311,7 +315,7 @@ pire-browser network unroute "*"
 pire-browser network requests --clear
 ```
 
-The network surface is Firefox-backed: cooperative domain allowlists, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics, agent-browser-style `network har start` / `network har stop`, direct metadata-only HAR export, and best-effort active-tab route interception. HAR export is built from WebExtension request metadata; response bodies, cookies, and raw request/response headers are not captured.
+The network surface is Firefox-backed: cooperative domain allowlists, extension-applied proxy settings, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics, agent-browser-style `network har start` / `network har stop`, direct metadata-only HAR export, and best-effort active-tab route interception. HAR export is built from WebExtension request metadata; response bodies, cookies, and raw request/response headers are not captured.
 
 ### Tabs & Windows
 
@@ -525,6 +529,24 @@ secret values are not echoed in command output. `set credentials` stores values
 only in the current managed Firefox extension session; it is not an encrypted
 auth vault.
 
+### Proxy authentication
+
+Use `--proxy` before a browser command when a managed session should route
+traffic through a proxy:
+
+```bash
+pire-browser --proxy http://proxy.example:8080 open https://httpbin.org/ip
+pire-browser --proxy http://user:pass@proxy.example:8080 open https://example.com
+PIRE_BROWSER_PROXY=http://proxy.example:8080 pire-browser open https://example.com
+```
+
+Proxy credentials can be supplied in the proxy URL or with
+`PIRE_BROWSER_PROXY_USERNAME` / `PIRE_BROWSER_PROXY_PASSWORD`
+(`AGENT_BROWSER_PROXY_USERNAME` / `AGENT_BROWSER_PROXY_PASSWORD` are accepted
+aliases). `NO_PROXY`, `PIRE_BROWSER_PROXY_BYPASS`, and
+`AGENT_BROWSER_PROXY_BYPASS` map to Firefox proxy passthrough hosts. Proxy
+credentials stay in extension memory and are not echoed in command output.
+
 ## Sessions
 
 ```bash
@@ -633,6 +655,8 @@ pire-browser pdf viewport.pdf --viewport
 --state <path>                  # Load active-origin state before a browser command
 --auto-connect                  # Select a live managed session when saving state
 --headers <json>                # HTTP headers scoped to URL's origin
+--proxy <url>                   # Firefox proxy URL for browser bridge commands
+--proxy-bypass <list>           # Firefox proxy passthrough hosts
 --executable-path <path>        # Custom Firefox executable
 --allow-file-access             # Allow supported local file workflows
 --json                          # JSON output

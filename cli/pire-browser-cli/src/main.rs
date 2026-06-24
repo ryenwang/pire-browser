@@ -154,6 +154,15 @@ struct OutputGuardOptions {
     max_output: Option<usize>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProxyConfig {
+    url: String,
+    bypass: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
+    source: String,
+}
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("{}", redact_text(&format!("{err:#}")));
@@ -165,6 +174,7 @@ fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let config_result = apply_config_defaults(&args)?;
     let color_scheme = color_scheme_from_effective_args(&config_result.args)?;
+    let proxy_config = proxy_config_from_effective_args(&config_result.args)?;
     let output_guards = output_guard_options_from_effective_args(&config_result.args)?;
     let firefox_path_override = firefox_path_override_from_args_and_env(&config_result.args);
     let config_warnings = config_result.warnings;
@@ -425,6 +435,7 @@ fn run() -> Result<()> {
                 PathBuf::from(path),
                 args,
                 color_scheme.as_deref(),
+                proxy_config.as_ref(),
             )?;
         }
         LocalCommand::Download {
@@ -451,6 +462,7 @@ fn run() -> Result<()> {
                 Some(PathBuf::from(path)),
                 timeout_ms,
                 firefox_path_override.clone(),
+                proxy_config.as_ref(),
             )?;
         }
         LocalCommand::WaitDownload {
@@ -475,6 +487,7 @@ fn run() -> Result<()> {
                 path.map(PathBuf::from),
                 timeout_ms,
                 firefox_path_override.clone(),
+                proxy_config.as_ref(),
             )?;
         }
         LocalCommand::Upload {
@@ -498,6 +511,7 @@ fn run() -> Result<()> {
                 },
                 selector,
                 files.into_iter().map(PathBuf::from).collect(),
+                proxy_config.as_ref(),
             )?;
         }
         LocalCommand::Launch {
@@ -675,6 +689,7 @@ fn run() -> Result<()> {
                     interactively_approved,
                     firefox_path_override.as_deref(),
                     color_scheme.as_deref(),
+                    proxy_config.as_ref(),
                 )?;
                 append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
                 append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
@@ -695,6 +710,7 @@ fn run() -> Result<()> {
                     interactively_approved,
                     firefox_path_override.as_deref(),
                     color_scheme.as_deref(),
+                    proxy_config.as_ref(),
                 )?;
                 append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
                 append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
@@ -715,6 +731,7 @@ fn run() -> Result<()> {
                     interactively_approved,
                     firefox_path_override.as_deref(),
                     color_scheme.as_deref(),
+                    proxy_config.as_ref(),
                 )?;
                 append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
                 append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
@@ -732,6 +749,7 @@ fn run() -> Result<()> {
             )?;
             let mut request = request;
             attach_color_scheme(&mut request, color_scheme.as_deref())?;
+            attach_proxy_config(&mut request, proxy_config.as_ref())?;
             let (response, response_session_id) = dispatch_remote_request_or_exit(
                 &target,
                 &args,
@@ -1026,6 +1044,8 @@ fn is_output_guard_value_global_flag(flag: &str) -> bool {
             | "--executable-path"
             | "--engine"
             | "--provider"
+            | "--proxy"
+            | "--proxy-bypass"
             | "-p"
             | "--model"
     )
@@ -1836,6 +1856,7 @@ fn handle_state_shortcut(
     path: PathBuf,
     mut args: Vec<String>,
     color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<()> {
     prepare_auth_password_stdin(&mut args)?;
     prepare_batch_stdin(&mut args)?;
@@ -1930,6 +1951,7 @@ fn handle_state_shortcut(
     )?;
     let mut request = request;
     attach_color_scheme(&mut request, color_scheme)?;
+    attach_proxy_config(&mut request, proxy_config)?;
     let dispatch_result = match &target {
         SessionTarget::Id(session_id) => send_to_session(Some(session_id), &request),
         SessionTarget::Name(profile_name) => {
@@ -2228,6 +2250,7 @@ fn handle_download(
     destination: Option<PathBuf>,
     timeout_ms: u64,
     firefox_path_override: Option<String>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<()> {
     let mut public_args = vec![
         "download".to_string(),
@@ -2250,6 +2273,7 @@ fn handle_download(
             destination,
         },
         firefox_path_override,
+        proxy_config,
     )
 }
 
@@ -2261,6 +2285,7 @@ fn handle_wait_download(
     destination: Option<PathBuf>,
     timeout_ms: u64,
     firefox_path_override: Option<String>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<()> {
     let mut public_args = vec!["wait".to_string(), "--download".to_string()];
     if let Some(path) = &destination {
@@ -2278,6 +2303,7 @@ fn handle_wait_download(
             destination,
         },
         firefox_path_override,
+        proxy_config,
     )
 }
 
@@ -2288,6 +2314,7 @@ fn execute_download_command(
     policies: PolicyArgsBundle,
     plan: DownloadCommandPlan,
     firefox_path_override: Option<String>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<()> {
     let domain_decision =
         resolve_domain_policy_or_exit(&policies.domain_policy, json_output, &ignored_global_flags)?;
@@ -2325,13 +2352,14 @@ fn execute_download_command(
         }
     };
 
-    let request = build_command_request_with_policies(
+    let mut request = build_command_request_with_policies(
         plan.extension_args.clone(),
         &domain_decision,
         &action_decision,
         &confirmation_decision,
         interactively_approved,
     )?;
+    attach_proxy_config(&mut request, proxy_config)?;
     run_download_dispatch(
         target,
         json_output,
@@ -2412,6 +2440,7 @@ fn handle_upload(
     policies: PolicyArgsBundle,
     selector: String,
     files: Vec<PathBuf>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<()> {
     let mut public_args = vec!["upload".to_string(), selector];
     public_args.extend(files.iter().map(|path| path.display().to_string()));
@@ -2421,6 +2450,7 @@ fn handle_upload(
         ignored_global_flags,
         policies,
         UploadCommandPlan { public_args, files },
+        proxy_config,
     )
 }
 
@@ -2430,6 +2460,7 @@ fn execute_upload_command(
     ignored_global_flags: Vec<GlobalFlagWarning>,
     policies: PolicyArgsBundle,
     plan: UploadCommandPlan,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<()> {
     let domain_decision =
         resolve_domain_policy_or_exit(&policies.domain_policy, json_output, &ignored_global_flags)?;
@@ -2508,6 +2539,8 @@ fn execute_upload_command(
         interactively_approved,
         &prepared,
     )?;
+    let mut request = request;
+    attach_proxy_config(&mut request, proxy_config)?;
     run_upload_dispatch(
         &session_id,
         json_output,
@@ -2798,6 +2831,7 @@ fn execute_confirmed_diff(
             true,
             None,
             None,
+            None,
         )?
     } else if let Some(options) = diff_url_options(&record.args)? {
         for url in [&options.first_url, &options.second_url] {
@@ -2812,6 +2846,7 @@ fn execute_confirmed_diff(
             &action_decision,
             &confirmation_decision,
             true,
+            None,
             None,
             None,
         )?
@@ -3615,6 +3650,8 @@ fn color_scheme_from_effective_args(args: &[String]) -> Result<Option<String>> {
             | "--executable-path"
             | "--engine"
             | "--provider"
+            | "--proxy"
+            | "--proxy-bypass"
             | "-p"
             | "--model" => {
                 index += 2;
@@ -3644,12 +3681,124 @@ fn color_scheme_from_effective_args(args: &[String]) -> Result<Option<String>> {
     Ok(None)
 }
 
+fn proxy_config_from_effective_args(args: &[String]) -> Result<Option<ProxyConfig>> {
+    proxy_config_from_effective_args_with_env(args, non_empty_env)
+}
+
+fn proxy_config_from_effective_args_with_env<F>(
+    args: &[String],
+    mut env_value: F,
+) -> Result<Option<ProxyConfig>>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    let mut explicit_proxy = None;
+    let mut explicit_bypass = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--proxy" => {
+                let Some(value) = args.get(index + 1) else {
+                    bail!("--proxy requires a value");
+                };
+                explicit_proxy = Some(value.clone());
+                index += 2;
+            }
+            "--proxy-bypass" => {
+                let Some(value) = args.get(index + 1) else {
+                    bail!("--proxy-bypass requires a value");
+                };
+                explicit_bypass = Some(value.clone());
+                index += 2;
+            }
+            flag if is_output_guard_value_global_flag(flag) => {
+                if args.get(index + 1).is_none() {
+                    bail!("{flag} requires a value");
+                }
+                index += 2;
+            }
+            "--headed" | "--headless" => {
+                index += 1;
+                if args
+                    .get(index)
+                    .and_then(|value| parse_bool_literal(value))
+                    .is_some()
+                {
+                    index += 1;
+                }
+            }
+            flag if is_output_guard_bool_global_flag(flag) => {
+                index += 1;
+            }
+            _ => break,
+        }
+    }
+    let proxy = explicit_proxy
+        .map(|url| (url, "--proxy".to_string()))
+        .or_else(|| {
+            env_value("PIRE_BROWSER_PROXY").map(|url| (url, "PIRE_BROWSER_PROXY".to_string()))
+        })
+        .or_else(|| {
+            env_value("AGENT_BROWSER_PROXY").map(|url| (url, "AGENT_BROWSER_PROXY".to_string()))
+        })
+        .or_else(|| env_value("HTTPS_PROXY").map(|url| (url, "HTTPS_PROXY".to_string())))
+        .or_else(|| env_value("https_proxy").map(|url| (url, "https_proxy".to_string())))
+        .or_else(|| env_value("HTTP_PROXY").map(|url| (url, "HTTP_PROXY".to_string())))
+        .or_else(|| env_value("http_proxy").map(|url| (url, "http_proxy".to_string())))
+        .or_else(|| env_value("ALL_PROXY").map(|url| (url, "ALL_PROXY".to_string())))
+        .or_else(|| env_value("all_proxy").map(|url| (url, "all_proxy".to_string())));
+    let Some((url, source)) = proxy else {
+        return Ok(None);
+    };
+    let bypass = explicit_bypass
+        .or_else(|| env_value("PIRE_BROWSER_PROXY_BYPASS"))
+        .or_else(|| env_value("AGENT_BROWSER_PROXY_BYPASS"))
+        .or_else(|| env_value("NO_PROXY"))
+        .or_else(|| env_value("no_proxy"));
+    let username = env_value("PIRE_BROWSER_PROXY_USERNAME")
+        .or_else(|| env_value("AGENT_BROWSER_PROXY_USERNAME"));
+    let password = env_value("PIRE_BROWSER_PROXY_PASSWORD")
+        .or_else(|| env_value("AGENT_BROWSER_PROXY_PASSWORD"));
+    Ok(Some(ProxyConfig {
+        url,
+        bypass,
+        username,
+        password,
+        source,
+    }))
+}
+
 fn attach_color_scheme(request: &mut RpcRequest, color_scheme: Option<&str>) -> Result<()> {
     let Some(color_scheme) = color_scheme else {
         return Ok(());
     };
     if let Some(object) = request.params.as_object_mut() {
         object.insert("colorScheme".to_string(), json!(color_scheme));
+    }
+    Ok(())
+}
+
+fn attach_proxy_config(request: &mut RpcRequest, proxy_config: Option<&ProxyConfig>) -> Result<()> {
+    let Some(proxy_config) = proxy_config else {
+        return Ok(());
+    };
+    if let Some(object) = request.params.as_object_mut() {
+        let mut payload = json!({
+            "url": proxy_config.url,
+            "source": proxy_config.source,
+        });
+        if let Some(payload_object) = payload.as_object_mut() {
+            if let Some(bypass) = &proxy_config.bypass {
+                payload_object.insert("bypass".to_string(), json!(bypass));
+            }
+            if let Some(username) = &proxy_config.username {
+                payload_object.insert("username".to_string(), json!(username));
+            }
+            if let Some(password) = &proxy_config.password {
+                payload_object.insert("password".to_string(), json!(password));
+            }
+        }
+        object.insert("proxy".to_string(), payload);
     }
     Ok(())
 }
@@ -4153,6 +4302,7 @@ fn handle_diff_screenshot(
     interactively_approved: bool,
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<Value> {
     let current_path = match &options.current_path {
         Some(path) => path.clone(),
@@ -4167,6 +4317,7 @@ fn handle_diff_screenshot(
             interactively_approved,
             firefox_path_override,
             color_scheme,
+            proxy_config,
         )?,
     };
 
@@ -4190,6 +4341,7 @@ fn handle_diff_url(
     interactively_approved: bool,
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<Value> {
     let baseline_screenshot_path = if options.screenshot {
         Some(diff_url_temp_path("baseline", "png"))
@@ -4215,6 +4367,7 @@ fn handle_diff_url(
         interactively_approved,
         firefox_path_override,
         color_scheme,
+        proxy_config,
     )?;
     let baseline_path = diff_url_temp_path("snapshot-baseline", "txt");
     fs::write(&baseline_path, &baseline_snapshot).with_context(|| {
@@ -4238,6 +4391,7 @@ fn handle_diff_url(
         interactively_approved,
         firefox_path_override,
         color_scheme,
+        proxy_config,
     )?;
     let _ = fs::remove_file(&baseline_path);
 
@@ -4318,6 +4472,7 @@ fn capture_diff_screenshot_current(
     interactively_approved: bool,
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<PathBuf> {
     let path =
         std::env::temp_dir().join(format!("pire-browser-diff-current-{}.png", Uuid::new_v4()));
@@ -4334,6 +4489,7 @@ fn capture_diff_screenshot_current(
         interactively_approved,
     )?;
     attach_color_scheme(&mut request, color_scheme)?;
+    attach_proxy_config(&mut request, proxy_config)?;
     let (response, _) = dispatch_remote_request_or_exit(
         target,
         &screenshot_args,
@@ -4373,6 +4529,7 @@ fn handle_pdf_capture(
     interactively_approved: bool,
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<Value> {
     let screenshot_path = capture_diff_screenshot_current(
         target,
@@ -4385,6 +4542,7 @@ fn handle_pdf_capture(
         interactively_approved,
         firefox_path_override,
         color_scheme,
+        proxy_config,
     )?;
     let output_path = resolve_pdf_output_path(&options.output_path)?;
     let image = image::open(&screenshot_path).with_context(|| {
@@ -4534,6 +4692,7 @@ fn capture_diff_url_baseline(
     interactively_approved: bool,
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<String> {
     execute_diff_url_open_and_wait(
         target,
@@ -4547,6 +4706,7 @@ fn capture_diff_url_baseline(
         interactively_approved,
         firefox_path_override,
         color_scheme,
+        proxy_config,
     )?;
     let snapshot_args = diff_url_snapshot_args(options);
     let snapshot = execute_remote_value_with_policies(
@@ -4560,6 +4720,7 @@ fn capture_diff_url_baseline(
         interactively_approved,
         firefox_path_override,
         color_scheme,
+        proxy_config,
     )?;
     if let Some(path) = screenshot_path {
         capture_diff_url_screenshot(
@@ -4574,6 +4735,7 @@ fn capture_diff_url_baseline(
             interactively_approved,
             firefox_path_override,
             color_scheme,
+            proxy_config,
         )?;
     }
     Ok(snapshot
@@ -4597,6 +4759,7 @@ fn capture_diff_url_current(
     interactively_approved: bool,
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<Value> {
     execute_diff_url_open_and_wait(
         target,
@@ -4610,6 +4773,7 @@ fn capture_diff_url_current(
         interactively_approved,
         firefox_path_override,
         color_scheme,
+        proxy_config,
     )?;
     let diff_args = diff_url_snapshot_diff_args(options, baseline_path);
     let diff = execute_remote_value_with_policies(
@@ -4623,6 +4787,7 @@ fn capture_diff_url_current(
         interactively_approved,
         firefox_path_override,
         color_scheme,
+        proxy_config,
     )?;
     if let Some(path) = screenshot_path {
         capture_diff_url_screenshot(
@@ -4637,6 +4802,7 @@ fn capture_diff_url_current(
             interactively_approved,
             firefox_path_override,
             color_scheme,
+            proxy_config,
         )?;
     }
     Ok(diff)
@@ -4654,6 +4820,7 @@ fn execute_diff_url_open_and_wait(
     interactively_approved: bool,
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<()> {
     execute_remote_value_with_policies(
         target,
@@ -4666,6 +4833,7 @@ fn execute_diff_url_open_and_wait(
         interactively_approved,
         firefox_path_override,
         color_scheme,
+        proxy_config,
     )?;
     if let Some(wait_until) = &options.wait_until {
         execute_remote_value_with_policies(
@@ -4683,6 +4851,7 @@ fn execute_diff_url_open_and_wait(
             interactively_approved,
             firefox_path_override,
             color_scheme,
+            proxy_config,
         )?;
     }
     Ok(())
@@ -4700,6 +4869,7 @@ fn capture_diff_url_screenshot(
     interactively_approved: bool,
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<()> {
     let mut args = vec!["screenshot".to_string(), path.to_string_lossy().to_string()];
     if full_page {
@@ -4716,6 +4886,7 @@ fn capture_diff_url_screenshot(
         interactively_approved,
         firefox_path_override,
         color_scheme,
+        proxy_config,
     )?;
     Ok(())
 }
@@ -4731,6 +4902,7 @@ fn execute_remote_value_with_policies(
     interactively_approved: bool,
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
 ) -> Result<Value> {
     let mut request = build_command_request_with_policies(
         args.clone(),
@@ -4740,6 +4912,7 @@ fn execute_remote_value_with_policies(
         interactively_approved,
     )?;
     attach_color_scheme(&mut request, color_scheme)?;
+    attach_proxy_config(&mut request, proxy_config)?;
     let (response, _) = dispatch_remote_request_or_exit(
         target,
         &args,
@@ -7274,6 +7447,61 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(err.contains("--color-scheme must be dark, light, or auto"));
+    }
+
+    #[test]
+    fn attaches_proxy_payload_to_remote_requests() {
+        let args = s(&[
+            "--session-name",
+            "work",
+            "--proxy",
+            "http://user:secret@proxy.example:8080",
+            "--proxy-bypass",
+            "localhost,*.internal",
+            "open",
+            "https://example.com",
+        ]);
+        let decision = domain_decision_from_request_context(None).unwrap();
+        let mut request = build_command_request_with_domain_policy(
+            s(&["open", "https://example.com"]),
+            &decision,
+        )
+        .unwrap();
+        let proxy = proxy_config_from_effective_args_with_env(&args, |_| None)
+            .unwrap()
+            .unwrap();
+
+        attach_proxy_config(&mut request, Some(&proxy)).unwrap();
+
+        assert_eq!(request.params["args"][0], "open");
+        assert_eq!(
+            request.params["proxy"]["url"],
+            "http://user:secret@proxy.example:8080"
+        );
+        assert_eq!(request.params["proxy"]["source"], "--proxy");
+        assert_eq!(request.params["proxy"]["bypass"], "localhost,*.internal");
+    }
+
+    #[test]
+    fn proxy_config_accepts_agent_browser_env_aliases() {
+        let proxy = proxy_config_from_effective_args_with_env(
+            &s(&["open", "https://example.com"]),
+            |name| match name {
+                "AGENT_BROWSER_PROXY" => Some("socks5://proxy.example:1080".to_string()),
+                "AGENT_BROWSER_PROXY_BYPASS" => Some("localhost".to_string()),
+                "AGENT_BROWSER_PROXY_USERNAME" => Some("agent".to_string()),
+                "AGENT_BROWSER_PROXY_PASSWORD" => Some("secret".to_string()),
+                _ => None,
+            },
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(proxy.url, "socks5://proxy.example:1080");
+        assert_eq!(proxy.bypass.as_deref(), Some("localhost"));
+        assert_eq!(proxy.username.as_deref(), Some("agent"));
+        assert_eq!(proxy.password.as_deref(), Some("secret"));
+        assert_eq!(proxy.source, "AGENT_BROWSER_PROXY");
     }
 
     #[test]

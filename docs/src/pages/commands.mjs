@@ -113,6 +113,8 @@ pire-browser clipboard paste`),
   statusNote("settings"),
   code(`pire-browser --headed open https://example.com          # Legacy launch input
 pire-browser --color-scheme dark open https://example.com
+pire-browser --proxy http://proxy.example:8080 open https://example.com
+pire-browser --proxy http://proxy.example:8080 --proxy-bypass "localhost,*.internal" open https://example.com
 pire-browser set media light
 pire-browser set viewport 1280 720
 pire-browser set device "iPhone 14"
@@ -125,7 +127,8 @@ pire-browser open https://api.example.com --headers '{"Authorization":"Bearer to
 pire-browser --executable-path /path/to/firefox open https://example.com
 # set device is best-effort viewport-only. set offline is best-effort request blocking.
 # set credentials is memory-only HTTP Basic auth for the active origin.
-# set geo is a page-level navigator.geolocation shim; TLS-ignore launch flags are not available`),
+# set geo is a page-level navigator.geolocation shim; TLS-ignore launch flags are not available
+# --proxy is extension-applied for bridge commands; prefer --proxy ... open <url>`),
   code(`pire-browser launch --profile Default
 pire-browser launch --url https://example.com
 PIRE_BROWSER_FIREFOX_PATH=/path/to/firefox pire-browser launch
@@ -145,6 +148,8 @@ pire-browser storage session`),
   statusNote("networkControls"),
   code(`pire-browser --allowed-domains "example.com,*.example.com" open https://example.com
 PIRE_BROWSER_ALLOWED_DOMAINS="example.com" pire-browser snapshot -i
+pire-browser --proxy http://proxy.example:8080 open https://example.com
+pire-browser --proxy socks5://proxy.example:1080 --proxy-bypass "localhost,*.internal" open https://example.com
 pire-browser open https://api.example.com --headers '{"Authorization":"Bearer token"}'
 pire-browser set headers '{"X-Custom-Header":"value"}'
 pire-browser set credentials user pass
@@ -161,7 +166,7 @@ pire-browser network route "**/api/config**" --body '{"ready":true}'
 pire-browser network route "*" --abort --resource-type script
 pire-browser network unroute "*"
 pire-browser network requests --clear`),
-  p("The current network-related surface is cooperative domain allowlists, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics, agent-browser-style metadata HAR start/stop, direct HAR export, and best-effort active-tab route interception for mocks or aborts. Full CDP-style response control plus response body and raw-header inspection remain outside the current Firefox runtime."),
+  p("The current network-related surface is cooperative domain allowlists, extension-applied proxy settings, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics, agent-browser-style metadata HAR start/stop, direct HAR export, and best-effort active-tab route interception for mocks or aborts. Full CDP-style response control plus response body and raw-header inspection remain outside the current Firefox runtime."),
 
   h2("Tabs & frames", "tabs-frames"),
   code(`pire-browser tab list

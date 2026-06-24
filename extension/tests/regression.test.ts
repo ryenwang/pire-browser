@@ -127,6 +127,11 @@ describe("compiled MV2 scripts", () => {
     expect(manifest.permissions).toContain("clipboardWrite");
   });
 
+  it("declares Firefox proxy permission", () => {
+    const manifest = JSON.parse(extensionFile("manifest.json"));
+    expect(manifest.permissions).toContain("proxy");
+  });
+
   it("do not emit module export syntax", () => {
     for (const file of ["background.js", "content.js"]) {
       const body = extensionFile(`dist/${file}`);
@@ -248,6 +253,21 @@ describe("pire-browser command foundations", () => {
     expect(contentBody).toContain('if (message.type === "key_edge")');
     expect(contentBody).toContain("function keyEdge(action: string, key: string)");
     expect(contentBody).toContain("dispatchKey(target, normalized, action, parsed);");
+  });
+
+  it("applies proxy settings through Firefox proxy APIs without echoing credentials", () => {
+    const body = background();
+    expect(body).toContain("let proxyCredentials: BasicCredentialRule | null = null;");
+    expect(body).toContain("browser.proxy?.settings");
+    expect(body).toContain("function parseProxyParam");
+    expect(body).toContain("settings.http = address;");
+    expect(body).toContain("settings.ssl = address;");
+    expect(body).toContain("settings.socks = address;");
+    expect(body).toContain("redacted.username = \"\";");
+    expect(body).toContain("redacted.password = \"\";");
+    expect(body).toContain("hasCredentials: Boolean(parsed.credentials)");
+    expect(body).toContain("details?.isProxy === true");
+    expect(body).toContain("proxyCredentials");
   });
 
   it("dispatches dblclick as a browser-like page mouse sequence", () => {

@@ -202,6 +202,17 @@ type BasicCredentialRule = {
   password: string;
 };
 
+type ProxyState = {
+  enabled: boolean;
+  url?: string;
+  scheme?: string;
+  host?: string;
+  port?: string;
+  bypass?: string;
+  hasCredentials?: boolean;
+  source?: string;
+};
+
 type GeolocationState = {
   latitude: number;
   longitude: number;
@@ -275,6 +286,7 @@ const runtimeInitScripts = new Map<string, RuntimeInitScriptRecord>();
 let geolocationInitScriptRegistration: any | null = null;
 const headersByOrigin = new Map<string, HeaderRule[]>();
 const credentialsByOrigin = new Map<string, BasicCredentialRule>();
+let proxyCredentials: BasicCredentialRule | null = null;
 const networkRequestsById = new Map<string, NetworkActivityRecord>();
 const networkRequestIdsByTabId = new Map<number, Set<string>>();
 const networkRequestLogIdsByTabId = new Map<number, string[]>();
@@ -904,6 +916,10 @@ async function executeCommand(
     if ("error" in applied) return applied;
     params.appliedColorScheme = applied.media;
   }
+  const proxyResult = await applyProxyFromParams(params.proxy);
+  if ("error" in proxyResult) return proxyResult;
+  if (proxyResult.proxy) params.appliedProxy = proxyResult.proxy;
+  if (proxyResult.warnings?.length) params.proxyWarnings = proxyResult.warnings;
   switch (command) {
     case "status":
       return statusResult();
@@ -1065,7 +1081,7 @@ async function openCommand(args: string[], command = "open", params: Record<stri
   const active = await activeTab();
   const previousUrl = active?.url;
   let tab: any;
-  const warnings: unknown[] = [...registered.warnings];
+  const warnings: unknown[] = mergeWarnings(params.proxyWarnings, registered.warnings);
   try {
     const existingFileTab = isFileUrl(url) ? await existingTabForUrl(url, active) : null;
     tab = existingFileTab
@@ -1110,6 +1126,7 @@ async function openCommand(args: string[], command = "open", params: Record<stri
     tab: record,
     headers: headerScope ? headerScope.headers : undefined,
     media: params.appliedColorScheme,
+    proxy: params.appliedProxy,
     warnings,
   };
 }
@@ -2893,6 +2910,137 @@ async function applyContentColorScheme(scheme: ContentColorScheme) {
       applied: applied !== false,
     },
   };
+}
+
+async function applyProxyFromParams(value: unknown):
+  Promise<{ proxy?: ProxyState; warnings?: unknown[] } | { error: RpcResponse["error"] }> {
+  if (value == null) return {};
+  const parsed = parseProxyParam(value);
+  if ("error" in parsed) return parsed;
+  const setting = browser.proxy?.settings;
+  if (!setting?.set) {
+    return {
+      error: {
+        code: "not_available",
+        message: "Firefox proxy.settings is unavailable in this extension context",
+      },
+    };
+  }
+  if (!parsed.enabled) {
+    proxyCredentials = null;
+    await setting.set({ value: { proxyType: "none" } });
+    return {
+      proxy: { enabled: false, source: parsed.source },
+      warnings: [proxyWarning()],
+    };
+  }
+  proxyCredentials = parsed.credentials ?? null;
+  await setting.set({ value: parsed.settings });
+  return {
+    proxy: {
+      enabled: true,
+      url: parsed.redactedUrl,
+      scheme: parsed.scheme,
+      host: parsed.host,
+      port: parsed.port,
+      bypass: parsed.bypass,
+      hasCredentials: Boolean(parsed.credentials),
+      source: parsed.source,
+    },
+    warnings: [proxyWarning()],
+  };
+}
+
+function parseProxyParam(value: unknown):
+  | {
+      enabled: false;
+      source?: string;
+    }
+  | {
+      enabled: true;
+      settings: Record<string, unknown>;
+      redactedUrl: string;
+      scheme: string;
+      host: string;
+      port: string;
+      bypass?: string;
+      source?: string;
+      credentials?: BasicCredentialRule;
+    }
+  | { error: RpcResponse["error"] } {
+  if (!value || typeof value !== "object") {
+    return { error: { code: "invalid_args", message: "proxy payload must be an object" } };
+  }
+  const candidate = value as Record<string, unknown>;
+  const source = typeof candidate.source === "string" ? candidate.source : undefined;
+  const rawUrl = typeof candidate.url === "string" ? candidate.url.trim() : "";
+  const bypass = typeof candidate.bypass === "string" && candidate.bypass.trim() ? candidate.bypass.trim() : undefined;
+  const explicitUsername = typeof candidate.username === "string" ? candidate.username : "";
+  const explicitPassword = typeof candidate.password === "string" ? candidate.password : "";
+  if (!rawUrl) {
+    return { error: { code: "invalid_args", message: "--proxy requires a non-empty URL" } };
+  }
+  if (/^(off|none|direct)$/i.test(rawUrl)) return { enabled: false, source };
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return { error: { code: "invalid_args", message: "--proxy requires a valid proxy URL" } };
+  }
+  const scheme = parsed.protocol.replace(":", "").toLowerCase();
+  if (!["http", "https", "socks", "socks4", "socks5"].includes(scheme)) {
+    return { error: { code: "invalid_args", message: "--proxy supports http, https, socks4, and socks5 URLs" } };
+  }
+  const host = parsed.hostname;
+  if (!host) {
+    return { error: { code: "invalid_args", message: "--proxy URL requires a host" } };
+  }
+  const port = parsed.port;
+  const address = `${parsed.protocol}//${parsed.host}`;
+  const credentials =
+    parsed.username || parsed.password || explicitUsername || explicitPassword
+      ? {
+          username: parsed.username ? decodeURIComponent(parsed.username) : explicitUsername,
+          password: parsed.password ? decodeURIComponent(parsed.password) : explicitPassword,
+        }
+      : undefined;
+  const redacted = new URL(parsed.toString());
+  redacted.username = "";
+  redacted.password = "";
+  redacted.pathname = "";
+  redacted.search = "";
+  redacted.hash = "";
+  const settings: Record<string, unknown> = {
+    proxyType: "manual",
+  };
+  if (bypass) settings.passthrough = bypass;
+  if (scheme.startsWith("socks")) {
+    settings.socks = address;
+    settings.socksVersion = scheme === "socks4" ? 4 : 5;
+    settings.proxyDNS = scheme !== "socks4";
+  } else {
+    settings.http = address;
+    settings.ssl = address;
+    settings.httpProxyAll = true;
+  }
+  return {
+    enabled: true,
+    settings,
+    redactedUrl: redacted.toString(),
+    scheme,
+    host,
+    port,
+    bypass,
+    source,
+    credentials,
+  };
+}
+
+function proxyWarning() {
+  return bestEffortWarning(
+    "proxy",
+    "Firefox proxy settings are applied through browser.proxy.settings for the managed browser session. Proxy credentials are handled in memory and are not echoed in output; Firefox may still require private-window proxy permission depending on the user's extension settings."
+  );
 }
 
 async function setHeadersCommand(args: string[]) {
@@ -5232,7 +5380,16 @@ function upsertRequestHeader(requestHeaders: any[], name: string, value: string)
 }
 
 function applyBasicAuthCredentials(details: any) {
-  if (details?.isProxy === true) return {};
+  if (details?.isProxy === true) {
+    return proxyCredentials
+      ? {
+          authCredentials: {
+            username: proxyCredentials.username,
+            password: proxyCredentials.password,
+          },
+        }
+      : {};
+  }
   const origin = safeOrigin(details?.url);
   const credentials = origin ? credentialsByOrigin.get(origin) : undefined;
   if (!credentials) return {};
