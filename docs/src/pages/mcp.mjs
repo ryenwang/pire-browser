@@ -14,9 +14,9 @@ pire-browser mcp --tools all`),
   table(
     ["Profile", "Purpose"],
     [
-      ["core", "Open, read, inspect, semantic find, interact, get/check, typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff evidence, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and skill guidance."],
+      ["core", "Open, read, inspect, semantic find, interact, typed get/check verification, typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff evidence, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and skill guidance."],
       ["network", "Headers, credentials, offline toggle, network request inspection with redacted request/response headers, metadata HAR, and route/unroute controls."],
-      ["state", "Cookies, storage, auth helpers, plaintext state files, sessions, profiles, downloads/uploads, clipboard, and skills."],
+      ["state", "Cookies, storage, auth helpers, plaintext state files, sessions, profiles, downloads/uploads, typed clipboard tools, and skills."],
       ["debug", "Lower-level launch, explicit install/repair, safe upgrade, batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions/profiles, and close."],
       ["tabs", "Back/forward/reload, tab list/new/select/label/close, iframe selection, JavaScript dialogs, windows, and close."],
       ["mobile", "Viewport, device preset, geolocation, media/offline settings, keyboard, mouse, scroll, and screenshot helpers."],
@@ -58,8 +58,10 @@ pire-browser mcp --tools all`),
       ["pire_browser_hover / focus / select / check / uncheck", "Handle common form and interaction controls."],
       ["pire_browser_scroll / scroll_into_view / drag", "Move around the page and dispatch page-level drag/drop events."],
       ["pire_browser_mouse_move / mouse_down / mouse_up / mouse_wheel", "Dispatch page-level mouse events at viewport coordinates."],
-      ["pire_browser_get", "Read page or element text, HTML, values, attributes, title, URL, counts, boxes, or styles."],
-      ["pire_browser_is", "Check whether a ref or selector is visible, enabled, or checked."],
+      ["pire_browser_get_text / get_html / get_value / get_attr / get_count / get_box / get_styles / get_url / get_title", "Agent-browser-style typed verification tools. Use these before the generic compatibility get tool."],
+      ["pire_browser_get", "Compatibility getter for page or element text, HTML, values, attributes, title, URL, counts, boxes, or styles."],
+      ["pire_browser_is_visible / is_enabled / is_checked", "Agent-browser-style typed element-state checks. Use these before the generic compatibility is tool."],
+      ["pire_browser_is", "Compatibility state checker for visible, enabled, or checked."],
       ["pire_browser_wait_ms / wait_for_selector / wait_for_text / wait_for_url / wait_for_load / wait_for_function", "Agent-browser-style typed wait tools. Use these before the generic compatibility wait tool."],
       ["pire_browser_wait", "Compatibility wait tool for time, selector, text, URL, page function condition, or load state."],
       ["pire_browser_back / forward / reload / pushstate", "Use browser history, reload the active tab, or perform same-origin SPA client-side navigation."],
@@ -75,7 +77,8 @@ pire-browser mcp --tools all`),
       ["pire_browser_state_*", "Save, load, list, show, inspect, rename, clear, or clean plaintext active-origin state files."],
       ["pire_browser_session_* / profiles_list", "Inspect live sessions and managed Firefox profiles."],
       ["pire_browser_download / wait_download / upload", "Trigger or wait for browser downloads, or assign small local files to file inputs."],
-      ["pire_browser_clipboard", "Read, write, copy, or paste text through the Firefox extension path."],
+      ["pire_browser_clipboard_read / clipboard_write / clipboard_copy / clipboard_paste", "Agent-browser-style typed clipboard tools in the state profile."],
+      ["pire_browser_clipboard", "Compatibility clipboard tool for read, write, copy, or paste."],
       ["pire_browser_status", "Inspect install/session state."],
       ["pire_browser_confirm / deny", "Approve or deny a pending confirmation id after explicit user approval."],
       ["pire_browser_tabs_list / tab_new / tabs_select / tabs_label / tabs_close", "Inspect, create, switch, label, and close tabs."],
@@ -90,7 +93,7 @@ pire-browser mcp --tools all`),
 2. Use pire_browser_read for docs/articles when interaction refs are not needed.
 3. Call pire_browser_snapshot with compact=true, or use pire_browser_find when labels/roles are clear.
 4. Use fresh refs or semantic find locators in click/double-click/fill/type/press/select/check/scroll/drag/mouse/download/upload tools.
-5. Use pire_browser_get or pire_browser_is for targeted verification when you already have a fresh target.
+5. Use typed get/check tools for targeted verification when you already have a fresh target: get_text, get_value, get_attr, get_url, get_title, is_visible, is_enabled, or is_checked. Use pire_browser_get and pire_browser_is only for compatibility.
 6. Use frame_select when a snapshot shows an iframe you need to work inside; run frame_main before returning to outer-page controls.
 7. Use settings tools before screenshots or stateful QA when viewport, device preset, geolocation, headers, credentials, media, or offline mode matters.
 8. Use diff tools when comparing before/after UI, screenshots, or two URLs for QA evidence.

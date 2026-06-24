@@ -227,6 +227,17 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_get"
         | "pire_browser_is"
         | "pire_browser_get_url"
+        | "pire_browser_get_title"
+        | "pire_browser_get_text"
+        | "pire_browser_get_html"
+        | "pire_browser_get_value"
+        | "pire_browser_get_attr"
+        | "pire_browser_get_count"
+        | "pire_browser_get_box"
+        | "pire_browser_get_styles"
+        | "pire_browser_is_visible"
+        | "pire_browser_is_enabled"
+        | "pire_browser_is_checked"
         | "pire_browser_eval" => PROFILE_CORE,
         "pire_browser_screenshot" => PROFILE_CORE | PROFILE_MOBILE,
         "pire_browser_download" | "pire_browser_wait_download" | "pire_browser_upload" => {
@@ -262,7 +273,11 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_state_rename"
         | "pire_browser_state_clear"
         | "pire_browser_state_clean"
-        | "pire_browser_clipboard" => PROFILE_STATE,
+        | "pire_browser_clipboard"
+        | "pire_browser_clipboard_read"
+        | "pire_browser_clipboard_write"
+        | "pire_browser_clipboard_copy"
+        | "pire_browser_clipboard_paste" => PROFILE_STATE,
         "pire_browser_session_list"
         | "pire_browser_session_attach"
         | "pire_browser_session_cleanup" => PROFILE_STATE | PROFILE_DEBUG,
@@ -1091,6 +1106,23 @@ fn tool_command_args(
                 args.push(required_string(object, "text")?);
             }
         }
+        (_, "pire_browser_clipboard_read") => {
+            args.push("clipboard".to_string());
+            args.push("read".to_string());
+        }
+        (_, "pire_browser_clipboard_write") => {
+            args.push("clipboard".to_string());
+            args.push("write".to_string());
+            args.push(required_string(object, "text")?);
+        }
+        (_, "pire_browser_clipboard_copy") => {
+            args.push("clipboard".to_string());
+            args.push("copy".to_string());
+        }
+        (_, "pire_browser_clipboard_paste") => {
+            args.push("clipboard".to_string());
+            args.push("paste".to_string());
+        }
         (_, "pire_browser_get") => {
             let property = required_string(object, "property")?;
             match property.as_str() {
@@ -1117,6 +1149,30 @@ fn tool_command_args(
                 }
             }
         }
+        (_, "pire_browser_get_text") => {
+            push_get_selector_args(&mut args, object, "text")?;
+        }
+        (_, "pire_browser_get_html") => {
+            push_get_selector_args(&mut args, object, "html")?;
+        }
+        (_, "pire_browser_get_value") => {
+            push_get_selector_args(&mut args, object, "value")?;
+        }
+        (_, "pire_browser_get_attr") => {
+            args.push("get".to_string());
+            args.push("attr".to_string());
+            args.push(required_string(object, "selector")?);
+            args.push(required_string(object, "name")?);
+        }
+        (_, "pire_browser_get_count") => {
+            push_get_selector_args(&mut args, object, "count")?;
+        }
+        (_, "pire_browser_get_box") => {
+            push_get_selector_args(&mut args, object, "box")?;
+        }
+        (_, "pire_browser_get_styles") => {
+            push_get_selector_args(&mut args, object, "styles")?;
+        }
         (_, "pire_browser_is") => {
             let state = required_string(object, "state")?;
             if !matches!(state.as_str(), "visible" | "enabled" | "checked") {
@@ -1129,6 +1185,19 @@ fn tool_command_args(
         (_, "pire_browser_get_url") => {
             args.push("get".to_string());
             args.push("url".to_string());
+        }
+        (_, "pire_browser_get_title") => {
+            args.push("get".to_string());
+            args.push("title".to_string());
+        }
+        (_, "pire_browser_is_visible") => {
+            push_is_args(&mut args, object, "visible")?;
+        }
+        (_, "pire_browser_is_enabled") => {
+            push_is_args(&mut args, object, "enabled")?;
+        }
+        (_, "pire_browser_is_checked") => {
+            push_is_args(&mut args, object, "checked")?;
         }
         (_, "pire_browser_status") => {
             args.push("status".to_string());
@@ -1545,6 +1614,28 @@ fn push_wait_timeout_arg(
         args.push("--timeout".to_string());
         args.push(timeout.to_string());
     }
+    Ok(())
+}
+
+fn push_get_selector_args(
+    args: &mut Vec<String>,
+    object: &Map<String, Value>,
+    property: &str,
+) -> std::result::Result<(), String> {
+    args.push("get".to_string());
+    args.push(property.to_string());
+    args.push(required_string(object, "selector")?);
+    Ok(())
+}
+
+fn push_is_args(
+    args: &mut Vec<String>,
+    object: &Map<String, Value>,
+    state: &str,
+) -> std::result::Result<(), String> {
+    args.push("is".to_string());
+    args.push(state.to_string());
+    args.push(required_string(object, "selector")?);
     Ok(())
 }
 
@@ -2730,6 +2821,34 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_clipboard_read",
+            "Clipboard read",
+            "Read clipboard text through the Firefox extension clipboard path.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
+            "pire_browser_clipboard_write",
+            "Clipboard write",
+            "Write clipboard text through the Firefox extension clipboard path.",
+            tool_schema(vec![("text", string_prop("Text to write."))], &["text"]),
+            false,
+        ),
+        tool(
+            "pire_browser_clipboard_copy",
+            "Clipboard copy",
+            "Copy the active page selection through the Firefox extension clipboard path.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_clipboard_paste",
+            "Clipboard paste",
+            "Paste clipboard text at the current focused page element.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
             "pire_browser_get",
             "Get page or element info",
             "Read text, HTML, value, attribute, title, URL, count, bounding box, or computed styles.",
@@ -2747,6 +2866,61 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_get_text",
+            "Get text",
+            "Get visible text from a ref or selector.",
+            selector_tool_schema("Ref or selector to read text from."),
+            true,
+        ),
+        tool(
+            "pire_browser_get_html",
+            "Get HTML",
+            "Get innerHTML from a ref or selector.",
+            selector_tool_schema("Ref or selector to read HTML from."),
+            true,
+        ),
+        tool(
+            "pire_browser_get_value",
+            "Get value",
+            "Get an input value from a ref or selector.",
+            selector_tool_schema("Ref or selector to read value from."),
+            true,
+        ),
+        tool(
+            "pire_browser_get_attr",
+            "Get attribute",
+            "Get an element attribute from a ref or selector.",
+            tool_schema(
+                vec![
+                    ("selector", string_prop("Ref or selector to read from.")),
+                    ("name", string_prop("Attribute name.")),
+                ],
+                &["selector", "name"],
+            ),
+            true,
+        ),
+        tool(
+            "pire_browser_get_count",
+            "Get count",
+            "Count matching elements for a selector.",
+            selector_tool_schema("Selector to count."),
+            true,
+        ),
+        tool(
+            "pire_browser_get_box",
+            "Get box",
+            "Get the bounding box for a ref or selector.",
+            selector_tool_schema("Ref or selector to measure."),
+            true,
+        ),
+        tool(
+            "pire_browser_get_styles",
+            "Get styles",
+            "Get computed styles for a ref or selector.",
+            selector_tool_schema("Ref or selector to inspect styles for."),
+            true,
+        ),
+        tool(
             "pire_browser_is",
             "Check element state",
             "Check whether a ref or selector is visible, enabled, or checked.",
@@ -2760,9 +2934,37 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_is_visible",
+            "Is visible",
+            "Check whether a ref or selector is visible.",
+            selector_tool_schema("Ref or selector to check."),
+            true,
+        ),
+        tool(
+            "pire_browser_is_enabled",
+            "Is enabled",
+            "Check whether a ref or selector is enabled.",
+            selector_tool_schema("Ref or selector to check."),
+            true,
+        ),
+        tool(
+            "pire_browser_is_checked",
+            "Is checked",
+            "Check whether a ref or selector is checked.",
+            selector_tool_schema("Ref or selector to check."),
+            true,
+        ),
+        tool(
             "pire_browser_get_url",
             "Get URL",
             "Return the current active page URL.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
+            "pire_browser_get_title",
+            "Get title",
+            "Return the current active page title.",
             tool_schema(vec![], &[]),
             true,
         ),
@@ -3410,6 +3612,10 @@ fn tool_schema_without_extra_args(properties: Vec<(&str, Value)>, required: &[&s
     schema
 }
 
+fn selector_tool_schema(description: &str) -> Value {
+    tool_schema(vec![("selector", string_prop(description))], &["selector"])
+}
+
 fn wait_tool_schema(properties: Vec<(&str, Value)>, required: &[&str]) -> Value {
     let mut properties = properties;
     properties.push((
@@ -3696,6 +3902,22 @@ mod tests {
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_read"));
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_get"));
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_is"));
+        for name in [
+            "pire_browser_get_text",
+            "pire_browser_get_html",
+            "pire_browser_get_value",
+            "pire_browser_get_attr",
+            "pire_browser_get_count",
+            "pire_browser_get_box",
+            "pire_browser_get_styles",
+            "pire_browser_get_url",
+            "pire_browser_get_title",
+            "pire_browser_is_visible",
+            "pire_browser_is_enabled",
+            "pire_browser_is_checked",
+        ] {
+            assert!(tools.iter().any(|tool| tool["name"] == name), "{name}");
+        }
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_find"));
         assert!(tools
             .iter()
@@ -3754,6 +3976,9 @@ mod tests {
         assert!(!tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_window_new"));
+        assert!(!tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_clipboard_read"));
         assert!(!tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_doctor"));
@@ -3815,6 +4040,19 @@ mod tests {
             open["inputSchema"]["properties"]["allowedDomains"]["oneOf"][1]["type"],
             "array"
         );
+        let get_attr = tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_get_attr")
+            .unwrap();
+        assert_eq!(
+            get_attr["inputSchema"]["required"],
+            json!(["selector", "name"])
+        );
+        let is_visible = tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_is_visible")
+            .unwrap();
+        assert_eq!(is_visible["inputSchema"]["required"], json!(["selector"]));
         assert_eq!(
             open["inputSchema"]["properties"]["headers"]["type"],
             "object"
@@ -3985,6 +4223,22 @@ mod tests {
         let read = tool_named(&tools, "pire_browser_read");
         assert_eq!(read["annotations"]["readOnlyHint"], true);
         assert_eq!(read["annotations"]["openWorldHint"], true);
+
+        let get_text = tool_named(&tools, "pire_browser_get_text");
+        assert_eq!(get_text["annotations"]["readOnlyHint"], true);
+        assert_eq!(get_text["annotations"]["openWorldHint"], true);
+
+        let is_visible = tool_named(&tools, "pire_browser_is_visible");
+        assert_eq!(is_visible["annotations"]["readOnlyHint"], true);
+        assert_eq!(is_visible["annotations"]["openWorldHint"], true);
+
+        let clipboard_read = tool_named(&tools, "pire_browser_clipboard_read");
+        assert_eq!(clipboard_read["annotations"]["readOnlyHint"], true);
+        assert_eq!(clipboard_read["annotations"]["openWorldHint"], true);
+
+        let clipboard_write = tool_named(&tools, "pire_browser_clipboard_write");
+        assert_eq!(clipboard_write["annotations"]["readOnlyHint"], false);
+        assert_eq!(clipboard_write["annotations"]["openWorldHint"], true);
 
         let wait_for_selector = tool_named(&tools, "pire_browser_wait_for_selector");
         assert_eq!(wait_for_selector["annotations"]["readOnlyHint"], true);
@@ -4536,12 +4790,99 @@ mod tests {
         assert_eq!(args, vec!["--json", "get", "url"]);
 
         let args = tool_command_args(
+            "pire_browser_get_text",
+            &json!({ "selector": "@e1", "profile": "Work" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "--profile", "Work", "get", "text", "@e1"]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_get_html",
+            &json!({ "selector": "#main" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "get", "html", "#main"]);
+
+        let args = tool_command_args(
+            "pire_browser_get_value",
+            &json!({ "selector": "#email" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "get", "value", "#email"]);
+
+        let args = tool_command_args(
+            "pire_browser_get_attr",
+            &json!({ "selector": "@e2", "name": "href" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "get", "attr", "@e2", "href"]);
+
+        let args = tool_command_args(
+            "pire_browser_get_count",
+            &json!({ "selector": ".item" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "get", "count", ".item"]);
+
+        let args = tool_command_args(
+            "pire_browser_get_box",
+            &json!({ "selector": "@e3" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "get", "box", "@e3"]);
+
+        let args = tool_command_args(
+            "pire_browser_get_styles",
+            &json!({ "selector": "#main" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "get", "styles", "#main"]);
+
+        let args =
+            tool_command_args("pire_browser_get_title", &json!({}), McpToolsProfile::Core).unwrap();
+        assert_eq!(args, vec!["--json", "get", "title"]);
+
+        let args = tool_command_args(
             "pire_browser_is",
             &json!({ "state": "visible", "selector": "#submit" }),
             McpToolsProfile::Core,
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "is", "visible", "#submit"]);
+
+        let args = tool_command_args(
+            "pire_browser_is_visible",
+            &json!({ "selector": "#submit" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "is", "visible", "#submit"]);
+
+        let args = tool_command_args(
+            "pire_browser_is_enabled",
+            &json!({ "selector": "#submit" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "is", "enabled", "#submit"]);
+
+        let args = tool_command_args(
+            "pire_browser_is_checked",
+            &json!({ "selector": "#terms" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "is", "checked", "#terms"]);
 
         let args = tool_command_args(
             "pire_browser_keyboard_type",
@@ -4758,6 +5099,38 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "clipboard", "write", "hello"]);
+
+        let args = tool_command_args(
+            "pire_browser_clipboard_read",
+            &json!({}),
+            McpToolsProfile::State,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "clipboard", "read"]);
+
+        let args = tool_command_args(
+            "pire_browser_clipboard_write",
+            &json!({ "text": "hello" }),
+            McpToolsProfile::State,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "clipboard", "write", "hello"]);
+
+        let args = tool_command_args(
+            "pire_browser_clipboard_copy",
+            &json!({}),
+            McpToolsProfile::State,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "clipboard", "copy"]);
+
+        let args = tool_command_args(
+            "pire_browser_clipboard_paste",
+            &json!({}),
+            McpToolsProfile::State,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "clipboard", "paste"]);
 
         let args = tool_command_args(
             "pire_browser_pdf",
@@ -5705,6 +6078,26 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("action must be read"));
+
+        let error = tool_command_args(
+            "pire_browser_get_attr",
+            &json!({ "selector": "@e2", "attribute": "href" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("name is required"));
+
+        let error = tool_command_args("pire_browser_is_visible", &json!({}), McpToolsProfile::Core)
+            .unwrap_err();
+        assert!(error.contains("selector is required"));
+
+        let error = tool_command_args(
+            "pire_browser_clipboard_write",
+            &json!({}),
+            McpToolsProfile::State,
+        )
+        .unwrap_err();
+        assert!(error.contains("text is required"));
 
         let error = tool_command_args(
             "pire_browser_activity_list",
