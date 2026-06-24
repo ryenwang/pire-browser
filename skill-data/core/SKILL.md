@@ -134,6 +134,21 @@ page-world messages and page errors from reachable frames. They do not expose ra
 Chrome CDP console payloads, and they only capture records observed after the
 pire-browser content script loads.
 
+Start the local dashboard when a human or agent needs a quick view of setup,
+live sessions, and managed profiles:
+
+```bash
+pire-browser dashboard start
+pire-browser dashboard start --port 4848
+pire-browser dashboard start --port 0 --json
+```
+
+The dashboard is a foreground localhost server; stop it with `Ctrl+C`. It shows
+install health, live sessions, managed profiles, and capability notes. It does
+not provide live viewport WebSocket streaming or video recording yet, so keep
+using `snapshot -i`, `screenshot`, `status`, and `doctor` as the primary
+machine-readable evidence path.
+
 Handle page JavaScript dialogs when warnings mention `PAGE_DIALOG`:
 
 ```bash

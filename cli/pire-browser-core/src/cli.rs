@@ -66,6 +66,10 @@ pub enum LocalCommand {
     Mcp {
         tools: String,
     },
+    Dashboard {
+        port: u16,
+        json: bool,
+    },
     ProfilesList {
         json: bool,
     },
@@ -1052,6 +1056,42 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         return Ok(LocalCommand::Mcp { tools });
     }
 
+    if command == "dashboard" {
+        args.remove(0);
+        remove_json_flags(&mut args, &mut json_output);
+        if args.first().is_some_and(|arg| arg == "start") {
+            args.remove(0);
+        }
+        remove_json_flags(&mut args, &mut json_output);
+        let mut port = 4848;
+        let mut i = 0;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--json" => {
+                    json_output = true;
+                }
+                "--port" => {
+                    i += 1;
+                    let Some(value) = args.get(i) else {
+                        bail!("--port requires a port number");
+                    };
+                    port = value
+                        .parse::<u16>()
+                        .map_err(|_| anyhow::anyhow!("--port must be a TCP port number"))?;
+                }
+                other if other.starts_with('-') => bail!("unsupported dashboard option: {other}"),
+                other => bail!(
+                    "unsupported dashboard command: {other}; try `pire-browser dashboard start`"
+                ),
+            }
+            i += 1;
+        }
+        return Ok(LocalCommand::Dashboard {
+            port,
+            json: json_output,
+        });
+    }
+
     if command == "install-status" || command == "doctor" {
         let doctorish = command.clone();
         args.remove(0);
@@ -1910,6 +1950,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "close" | "quit" | "exit" => CLOSE_HELP,
         "setup" => SETUP_HELP,
         "launch" => LAUNCH_HELP,
+        "dashboard" => DASHBOARD_HELP,
         "mcp" => MCP_HELP,
         "skills" | "skill" => SKILLS_HELP,
         _ => return None,
@@ -1930,6 +1971,7 @@ Common commands:
   install [--firefox-path <path>]  Register the Firefox Native Messaging host
   doctor [--json] [--offline]     Check setup health and PATH/install hints
   mcp [--tools core|all]          Start the MCP stdio server
+  dashboard start [--port 4848]   Start a local status/session dashboard
   --config ./ci-config.json open <url>
   open <url> [--label <name>]      Open a URL, auto-launching Firefox if needed
   open <url> --headers '{"Authorization":"Bearer token"}'
@@ -2665,6 +2707,19 @@ Starts the managed Firefox profile and waits for the extension to connect.
 For reusable named command workflows, use `--profile <name-or-path> <command>`,
 `--session <name> <command>`, or `--session-name <name> <command>`.
 `launch --profile <name-or-path>` only starts or reuses the profile.
+"##;
+
+const DASHBOARD_HELP: &str = r##"
+Usage:
+  pire-browser dashboard
+  pire-browser dashboard start
+  pire-browser dashboard start --port 4848
+  pire-browser dashboard start --port 0 --json
+
+Starts a foreground local dashboard server bound to 127.0.0.1. The dashboard
+shows setup status, live sessions, managed profiles, and current capability
+notes. It does not provide live viewport WebSocket streaming yet; use
+screenshots for visual evidence. Press Ctrl+C to stop the server.
 "##;
 
 const MCP_HELP: &str = r##"
@@ -3982,6 +4037,33 @@ mod tests {
     }
 
     #[test]
+    fn parses_dashboard_command() {
+        assert_eq!(
+            parse_cli_args(&s(&["dashboard"])).unwrap(),
+            LocalCommand::Dashboard {
+                port: 4848,
+                json: false
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["dashboard", "start", "--port", "0", "--json"])).unwrap(),
+            LocalCommand::Dashboard {
+                port: 0,
+                json: true
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["--json", "dashboard", "--port", "9223"])).unwrap(),
+            LocalCommand::Dashboard {
+                port: 9223,
+                json: true
+            }
+        );
+        assert!(parse_cli_args(&s(&["dashboard", "stop"])).is_err());
+        assert!(parse_cli_args(&s(&["dashboard", "--port", "nope"])).is_err());
+    }
+
+    #[test]
     fn parses_state_save_and_load_commands() {
         assert_eq!(
             parse_cli_args(&s(&["state", "save", "state.json", "--json"])).unwrap(),
@@ -4443,6 +4525,13 @@ mod tests {
         assert!(help_text(Some("mcp"))
             .unwrap()
             .contains("Model Context Protocol server"));
+        assert!(help_text(None).unwrap().contains("dashboard start"));
+        assert!(help_text(Some("dashboard"))
+            .unwrap()
+            .contains("local dashboard server"));
+        assert!(help_text(Some("dashboard"))
+            .unwrap()
+            .contains("does not provide live viewport"));
         assert!(help_text(Some("mcp")).unwrap().contains("get page/element"));
         assert!(help_text(Some("mcp")).unwrap().contains("transfer"));
         assert!(help_text(Some("mcp")).unwrap().contains("semantic find"));

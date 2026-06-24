@@ -150,6 +150,7 @@ pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80
 pire-browser pdf page.pdf            # Image-backed page PDF
 pire-browser snapshot -i             # Accessibility tree with refs
 pire-browser eval <js>               # Run JavaScript with policy checks
+pire-browser dashboard start         # Local status/session dashboard
 pire-browser close                   # Close targeted managed Firefox session
 pire-browser close --all             # Close all managed Firefox sessions
 ```
@@ -703,7 +704,21 @@ pire-browser pdf viewport.pdf --viewport
 
 ## Observability Dashboard
 
-Dashboard commands are not implemented yet. Use status and diagnostics commands:
+Start a foreground localhost dashboard when you want a quick view of install
+health, live sessions, managed profiles, and current capability notes:
+
+```bash
+pire-browser dashboard start
+pire-browser dashboard start --port 4848
+pire-browser dashboard start --port 0 --json
+```
+
+Open the printed `http://127.0.0.1:<port>` URL in a browser. Press `Ctrl+C` in
+the terminal to stop the dashboard server.
+
+The dashboard does not provide live viewport WebSocket streaming or video
+recording yet. Use screenshots and diagnostics commands for visual evidence and
+scriptable observability:
 
 ```bash
 pire-browser status

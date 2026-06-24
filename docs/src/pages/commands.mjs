@@ -283,10 +283,12 @@ pire-browser --profile ~/.myapp-profile open https://example.com
 # Chrome profile import/reuse is not part of the Firefox backend.`),
 
   h2("Dashboard", "dashboard"),
-  code(`# Observability dashboard commands are not implemented yet.
-pire-browser status
-pire-browser status --json
-pire-browser session list --json`),
+  statusNote("dashboard"),
+  code(`pire-browser dashboard
+pire-browser dashboard start
+pire-browser dashboard start --port 4848
+pire-browser dashboard start --port 0 --json`),
+  p("Starts a foreground localhost status dashboard. It shows install health, live sessions, managed profiles, and capability notes. Press <code>Ctrl+C</code> in the terminal to stop it. Live viewport streaming is still not available in the Firefox backend."),
 
   h2("Doctor", "doctor"),
   code(`pire-browser doctor

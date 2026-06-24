@@ -67,7 +67,8 @@ use pire_browser_core::upload::{
 };
 use serde_json::{json, Value};
 use std::fs;
-use std::io::{self, IsTerminal, Read, Write};
+use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -76,18 +77,8 @@ use uuid::Uuid;
 use crate::mcp::{run_mcp_server, McpToolsProfile};
 
 const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &[
-    "connect",
-    "dashboard",
-    "device",
-    "install",
-    "profiler",
-    "react",
-    "record",
-    "stream",
-    "swipe",
-    "tap",
-    "trace",
-    "upgrade",
+    "connect", "device", "install", "profiler", "react", "record", "stream", "swipe", "tap",
+    "trace", "upgrade",
 ];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -563,6 +554,9 @@ fn run() -> Result<()> {
         }
         LocalCommand::Mcp { tools } => {
             run_mcp_server(McpToolsProfile::parse(&tools)?)?;
+        }
+        LocalCommand::Dashboard { port, json } => {
+            handle_dashboard_start(port, json)?;
         }
         LocalCommand::InstallStatus {
             json,
@@ -1498,6 +1492,289 @@ fn profiles_text(profiles: &[ManagedProfileInfo]) -> String {
         ));
     }
     lines.join("\n")
+}
+
+fn handle_dashboard_start(port: u16, json_output: bool) -> Result<()> {
+    let listener = TcpListener::bind(("127.0.0.1", port))
+        .with_context(|| format!("failed to bind dashboard server on 127.0.0.1:{port}"))?;
+    let actual_port = listener.local_addr()?.port();
+    let start = dashboard_start_value(actual_port);
+    if json_output {
+        println!("{}", format_cli_result(&start, true)?);
+    } else {
+        println!(
+            "pire-browser dashboard listening on {}\nPress Ctrl+C to stop.",
+            start["dashboard"]["url"].as_str().unwrap_or("")
+        );
+    }
+    io::stdout().flush()?;
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => {
+                if let Err(err) = serve_dashboard_stream(&mut stream) {
+                    eprintln!(
+                        "dashboard request failed: {}",
+                        redact_text(&format!("{err:#}"))
+                    );
+                }
+            }
+            Err(err) => eprintln!(
+                "dashboard connection failed: {}",
+                redact_text(&err.to_string())
+            ),
+        }
+    }
+    Ok(())
+}
+
+fn dashboard_start_value(port: u16) -> Value {
+    json!({
+        "dashboard": {
+            "url": dashboard_url(port),
+            "host": "127.0.0.1",
+            "port": port,
+            "mode": "foreground",
+            "capabilities": dashboard_capabilities_value()
+        }
+    })
+}
+
+fn dashboard_url(port: u16) -> String {
+    format!("http://127.0.0.1:{port}")
+}
+
+fn serve_dashboard_stream(stream: &mut TcpStream) -> Result<()> {
+    let request = read_dashboard_request_path(stream)?;
+    let response = dashboard_response_for_path(request.as_deref().unwrap_or("/"));
+    write_dashboard_response(stream, &response)?;
+    Ok(())
+}
+
+fn read_dashboard_request_path(stream: &mut TcpStream) -> Result<Option<String>> {
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+    Ok(dashboard_path_from_request_line(&line))
+}
+
+fn dashboard_path_from_request_line(line: &str) -> Option<String> {
+    let mut parts = line.split_whitespace();
+    let method = parts.next()?;
+    if method != "GET" && method != "HEAD" {
+        return Some("/__method_not_allowed__".to_string());
+    }
+    let path = parts.next()?;
+    Some(path.split('?').next().unwrap_or(path).to_string())
+}
+
+struct DashboardResponse {
+    status: u16,
+    reason: &'static str,
+    content_type: &'static str,
+    body: String,
+}
+
+fn dashboard_response_for_path(path: &str) -> DashboardResponse {
+    match path {
+        "/" | "/index.html" => DashboardResponse {
+            status: 200,
+            reason: "OK",
+            content_type: "text/html; charset=utf-8",
+            body: dashboard_index_html(),
+        },
+        "/api/status" => {
+            match dashboard_status_value().and_then(|value| format_cli_result(&value, true)) {
+                Ok(body) => DashboardResponse {
+                    status: 200,
+                    reason: "OK",
+                    content_type: "application/json; charset=utf-8",
+                    body,
+                },
+                Err(err) => DashboardResponse {
+                    status: 500,
+                    reason: "Internal Server Error",
+                    content_type: "application/json; charset=utf-8",
+                    body: serde_json::to_string_pretty(&json!({
+                        "success": false,
+                        "error": {
+                            "code": "dashboard_status_failed",
+                            "message": redact_text(&format!("{err:#}")),
+                        }
+                    }))
+                    .unwrap_or_else(|_| "{\"success\":false}".to_string()),
+                },
+            }
+        }
+        "/favicon.ico" => DashboardResponse {
+            status: 204,
+            reason: "No Content",
+            content_type: "text/plain; charset=utf-8",
+            body: String::new(),
+        },
+        "/__method_not_allowed__" => DashboardResponse {
+            status: 405,
+            reason: "Method Not Allowed",
+            content_type: "text/plain; charset=utf-8",
+            body: "Method not allowed".to_string(),
+        },
+        _ => DashboardResponse {
+            status: 404,
+            reason: "Not Found",
+            content_type: "text/plain; charset=utf-8",
+            body: "Not found".to_string(),
+        },
+    }
+}
+
+fn write_dashboard_response(stream: &mut TcpStream, response: &DashboardResponse) -> Result<()> {
+    let body = response.body.as_bytes();
+    write!(
+        stream,
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        response.status,
+        response.reason,
+        response.content_type,
+        body.len()
+    )?;
+    stream.write_all(body)?;
+    stream.flush()?;
+    Ok(())
+}
+
+fn dashboard_status_value() -> Result<Value> {
+    let mut sessions = list_sessions()?;
+    annotate_session_profile_names(&mut sessions)?;
+    let profiles = list_managed_profiles()?;
+    let mut install = collect_install_status()?;
+    install.live_sessions = sessions.clone();
+    Ok(json!({
+        "dashboard": {
+            "generatedAt": now_ms(),
+            "version": CLI_VERSION,
+            "capabilities": dashboard_capabilities_value()
+        },
+        "install": install,
+        "sessions": sessions,
+        "profiles": profiles
+    }))
+}
+
+fn dashboard_capabilities_value() -> Value {
+    json!({
+        "statusDashboard": true,
+        "liveViewport": false,
+        "webSocketStreaming": false,
+        "videoRecording": false,
+        "activityFeed": false
+    })
+}
+
+fn dashboard_index_html() -> String {
+    r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pire-browser dashboard</title>
+  <style>
+    :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { max-width: 1120px; margin: 0 auto; padding: 24px; }
+    header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; border-bottom: 1px solid color-mix(in srgb, CanvasText 18%, transparent); padding-bottom: 16px; }
+    h1 { font-size: 24px; margin: 0; letter-spacing: 0; }
+    h2 { font-size: 16px; margin: 0 0 12px; letter-spacing: 0; }
+    code { font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
+    .meta { color: color-mix(in srgb, CanvasText 62%, transparent); font-size: 13px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 20px 0; }
+    .panel { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 8px; padding: 14px; background: color-mix(in srgb, Canvas 94%, CanvasText 6%); }
+    .value { font-size: 28px; font-weight: 650; margin-top: 6px; }
+    .ok { color: #16833a; }
+    .warn { color: #b45309; }
+    .bad { color: #c0262d; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; border-bottom: 1px solid color-mix(in srgb, CanvasText 14%, transparent); padding: 9px 8px; vertical-align: top; }
+    th { color: color-mix(in srgb, CanvasText 70%, transparent); font-weight: 600; }
+    .stack { display: grid; gap: 16px; }
+    .note { color: color-mix(in srgb, CanvasText 68%, transparent); line-height: 1.45; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>pire-browser dashboard</h1>
+        <div class="meta" id="updated">Loading...</div>
+      </div>
+      <code id="version"></code>
+    </header>
+    <section class="grid">
+      <div class="panel"><h2>Install</h2><div class="value" id="install">-</div></div>
+      <div class="panel"><h2>Live Sessions</h2><div class="value" id="sessions-count">-</div></div>
+      <div class="panel"><h2>Profiles</h2><div class="value" id="profiles-count">-</div></div>
+      <div class="panel"><h2>Streaming</h2><div class="value warn">Not yet</div></div>
+    </section>
+    <section class="stack">
+      <div class="panel">
+        <h2>Sessions</h2>
+        <div id="sessions"></div>
+      </div>
+      <div class="panel">
+        <h2>Managed Profiles</h2>
+        <div id="profiles"></div>
+      </div>
+      <div class="panel">
+        <h2>Capability Notes</h2>
+        <p class="note">This dashboard shows setup status, live sessions, and managed profiles. Live viewport streaming, activity feed events, and video recording are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>status</code>, and <code>doctor</code> for evidence today.</p>
+      </div>
+    </section>
+  </main>
+  <script>
+    const text = (id, value) => { document.getElementById(id).textContent = value; };
+    const cls = (id, name) => { document.getElementById(id).className = "value " + name; };
+    const esc = (value) => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+    function table(rows, columns) {
+      if (!rows.length) return "<p class='note'>None.</p>";
+      const head = columns.map(([key, label]) => `<th>${label}</th>`).join("");
+      const body = rows.map(row => `<tr>${columns.map(([key]) => `<td>${esc(row[key])}</td>`).join("")}</tr>`).join("");
+      return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+    }
+    function render(data) {
+      text("version", data.dashboard.version);
+      text("updated", "Updated " + new Date(data.dashboard.generatedAt).toLocaleString());
+      text("install", data.install.ok ? "OK" : "Needs attention");
+      cls("install", data.install.ok ? "ok" : "bad");
+      text("sessions-count", data.sessions.length);
+      text("profiles-count", data.profiles.length);
+      document.getElementById("sessions").innerHTML = table(data.sessions.map(session => ({
+        id: session.sessionId,
+        profile: session.profileName || session.profileId,
+        page: session.activePage?.title || session.activePage?.url || "",
+        heartbeat: new Date(session.lastHeartbeatAt).toLocaleTimeString()
+      })), [["id", "Session"], ["profile", "Profile"], ["page", "Active Page"], ["heartbeat", "Heartbeat"]]);
+      document.getElementById("profiles").innerHTML = table(data.profiles.map(profile => ({
+        name: profile.name,
+        live: profile.sessionId || (profile.launcherLive ? "launcher" : ""),
+        url: profile.activeUrl || profile.lastLaunchUrl || "",
+        path: profile.path
+      })), [["name", "Name"], ["live", "Live"], ["url", "URL"], ["path", "Path"]]);
+    }
+    async function refresh() {
+      try {
+        const response = await fetch("/api/status", { cache: "no-store" });
+        const payload = await response.json();
+        render(payload.data || payload);
+      } catch (error) {
+        text("updated", "Dashboard refresh failed: " + error.message);
+      }
+    }
+    refresh();
+    setInterval(refresh, 2500);
+  </script>
+</body>
+</html>
+"#
+    .to_string()
 }
 
 fn launch_firefox_with_lazy_setup(options: LaunchOptions) -> Result<LaunchResult> {
@@ -7137,6 +7414,58 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_start_value_reports_localhost_and_capabilities() {
+        let value = dashboard_start_value(4848);
+
+        assert_eq!(value["dashboard"]["url"], json!("http://127.0.0.1:4848"));
+        assert_eq!(value["dashboard"]["mode"], json!("foreground"));
+        assert_eq!(
+            value["dashboard"]["capabilities"]["statusDashboard"],
+            json!(true)
+        );
+        assert_eq!(
+            value["dashboard"]["capabilities"]["liveViewport"],
+            json!(false)
+        );
+        assert_eq!(
+            value["dashboard"]["capabilities"]["webSocketStreaming"],
+            json!(false)
+        );
+    }
+
+    #[test]
+    fn dashboard_request_path_parses_get_and_rejects_mutations() {
+        assert_eq!(
+            dashboard_path_from_request_line("GET /api/status?fresh=1 HTTP/1.1\r\n").as_deref(),
+            Some("/api/status")
+        );
+        assert_eq!(
+            dashboard_path_from_request_line("HEAD / HTTP/1.1\r\n").as_deref(),
+            Some("/")
+        );
+        assert_eq!(
+            dashboard_path_from_request_line("POST /api/status HTTP/1.1\r\n").as_deref(),
+            Some("/__method_not_allowed__")
+        );
+        assert!(dashboard_path_from_request_line("").is_none());
+    }
+
+    #[test]
+    fn dashboard_response_serves_index_and_not_found() {
+        let index = dashboard_response_for_path("/");
+        assert_eq!(index.status, 200);
+        assert!(index.body.contains("pire-browser dashboard"));
+        assert!(index.body.contains("/api/status"));
+        assert!(index.body.contains("Live viewport streaming"));
+
+        let missing = dashboard_response_for_path("/missing");
+        assert_eq!(missing.status, 404);
+
+        let method = dashboard_response_for_path("/__method_not_allowed__");
+        assert_eq!(method.status, 405);
+    }
+
+    #[test]
     fn formats_documented_not_available_text() {
         let result = local_not_available_result(&s(&["stream", "status"]), false, &[])
             .unwrap()
@@ -7148,6 +7477,7 @@ mod tests {
     #[test]
     fn loads_documented_not_available_roots_from_public_list() {
         assert!(DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"stream"));
+        assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"dashboard"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"download"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"diff"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"pdf"));
@@ -7189,6 +7519,7 @@ mod tests {
             "removeinitscript",
             "skills",
             "skill",
+            "dashboard",
         ] {
             assert!(local_not_available_result(&s(&[root]), false, &[])
                 .unwrap()
