@@ -131,7 +131,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "core",
             bits: PROFILE_CORE,
-            description: "Default inspect-before-act workflow: open, snapshots, semantic find, interactions, waits, reads, screenshots/PDFs, diffs, eval, status, basic tabs, profiles, close, and skill guidance.",
+            description: "Default inspect-before-act workflow: open, snapshots, semantic find, interactions, waits, navigation helpers, init scripts, reads, screenshots/PDFs, diffs, eval, status, confirmation follow-up, basic tabs, profiles, close, and skill guidance.",
         },
         McpProfileDescriptor {
             name: "network",
@@ -146,12 +146,12 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "debug",
             bits: PROFILE_DEBUG,
-            description: "Console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions, dashboard-adjacent diagnostics, and close.",
+            description: "Doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions/profiles, confirmation follow-up, and close.",
         },
         McpProfileDescriptor {
             name: "tabs",
             bits: PROFILE_TABS,
-            description: "Tab list/new/select/label/close, iframe selection, JavaScript dialogs, windows, and close.",
+            description: "Back/forward/reload, tab list/new/select/label/close, iframe selection, JavaScript dialogs, windows, and close.",
         },
         McpProfileDescriptor {
             name: "mobile",
@@ -161,7 +161,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "react",
             bits: PROFILE_REACT,
-            description: "Reserved compatibility profile. pire-browser does not currently ship React DevTools introspection tools.",
+            description: "Reserved compatibility profile. pire-browser does not currently ship React DevTools introspection tools; use debug for vitals and core/tabs for pushstate.",
         },
         McpProfileDescriptor {
             name: "all",
@@ -175,10 +175,11 @@ fn tool_profile_bits(name: &str) -> u16 {
     match name {
         TOOLS_PROFILES_TOOL => PROFILE_ALL,
         "pire_browser_tabs_list" | "pire_browser_tab_new" => PROFILE_CORE | PROFILE_TABS,
-        "pire_browser_profiles_list" | "pire_browser_skills_get_core" => {
-            PROFILE_CORE | PROFILE_STATE
-        }
+        "pire_browser_profiles_list" => PROFILE_CORE | PROFILE_STATE | PROFILE_DEBUG,
+        "pire_browser_skills_get_core" => PROFILE_CORE | PROFILE_STATE,
         "pire_browser_status" => PROFILE_CORE | PROFILE_DEBUG,
+        "pire_browser_doctor" | "pire_browser_activity_list" => PROFILE_DEBUG,
+        "pire_browser_confirm" | "pire_browser_deny" => PROFILE_CORE | PROFILE_DEBUG,
         "pire_browser_close" => PROFILE_CORE | PROFILE_DEBUG | PROFILE_TABS,
         "pire_browser_diff_snapshot" | "pire_browser_diff_screenshot" | "pire_browser_diff_url" => {
             PROFILE_CORE | PROFILE_DEBUG
@@ -209,12 +210,12 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_scroll_into_view"
         | "pire_browser_drag"
         | "pire_browser_wait"
-        | "pire_browser_screenshot"
         | "pire_browser_pdf"
         | "pire_browser_get"
         | "pire_browser_is"
         | "pire_browser_get_url"
         | "pire_browser_eval" => PROFILE_CORE,
+        "pire_browser_screenshot" => PROFILE_CORE | PROFILE_MOBILE,
         "pire_browser_download" | "pire_browser_wait_download" | "pire_browser_upload" => {
             PROFILE_CORE | PROFILE_STATE
         }
@@ -248,23 +249,30 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_state_rename"
         | "pire_browser_state_clear"
         | "pire_browser_state_clean"
-        | "pire_browser_session_list"
-        | "pire_browser_session_attach"
-        | "pire_browser_session_cleanup"
         | "pire_browser_clipboard" => PROFILE_STATE,
+        "pire_browser_session_list"
+        | "pire_browser_session_attach"
+        | "pire_browser_session_cleanup" => PROFILE_STATE | PROFILE_DEBUG,
         "pire_browser_console"
         | "pire_browser_errors"
-        | "pire_browser_dialog_status"
-        | "pire_browser_dialog_accept"
-        | "pire_browser_dialog_dismiss"
         | "pire_browser_highlight"
         | "pire_browser_vitals" => PROFILE_DEBUG,
-        "pire_browser_tabs_select"
-        | "pire_browser_tabs_close"
-        | "pire_browser_tabs_label"
-        | "pire_browser_frame_select"
-        | "pire_browser_frame_main"
-        | "pire_browser_window_new" => PROFILE_TABS,
+        "pire_browser_dialog_status"
+        | "pire_browser_dialog_accept"
+        | "pire_browser_dialog_dismiss" => PROFILE_DEBUG | PROFILE_TABS,
+        "pire_browser_tabs_select" | "pire_browser_tabs_close" | "pire_browser_tabs_label" => {
+            PROFILE_TABS
+        }
+        "pire_browser_back"
+        | "pire_browser_forward"
+        | "pire_browser_reload"
+        | "pire_browser_pushstate" => PROFILE_CORE | PROFILE_TABS,
+        "pire_browser_frame_select" | "pire_browser_frame_main" | "pire_browser_window_new" => {
+            PROFILE_TABS
+        }
+        "pire_browser_add_init_script" | "pire_browser_remove_init_script" => {
+            PROFILE_CORE | PROFILE_DEBUG
+        }
         "pire_browser_set_viewport"
         | "pire_browser_set_device"
         | "pire_browser_set_geo"
@@ -362,7 +370,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, screenshots/PDFs/diffs, eval, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -944,6 +952,28 @@ fn tool_command_args(
         (_, "pire_browser_status") => {
             args.push("status".to_string());
         }
+        (_, "pire_browser_doctor") => {
+            args.push("doctor".to_string());
+            let fix = optional_bool(object, "fix")?;
+            if fix {
+                args.push("--fix".to_string());
+            }
+            if !fix && optional_string(object, "firefoxPath")?.is_some() {
+                return Err("firefoxPath requires fix=true".to_string());
+            }
+            push_optional_flag_value(&mut args, object, "firefoxPath", "--firefox-path")?;
+        }
+        (_, "pire_browser_activity_list") => {
+            args.push("activity".to_string());
+            args.push("list".to_string());
+            if let Some(limit) = optional_u64(object, "limit")? {
+                if limit == 0 {
+                    return Err("limit must be a positive integer".to_string());
+                }
+                args.push("--limit".to_string());
+                args.push(limit.to_string());
+            }
+        }
         (_, "pire_browser_set_viewport") => {
             args.push("set".to_string());
             args.push("viewport".to_string());
@@ -1253,6 +1283,27 @@ fn tool_command_args(
             args.push(required_string(object, "target")?);
             args.push(required_string(object, "label")?);
         }
+        (_, "pire_browser_back") => {
+            args.push("back".to_string());
+        }
+        (_, "pire_browser_forward") => {
+            args.push("forward".to_string());
+        }
+        (_, "pire_browser_reload") => {
+            args.push("reload".to_string());
+        }
+        (_, "pire_browser_pushstate") => {
+            args.push("pushstate".to_string());
+            args.push(required_string(object, "url")?);
+        }
+        (_, "pire_browser_add_init_script") => {
+            args.push("addinitscript".to_string());
+            args.push(required_string(object, "script")?);
+        }
+        (_, "pire_browser_remove_init_script") => {
+            args.push("removeinitscript".to_string());
+            args.push(required_string(object, "identifier")?);
+        }
         (_, "pire_browser_frame_select") => {
             args.push("frame".to_string());
             args.push(required_string(object, "target")?);
@@ -1274,6 +1325,14 @@ fn tool_command_args(
             if optional_bool(object, "all")? {
                 args.push("--all".to_string());
             }
+        }
+        (_, "pire_browser_confirm") => {
+            args.push("confirm".to_string());
+            args.push(required_string(object, "confirmationId")?);
+        }
+        (_, "pire_browser_deny") => {
+            args.push("deny".to_string());
+            args.push(required_string(object, "confirmationId")?);
         }
         (_, "pire_browser_skills_get_core") => {
             args.push("skills".to_string());
@@ -2239,6 +2298,29 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_doctor",
+            "Doctor",
+            "Run install/session diagnostics; use fix only when the user wants repair.",
+            tool_schema(
+                vec![
+                    ("fix", bool_prop("Run explicit setup repair before reporting follow-up status.")),
+                    ("firefoxPath", string_prop("Optional Firefox executable path for repair.")),
+                ],
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_activity_list",
+            "Activity list",
+            "Return recent redacted pire-browser command activity.",
+            tool_schema(
+                vec![("limit", number_prop("Maximum activity entries, capped by the CLI."))],
+                &[],
+            ),
+            true,
+        ),
+        tool(
             "pire_browser_set_viewport",
             "Set viewport",
             "Approximate the active page viewport by resizing the managed Firefox window.",
@@ -2651,6 +2733,57 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_back",
+            "Back",
+            "Navigate the active tab back in history.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_forward",
+            "Forward",
+            "Navigate the active tab forward in history.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_reload",
+            "Reload",
+            "Reload the active tab and refresh refs afterward.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_pushstate",
+            "Push state",
+            "Perform same-origin SPA client-side navigation in the active page.",
+            tool_schema(
+                vec![("url", string_prop("Same-origin URL or path to push in the active page."))],
+                &["url"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_add_init_script",
+            "Add init script",
+            "Register a document-start script for future navigations in the managed session.",
+            tool_schema(
+                vec![("script", string_prop("JavaScript source to register."))],
+                &["script"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_remove_init_script",
+            "Remove init script",
+            "Remove a runtime init script by identifier returned from add init script.",
+            tool_schema(
+                vec![("identifier", string_prop("Init script identifier such as init1."))],
+                &["identifier"],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_frame_select",
             "Select iframe",
             "Scope snapshots and selector-based actions to an iframe selected by ref or CSS selector.",
@@ -2686,6 +2819,26 @@ fn core_tools() -> Vec<Value> {
             "Close session",
             "Close the targeted managed Firefox session.",
             tool_schema(vec![("all", bool_prop("Close all managed Firefox sessions."))], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_confirm",
+            "Confirm action",
+            "Approve a pending confirmation id after the user explicitly approves it.",
+            tool_schema(
+                vec![("confirmationId", string_prop("Pending confirmation id such as c_1234abcd."))],
+                &["confirmationId"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_deny",
+            "Deny action",
+            "Deny and consume a pending confirmation id.",
+            tool_schema(
+                vec![("confirmationId", string_prop("Pending confirmation id such as c_1234abcd."))],
+                &["confirmationId"],
+            ),
             false,
         ),
         tool(
@@ -2858,6 +3011,19 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_diff_url"));
+        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_back"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_reload"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_pushstate"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_add_init_script"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_confirm"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_profiles_list"));
@@ -2873,6 +3039,9 @@ mod tests {
         assert!(!tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_window_new"));
+        assert!(!tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_doctor"));
         let snapshot = tools
             .iter()
             .find(|tool| tool["name"] == "pire_browser_snapshot")
@@ -2910,13 +3079,36 @@ mod tests {
             .iter()
             .any(|tool| tool["name"] == "pire_browser_clipboard"));
 
+        let debug = mcp_tools(McpToolsProfile::Debug);
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_doctor"));
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_activity_list"));
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_session_list"));
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_confirm"));
+
         let tabs = mcp_tools(McpToolsProfile::Tabs);
         assert!(tabs
             .iter()
             .any(|tool| tool["name"] == "pire_browser_window_new"));
+        assert!(tabs.iter().any(|tool| tool["name"] == "pire_browser_back"));
+        assert!(tabs
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_dialog_status"));
         assert!(tabs
             .iter()
             .any(|tool| tool["name"] == "pire_browser_tab_new"));
+
+        let mobile = mcp_tools(McpToolsProfile::Mobile);
+        assert!(mobile
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_screenshot"));
 
         let combined = mcp_tools(McpToolsProfile::parse("core,network").unwrap());
         assert!(combined
@@ -3972,6 +4164,86 @@ mod tests {
         let args = tool_command_args("pire_browser_window_new", &json!({}), McpToolsProfile::Core)
             .unwrap();
         assert_eq!(args, vec!["--json", "window", "new"]);
+
+        let args =
+            tool_command_args("pire_browser_back", &json!({}), McpToolsProfile::Core).unwrap();
+        assert_eq!(args, vec!["--json", "back"]);
+
+        let args =
+            tool_command_args("pire_browser_forward", &json!({}), McpToolsProfile::Core).unwrap();
+        assert_eq!(args, vec!["--json", "forward"]);
+
+        let args =
+            tool_command_args("pire_browser_reload", &json!({}), McpToolsProfile::Core).unwrap();
+        assert_eq!(args, vec!["--json", "reload"]);
+
+        let args = tool_command_args(
+            "pire_browser_pushstate",
+            &json!({ "url": "/dashboard" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "pushstate", "/dashboard"]);
+
+        let args = tool_command_args(
+            "pire_browser_add_init_script",
+            &json!({ "script": "window.__flag = true" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "addinitscript", "window.__flag = true"]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_remove_init_script",
+            &json!({ "identifier": "init1" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "removeinitscript", "init1"]);
+
+        let args = tool_command_args(
+            "pire_browser_doctor",
+            &json!({ "fix": true, "firefoxPath": "C:/Firefox/firefox.exe" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "doctor",
+                "--fix",
+                "--firefox-path",
+                "C:/Firefox/firefox.exe"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_activity_list",
+            &json!({ "limit": 5 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "activity", "list", "--limit", "5"]);
+
+        let args = tool_command_args(
+            "pire_browser_confirm",
+            &json!({ "confirmationId": "c_1234abcd" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "confirm", "c_1234abcd"]);
+
+        let args = tool_command_args(
+            "pire_browser_deny",
+            &json!({ "confirmationId": "c_1234abcd" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "deny", "c_1234abcd"]);
     }
 
     #[test]
@@ -4159,6 +4431,22 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("action must be read"));
+
+        let error = tool_command_args(
+            "pire_browser_activity_list",
+            &json!({ "limit": 0 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("limit must be a positive integer"));
+
+        let error = tool_command_args(
+            "pire_browser_doctor",
+            &json!({ "firefoxPath": "C:/Firefox/firefox.exe" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("firefoxPath requires fix=true"));
     }
 
     #[test]

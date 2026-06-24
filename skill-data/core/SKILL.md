@@ -494,11 +494,13 @@ pire-browser mcp --tools all
 
 Use the smallest MCP profile that fits the task. `core` is the default
 inspect-before-act workflow: open, snapshot, semantic find, interact, get/check,
-wait, screenshot/PDF/diff evidence, eval, status, basic tabs, profile discovery,
+wait, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff
+evidence, eval, status, confirmation follow-up, basic tabs, profile discovery,
 close, and skill guidance. Add comma-separated profiles only when needed:
 `network` for request diagnostics/routes/HAR, `state` for cookies/storage/auth
-and state files, `debug` for console/errors/dialog/highlight/vitals, `tabs` for
-tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
+and state files, `debug` for doctor/activity diagnostics plus
+console/errors/dialog/highlight/vitals, `tabs` for tab/frame/window controls,
+and `mobile` for viewport/device/geo/media/mouse
 helpers. `react` is accepted for compatibility but currently has no React
 DevTools introspection tools. Use `all` only when the host can tolerate the full
 tool surface. The `pire_browser_tools_profiles` MCP tool returns this profile
