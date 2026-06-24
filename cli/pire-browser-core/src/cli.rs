@@ -1875,6 +1875,8 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "pdf" => PDF_HELP,
         "diff" => DIFF_HELP,
         "find" => FIND_HELP,
+        "get" => GET_HELP,
+        "is" => IS_HELP,
         "click" => CLICK_HELP,
         "fill" => FILL_HELP,
         "wait" => WAIT_HELP,
@@ -1937,6 +1939,8 @@ Common commands:
   click '@e4'                     Click a ref from snapshot/find output
   fill '@e2' "text"               Fill a ref from snapshot/find output
   find label "Email" fill "x@y"   Find by semantic locator and act
+  get text '@e1'                  Read text/title/url/attrs/box/styles
+  is visible '@e1'                Check visible/enabled/checked state
   wait --selector "#done"         Wait for page state
   pushstate /dashboard            SPA client-side navigation in active page
   console                         Show recent page console messages
@@ -2133,6 +2137,36 @@ Usage:
 Finds elements by supported selector families and can optionally perform an
 action on the single match. Use `--exact` for whole normalized text/name
 matching instead of substring matching.
+"##;
+
+const GET_HELP: &str = r##"
+Usage:
+  pire-browser get text <sel>
+  pire-browser get html <sel>
+  pire-browser get value <sel>
+  pire-browser get attr <sel> <attr>
+  pire-browser get title
+  pire-browser get url
+  pire-browser get count <sel>
+  pire-browser get box <sel>
+  pire-browser get styles <sel>
+
+Reads page or element information from the active Firefox tab. Selectors may be
+CSS selectors, refs from the latest snapshot or find output, `text=...`, or
+`xpath=...`. Use `--json` when another tool needs the structured `value`.
+Quote refs in PowerShell, for example: pire-browser get text '@e1'.
+"##;
+
+const IS_HELP: &str = r##"
+Usage:
+  pire-browser is visible <sel>
+  pire-browser is enabled <sel>
+  pire-browser is checked <sel>
+
+Checks a target's current page state in the active Firefox tab. Selectors may be
+CSS selectors, refs from the latest snapshot or find output, `text=...`, or
+`xpath=...`. Re-run `snapshot -i` before using old refs after navigation or DOM
+changes.
 "##;
 
 const CLICK_HELP: &str = r##"
@@ -2597,9 +2631,10 @@ Usage:
   pire-browser mcp --tools all
 
 Starts a Model Context Protocol server over stdio. The current public MCP
-profile is `core`: open, inspect, interact, wait, capture screenshots, inspect
-tabs/status, close sessions, and fetch installed skill guidance. `all` is
-accepted as an alias for all currently available MCP tools.
+profile is `core`: open, inspect, interact, get page/element info, check
+element state, wait, capture screenshots, inspect tabs/status, close sessions,
+and fetch installed skill guidance. `all` is accepted as an alias for all
+currently available MCP tools.
 "##;
 
 const SKILLS_HELP: &str = r##"
@@ -4179,6 +4214,8 @@ mod tests {
         assert!(text.contains("click '@e4'"));
         assert!(text.contains("skills cat core"));
         assert!(text.contains("pushstate /dashboard"));
+        assert!(text.contains("get text '@e1'"));
+        assert!(text.contains("is visible '@e1'"));
         assert!(text.contains("console"));
         assert!(text.contains("errors"));
         assert!(text.contains("dialog status"));
@@ -4318,6 +4355,11 @@ mod tests {
         assert!(help_text(Some("find"))
             .unwrap()
             .contains("find text \"Save\" --exact"));
+        assert!(help_text(Some("get"))
+            .unwrap()
+            .contains("get attr <sel> <attr>"));
+        assert!(help_text(Some("get")).unwrap().contains("get title"));
+        assert!(help_text(Some("is")).unwrap().contains("is visible <sel>"));
         assert!(help_text(Some("mouse")).unwrap().contains("mouse wheel"));
         assert!(help_text(Some("drag"))
             .unwrap()
@@ -4348,6 +4390,7 @@ mod tests {
         assert!(help_text(Some("mcp"))
             .unwrap()
             .contains("Model Context Protocol server"));
+        assert!(help_text(Some("mcp")).unwrap().contains("get page/element"));
         assert!(help_text(Some("skills"))
             .unwrap()
             .contains("skills get core"));

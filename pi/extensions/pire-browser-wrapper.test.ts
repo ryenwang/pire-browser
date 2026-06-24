@@ -53,7 +53,7 @@ describe("pire-browser Pi wrapper", () => {
       "Run `pire-browser skills cat core` for quickstart recipes and command guidance."
     );
     expect(tool.promptGuidelines).toContain(
-      "Inspect with `pire-browser snapshot -i --compact` before page actions and use fresh quoted refs such as `click '@e4'`."
+      "Inspect with `pire-browser snapshot -i --compact` before page actions, use fresh quoted refs such as `click '@e4'`, and use `get`/`is` for targeted verification."
     );
     expect(tool.promptGuidelines).toContain(
       "If navigation is recovered or returns a page-readiness warning, continue with `pire-browser snapshot -i`."

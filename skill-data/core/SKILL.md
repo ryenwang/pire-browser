@@ -50,6 +50,23 @@ pire-browser find text "Save" --exact
 
 Use `--exact` when nearby text would otherwise create substring matches.
 
+Read and check state without dumping a whole snapshot when you already know the
+target:
+
+```bash
+pire-browser get title
+pire-browser get url
+pire-browser get text '@e1'
+pire-browser get attr '@e2' href
+pire-browser get count "button"
+pire-browser is visible '@e3'
+pire-browser is enabled '#submit'
+```
+
+Use `get` and `is` after a fresh snapshot or semantic find when you need a
+specific value for verification. Re-run `snapshot -i` first if the page changed
+or the ref may be stale.
+
 Batch short command sequences to reduce process churn:
 
 ```bash
@@ -374,11 +391,12 @@ pire-browser mcp --tools core
 pire-browser mcp --tools all
 ```
 
-The MCP core profile exposes open, snapshot, click, fill, type, press, wait,
-screenshot, status, tabs, close, eval, and skill guidance. It invokes the same
-installed CLI binary, so setup, policies, sessions, profiles, and Firefox
-runtime behavior stay shared with normal `pire-browser` commands. `--tools all`
-is accepted as an alias for all currently available MCP tools.
+The MCP core profile exposes open, snapshot, click, fill, type, press, get,
+state checks, wait, screenshot, status, tabs, close, eval, and skill guidance.
+It invokes the same installed CLI binary, so setup, policies, sessions,
+profiles, and Firefox runtime behavior stay shared with normal `pire-browser`
+commands. `--tools all` is accepted as an alias for all currently available MCP
+tools.
 
 ## Snapshot Options
 

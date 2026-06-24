@@ -10,7 +10,7 @@ import { redactDiagnosticText, redactProbe } from "./redaction";
 const PireBrowserParams = Type.Object({
   command: Type.String({
     description:
-      "pire-browser command string, for example: status --json, doctor, skills cat core, open https://example.com, snapshot -i, click '@e4', upload '#file' ./fixture.txt, or find label Email fill hello@example.com. The CLI auto-launches Firefox for browser commands when no live session exists.",
+      "pire-browser command string, for example: status --json, doctor, skills cat core, open https://example.com, snapshot -i, get title, is visible '@e4', click '@e4', upload '#file' ./fixture.txt, or find label Email fill hello@example.com. The CLI auto-launches Firefox for browser commands when no live session exists.",
   }),
 });
 
@@ -29,7 +29,7 @@ export default function (pi: ExtensionAPI) {
       promptGuidelines: [
         "Use pire-browser when the user asks to open, inspect, or interact with web pages in Firefox.",
         "Run `pire-browser skills cat core` for quickstart recipes and command guidance.",
-        "Inspect with `pire-browser snapshot -i --compact` before page actions and use fresh quoted refs such as `click '@e4'`.",
+        "Inspect with `pire-browser snapshot -i --compact` before page actions, use fresh quoted refs such as `click '@e4'`, and use `get`/`is` for targeted verification.",
         "If navigation is recovered or returns a page-readiness warning, continue with `pire-browser snapshot -i`.",
         "Do not claim a pire-browser action succeeded until the pire-browser tool result confirms success.",
         "If pire-browser returns `confirm <id>` or ConfirmationRequired, ask the user before running the provided confirm command.",

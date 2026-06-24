@@ -23,6 +23,7 @@ pire-browser snapshot -i                 # Get interactive elements with refs
 pire-browser click '@e2'                 # Click by ref
 pire-browser fill '@e3' "test@example.com" # Fill input by ref
 pire-browser get text '@e1'              # Get text content
+pire-browser is visible '@e1'            # Check element state
 pire-browser screenshot                  # Save to generated path
 pire-browser screenshot page.png         # Save to specific path
 pire-browser close`),

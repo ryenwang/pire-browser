@@ -112,7 +112,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use pire_browser_open, pire_browser_snapshot, action tools, waits, screenshots, tabs/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use pire_browser_open, pire_browser_snapshot, action tools, pire_browser_get, pire_browser_is, waits, screenshots, tabs/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -310,6 +310,41 @@ fn tool_command_args(
                 args.push("--screenshot-quality".to_string());
                 args.push(quality.to_string());
             }
+        }
+        (_, "pire_browser_get") => {
+            let property = required_string(object, "property")?;
+            match property.as_str() {
+                "title" | "url" => {
+                    args.push("get".to_string());
+                    args.push(property);
+                }
+                "text" | "html" | "value" | "count" | "box" | "styles" => {
+                    args.push("get".to_string());
+                    args.push(property);
+                    args.push(required_string(object, "selector")?);
+                }
+                "attr" => {
+                    args.push("get".to_string());
+                    args.push(property);
+                    args.push(required_string(object, "selector")?);
+                    args.push(required_string(object, "attribute")?);
+                }
+                _ => {
+                    return Err(
+                        "property must be text, html, value, attr, title, url, count, box, or styles"
+                            .to_string(),
+                    );
+                }
+            }
+        }
+        (_, "pire_browser_is") => {
+            let state = required_string(object, "state")?;
+            if !matches!(state.as_str(), "visible" | "enabled" | "checked") {
+                return Err("state must be visible, enabled, or checked".to_string());
+            }
+            args.push("is".to_string());
+            args.push(state);
+            args.push(required_string(object, "selector")?);
         }
         (_, "pire_browser_get_url") => {
             args.push("get".to_string());
@@ -560,6 +595,36 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_get",
+            "Get page or element info",
+            "Read text, HTML, value, attribute, title, URL, count, bounding box, or computed styles.",
+            tool_schema(
+                vec![
+                    (
+                        "property",
+                        string_prop("One of text, html, value, attr, title, url, count, box, or styles."),
+                    ),
+                    ("selector", string_prop("Ref or selector. Required except for title and url.")),
+                    ("attribute", string_prop("Attribute name. Required when property is attr.")),
+                ],
+                &["property"],
+            ),
+            true,
+        ),
+        tool(
+            "pire_browser_is",
+            "Check element state",
+            "Check whether a ref or selector is visible, enabled, or checked.",
+            tool_schema(
+                vec![
+                    ("state", string_prop("One of visible, enabled, or checked.")),
+                    ("selector", string_prop("Ref or selector to check.")),
+                ],
+                &["state", "selector"],
+            ),
+            true,
+        ),
+        tool(
             "pire_browser_get_url",
             "Get URL",
             "Return the current active page URL.",
@@ -721,6 +786,8 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_snapshot"));
+        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_get"));
+        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_is"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_skills_get_core"));
@@ -809,6 +876,34 @@ mod tests {
                 "#main"
             ]
         );
+
+        let args = tool_command_args(
+            "pire_browser_get",
+            &json!({
+                "property": "attr",
+                "selector": "@e1",
+                "attribute": "href"
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "get", "attr", "@e1", "href"]);
+
+        let args = tool_command_args(
+            "pire_browser_get",
+            &json!({ "property": "url" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "get", "url"]);
+
+        let args = tool_command_args(
+            "pire_browser_is",
+            &json!({ "state": "visible", "selector": "#submit" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "is", "visible", "#submit"]);
     }
 
     #[test]
@@ -832,6 +927,22 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("use only one"));
+
+        let error = tool_command_args(
+            "pire_browser_get",
+            &json!({ "property": "text" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("selector is required"));
+
+        let error = tool_command_args(
+            "pire_browser_is",
+            &json!({ "state": "selected", "selector": "#item" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("state must be visible"));
     }
 
     #[test]

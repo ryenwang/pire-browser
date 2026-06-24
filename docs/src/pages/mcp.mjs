@@ -15,6 +15,8 @@ pire-browser mcp --tools all`),
       ["pire_browser_open", "Launch Firefox and optionally navigate."],
       ["pire_browser_snapshot", "Inspect the page and return refs."],
       ["pire_browser_click / fill / type / press", "Perform page interactions."],
+      ["pire_browser_get", "Read page or element text, HTML, values, attributes, title, URL, counts, boxes, or styles."],
+      ["pire_browser_is", "Check whether a ref or selector is visible, enabled, or checked."],
       ["pire_browser_wait", "Wait for time, selector, text, URL, or load state."],
       ["pire_browser_screenshot", "Capture screenshot evidence."],
       ["pire_browser_status", "Inspect install/session state."],
@@ -27,8 +29,9 @@ pire-browser mcp --tools all`),
   code(`1. Call pire_browser_open with a URL.
 2. Call pire_browser_snapshot with compact=true.
 3. Use fresh refs in click/fill/type/press tools.
-4. Call pire_browser_wait when page state needs time.
-5. Re-run pire_browser_snapshot or capture a screenshot before reporting success.`),
+4. Use pire_browser_get or pire_browser_is for targeted verification when you already have a fresh target.
+5. Call pire_browser_wait when page state needs time.
+6. Re-run pire_browser_snapshot or capture a screenshot before reporting success.`),
   p("MCP tool calls return text content for compatibility and structured command output when the underlying CLI emits JSON."),
 ];
 
