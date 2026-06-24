@@ -19,6 +19,8 @@ pire-browser click '@e2'
 pire-browser snapshot -i`),
   h2("Common commands", "common-commands"),
   code(`pire-browser open https://example.com
+pire-browser read https://example.com/docs   # Read docs/articles without launching Firefox
+pire-browser read                            # Read rendered text from the active tab
 pire-browser snapshot -i                 # Get interactive elements with refs
 pire-browser click '@e2'                 # Click by ref
 pire-browser fill '@e3' "test@example.com" # Fill input by ref

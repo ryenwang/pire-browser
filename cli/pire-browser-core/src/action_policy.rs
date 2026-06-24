@@ -300,6 +300,7 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
         "clipboard" if subcommand == Some("paste") => "fill",
         "eval" => "eval",
         "snapshot" | "screenshot" | "pdf" => "snapshot",
+        "read" => "get",
         "diff" if matches!(subcommand, Some("snapshot" | "screenshot")) => "snapshot",
         "diff" if subcommand == Some("url") => "navigate",
         "highlight" => "snapshot",

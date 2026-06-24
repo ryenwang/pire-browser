@@ -6,6 +6,7 @@ const commandsBlocks = [
 pire-browser open <url>              # Navigate to a URL
 pire-browser goto <url>              # Alias for navigation
 pire-browser navigate <url>          # Alias for navigation
+pire-browser read [url]              # Agent-friendly text; URL reads do not launch Firefox
 pire-browser click <sel>             # Click ref or selector
 pire-browser fill <sel> <text>       # Clear and fill
 pire-browser type <sel> <text>       # Type into element
@@ -44,6 +45,17 @@ pire-browser diff url https://v1.example https://v2.example
 pire-browser diff url https://v1.example https://v2.example --screenshot
 pire-browser diff url https://v1.example https://v2.example --wait-until networkidle
 pire-browser diff url https://v1.example https://v2.example --selector "#main" --compact`),
+
+  h2("Read text", "read-text"),
+  code(`pire-browser read
+pire-browser read https://example.com/article
+pire-browser read https://example.com/article --filter overview
+pire-browser read https://example.com/article --outline
+pire-browser read https://docs.example.com --llms index --filter auth
+pire-browser read https://docs.example.com --llms full --filter auth
+pire-browser read example.com/article --require-md
+pire-browser read https://example.com/article --json`),
+  p("<code>read &lt;url&gt;</code> fetches markdown, plain text, or HTML directly from the CLI without launching Firefox. Omit the URL to read rendered text from the active Firefox tab, including client-side state and authenticated content. Use <code>read</code> for documents and articles; use <code>snapshot -i</code> when you need interaction refs."),
 
   h2("Get info", "get-info"),
   code(`pire-browser get text <sel>          # Get text content

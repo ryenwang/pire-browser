@@ -14,7 +14,7 @@ pire-browser mcp --tools all`),
   table(
     ["Profile", "Purpose"],
     [
-      ["core", "Open, inspect, semantic find, interact, get/check, wait, screenshot/PDF/diff evidence, eval, basic tabs, profile discovery, status, close, and skill guidance."],
+      ["core", "Open, read, inspect, semantic find, interact, get/check, wait, screenshot/PDF/diff evidence, eval, basic tabs, profile discovery, status, close, and skill guidance."],
       ["network", "Headers, credentials, offline toggle, network request inspection, metadata HAR, and route/unroute controls."],
       ["state", "Cookies, storage, auth helpers, plaintext state files, sessions, profiles, downloads/uploads, clipboard, and skills."],
       ["debug", "Console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions, and close."],
@@ -31,6 +31,7 @@ pire-browser mcp --tools all`),
     [
       ["pire_browser_tools_profiles", "Describe MCP profiles and active selection."],
       ["pire_browser_open", "Launch Firefox and optionally navigate."],
+      ["pire_browser_read", "Read agent-friendly URL text without launching Firefox, or rendered text from the active tab."],
       ["pire_browser_snapshot", "Inspect the page and return refs."],
       ["pire_browser_find", "Find by role, label, text, placeholder, alt text, title, test id, first, last, or nth; optionally act on the single match."],
       ["pire_browser_click / double_click / fill / type / press", "Perform page interactions."],
@@ -62,17 +63,18 @@ pire-browser mcp --tools all`),
   ),
   h2("Agent Loop", "agent-loop"),
   code(`1. Call pire_browser_open with a URL.
-2. Call pire_browser_snapshot with compact=true, or use pire_browser_find when labels/roles are clear.
-3. Use fresh refs or semantic find locators in click/double-click/fill/type/press/select/check/scroll/drag/mouse/download/upload tools.
-4. Use pire_browser_get or pire_browser_is for targeted verification when you already have a fresh target.
-5. Use frame_select when a snapshot shows an iframe you need to work inside; run frame_main before returning to outer-page controls.
-6. Use settings tools before screenshots or stateful QA when viewport, device preset, geolocation, headers, credentials, media, or offline mode matters.
-7. Use diff tools when comparing before/after UI, screenshots, or two URLs for QA evidence.
-8. Use console/errors/dialog/highlight/vitals/network tools when a page is stuck, blocked, or needs evidence.
-9. Use auth tools only with user-approved credentials, then verify login with a fresh snapshot, URL, or page state.
-10. Use cookies/storage/state tools only when needed for user-approved state debugging; values may contain secrets.
-11. Call pire_browser_wait when page state needs time.
-12. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
+2. Use pire_browser_read for docs/articles when interaction refs are not needed.
+3. Call pire_browser_snapshot with compact=true, or use pire_browser_find when labels/roles are clear.
+4. Use fresh refs or semantic find locators in click/double-click/fill/type/press/select/check/scroll/drag/mouse/download/upload tools.
+5. Use pire_browser_get or pire_browser_is for targeted verification when you already have a fresh target.
+6. Use frame_select when a snapshot shows an iframe you need to work inside; run frame_main before returning to outer-page controls.
+7. Use settings tools before screenshots or stateful QA when viewport, device preset, geolocation, headers, credentials, media, or offline mode matters.
+8. Use diff tools when comparing before/after UI, screenshots, or two URLs for QA evidence.
+9. Use console/errors/dialog/highlight/vitals/network tools when a page is stuck, blocked, or needs evidence.
+10. Use auth tools only with user-approved credentials, then verify login with a fresh snapshot, URL, or page state.
+11. Use cookies/storage/state tools only when needed for user-approved state debugging; values may contain secrets.
+12. Call pire_browser_wait when page state needs time.
+13. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
   p("MCP tool calls return text content for compatibility and structured command output when the underlying CLI emits JSON. If a tool is missing from the active profile, restart the MCP server with <code>--tools all</code> or a comma-separated profile list such as <code>--tools core,network</code>."),
 ];
 

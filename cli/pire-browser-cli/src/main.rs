@@ -1,4 +1,5 @@
 mod mcp;
+mod read;
 
 use anyhow::{bail, Context, Result};
 use image::{ImageFormat, Rgba, RgbaImage};
@@ -79,6 +80,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use crate::mcp::{run_mcp_server, McpToolsProfile};
+use crate::read::{read_url, ReadUrlOptions};
 
 const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &[
     "connect", "device", "install", "profiler", "react", "record", "stream", "swipe", "tap",
@@ -567,6 +569,50 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         }
         LocalCommand::ActivityList { json, limit } => {
             handle_activity_list(json, limit)?;
+        }
+        LocalCommand::ReadUrl {
+            json,
+            ignored_global_flags,
+            domain_policy,
+            options,
+        } => {
+            let domain_decision =
+                resolve_domain_policy_or_exit(&domain_policy, json, &ignored_global_flags)?;
+            if let Err(err) = ensure_url_allowed(&domain_decision, &options.url) {
+                exit_with_anyhow_error_with_domain_policy(
+                    err,
+                    json,
+                    &ignored_global_flags,
+                    &domain_decision.warnings,
+                )?;
+                unreachable!();
+            }
+            let read_options = ReadUrlOptions {
+                url: options.url,
+                raw: options.raw,
+                require_md: options.require_md,
+                outline: options.outline,
+                llms: options.llms,
+                filter: options.filter,
+                timeout_ms: options.timeout_ms,
+            };
+            let mut result = match read_url(&read_options) {
+                Ok(result) => result,
+                Err(err) => {
+                    exit_with_anyhow_error_with_domain_policy(
+                        err,
+                        json,
+                        &ignored_global_flags,
+                        &domain_decision.warnings,
+                    )?;
+                    unreachable!();
+                }
+            };
+            append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
+            append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
+            apply_output_guards(&mut result, &output_guards, json);
+            println!("{}", format_cli_result(&result, json)?);
+            print_config_warnings(&config_warnings);
         }
         LocalCommand::InstallStatus {
             json,
@@ -6589,6 +6635,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "open"
             | "goto"
             | "navigate"
+            | "read"
             | "snapshot"
             | "find"
             | "click"
@@ -6655,6 +6702,7 @@ fn command_suggestions(command: &str) -> Vec<String> {
         "install",
         "doctor",
         "open",
+        "read",
         "snapshot",
         "find",
         "click",
@@ -7585,6 +7633,7 @@ mod tests {
             "open",
             "goto",
             "navigate",
+            "read",
             "click",
             "fill",
             "snapshot",
@@ -7662,6 +7711,7 @@ mod tests {
         for root in [
             "status",
             "open",
+            "read",
             "click",
             "mouse",
             "drag",

@@ -193,6 +193,7 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_mouse_wheel"
         | "pire_browser_scroll" => PROFILE_CORE | PROFILE_MOBILE,
         "pire_browser_open"
+        | "pire_browser_read"
         | "pire_browser_snapshot"
         | "pire_browser_find"
         | "pire_browser_click"
@@ -515,6 +516,33 @@ fn tool_command_args(
             if let Some(selector) = optional_string(object, "selector")? {
                 args.push("-s".to_string());
                 args.push(selector);
+            }
+        }
+        (_, "pire_browser_read") => {
+            args.push("read".to_string());
+            if let Some(url) = optional_string(object, "url")? {
+                args.push(url);
+            }
+            if optional_bool(object, "raw")? {
+                args.push("--raw".to_string());
+            }
+            if optional_bool(object, "requireMarkdown")? {
+                args.push("--require-md".to_string());
+            }
+            if optional_bool(object, "outline")? {
+                args.push("--outline".to_string());
+            }
+            if let Some(filter) = optional_string(object, "filter")? {
+                args.push("--filter".to_string());
+                args.push(filter);
+            }
+            if let Some(llms) = optional_string(object, "llms")? {
+                args.push("--llms".to_string());
+                args.push(llms);
+            }
+            if let Some(timeout) = optional_u64(object, "timeoutMs")? {
+                args.push("--timeout".to_string());
+                args.push(timeout.to_string());
             }
         }
         (_, "pire_browser_find") => {
@@ -1630,6 +1658,24 @@ fn core_tools() -> Vec<Value> {
                 &[],
             ),
             false,
+        ),
+        tool(
+            "pire_browser_read",
+            "Read page text",
+            "Read agent-friendly text. With url, fetch without launching Firefox; without url, read rendered text from the active tab.",
+            tool_schema(
+                vec![
+                    ("url", string_prop("Optional http(s) URL to fetch without launching Firefox.")),
+                    ("filter", string_prop("Optional text filter for matching lines.")),
+                    ("outline", bool_prop("Return headings instead of full text.")),
+                    ("raw", bool_prop("Return raw response body for URL reads.")),
+                    ("requireMarkdown", bool_prop("Fail URL reads unless the response is markdown.")),
+                    ("llms", string_prop("Optional llms mode for URL reads: index or full.")),
+                    ("timeoutMs", number_prop("HTTP read timeout in milliseconds.")),
+                ],
+                &[],
+            ),
+            true,
         ),
         tool(
             "pire_browser_snapshot",
@@ -2778,6 +2824,7 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_snapshot"));
+        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_read"));
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_get"));
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_is"));
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_find"));
@@ -2974,6 +3021,34 @@ mod tests {
                 "https://example.com",
                 "--label",
                 "docs"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_read",
+            &json!({
+                "url": "https://example.com/docs",
+                "filter": "auth",
+                "outline": true,
+                "llms": "index",
+                "timeoutMs": 2000
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "read",
+                "https://example.com/docs",
+                "--outline",
+                "--filter",
+                "auth",
+                "--llms",
+                "index",
+                "--timeout",
+                "2000"
             ]
         );
 

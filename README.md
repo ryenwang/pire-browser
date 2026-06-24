@@ -130,6 +130,7 @@ Use `--json` when another tool or agent needs structured output.
 ```bash
 pire-browser open                    # Launch managed Firefox if needed
 pire-browser open <url>              # Launch + navigate to URL (aliases: goto, navigate)
+pire-browser read [url]              # Agent-friendly text; URL reads do not launch Firefox
 pire-browser click <sel>             # Click element
 pire-browser fill <sel> <text>       # Clear and fill
 pire-browser type <sel> <text>       # Type into element
@@ -157,6 +158,23 @@ pire-browser close --all             # Close all managed Firefox sessions
 ```
 
 PDF capture is available as an image-backed visual evidence file. CDP connect, runtime viewport streaming, and natural-language chat are not implemented in the current Firefox backend.
+
+### Read Agent-Friendly Text
+
+```bash
+pire-browser read
+pire-browser read https://example.com/article
+pire-browser read https://example.com/article --filter overview
+pire-browser read https://example.com/article --outline
+pire-browser read https://docs.example.com --llms index --filter auth
+pire-browser read https://docs.example.com --llms full --filter auth
+pire-browser read example.com/article --require-md
+pire-browser read https://example.com/article --json
+```
+
+`read <url>` fetches markdown, plain text, or HTML directly from the CLI without launching Firefox. It extracts readable text from HTML, supports `--filter`, `--outline`, nearest-ancestor `llms.txt` / `llms-full.txt`, `--require-md`, `--raw`, and `--timeout <ms>`, and still honors domain/output guardrails.
+
+Omit the URL to read rendered text from the active Firefox tab, including client-side state and authenticated content. Use `read` for documents and articles; use `snapshot -i` when you need interaction refs.
 
 ### Get Info
 

@@ -12,6 +12,8 @@ use crate::download::DOWNLOAD_TIMEOUT_MS;
 use crate::protocol::RpcRequest;
 use crate::state_policy::StateLoadPolicyFlag;
 
+pub const READ_TIMEOUT_MS: u64 = 15_000;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlobalFlagWarning {
     pub flag: String,
@@ -47,6 +49,17 @@ pub enum SessionTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadCommandOptions {
+    pub url: String,
+    pub raw: bool,
+    pub require_md: bool,
+    pub outline: bool,
+    pub llms: Option<String>,
+    pub filter: Option<String>,
+    pub timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LocalCommand {
     Help {
         topic: Option<String>,
@@ -73,6 +86,12 @@ pub enum LocalCommand {
     ActivityList {
         json: bool,
         limit: usize,
+    },
+    ReadUrl {
+        json: bool,
+        ignored_global_flags: Vec<GlobalFlagWarning>,
+        domain_policy: DomainPolicyArgs,
+        options: ReadCommandOptions,
     },
     ProfilesList {
         json: bool,
@@ -894,6 +913,20 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         return Ok(LocalCommand::Help {
             topic: Some(command),
         });
+    }
+
+    if command == "read" {
+        let mut read_args = args.clone();
+        read_args.remove(0);
+        let parsed = parse_read_args(&mut read_args, &mut json_output)?;
+        if let Some(options) = parsed {
+            return Ok(LocalCommand::ReadUrl {
+                json: json_output,
+                ignored_global_flags,
+                domain_policy,
+                options,
+            });
+        }
     }
 
     if command == "skills" || command == "skill" {
@@ -1826,6 +1859,71 @@ fn parse_single_state_arg(
     path.ok_or_else(|| anyhow::anyhow!("invalid_args: state {subcommand} requires <path>"))
 }
 
+fn parse_read_args(
+    args: &mut Vec<String>,
+    json_output: &mut bool,
+) -> Result<Option<ReadCommandOptions>> {
+    let mut url = None;
+    let mut raw = false;
+    let mut require_md = false;
+    let mut outline = false;
+    let mut llms = None;
+    let mut filter = None;
+    let mut timeout_ms = READ_TIMEOUT_MS;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--json" => {
+                *json_output = true;
+            }
+            "--raw" => raw = true,
+            "--require-md" => require_md = true,
+            "--outline" => outline = true,
+            "--filter" => {
+                i += 1;
+                let Some(value) = args.get(i).cloned() else {
+                    bail!("--filter requires a value");
+                };
+                filter = Some(value);
+            }
+            "--llms" => {
+                i += 1;
+                let Some(value) = args.get(i).cloned() else {
+                    bail!("--llms requires index or full");
+                };
+                match value.as_str() {
+                    "index" | "full" => llms = Some(value),
+                    _ => bail!("invalid_args: --llms must be index or full"),
+                }
+            }
+            "--timeout" => {
+                i += 1;
+                let Some(value) = args.get(i) else {
+                    bail!("--timeout requires a value");
+                };
+                timeout_ms = parse_positive_timeout(value)?;
+            }
+            other if other.starts_with('-') => bail!("unsupported read option: {other}"),
+            _ => {
+                if url.is_some() {
+                    bail!("unsupported read option: {}", args[i]);
+                }
+                url = Some(args[i].clone());
+            }
+        }
+        i += 1;
+    }
+    Ok(url.map(|url| ReadCommandOptions {
+        url,
+        raw,
+        require_md,
+        outline,
+        llms,
+        filter,
+        timeout_ms,
+    }))
+}
+
 fn parse_download_args(args: &mut Vec<String>) -> Result<(String, String, u64)> {
     let mut selector = None;
     let mut path = None;
@@ -1953,6 +2051,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "config" | "--config" => CONFIG_HELP,
         "install" => INSTALL_HELP,
         "open" | "goto" | "navigate" => OPEN_HELP,
+        "read" => READ_HELP,
         "snapshot" => SNAPSHOT_HELP,
         "pdf" => PDF_HELP,
         "diff" => DIFF_HELP,
@@ -2022,6 +2121,8 @@ Common commands:
   open <url> --headers '{"Authorization":"Bearer token"}'
   --proxy http://proxy.example:8080 open <url>
   --allow-file-access open file:///path/to/page.html
+  read <url>                      Fetch agent-readable text without Firefox
+  read                            Read rendered text from the active Firefox tab
   snapshot -i                     Inspect the active page and print refs
   diff snapshot                    Compare current snapshot to previous
   diff screenshot --baseline before.png Compare current screenshot to baseline
@@ -2172,6 +2273,29 @@ of using the path as a raw browser profile directory. Use `--allowed-domains "ex
 PIRE_BROWSER_ALLOWED_DOMAINS for a cooperative wrong-site guardrail.
 `--init-script <path>` may be repeated and registers Firefox document-start
 scripts for that navigation in the managed Firefox session.
+"##;
+
+const READ_HELP: &str = r##"
+Usage:
+  pire-browser read <url>
+  pire-browser read <url> --filter <text>
+  pire-browser read <url> --outline
+  pire-browser read <url> --llms index
+  pire-browser read <url> --llms full
+  pire-browser read <url> --require-md
+  pire-browser read <url> --raw
+  pire-browser read <url> --timeout <ms>
+  pire-browser read
+
+Reads agent-friendly text. With a URL, the CLI fetches the page directly without
+launching Firefox, accepts markdown/plain/html, extracts readable text from HTML,
+and honors domain/output guardrails. Without a URL, the command reads the
+rendered text from the active Firefox tab, including client-side page state.
+
+`--llms index` walks ancestor paths for the nearest llms.txt. `--llms full`
+walks ancestor paths for the nearest llms-full.txt. `--require-md` fails unless
+the HTTP response is markdown. `--outline` returns page headings. `--filter`
+narrows emitted lines to matches plus heading context.
 "##;
 
 const SNAPSHOT_HELP: &str = r##"
@@ -2939,6 +3063,60 @@ mod tests {
                 action_policy: default_action_policy(),
                 confirmation_policy: default_confirmation_policy(),
                 args: s(&["open", "https://example.com"])
+            }
+        );
+    }
+
+    #[test]
+    fn read_url_parses_as_local_no_browser_fetch() {
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "--allowed-domains",
+                "example.com",
+                "read",
+                "https://example.com/docs",
+                "--filter",
+                "auth",
+                "--outline",
+                "--llms",
+                "index",
+                "--timeout",
+                "2000",
+                "--json",
+            ]))
+            .unwrap(),
+            LocalCommand::ReadUrl {
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: DomainPolicyArgs {
+                    allowed_domains: Some("example.com".to_string()),
+                    no_allowed_domains: false,
+                },
+                options: ReadCommandOptions {
+                    url: "https://example.com/docs".to_string(),
+                    raw: false,
+                    require_md: false,
+                    outline: true,
+                    llms: Some("index".to_string()),
+                    filter: Some("auth".to_string()),
+                    timeout_ms: 2000,
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn read_without_url_parses_as_active_tab_remote_command() {
+        assert_eq!(
+            parse_cli_args(&s(&["read", "--filter", "auth"])).unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["read", "--filter", "auth"])
             }
         );
     }

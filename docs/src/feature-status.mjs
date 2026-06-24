@@ -8,7 +8,7 @@ export const statusLabels = {
 export const featureStatuses = {
   coreCommands: {
     status: "available",
-    summary: "Navigation, snapshots, refs, DOM actions, waits, screenshots, downloads, uploads, clipboard text, tabs, frames, sessions, state files, and guardrails are part of the current public package.",
+    summary: "Navigation, agent-friendly URL/active-tab reads, snapshots, refs, DOM actions, waits, screenshots, downloads, uploads, clipboard text, tabs, frames, sessions, state files, and guardrails are part of the current public package.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/cli.rs"],
   },
   settings: {
@@ -163,6 +163,7 @@ export const commandRootStatus = {
   profiles: "best_effort",
   pushstate: "best_effort",
   react: "not_available",
+  read: "available",
   record: "not_available",
   reload: "available",
   removeinitscript: "best_effort",

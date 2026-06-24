@@ -16,6 +16,7 @@ Use this folder when you are operating an installed `pire-browser` package. It i
 ## Core Rules
 
 - Use Firefox automation through `pire-browser`; do not substitute a different browser unless the user asks.
+- Use `pire-browser read <url>` for docs/articles when interaction refs are not needed; use bare `pire-browser read` for rendered active-tab text.
 - Inspect with `pire-browser snapshot -i` before acting on a page.
 - Treat snapshot refs as short lived. Use fresh refs after navigation, DOM changes, dialogs, downloads, uploads, or errors.
 - Do not claim success until `pire-browser` output confirms it.

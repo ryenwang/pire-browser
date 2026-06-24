@@ -633,6 +633,8 @@ function actionPolicyCategoryName(args: string[]): string | null {
     case "navigate":
       if (args.includes("--headers")) return "network";
       return "navigate";
+    case "read":
+      return "get";
     case "launch":
     case "back":
     case "forward":
@@ -868,6 +870,7 @@ function commandNeedsActivePageDomainCheck(args: string[]) {
       "mouse",
       "drag",
       "screenshot",
+      "read",
       "get",
       "is",
       "eval",
@@ -927,6 +930,8 @@ async function executeCommand(
     case "goto":
     case "navigate":
       return openCommand(rest, command || "open", params);
+    case "read":
+      return readCommand(rest);
     case "snapshot":
       return snapshotCommand(rest);
     case "diff":
@@ -1299,6 +1304,132 @@ function formatWarningLine(warning: unknown) {
     }
   }
   return `Warning: ${String(warning)}`;
+}
+
+type ReadOptions = {
+  filter?: string;
+  outline: boolean;
+};
+
+async function readCommand(args: string[]) {
+  const options = parseReadOptions(args);
+  if ("error" in options) return options;
+  const tab = await targetTab();
+  if (typeof browser.tabs?.executeScript !== "function") {
+    return {
+      error: {
+        code: "not_available",
+        message: "read requires Firefox tabs.executeScript support.",
+      },
+    };
+  }
+  const results = await browser.tabs.executeScript(tab.tabId, {
+    code: activeReadScript(options),
+    allFrames: false,
+    matchAboutBlank: true,
+  });
+  const read = Array.isArray(results) ? results[0] : undefined;
+  if (!read || typeof read !== "object") {
+    return { error: { code: "command_failed", message: "read did not return active-tab text" } };
+  }
+  const payload = read as Record<string, unknown>;
+  const text = typeof payload.text === "string" ? payload.text : "";
+  return {
+    text,
+    read: {
+      source: "active-tab",
+      kind: options.outline ? "outline" : "rendered",
+      url: typeof payload.url === "string" ? payload.url : tab.url,
+      title: typeof payload.title === "string" ? payload.title : tab.title,
+      filter: options.filter,
+      outline: Array.isArray(payload.outline) ? payload.outline : undefined,
+      length: text.length,
+    },
+  };
+}
+
+function parseReadOptions(args: string[]): ReadOptions | { error: RpcResponse["error"] } {
+  let filter: string | undefined;
+  let outline = false;
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--json") continue;
+    if (arg === "--outline") {
+      outline = true;
+      continue;
+    }
+    if (arg === "--filter") {
+      filter = args[index + 1];
+      if (!filter || filter.startsWith("-")) {
+        return { error: { code: "invalid_args", message: "--filter requires text" } };
+      }
+      index += 1;
+      continue;
+    }
+    if (["--raw", "--require-md", "--timeout"].includes(arg)) {
+      return {
+        error: {
+          code: "invalid_args",
+          message: `${arg} is only supported for read <url>; run \`pire-browser read <url> ${arg}\`.`,
+        },
+      };
+    }
+    if (arg === "--llms") {
+      return {
+        error: {
+          code: "invalid_args",
+          message:
+            "--llms is only supported for read <url>; run `pire-browser get url`, then `pire-browser read <url> --llms index|full`.",
+        },
+      };
+    }
+    if (arg.startsWith("-")) {
+      return { error: { code: "invalid_args", message: `Unsupported read option: ${arg}` } };
+    }
+    return {
+      error: {
+        code: "invalid_args",
+        message: "read <url> is a CLI no-browser fetch. For the active tab, run `pire-browser read` without a URL.",
+      },
+    };
+  }
+  return { filter, outline };
+}
+
+function activeReadScript(options: ReadOptions) {
+  const payload = JSON.stringify(options);
+  return `(() => {
+  const options = ${payload};
+  const normalize = (value) => String(value || "")
+    .replace(/\\r/g, "\\n")
+    .split("\\n")
+    .map((line) => line.replace(/\\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\\n");
+  const headings = Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6")).map((element) => {
+    const level = Number(element.tagName.slice(1)) || 1;
+    return "#".repeat(level) + " " + normalize(element.textContent || "");
+  }).filter((line) => line.trim().length > 1);
+  const filter = typeof options.filter === "string" && options.filter.trim()
+    ? options.filter.trim().toLowerCase()
+    : "";
+  const baseText = options.outline ? headings.join("\\n") : normalize(document.body?.innerText || document.documentElement?.innerText || "");
+  let text = baseText;
+  if (filter) {
+    let currentHeading = "";
+    const lines = [];
+    for (const line of baseText.split("\\n")) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("#")) currentHeading = trimmed;
+      if (trimmed.toLowerCase().includes(filter)) {
+        if (currentHeading && lines[lines.length - 1] !== currentHeading) lines.push(currentHeading);
+        lines.push(trimmed);
+      }
+    }
+    text = lines.join("\\n");
+  }
+  return { text, outline: headings, url: location.href, title: document.title };
+})();`;
 }
 
 async function snapshotCommand(args: string[]) {

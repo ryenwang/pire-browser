@@ -50,6 +50,21 @@ pire-browser find text "Save" --exact
 
 Use `--exact` when nearby text would otherwise create substring matches.
 
+Read documents, docs pages, and article text before falling back to snapshots:
+
+```bash
+pire-browser read https://example.com/article
+pire-browser read https://example.com/article --filter overview
+pire-browser read https://example.com/article --outline
+pire-browser read https://docs.example.com --llms index --filter auth
+pire-browser read https://docs.example.com --llms full --filter auth
+pire-browser read
+```
+
+Use `read <url>` for no-browser markdown/plain/html text fetches. Omit the URL
+to read rendered text from the active Firefox tab, including client-side state
+and authenticated content. Use `snapshot -i` when you need interaction refs.
+
 Read and check state without dumping a whole snapshot when you already know the
 target:
 
@@ -503,6 +518,7 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 ```bash
 pire-browser --help
 pire-browser open --help
+pire-browser read --help
 pire-browser snapshot --help
 pire-browser mcp --tools core
 pire-browser mcp --tools core,network
