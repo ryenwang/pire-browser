@@ -305,7 +305,7 @@ pire-browser help commands`),
   code(`pire-browser mcp
 pire-browser mcp --tools core
 pire-browser mcp --tools all`),
-  p("The stdio MCP server exposes typed tools for the core open, snapshot, semantic find, interact, keyboard/mouse, get page/element info, check element state, wait, screenshot/PDF, console/errors/dialog/highlight/vitals, download, wait-download, upload, clipboard, status, tab/window, close, eval, and skill-guidance workflow."),
+  p("The stdio MCP server exposes typed tools for the core open, snapshot, semantic find, interact, keyboard/mouse, get page/element info, check element state, wait, screenshot/PDF, console/errors/dialog/highlight/vitals, network requests/routes/HAR, plaintext state files, session/profile inspection, download, wait-download, upload, clipboard, status, tab/window, close, eval, and skill-guidance workflow."),
 
   h2("Navigation", "navigation"),
   code(`pire-browser back

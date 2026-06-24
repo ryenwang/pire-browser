@@ -112,7 +112,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs, mouse/debugging tools, transfers, clipboard, tabs/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs, mouse/debugging tools, network/state/session/profile tools, transfers, clipboard, tabs/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -536,6 +536,151 @@ fn tool_command_args(
         (_, "pire_browser_status") => {
             args.push("status".to_string());
         }
+        (_, "pire_browser_network_requests") => {
+            args.push("network".to_string());
+            args.push("requests".to_string());
+            if optional_bool(object, "clear")? {
+                args.push("--clear".to_string());
+            }
+            push_optional_flag_value(&mut args, object, "filter", "--filter")?;
+            push_optional_flag_value(&mut args, object, "resourceType", "--type")?;
+            push_optional_flag_value(&mut args, object, "method", "--method")?;
+            push_optional_flag_value(&mut args, object, "status", "--status")?;
+        }
+        (_, "pire_browser_network_request") => {
+            args.push("network".to_string());
+            args.push("request".to_string());
+            args.push(required_string(object, "requestId")?);
+        }
+        (_, "pire_browser_network_har_start") => {
+            args.push("network".to_string());
+            args.push("har".to_string());
+            args.push("start".to_string());
+        }
+        (_, "pire_browser_network_har_stop") => {
+            args.push("network".to_string());
+            args.push("har".to_string());
+            args.push("stop".to_string());
+            if let Some(path) = optional_string(object, "path")? {
+                args.push(path);
+            }
+        }
+        (_, "pire_browser_network_har_export") => {
+            args.push("network".to_string());
+            args.push("har".to_string());
+            if let Some(path) = optional_string(object, "path")? {
+                args.push(path);
+            }
+            push_optional_flag_value(&mut args, object, "filter", "--filter")?;
+        }
+        (_, "pire_browser_network_route") => {
+            args.push("network".to_string());
+            args.push("route".to_string());
+            args.push(required_string(object, "pattern")?);
+            let abort = optional_bool(object, "abort")?;
+            let body = optional_string(object, "body")?;
+            if abort && body.is_some() {
+                return Err("network route cannot combine abort and body".to_string());
+            }
+            if abort {
+                args.push("--abort".to_string());
+            }
+            if let Some(body) = body {
+                args.push("--body".to_string());
+                args.push(body);
+            }
+            push_optional_flag_value(&mut args, object, "contentType", "--content-type")?;
+            push_optional_flag_value(&mut args, object, "resourceType", "--resource-type")?;
+        }
+        (_, "pire_browser_network_unroute") => {
+            args.push("network".to_string());
+            args.push("unroute".to_string());
+            if let Some(target) = optional_string(object, "target")? {
+                args.push(target);
+            }
+        }
+        (_, "pire_browser_state_save") => {
+            args.push("state".to_string());
+            args.push("save".to_string());
+            args.push(required_string(object, "path")?);
+        }
+        (_, "pire_browser_state_load") => {
+            args.push("state".to_string());
+            args.push("load".to_string());
+            let require_inspected = optional_bool(object, "requireInspected")?;
+            let no_require_inspected = optional_bool(object, "noRequireInspected")?;
+            if require_inspected && no_require_inspected {
+                return Err(
+                    "cannot use requireInspected and noRequireInspected together".to_string(),
+                );
+            }
+            if require_inspected {
+                args.push("--require-inspected".to_string());
+            }
+            if no_require_inspected {
+                args.push("--no-require-inspected".to_string());
+            }
+            args.push(required_string(object, "path")?);
+        }
+        (_, "pire_browser_state_list") => {
+            args.push("state".to_string());
+            args.push("list".to_string());
+        }
+        (_, "pire_browser_state_show") => {
+            args.push("state".to_string());
+            args.push("show".to_string());
+            args.push(required_string(object, "path")?);
+        }
+        (_, "pire_browser_state_inspect") => {
+            args.push("state".to_string());
+            args.push("inspect".to_string());
+            if optional_bool(object, "record")? {
+                args.push("--record".to_string());
+            }
+            args.push(required_string(object, "path")?);
+        }
+        (_, "pire_browser_state_rename") => {
+            args.push("state".to_string());
+            args.push("rename".to_string());
+            args.push(required_string(object, "old")?);
+            args.push(required_string(object, "new")?);
+        }
+        (_, "pire_browser_state_clear") => {
+            args.push("state".to_string());
+            args.push("clear".to_string());
+            let all = optional_bool(object, "all")?;
+            let name = optional_string(object, "name")?;
+            if all && name.is_some() {
+                return Err("state clear cannot combine all and name".to_string());
+            }
+            if all {
+                args.push("--all".to_string());
+            } else {
+                args.push(name.ok_or_else(|| "state clear requires name or all=true".to_string())?);
+            }
+        }
+        (_, "pire_browser_state_clean") => {
+            args.push("state".to_string());
+            args.push("clean".to_string());
+            args.push("--older-than".to_string());
+            args.push(required_u64(object, "olderThanDays")?.to_string());
+        }
+        (_, "pire_browser_session_list") => {
+            args.push("session".to_string());
+            args.push("list".to_string());
+        }
+        (_, "pire_browser_session_attach") => {
+            args.push("session".to_string());
+            args.push("attach".to_string());
+            args.push(required_string(object, "sessionId")?);
+        }
+        (_, "pire_browser_session_cleanup") => {
+            args.push("session".to_string());
+            args.push("cleanup".to_string());
+        }
+        (_, "pire_browser_profiles_list") => {
+            args.push("profiles".to_string());
+        }
         (_, "pire_browser_tabs_list") => {
             args.push("tabs".to_string());
             args.push("list".to_string());
@@ -722,6 +867,19 @@ fn push_find_action(
         return Err(
             "value is only supported for fill, type, select, and attr find actions".to_string(),
         );
+    }
+    Ok(())
+}
+
+fn push_optional_flag_value(
+    args: &mut Vec<String>,
+    object: &Map<String, Value>,
+    key: &str,
+    flag: &str,
+) -> std::result::Result<(), String> {
+    if let Some(value) = optional_string(object, key)? {
+        args.push(flag.to_string());
+        args.push(value);
     }
     Ok(())
 }
@@ -1332,6 +1490,188 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_network_requests",
+            "Network requests",
+            "List or clear recent active-tab network requests with optional filters.",
+            tool_schema(
+                vec![
+                    ("clear", bool_prop("Clear the active tab's request log.")),
+                    ("filter", string_prop("URL substring or glob filter.")),
+                    ("resourceType", string_prop("Resource type filter such as xhr,fetch.")),
+                    ("method", string_prop("HTTP method filter such as POST.")),
+                    ("status", string_prop("Status filter such as 200, 2xx, or 400-499.")),
+                ],
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_network_request",
+            "Network request detail",
+            "Return metadata for one recorded network request.",
+            tool_schema(vec![("requestId", string_prop("Recorded request id."))], &["requestId"]),
+            true,
+        ),
+        tool(
+            "pire_browser_network_har_start",
+            "Start HAR recording",
+            "Start active-tab metadata HAR recording.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_network_har_stop",
+            "Stop HAR recording",
+            "Stop active-tab metadata HAR recording and optionally write a HAR file.",
+            tool_schema(vec![("path", string_prop("Optional output HAR path."))], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_network_har_export",
+            "Export HAR",
+            "Export currently captured active-tab request metadata as HAR.",
+            tool_schema(
+                vec![
+                    ("path", string_prop("Optional output HAR path.")),
+                    ("filter", string_prop("URL substring or glob filter.")),
+                ],
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_network_route",
+            "Network route",
+            "Register an active-tab route to continue, abort, or mock matching requests.",
+            tool_schema(
+                vec![
+                    ("pattern", string_prop("URL substring or glob pattern.")),
+                    ("abort", bool_prop("Abort matching requests.")),
+                    ("body", string_prop("Mock response body for matching requests.")),
+                    ("contentType", string_prop("Content-Type for mocked body.")),
+                    ("resourceType", string_prop("Optional resource type filter.")),
+                ],
+                &["pattern"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_network_unroute",
+            "Remove network route",
+            "Remove active-tab network routes by pattern/route id, or all routes when omitted.",
+            tool_schema(vec![("target", string_prop("Optional pattern or route id."))], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_state_save",
+            "Save state",
+            "Save active-origin cookies and Web Storage to a plaintext state file.",
+            tool_schema(vec![("path", string_prop("Output state file path or name."))], &["path"]),
+            false,
+        ),
+        tool(
+            "pire_browser_state_load",
+            "Load state",
+            "Load active-origin cookies and Web Storage from a plaintext state file.",
+            tool_schema(
+                vec![
+                    ("path", string_prop("Input state file path or name.")),
+                    ("requireInspected", bool_prop("Require a recent local inspect receipt.")),
+                    ("noRequireInspected", bool_prop("Bypass inspect receipt requirement.")),
+                ],
+                &["path"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_state_list",
+            "List states",
+            "List saved .pire-state files.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
+            "pire_browser_state_show",
+            "Show state summary",
+            "Show metadata-only summary for a state file without printing cookie or storage values.",
+            tool_schema(vec![("path", string_prop("State file path or name."))], &["path"]),
+            true,
+        ),
+        tool(
+            "pire_browser_state_inspect",
+            "Inspect state",
+            "Inspect state metadata and optionally record a local receipt for guarded loads.",
+            tool_schema(
+                vec![
+                    ("path", string_prop("State file path or name.")),
+                    ("record", bool_prop("Record a local inspect receipt.")),
+                ],
+                &["path"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_state_rename",
+            "Rename state",
+            "Rename a .pire-state entry.",
+            tool_schema(
+                vec![
+                    ("old", string_prop("Old state file name.")),
+                    ("new", string_prop("New state file name.")),
+                ],
+                &["old", "new"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_state_clear",
+            "Clear state",
+            "Delete one .pire-state entry or all entries.",
+            tool_schema(
+                vec![
+                    ("name", string_prop("State name to delete.")),
+                    ("all", bool_prop("Delete all saved states.")),
+                ],
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_state_clean",
+            "Clean old states",
+            "Delete .pire-state files older than a number of days.",
+            tool_schema(vec![("olderThanDays", number_prop("Age threshold in days."))], &["olderThanDays"]),
+            false,
+        ),
+        tool(
+            "pire_browser_session_list",
+            "List sessions",
+            "List live Firefox extension sessions.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
+            "pire_browser_session_attach",
+            "Attach session",
+            "Print the CLI target prefix for a live session id.",
+            tool_schema(vec![("sessionId", string_prop("Live session id."))], &["sessionId"]),
+            true,
+        ),
+        tool(
+            "pire_browser_session_cleanup",
+            "Clean stale sessions",
+            "Remove stale session files.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_profiles_list",
+            "List profiles",
+            "List managed Firefox profiles known to pire-browser.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
             "pire_browser_tabs_list",
             "List tabs",
             "List managed Firefox tabs in the active session.",
@@ -1551,6 +1891,24 @@ mod tests {
             .iter()
             .any(|tool| tool["name"] == "pire_browser_highlight"));
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_pdf"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_network_requests"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_network_route"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_state_save"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_state_load"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_session_list"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_profiles_list"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_tabs_select"));
@@ -1914,6 +2272,240 @@ mod tests {
         assert_eq!(args, vec!["--json", "vitals", "https://example.com"]);
 
         let args = tool_command_args(
+            "pire_browser_network_requests",
+            &json!({
+                "filter": "/api/",
+                "resourceType": "xhr,fetch",
+                "method": "POST",
+                "status": "2xx"
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "network",
+                "requests",
+                "--filter",
+                "/api/",
+                "--type",
+                "xhr,fetch",
+                "--method",
+                "POST",
+                "--status",
+                "2xx"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_network_request",
+            &json!({ "requestId": "req_123" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "network", "request", "req_123"]);
+
+        let args = tool_command_args(
+            "pire_browser_network_har_start",
+            &json!({}),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "network", "har", "start"]);
+
+        let args = tool_command_args(
+            "pire_browser_network_har_stop",
+            &json!({ "path": "network.har" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "network", "har", "stop", "network.har"]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_network_har_export",
+            &json!({ "path": "network.har", "filter": "/api/" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "network",
+                "har",
+                "network.har",
+                "--filter",
+                "/api/"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_network_route",
+            &json!({
+                "pattern": "**/api/config**",
+                "body": "{\"ready\":true}",
+                "contentType": "application/json",
+                "resourceType": "xhr"
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "network",
+                "route",
+                "**/api/config**",
+                "--body",
+                "{\"ready\":true}",
+                "--content-type",
+                "application/json",
+                "--resource-type",
+                "xhr"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_network_unroute",
+            &json!({ "target": "**/api/config**" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "network", "unroute", "**/api/config**"]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_state_save",
+            &json!({ "sessionName": "work", "path": ".pire-state/app.json" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "--session-name",
+                "work",
+                "state",
+                "save",
+                ".pire-state/app.json"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_state_load",
+            &json!({ "path": ".pire-state/app.json", "requireInspected": true }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "state",
+                "load",
+                "--require-inspected",
+                ".pire-state/app.json"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_state_inspect",
+            &json!({ "path": ".pire-state/app.json", "record": true }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "state",
+                "inspect",
+                "--record",
+                ".pire-state/app.json"
+            ]
+        );
+
+        let args = tool_command_args("pire_browser_state_list", &json!({}), McpToolsProfile::Core)
+            .unwrap();
+        assert_eq!(args, vec!["--json", "state", "list"]);
+
+        let args = tool_command_args(
+            "pire_browser_state_show",
+            &json!({ "path": "app" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "state", "show", "app"]);
+
+        let args = tool_command_args(
+            "pire_browser_state_rename",
+            &json!({ "old": "app-old", "new": "app-new" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "state", "rename", "app-old", "app-new"]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_state_clear",
+            &json!({ "all": true }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "state", "clear", "--all"]);
+
+        let args = tool_command_args(
+            "pire_browser_state_clean",
+            &json!({ "olderThanDays": 14 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "state", "clean", "--older-than", "14"]);
+
+        let args = tool_command_args(
+            "pire_browser_session_attach",
+            &json!({ "sessionId": "abc" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "session", "attach", "abc"]);
+
+        let args = tool_command_args(
+            "pire_browser_session_list",
+            &json!({}),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "session", "list"]);
+
+        let args = tool_command_args(
+            "pire_browser_session_cleanup",
+            &json!({}),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "session", "cleanup"]);
+
+        let args = tool_command_args(
+            "pire_browser_profiles_list",
+            &json!({}),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "profiles"]);
+
+        let args = tool_command_args(
             "pire_browser_tab_new",
             &json!({ "url": "https://example.com", "label": "docs" }),
             McpToolsProfile::Core,
@@ -2053,6 +2645,42 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("dy is required"));
+
+        let error = tool_command_args(
+            "pire_browser_network_route",
+            &json!({ "pattern": "*", "abort": true, "body": "nope" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("cannot combine abort and body"));
+
+        let error = tool_command_args(
+            "pire_browser_state_load",
+            &json!({
+                "path": ".pire-state/app.json",
+                "requireInspected": true,
+                "noRequireInspected": true
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("cannot use requireInspected"));
+
+        let error = tool_command_args(
+            "pire_browser_state_clear",
+            &json!({}),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("requires name or all"));
+
+        let error = tool_command_args(
+            "pire_browser_state_clear",
+            &json!({ "name": "app", "all": true }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("cannot combine all and name"));
 
         let error = tool_command_args(
             "pire_browser_upload",

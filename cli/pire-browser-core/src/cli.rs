@@ -2635,9 +2635,10 @@ profile is `core`: open, inspect, interact, get page/element info, check
 element state, semantic find, keyboard/focus/scroll/dropdown/checkbox/mouse
 helpers, double-click, wait, capture screenshots/PDFs, inspect console/errors,
 handle JavaScript dialogs, highlight targets, measure Web Vitals, transfer
-files, use clipboard text, inspect/switch/label/close tabs, open windows,
-inspect status, close sessions, and fetch installed skill guidance. `all` is
-accepted as an alias for all currently available MCP tools.
+files, use clipboard text, inspect network requests/routes/HAR, manage
+plaintext state files, inspect sessions/profiles, inspect/switch/label/close
+tabs, open windows, inspect status, close sessions, and fetch installed skill
+guidance. `all` is accepted as an alias for all currently available MCP tools.
 "##;
 
 const SKILLS_HELP: &str = r##"
@@ -4400,6 +4401,11 @@ mod tests {
         assert!(help_text(Some("mcp")).unwrap().contains("mouse"));
         assert!(help_text(Some("mcp")).unwrap().contains("console/errors"));
         assert!(help_text(Some("mcp")).unwrap().contains("screenshots/PDFs"));
+        assert!(help_text(Some("mcp")).unwrap().contains("network requests"));
+        assert!(help_text(Some("mcp")).unwrap().contains("state files"));
+        assert!(help_text(Some("mcp"))
+            .unwrap()
+            .contains("sessions/profiles"));
         assert!(help_text(Some("skills"))
             .unwrap()
             .contains("skills get core"));
