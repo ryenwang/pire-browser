@@ -1,4 +1,5 @@
 pub mod action_policy;
+pub mod activity;
 pub mod auth_handoff;
 pub mod cli;
 pub mod confirmation_policy;

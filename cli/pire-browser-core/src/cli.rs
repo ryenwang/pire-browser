@@ -70,6 +70,10 @@ pub enum LocalCommand {
         port: u16,
         json: bool,
     },
+    ActivityList {
+        json: bool,
+        limit: usize,
+    },
     ProfilesList {
         json: bool,
     },
@@ -1092,6 +1096,44 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         });
     }
 
+    if command == "activity" {
+        args.remove(0);
+        remove_json_flags(&mut args, &mut json_output);
+        if args.first().is_some_and(|arg| arg == "list") {
+            args.remove(0);
+        }
+        remove_json_flags(&mut args, &mut json_output);
+        let mut limit = 20usize;
+        let mut i = 0;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--json" => json_output = true,
+                "--limit" => {
+                    i += 1;
+                    let Some(value) = args.get(i) else {
+                        bail!("--limit requires a positive integer");
+                    };
+                    limit = value
+                        .parse::<usize>()
+                        .map_err(|_| anyhow::anyhow!("--limit requires a positive integer"))?;
+                    if limit == 0 {
+                        bail!("--limit requires a positive integer");
+                    }
+                    limit = limit.min(100);
+                }
+                other if other.starts_with('-') => bail!("unsupported activity option: {other}"),
+                other => {
+                    bail!("unsupported activity command: {other}; try `pire-browser activity list`")
+                }
+            }
+            i += 1;
+        }
+        return Ok(LocalCommand::ActivityList {
+            json: json_output,
+            limit,
+        });
+    }
+
     if command == "install-status" || command == "doctor" {
         let doctorish = command.clone();
         args.remove(0);
@@ -1951,6 +1993,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "setup" => SETUP_HELP,
         "launch" => LAUNCH_HELP,
         "dashboard" => DASHBOARD_HELP,
+        "activity" => ACTIVITY_HELP,
         "mcp" => MCP_HELP,
         "skills" | "skill" => SKILLS_HELP,
         _ => return None,
@@ -1971,7 +2014,8 @@ Common commands:
   install [--firefox-path <path>]  Register the Firefox Native Messaging host
   doctor [--json] [--offline]     Check setup health and PATH/install hints
   mcp [--tools core|all]          Start the MCP stdio server
-  dashboard start [--port 4848]   Start a local status/session dashboard
+  dashboard start [--port 4848]   Start a local status/session/activity dashboard
+  activity list [--json]          Show recent redacted CLI command activity
   --config ./ci-config.json open <url>
   open <url> [--label <name>]      Open a URL, auto-launching Firefox if needed
   open <url> --headers '{"Authorization":"Bearer token"}'
@@ -2059,6 +2103,18 @@ profile state, live sessions, and CLI/PATH advisories. --offline and --quick are
 accepted as no-op compatibility flags. Domain allowlist, action policy,
 confirmation policy, and state policy entries are advisory diagnostics. --fix is
 not implemented yet.
+"##;
+
+const ACTIVITY_HELP: &str = r##"
+Usage:
+  pire-browser activity
+  pire-browser activity list [--limit 20] [--json]
+
+Shows the newest redacted pire-browser command activity recorded by the local
+CLI launcher. The feed is bounded on disk and masks known secret-bearing
+arguments such as passwords, headers, proxy credentials, cookie values, storage
+values, and HTTP Basic credentials. It is intended for debugging agent runs and
+for the local dashboard activity panel.
 "##;
 
 const CONFIG_HELP: &str = r##"
@@ -2720,9 +2776,10 @@ Usage:
   pire-browser dashboard start --port 0 --json
 
 Starts a foreground local dashboard server bound to 127.0.0.1. The dashboard
-shows setup status, live sessions, managed profiles, and current capability
-notes. It does not provide live viewport WebSocket streaming yet; use
-screenshots for visual evidence. Press Ctrl+C to stop the server.
+shows setup status, live sessions, managed profiles, recent redacted command
+activity, and current capability notes. It does not provide live viewport
+WebSocket streaming yet; use screenshots for visual evidence. Press Ctrl+C to
+stop the server.
 "##;
 
 const MCP_HELP: &str = r##"
@@ -4067,6 +4124,33 @@ mod tests {
     }
 
     #[test]
+    fn parses_activity_command() {
+        assert_eq!(
+            parse_cli_args(&s(&["activity"])).unwrap(),
+            LocalCommand::ActivityList {
+                json: false,
+                limit: 20
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["activity", "list", "--limit", "3", "--json"])).unwrap(),
+            LocalCommand::ActivityList {
+                json: true,
+                limit: 3
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["--json", "activity", "--limit", "250"])).unwrap(),
+            LocalCommand::ActivityList {
+                json: true,
+                limit: 100
+            }
+        );
+        assert!(parse_cli_args(&s(&["activity", "--limit", "0"])).is_err());
+        assert!(parse_cli_args(&s(&["activity", "clear"])).is_err());
+    }
+
+    #[test]
     fn parses_state_save_and_load_commands() {
         assert_eq!(
             parse_cli_args(&s(&["state", "save", "state.json", "--json"])).unwrap(),
@@ -4533,6 +4617,10 @@ mod tests {
             .unwrap()
             .contains("Model Context Protocol server"));
         assert!(help_text(None).unwrap().contains("dashboard start"));
+        assert!(help_text(None).unwrap().contains("activity list"));
+        assert!(help_text(Some("activity"))
+            .unwrap()
+            .contains("redacted pire-browser command activity"));
         assert!(help_text(Some("dashboard"))
             .unwrap()
             .contains("local dashboard server"));

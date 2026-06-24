@@ -42,7 +42,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 | `bin/<platform>-<arch>/` | Generated platform binaries | Local/CI build output copied from `cli/target/...` by platform packaging scripts; ignored and regenerated. |
 | Public root npm package contents | Curated distribution surface | `package.json#files` should include the JS launcher, Pi extension runtime, extension assets, `agent/`, `skills/`, `skill-data/`, root `pire-browser.schema.json`, legacy `agent-browser.schema.json`, required postinstall scripts, `LICENSE`, and `README.md`; it should exclude `docs/`, repository test fixtures, `site/`, `cli/`, and native binary directories. |
 | Public platform npm package contents | Curated native distribution surface | Each optional package should include only its native binary pair, README, LICENSE, and package metadata. |
-| `.pire-state/`, OS app-data `pire-browser/` directories | Local runtime state | Sessions, profiles, cookies, confirmations, downloads, uploads, policies, and update cache are not portable source. |
+| `.pire-state/`, OS app-data `pire-browser/` directories | Local runtime state | Sessions, profiles, cookies, confirmations, downloads, uploads, policies, bounded redacted activity logs, and update cache are not portable source. |
 | Root logs, screenshots, and CSV captures | Runtime/background artifacts | Manual-session outputs and local diagnostics, not authoritative implementation source. |
 
 ## Conflicts Or Ambiguities

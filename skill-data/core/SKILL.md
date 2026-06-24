@@ -138,7 +138,7 @@ Chrome CDP console payloads, and they only capture records observed after the
 pire-browser content script loads.
 
 Start the local dashboard when a human or agent needs a quick view of setup,
-live sessions, and managed profiles:
+live sessions, managed profiles, and recent command activity:
 
 ```bash
 pire-browser dashboard start
@@ -147,9 +147,16 @@ pire-browser dashboard start --port 0 --json
 ```
 
 The dashboard is a foreground localhost server; stop it with `Ctrl+C`. It shows
-install health, live sessions, managed profiles, and capability notes. It does
-not provide live viewport WebSocket streaming or video recording yet, so keep
-using `snapshot -i`, `screenshot`, `status`, and `doctor` as the primary
+install health, live sessions, managed profiles, a bounded redacted command
+activity feed, and capability notes. For scripts, use:
+
+```bash
+pire-browser activity list --json
+```
+
+Activity shows what commands ran; it does not prove page success. It does not
+provide live viewport WebSocket streaming or video recording yet, so keep using
+`snapshot -i`, `screenshot`, `status`, and `doctor` as the primary
 machine-readable evidence path.
 
 Handle page JavaScript dialogs when warnings mention `PAGE_DIALOG`:

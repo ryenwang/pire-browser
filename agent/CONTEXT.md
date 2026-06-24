@@ -22,7 +22,7 @@ Use this folder when you are operating an installed `pire-browser` package. It i
 - If output returns `confirm <id>`, ask the user before running it.
 - Prefer `pire-browser skills get core` when an agent skill needs complete operational guidance.
 - If your host supports MCP tools, `pire-browser mcp --tools core` exposes typed tools for the core inspect, semantic find, interact, get/check, wait, evidence, diff, debugging, settings/emulation, cookies/storage, network, auth, plaintext state, session/profile, download/wait-download/upload, clipboard, tab/frame/window, and close workflow through stdio.
-- For human-facing observability, `pire-browser dashboard start` opens a local status/session/profile dashboard. For machine-readable automation, keep using `status --json`, `doctor --json`, `session list --json`, and MCP tools.
+- For human-facing observability, `pire-browser dashboard start` opens a local status/session/profile/activity dashboard. For machine-readable automation, keep using `status --json`, `doctor --json`, `session list --json`, `activity list --json`, and MCP tools.
 
 ## Installed Package Boundaries
 

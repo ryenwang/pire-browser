@@ -73,12 +73,12 @@ export const featureStatuses = {
   },
   debugging: {
     status: "partial",
-    summary: "`console`, `errors`, `highlight`, best-effort `vitals`, and the local status/session dashboard are available for Firefox workflows; trace capture, DevTools inspect proxy, live viewport streaming, profiler, React DevTools introspection, and video recording commands are not implemented.",
+    summary: "`console`, `errors`, `highlight`, best-effort `vitals`, recent redacted command activity, and the local status/session/activity dashboard are available for Firefox workflows; trace capture, DevTools inspect proxy, live viewport streaming, profiler, React DevTools introspection, and video recording commands are not implemented.",
     sources: ["README.md", "extension/src/background.ts"],
   },
   dashboard: {
     status: "partial",
-    summary: "`dashboard start` serves a foreground localhost dashboard for install health, live sessions, managed profiles, and capability notes. Live viewport streaming, activity feed events, and dashboard-created sessions are not implemented yet.",
+    summary: "`dashboard start` serves a foreground localhost dashboard for install health, live sessions, managed profiles, a bounded redacted command activity feed, and capability notes. Live viewport streaming, dashboard-created sessions, and video recording are not implemented yet.",
     sources: ["README.md", "docs/src/pages/dashboard.mjs", "cli/pire-browser-cli/src/main.rs", "cli/pire-browser-core/src/cli.rs"],
   },
   dialogs: {
@@ -120,6 +120,7 @@ export const featureStatuses = {
 
 export const commandRootStatus = {
   addinitscript: "best_effort",
+  activity: "available",
   auth: "partial",
   back: "available",
   batch: "available",

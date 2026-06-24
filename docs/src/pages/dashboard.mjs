@@ -6,18 +6,19 @@ const dashboardBlocks = [
   code(`pire-browser dashboard start
 pire-browser dashboard start --port 4848
 pire-browser dashboard start --port 0 --json`),
-  p("The dashboard is a foreground localhost server bound to <code>127.0.0.1</code>. Open the printed URL to inspect install health, live Firefox sessions, managed profiles, and capability notes. Press <code>Ctrl+C</code> in the terminal to stop it."),
+  p("The dashboard is a foreground localhost server bound to <code>127.0.0.1</code>. Open the printed URL to inspect install health, live Firefox sessions, managed profiles, recent redacted command activity, and capability notes. Press <code>Ctrl+C</code> in the terminal to stop it."),
   h2("Current observability", "current-observability"),
   code(`pire-browser dashboard start
 pire-browser status
 pire-browser status --json
 pire-browser session list --json
 pire-browser profiles --json
+pire-browser activity list --json
 pire-browser doctor --json
 pire-browser --auto-connect state save ./.pire-state/current.json`),
-  p("Use the dashboard for a live local summary, and use the CLI commands above when scripts or agents need structured output."),
+  p("Use the dashboard for a live local summary, and use the CLI commands above when scripts or agents need structured output. Activity is a bounded command log with secret-bearing arguments redacted; verify page success with snapshots, screenshots, URL checks, or other page state."),
   h2("Limits", "limits"),
-  p("This is not the full agent-browser live viewport dashboard yet. Runtime WebSocket viewport streaming, command activity feed events, dashboard-created sessions, and video recording remain future work in the Firefox backend."),
+  p("This is not the full agent-browser live viewport dashboard yet. Runtime WebSocket viewport streaming, dashboard-created sessions, and video recording remain future work in the Firefox backend."),
 ];
 
 export default page({

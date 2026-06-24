@@ -8,6 +8,10 @@ use pire_browser_core::action_policy::{
     evaluate_action, policy_command_sequences, request_context as action_policy_request_context,
     resolve_action_policy, split_command_text, ActionPolicyArgs, ActionPolicyDecision,
 };
+use pire_browser_core::activity::{
+    read_recent_activity, record_command_finished, record_command_started, should_record_activity,
+    ActivityEvent,
+};
 use pire_browser_core::auth_handoff::{auth_handoff_text, collect_default_auth_handoff};
 use pire_browser_core::cli::{
     apply_config_defaults, build_command_request, format_cli_result, help_text, parse_cli_args,
@@ -155,14 +159,17 @@ struct ProxyConfig {
 }
 
 fn main() {
-    if let Err(err) = run() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let activity = begin_cli_activity(&args);
+    let result = run_with_args(args);
+    finish_cli_activity(activity.as_ref(), result.as_ref().err());
+    if let Err(err) = result {
         eprintln!("{}", redact_text(&format!("{err:#}")));
         std::process::exit(1);
     }
 }
 
-fn run() -> Result<()> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+fn run_with_args(args: Vec<String>) -> Result<()> {
     let config_result = apply_config_defaults(&args)?;
     let color_scheme = color_scheme_from_effective_args(&config_result.args)?;
     let proxy_config = proxy_config_from_effective_args(&config_result.args)?;
@@ -558,6 +565,9 @@ fn run() -> Result<()> {
         LocalCommand::Dashboard { port, json } => {
             handle_dashboard_start(port, json)?;
         }
+        LocalCommand::ActivityList { json, limit } => {
+            handle_activity_list(json, limit)?;
+        }
         LocalCommand::InstallStatus {
             json,
             domain_policy,
@@ -795,6 +805,21 @@ fn run() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn begin_cli_activity(args: &[String]) -> Option<ActivityEvent> {
+    if !should_record_activity(args) {
+        return None;
+    }
+    record_command_started(args).ok()
+}
+
+fn finish_cli_activity(activity: Option<&ActivityEvent>, error: Option<&anyhow::Error>) {
+    let Some(activity) = activity else {
+        return;
+    };
+    let error = error.map(|err| format!("{err:#}"));
+    let _ = record_command_finished(activity, error.as_deref());
 }
 
 fn defer_config_warnings(command: &LocalCommand) -> bool {
@@ -1494,6 +1519,42 @@ fn profiles_text(profiles: &[ManagedProfileInfo]) -> String {
     lines.join("\n")
 }
 
+fn handle_activity_list(json_output: bool, limit: usize) -> Result<()> {
+    let events = read_recent_activity(limit)?;
+    if json_output {
+        println!(
+            "{}",
+            format_cli_result(&json!({ "activity": events }), true)?
+        );
+    } else {
+        println!("{}", activity_text(&events));
+    }
+    Ok(())
+}
+
+fn activity_text(events: &[ActivityEvent]) -> String {
+    if events.is_empty() {
+        return "No pire-browser activity recorded yet.".to_string();
+    }
+    let mut lines = vec![format!("{} recent pire-browser command(s):", events.len())];
+    for event in events {
+        let duration = event
+            .duration_ms
+            .map(|ms| format!(" {ms}ms"))
+            .unwrap_or_default();
+        let error = event
+            .error
+            .as_ref()
+            .map(|message| format!(" error={message}"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "- {} {}{} `{}`{}",
+            event.status, event.command_root, duration, event.command, error
+        ));
+    }
+    lines.join("\n")
+}
+
 fn handle_dashboard_start(port: u16, json_output: bool) -> Result<()> {
     let listener = TcpListener::bind(("127.0.0.1", port))
         .with_context(|| format!("failed to bind dashboard server on 127.0.0.1:{port}"))?;
@@ -1646,6 +1707,7 @@ fn dashboard_status_value() -> Result<Value> {
     let mut sessions = list_sessions()?;
     annotate_session_profile_names(&mut sessions)?;
     let profiles = list_managed_profiles()?;
+    let activity = read_recent_activity(25)?;
     let mut install = collect_install_status()?;
     install.live_sessions = sessions.clone();
     Ok(json!({
@@ -1656,7 +1718,8 @@ fn dashboard_status_value() -> Result<Value> {
         },
         "install": install,
         "sessions": sessions,
-        "profiles": profiles
+        "profiles": profiles,
+        "activity": activity
     }))
 }
 
@@ -1666,7 +1729,7 @@ fn dashboard_capabilities_value() -> Value {
         "liveViewport": false,
         "webSocketStreaming": false,
         "videoRecording": false,
-        "activityFeed": false
+        "activityFeed": true
     })
 }
 
@@ -1712,9 +1775,14 @@ fn dashboard_index_html() -> String {
       <div class="panel"><h2>Install</h2><div class="value" id="install">-</div></div>
       <div class="panel"><h2>Live Sessions</h2><div class="value" id="sessions-count">-</div></div>
       <div class="panel"><h2>Profiles</h2><div class="value" id="profiles-count">-</div></div>
+      <div class="panel"><h2>Activity</h2><div class="value" id="activity-count">-</div></div>
       <div class="panel"><h2>Streaming</h2><div class="value warn">Not yet</div></div>
     </section>
     <section class="stack">
+      <div class="panel">
+        <h2>Recent Activity</h2>
+        <div id="activity"></div>
+      </div>
       <div class="panel">
         <h2>Sessions</h2>
         <div id="sessions"></div>
@@ -1725,7 +1793,7 @@ fn dashboard_index_html() -> String {
       </div>
       <div class="panel">
         <h2>Capability Notes</h2>
-        <p class="note">This dashboard shows setup status, live sessions, and managed profiles. Live viewport streaming, activity feed events, and video recording are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>status</code>, and <code>doctor</code> for evidence today.</p>
+        <p class="note">This dashboard shows setup status, live sessions, managed profiles, and a bounded redacted command activity feed. Live viewport streaming and video recording are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>status</code>, and <code>doctor</code> for evidence today.</p>
       </div>
     </section>
   </main>
@@ -1746,6 +1814,13 @@ fn dashboard_index_html() -> String {
       cls("install", data.install.ok ? "ok" : "bad");
       text("sessions-count", data.sessions.length);
       text("profiles-count", data.profiles.length);
+      text("activity-count", (data.activity || []).length);
+      document.getElementById("activity").innerHTML = table((data.activity || []).map(event => ({
+        status: event.status,
+        command: event.command,
+        duration: event.durationMs == null ? "" : event.durationMs + "ms",
+        updated: new Date(event.updatedAt).toLocaleTimeString()
+      })), [["status", "Status"], ["command", "Command"], ["duration", "Duration"], ["updated", "Updated"]]);
       document.getElementById("sessions").innerHTML = table(data.sessions.map(session => ({
         id: session.sessionId,
         profile: session.profileName || session.profileId,
@@ -7431,6 +7506,10 @@ mod tests {
             value["dashboard"]["capabilities"]["webSocketStreaming"],
             json!(false)
         );
+        assert_eq!(
+            value["dashboard"]["capabilities"]["activityFeed"],
+            json!(true)
+        );
     }
 
     #[test]
@@ -7456,6 +7535,10 @@ mod tests {
         assert_eq!(index.status, 200);
         assert!(index.body.contains("pire-browser dashboard"));
         assert!(index.body.contains("/api/status"));
+        assert!(index.body.contains("Recent Activity"));
+        assert!(index
+            .body
+            .contains("bounded redacted command activity feed"));
         assert!(index.body.contains("Live viewport streaming"));
 
         let missing = dashboard_response_for_path("/missing");
