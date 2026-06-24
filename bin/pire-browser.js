@@ -49,6 +49,8 @@ process.exit(result.status ?? 1);
 function nativeEnv() {
   const env = { ...process.env };
   const extensionDir = join(root, "extension");
+  env.PIRE_BROWSER_NODE_PATH ||= process.execPath;
+  env.PIRE_BROWSER_LAUNCHER_PATH ||= fileURLToPath(import.meta.url);
   if (!env.PIRE_BROWSER_EXTENSION_DIR && existsSync(join(extensionDir, "manifest.json"))) {
     env.PIRE_BROWSER_EXTENSION_DIR = extensionDir;
   }

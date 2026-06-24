@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use pire_browser_core::redaction::redact_text;
 use serde_json::{json, Map, Value};
 use std::io::{self, BufRead, Write};
-use std::process::Command;
+use std::process::{Command, Output};
 
 const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 const SERVER_NAME: &str = "pire-browser";
@@ -178,7 +178,10 @@ fn tool_profile_bits(name: &str) -> u16 {
         "pire_browser_profiles_list" => PROFILE_CORE | PROFILE_STATE | PROFILE_DEBUG,
         "pire_browser_skills_get_core" => PROFILE_CORE | PROFILE_STATE,
         "pire_browser_status" => PROFILE_CORE | PROFILE_DEBUG,
-        "pire_browser_launch" | "pire_browser_batch" => PROFILE_DEBUG,
+        "pire_browser_launch"
+        | "pire_browser_batch"
+        | "pire_browser_install"
+        | "pire_browser_upgrade" => PROFILE_DEBUG,
         "pire_browser_doctor" | "pire_browser_activity_list" => PROFILE_DEBUG,
         "pire_browser_confirm" | "pire_browser_deny" => PROFILE_CORE | PROFILE_DEBUG,
         "pire_browser_close" => PROFILE_CORE | PROFILE_DEBUG | PROFILE_TABS,
@@ -371,7 +374,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade for safe package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -401,15 +404,9 @@ fn handle_tools_call(
 }
 
 fn run_cli_tool(args: Vec<String>) -> Value {
-    let exe = match std::env::current_exe() {
-        Ok(exe) => exe,
-        Err(err) => {
-            return tool_error_text(format!("failed to resolve pire-browser executable: {err}"))
-        }
-    };
-    let output = match Command::new(exe).args(args).output() {
+    let output = match command_output(&args) {
         Ok(output) => output,
-        Err(err) => return tool_error_text(format!("failed to run pire-browser command: {err}")),
+        Err(message) => return tool_error_text(message),
     };
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = redact_text(String::from_utf8_lossy(&output.stderr).trim());
@@ -436,6 +433,48 @@ fn run_cli_tool(args: Vec<String>) -> Value {
         result["structuredContent"] = parsed;
     }
     result
+}
+
+fn command_output(args: &[String]) -> std::result::Result<Output, String> {
+    if is_launcher_command_args(args) {
+        return launcher_command_output(args);
+    }
+    let exe = std::env::current_exe()
+        .map_err(|err| format!("failed to resolve pire-browser executable: {err}"))?;
+    Command::new(exe)
+        .args(args)
+        .output()
+        .map_err(|err| format!("failed to run pire-browser command: {err}"))
+}
+
+fn launcher_command_output(args: &[String]) -> std::result::Result<Output, String> {
+    let node_path = std::env::var("PIRE_BROWSER_NODE_PATH").unwrap_or_else(|_| "node".to_string());
+    let launcher_path = std::env::var("PIRE_BROWSER_LAUNCHER_PATH").map_err(|_| {
+        "pire_browser_upgrade requires the npm/Pi JavaScript launcher; restart MCP with `pire-browser mcp` from the installed package".to_string()
+    })?;
+    let launcher_args = launcher_args(args);
+    Command::new(node_path)
+        .arg(launcher_path)
+        .args(launcher_args)
+        .output()
+        .map_err(|err| format!("failed to run pire-browser launcher command: {err}"))
+}
+
+fn launcher_args(args: &[String]) -> Vec<String> {
+    let mut result = vec!["upgrade".to_string()];
+    if args.iter().any(|arg| arg == "--json") {
+        result.push("--json".to_string());
+    }
+    result
+}
+
+fn is_launcher_command_args(args: &[String]) -> bool {
+    let without_json = args
+        .iter()
+        .filter(|arg| arg.as_str() != "--json")
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    without_json == ["upgrade"]
 }
 
 fn tool_profiles_result(active: McpToolsProfile) -> Value {
@@ -488,10 +527,10 @@ fn tool_command_args(
     let object = arguments
         .as_object()
         .ok_or_else(|| "tool arguments must be an object".to_string())?;
-    let mut args = if name == "pire_browser_launch" {
-        launch_prefix_args(object)?
-    } else {
-        target_args(object)?
+    let mut args = match name {
+        "pire_browser_launch" => launch_prefix_args(object)?,
+        "pire_browser_install" | "pire_browser_upgrade" => Vec::new(),
+        _ => target_args(object)?,
     };
     match (profile, name) {
         (_, "pire_browser_launch") => {
@@ -522,6 +561,15 @@ fn tool_command_args(
                 args.push("--bail".to_string());
             }
             args.extend(required_batch_commands(object)?);
+        }
+        (_, "pire_browser_install") => {
+            reject_unsupported_fields(object, "pire_browser_install", &["firefoxPath"])?;
+            args.push("install".to_string());
+            push_optional_flag_value(&mut args, object, "firefoxPath", "--firefox-path")?;
+        }
+        (_, "pire_browser_upgrade") => {
+            reject_unsupported_fields(object, "pire_browser_upgrade", &[])?;
+            args.push("upgrade".to_string());
         }
         (_, "pire_browser_open") => {
             if let Some(color_scheme) = optional_color_scheme(object, "colorScheme")? {
@@ -1386,7 +1434,12 @@ fn tool_command_args(
     if !matches!(name, "pire_browser_skills_get_core") {
         args.insert(0, "--json".to_string());
     }
-    args.extend(optional_string_array(object, "extraArgs")?);
+    if !matches!(
+        name,
+        "pire_browser_batch" | "pire_browser_install" | "pire_browser_upgrade"
+    ) {
+        args.extend(optional_string_array(object, "extraArgs")?);
+    }
     Ok(args)
 }
 
@@ -1696,6 +1749,19 @@ fn reject_launch_unsupported_fields(
     Ok(())
 }
 
+fn reject_unsupported_fields(
+    object: &Map<String, Value>,
+    tool_name: &str,
+    allowed: &[&str],
+) -> std::result::Result<(), String> {
+    for key in object.keys() {
+        if !allowed.contains(&key.as_str()) {
+            return Err(format!("{key} is not supported by {tool_name}"));
+        }
+    }
+    Ok(())
+}
+
 fn optional_string_or_csv_array(
     object: &Map<String, Value>,
     key: &str,
@@ -1935,6 +2001,20 @@ fn core_tools() -> Vec<Value> {
                 ],
                 &["commands"],
             ),
+            false,
+        ),
+        tool(
+            "pire_browser_install",
+            "Install or repair native host",
+            "Register or repair the Firefox Native Messaging host for the current OS user. Debug profile only; mutates local setup.",
+            tool_schema_without_common(vec![("firefoxPath", string_prop("Optional Firefox executable path."))], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_upgrade",
+            "Upgrade package",
+            "Run the installed-package upgrade path through the npm/Pi JavaScript launcher. Debug profile only; mutates the package install when safe update rules allow it.",
+            tool_schema_without_common(vec![], &[]),
             false,
         ),
         tool(
@@ -3366,6 +3446,10 @@ fn jsonrpc_error(id: Value, code: i64, message: &str) -> Value {
 mod tests {
     use super::*;
 
+    fn s(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
     #[test]
     fn initialize_advertises_core_tools_and_version() {
         let result = initialize_result();
@@ -3442,6 +3526,12 @@ mod tests {
         assert!(!tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_batch"));
+        assert!(!tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_install"));
+        assert!(!tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_upgrade"));
         let snapshot = tools
             .iter()
             .find(|tool| tool["name"] == "pire_browser_snapshot")
@@ -3515,6 +3605,37 @@ mod tests {
             .unwrap()
             .get("extraArgs")
             .is_none());
+        let install = debug_tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_install")
+            .unwrap();
+        assert_eq!(
+            install["inputSchema"]["properties"]["firefoxPath"]["type"],
+            "string"
+        );
+        assert!(install["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .get("session")
+            .is_none());
+        assert!(install["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .get("extraArgs")
+            .is_none());
+        let upgrade = debug_tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_upgrade")
+            .unwrap();
+        assert!(upgrade["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .get("extraArgs")
+            .is_none());
+        assert!(upgrade["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -3542,6 +3663,12 @@ mod tests {
         assert!(debug
             .iter()
             .any(|tool| tool["name"] == "pire_browser_batch"));
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_install"));
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_upgrade"));
         assert!(debug
             .iter()
             .any(|tool| tool["name"] == "pire_browser_doctor"));
@@ -3582,6 +3709,12 @@ mod tests {
 
         let all = mcp_tools(McpToolsProfile::All);
         assert!(all.iter().any(|tool| tool["name"] == "pire_browser_batch"));
+        assert!(all
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_install"));
+        assert!(all
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_upgrade"));
 
         let react = mcp_tools(McpToolsProfile::React);
         assert_eq!(react.len(), 1);
@@ -3631,6 +3764,30 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result["id"], 8);
+        assert_eq!(result["result"]["isError"], true);
+        assert!(result["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("not available in MCP tools profile `core`"));
+
+        let result = handle_message(
+            r#"{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"pire_browser_install","arguments":{}}}"#,
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(result["id"], 10);
+        assert_eq!(result["result"]["isError"], true);
+        assert!(result["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("not available in MCP tools profile `core`"));
+
+        let result = handle_message(
+            r#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"pire_browser_upgrade","arguments":{}}}"#,
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(result["id"], 11);
         assert_eq!(result["result"]["isError"], true);
         assert!(result["result"]["content"][0]["text"]
             .as_str()
@@ -3752,6 +3909,28 @@ mod tests {
                 "get url"
             ]
         );
+
+        let args = tool_command_args(
+            "pire_browser_install",
+            &json!({
+                "firefoxPath": "C:/Program Files/Mozilla Firefox/firefox.exe"
+            }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "install",
+                "--firefox-path",
+                "C:/Program Files/Mozilla Firefox/firefox.exe"
+            ]
+        );
+
+        let args =
+            tool_command_args("pire_browser_upgrade", &json!({}), McpToolsProfile::Debug).unwrap();
+        assert_eq!(args, vec!["--json", "upgrade"]);
 
         let args = tool_command_args(
             "pire_browser_open",
@@ -5160,12 +5339,65 @@ mod tests {
         assert!(error.contains("extraArgs is not supported by pire_browser_batch"));
 
         let error = tool_command_args(
+            "pire_browser_install",
+            &json!({ "sessionName": "qa" }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap_err();
+        assert!(error.contains("sessionName is not supported by pire_browser_install"));
+
+        let error = tool_command_args(
+            "pire_browser_install",
+            &json!({ "extraArgs": ["--windows"] }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap_err();
+        assert!(error.contains("extraArgs is not supported by pire_browser_install"));
+
+        let error = tool_command_args(
+            "pire_browser_upgrade",
+            &json!({ "extraArgs": ["--force"] }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap_err();
+        assert!(error.contains("extraArgs is not supported by pire_browser_upgrade"));
+
+        let error = tool_command_args(
+            "pire_browser_upgrade",
+            &json!({ "sessionName": "qa" }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap_err();
+        assert!(error.contains("sessionName is not supported by pire_browser_upgrade"));
+
+        let error = tool_command_args(
             "pire_browser_doctor",
             &json!({ "firefoxPath": "C:/Firefox/firefox.exe" }),
             McpToolsProfile::Core,
         )
         .unwrap_err();
         assert!(error.contains("firefoxPath requires fix=true"));
+    }
+
+    #[test]
+    fn detects_only_exact_launcher_upgrade_args() {
+        assert!(is_launcher_command_args(&s(&["--json", "upgrade"])));
+        assert!(is_launcher_command_args(&s(&["upgrade"])));
+        assert_eq!(
+            launcher_args(&s(&["--json", "upgrade"])),
+            s(&["upgrade", "--json"])
+        );
+        assert_eq!(launcher_args(&s(&["upgrade"])), s(&["upgrade"]));
+        assert!(!is_launcher_command_args(&s(&[
+            "--json", "batch", "upgrade"
+        ])));
+        assert!(!is_launcher_command_args(&s(&[
+            "--json",
+            "--session-name",
+            "qa",
+            "batch",
+            "upgrade"
+        ])));
     }
 
     #[test]

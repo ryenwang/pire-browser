@@ -338,7 +338,7 @@ pire-browser mcp --tools core
 pire-browser mcp --tools core,network
 pire-browser mcp --tools core,state
 pire-browser mcp --tools all`),
-  p("The stdio MCP server exposes typed tools through profiles. Start with <code>core</code> for the inspect-before-act workflow, add comma-separated profiles such as <code>network</code>, <code>state</code>, <code>debug</code>, <code>tabs</code>, or <code>mobile</code> when needed, and use <code>all</code> only when the host can tolerate the full tool surface."),
+  p("The stdio MCP server exposes typed tools through profiles. Start with <code>core</code> for the inspect-before-act workflow, add comma-separated profiles such as <code>network</code>, <code>state</code>, <code>debug</code>, <code>tabs</code>, or <code>mobile</code> when needed, and use <code>all</code> only when the host can tolerate the full tool surface. Use debug-profile <code>pire_browser_install</code> only for explicit native-host setup or repair, and <code>pire_browser_upgrade</code> only for user-requested package update."),
 
   h2("Navigation", "navigation"),
   code(`pire-browser back

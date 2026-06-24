@@ -28,7 +28,7 @@ export const featureStatuses = {
   },
   mcp: {
     status: "available",
-    summary: "`pire-browser mcp --tools core` starts a stdio MCP server with typed tools for the default inspect-before-act workflow. Agent-browser-style profiles `network`, `state`, `debug`, `tabs`, `mobile`, `react`, and `all` can be selected or comma-combined to keep MCP context small while exposing broader tools on demand; `debug` includes lower-level launch, typed batch, diagnostics, console/errors, dialogs, highlight, and vitals.",
+    summary: "`pire-browser mcp --tools core` starts a stdio MCP server with typed tools for the default inspect-before-act workflow. Agent-browser-style profiles `network`, `state`, `debug`, `tabs`, `mobile`, `react`, and `all` can be selected or comma-combined to keep MCP context small while exposing broader tools on demand; `debug` includes lower-level launch, install/repair, safe upgrade, typed batch, diagnostics, console/errors, dialogs, highlight, and vitals.",
     sources: ["README.md", "docs/src/pages/mcp.mjs", "cli/pire-browser-cli/src/mcp.rs", "cli/pire-browser-core/src/cli.rs"],
   },
   managedProfiles: {

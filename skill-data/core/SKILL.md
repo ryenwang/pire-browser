@@ -501,9 +501,9 @@ wait, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff
 evidence, eval, status, confirmation follow-up, basic tabs, profile discovery,
 close, and skill guidance. Add comma-separated profiles only when needed:
 `network` for request diagnostics/routes/HAR, `state` for cookies/storage/auth
-and state files, `debug` for lower-level launch, typed batch, doctor/activity
-diagnostics, console/errors/dialog/highlight/vitals, `tabs` for
-tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
+and state files, `debug` for lower-level launch, explicit install/repair, safe
+upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/vitals,
+`tabs` for tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
 helpers. `react` is accepted for compatibility but currently has no React
 DevTools introspection tools. Use `all` only when the host can tolerate the full
 tool surface. The `pire_browser_tools_profiles` MCP tool returns this profile
@@ -517,9 +517,11 @@ For MCP guardrails and launch context, prefer typed common fields over
 `pire_browser_open.initScriptPaths` when a navigation needs one-shot request
 headers or pre-navigation init scripts. Prefer `pire_browser_open` for normal
 launch/navigation; add the `debug` profile and use `pire_browser_launch` only
-for lower-level launch diagnostics. Use debug-profile `pire_browser_batch` only
-for short command sequences where later steps do not depend on parsing
-intermediate output.
+for lower-level launch diagnostics. Use debug-profile `pire_browser_install`
+only when the user wants explicit native-host setup or repair, and
+`pire_browser_upgrade` only when the user wants package update. Use
+debug-profile `pire_browser_batch` only for short command sequences where later
+steps do not depend on parsing intermediate output.
 
 ## Snapshot Options
 
@@ -557,6 +559,7 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 - `pire-browser status` reports install and session state without fixing anything.
 - `pire-browser doctor` gives read-only diagnostics.
 - `pire-browser doctor --fix` explicitly reruns native host setup and verifies status; use it when the user wants repair, not for observation.
+- In MCP, use debug-profile `pire_browser_install` for explicit native-host setup or repair, and `pire_browser_upgrade` for user-requested package update; keep `pire_browser_status` and plain `pire_browser_doctor` observational.
 - Browser commands that need auto-launch may run lazy setup when native host registration is missing or mismatched.
 - If `open` reports a recoverable page-readiness warning, continue with `pire-browser snapshot -i`.
 - If an installed command reports a missing optional native package, reinstall with optional dependencies enabled.
