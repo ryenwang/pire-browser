@@ -197,10 +197,12 @@ pire-browser snapshot -i
 pire-browser frame main`),
 
   h2("Dialogs", "dialogs"),
-  code(`pire-browser dialog accept [text]
+  statusNote("dialogs"),
+  code(`pire-browser dialog status
+pire-browser dialog accept [text]
 pire-browser dialog dismiss
-pire-browser dialog status`),
-  p("Dialog support is Firefox-extension mediated and should be treated as best-effort when a browser prompt blocks page script execution."),
+pire-browser snapshot -i`),
+  p("Dialog support is Firefox WebExtension mediated. <code>alert</code>, <code>confirm</code>, and <code>prompt</code> are shimmed in the page context so they do not hard-block the agent loop. <code>dialog accept [text]</code> configures the next shimmed confirm or prompt to accept, using text as the prompt return value; <code>dialog dismiss</code> configures the next shimmed confirm or prompt to cancel. Observed dialogs surface as <code>PAGE_DIALOG</code> warnings. Re-run <code>snapshot -i</code> after handling a dialog before acting on refs."),
 
   h2("Streaming", "streaming"),
   code(`# Streaming is not available in the current Firefox backend.

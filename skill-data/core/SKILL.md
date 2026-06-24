@@ -117,6 +117,21 @@ page-world messages and page errors from reachable frames. They do not expose ra
 Chrome CDP console payloads, and they only capture records observed after the
 pire-browser content script loads.
 
+Handle page JavaScript dialogs when warnings mention `PAGE_DIALOG`:
+
+```bash
+pire-browser dialog status
+pire-browser dialog accept "prompt text"
+pire-browser dialog dismiss
+pire-browser snapshot -i
+```
+
+`dialog accept [text]` configures the next shimmed confirm or prompt to accept,
+using `text` as the prompt return value. `dialog dismiss` configures the next
+shimmed confirm or prompt to cancel. Firefox dialog support is page-shimmed
+best effort, not native browser chrome control. Reinspect after handling a
+dialog before using old refs.
+
 Inspect network activity during QA:
 
 ```bash

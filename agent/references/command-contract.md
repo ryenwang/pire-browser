@@ -42,4 +42,5 @@ Browser commands may auto-launch a managed Firefox session when safe. Read the r
 - Use `pire-browser set credentials <username> <password>` for HTTP Basic auth on the active origin. It is session-memory only and does not echo the password.
 - Use `pire-browser set offline on|off` for best-effort offline/reconnect QA. It cancels future managed-tab requests, but does not control `navigator.onLine`, service worker cache behavior, DNS, or socket state.
 - Use `pire-browser --proxy <url> open <url>` for Firefox-managed proxy QA. `--proxy-bypass <list>` maps to Firefox passthrough hosts; proxy credentials may come from the URL or `PIRE_BROWSER_PROXY_USERNAME` / `PIRE_BROWSER_PROXY_PASSWORD`. Do not claim TLS-ignore or OS-wide proxy behavior.
+- Use `pire-browser dialog status`, `dialog accept [text]`, and `dialog dismiss` when command output includes `PAGE_DIALOG` warnings. Dialog control is page-shimmed best effort; re-run `snapshot -i` after handling a dialog.
 - Use `pire-browser pdf <path>` for portable visual evidence. The PDF is image-backed; do not claim selectable text or print-CSS fidelity.

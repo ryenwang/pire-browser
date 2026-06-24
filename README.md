@@ -344,12 +344,18 @@ Iframe nodes are surfaced in snapshots when Firefox can inspect them from the cu
 ### Dialogs
 
 ```bash
+pire-browser dialog status
 pire-browser dialog accept [text]
 pire-browser dialog dismiss
-pire-browser dialog status
 ```
 
-Dialog support is Firefox-extension mediated and best effort when a browser prompt blocks page script execution.
+Dialog support is Firefox WebExtension mediated. `alert`, `confirm`, and
+`prompt` are shimmed in the page context so they do not hard-block the agent
+loop. `dialog accept [text]` configures the next shimmed confirm or prompt to
+accept, using `text` as the prompt return value; `dialog dismiss` configures
+the next shimmed confirm or prompt to cancel. When a dialog is observed during
+another command, output includes a `PAGE_DIALOG` warning. Re-run `snapshot -i`
+after handling a dialog before acting on refs.
 
 ### Diff
 

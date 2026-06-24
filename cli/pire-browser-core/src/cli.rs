@@ -1881,6 +1881,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "pushstate" => PUSHSTATE_HELP,
         "console" => CONSOLE_HELP,
         "errors" => ERRORS_HELP,
+        "dialog" | "dialogs" => DIALOG_HELP,
         "network" => NETWORK_HELP,
         "vitals" => VITALS_HELP,
         "highlight" => HIGHLIGHT_HELP,
@@ -1940,6 +1941,7 @@ Common commands:
   pushstate /dashboard            SPA client-side navigation in active page
   console                         Show recent page console messages
   errors                          Show recent page errors
+  dialog status                   Show recently observed JavaScript dialogs
   network requests                Show recent page network requests
   network har network.har         Export recent request metadata as HAR
   network route "**/api/**" --body '{}' Mock or block active-tab requests
@@ -2197,6 +2199,22 @@ Usage:
 Shows recent page errors captured from the active page and reachable frames,
 including `window.onerror` and unhandled promise rejections. `--clear` clears the
 captured page-error buffer for the current page context.
+"##;
+
+const DIALOG_HELP: &str = r##"
+Usage:
+  pire-browser dialog status [--json]
+  pire-browser dialog accept [text]
+  pire-browser dialog dismiss
+
+Reports and configures JavaScript dialogs observed by the managed Firefox
+content script. Dialog support is Firefox WebExtension mediated: alert,
+confirm, and prompt are shimmed in the page context so they do not hard-block
+the agent loop. `dialog accept [text]` configures the next shimmed confirm or
+prompt to accept, using text as the prompt return value; `dialog dismiss`
+configures the next shimmed confirm or prompt to cancel. When a dialog is
+observed during another command, command output includes PAGE_DIALOG warnings.
+Re-run `snapshot -i` after handling a dialog before acting on refs.
 "##;
 
 const NETWORK_HELP: &str = r##"
@@ -4163,6 +4181,7 @@ mod tests {
         assert!(text.contains("pushstate /dashboard"));
         assert!(text.contains("console"));
         assert!(text.contains("errors"));
+        assert!(text.contains("dialog status"));
         assert!(text.contains("network requests"));
         assert!(text.contains("network route"));
         assert!(text.contains("network har"));
@@ -4251,6 +4270,10 @@ mod tests {
         assert!(help_text(Some("errors"))
             .unwrap()
             .contains("unhandled promise"));
+        assert!(help_text(Some("dialog"))
+            .unwrap()
+            .contains("dialog accept [text]"));
+        assert!(help_text(Some("dialog")).unwrap().contains("PAGE_DIALOG"));
         assert!(help_text(Some("network"))
             .unwrap()
             .contains("network request <requestId>"));

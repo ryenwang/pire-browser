@@ -9,6 +9,13 @@ pire-browser console --clear
 pire-browser errors
 pire-browser errors --clear`),
   p("Use these after navigation, login, or failed actions to inspect page-world console messages, uncaught errors, and unhandled promise rejections captured by the Firefox content script."),
+  h2("Dialogs", "dialogs"),
+  statusNote("dialogs"),
+  code(`pire-browser dialog status
+pire-browser dialog accept [text]
+pire-browser dialog dismiss
+pire-browser snapshot -i`),
+  p("Use these when command output includes PAGE_DIALOG warnings. Firefox dialog control is page-shimmed best effort; re-run snapshot after handling a dialog before using old refs."),
   h2("Highlight", "highlight"),
   code(`pire-browser highlight '@e2'
 pire-browser highlight '#submit'

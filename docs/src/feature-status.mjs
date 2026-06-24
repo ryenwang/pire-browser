@@ -76,6 +76,11 @@ export const featureStatuses = {
     summary: "`console`, `errors`, `highlight`, and best-effort `vitals` are available for active Firefox tabs; trace capture, DevTools inspect proxy, profiler, React DevTools introspection, and video recording commands are not implemented.",
     sources: ["README.md", "extension/src/background.ts"],
   },
+  dialogs: {
+    status: "best_effort",
+    summary: "`dialog status`, `dialog accept [text]`, and `dialog dismiss` work through a Firefox page-context dialog shim. Observed dialogs surface as PAGE_DIALOG warnings, but this is not native browser chrome dialog control.",
+    sources: ["README.md", "skill-data/core/SKILL.md", "extension/src/background.ts"],
+  },
   profiler: {
     status: "not_available",
     summary: "Chrome trace and CPU profiler artifacts require a backend that pire-browser does not ship today.",
