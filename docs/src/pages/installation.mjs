@@ -50,6 +50,7 @@ PIRE_BROWSER_FIREFOX_PATH=/path/to/firefox pire-browser install
 # Windows PowerShell
 $env:PIRE_BROWSER_FIREFOX_PATH = "D:\\Apps\\Mozilla Firefox\\firefox.exe"
 pire-browser setup --firefox-path $env:PIRE_BROWSER_FIREFOX_PATH`),
+  p("<code>--firefox-path</code> and <code>PIRE_BROWSER_FIREFOX_PATH</code> may point to the Firefox executable, a directory containing it, or <code>/Applications/Firefox.app</code> on macOS. If Firefox discovery fails during install, the error includes the platform's recommended repair command."),
   h2("AI agent setup", "ai-agent-setup"),
   code(`npx skills add ryenwang/pire-browser
 pire-browser skills cat core`),

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use serde_json::json;
 
-use crate::firefox::discover_firefox;
+use crate::firefox::{discover_firefox, firefox_discovery_error_message};
 #[cfg(all(unix, not(target_os = "macos")))]
 use crate::firefox::{firefox_install_kind, sandboxed_firefox_message, FirefoxInstallKind};
 use crate::platform::{host_executable_name, native_manifest_registration_path};
@@ -34,8 +34,8 @@ pub fn setup_windows(firefox_path: Option<String>) -> Result<SetupResult> {
 
 fn setup_inner(firefox_path: Option<String>) -> Result<SetupResult> {
     ensure_runtime_dirs()?;
-    let firefox_path = discover_firefox(firefox_path)
-        .context("could not discover Firefox; pass --firefox-path <path>")?;
+    let firefox_path = discover_firefox(firefox_path.clone())
+        .with_context(|| firefox_discovery_error_message(firefox_path.as_deref()))?;
     let host_path = sibling_host_path()?;
     if !host_path.exists() {
         bail!(

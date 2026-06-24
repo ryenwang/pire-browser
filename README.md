@@ -919,6 +919,11 @@ PIRE_BROWSER_FIREFOX_PATH=/path/to/firefox pire-browser launch
 pire-browser setup --firefox-path /path/to/firefox
 ```
 
+`--firefox-path` and `PIRE_BROWSER_FIREFOX_PATH` may point to the Firefox
+executable, a directory containing it, or `/Applications/Firefox.app` on macOS.
+If Firefox discovery fails during `install`, the error includes the platform's
+recommended repair command.
+
 ## Local Files
 
 Open and interact with supported local HTML files using `file://` URLs:

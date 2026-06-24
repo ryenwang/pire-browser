@@ -8,12 +8,12 @@ use winreg::RegKey;
 pub fn discover_firefox(override_path: Option<String>) -> Option<PathBuf> {
     if let Some(path) = override_path {
         let path = PathBuf::from(path);
-        if is_firefox_executable(&path) {
+        if let Some(path) = first_firefox_executable_candidate(path) {
             return Some(path);
         }
     }
     if let Some(path) = firefox_path_from_env() {
-        if is_firefox_executable(&path) {
+        if let Some(path) = first_firefox_executable_candidate(path) {
             return Some(path);
         }
     }
@@ -67,6 +67,39 @@ pub fn discover_firefox(override_path: Option<String>) -> Option<PathBuf> {
         .find(|candidate| is_firefox_executable(candidate))
 }
 
+pub fn firefox_discovery_error_message(override_path: Option<&str>) -> String {
+    let mut message = String::from("could not discover Firefox");
+    if let Some(path) = override_path.filter(|path| !path.trim().is_empty()) {
+        message.push_str(&format!(
+            "; provided path was not a usable Firefox executable: {path}"
+        ));
+    }
+    message.push_str(". Install Firefox, then rerun `pire-browser install`.");
+    message.push(' ');
+    message.push_str(platform_firefox_install_hint());
+    message.push_str(" You can pass `--firefox-path <path>` or set `PIRE_BROWSER_FIREFOX_PATH`.");
+    message
+}
+
+pub fn platform_firefox_install_hint() -> &'static str {
+    #[cfg(windows)]
+    {
+        r#"On Windows, install Mozilla Firefox or rerun with `pire-browser install --firefox-path "C:\Program Files\Mozilla Firefox\firefox.exe"`."#
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "On macOS, install Firefox.app or run `brew install --cask firefox`, then rerun with `pire-browser install --firefox-path /Applications/Firefox.app`."
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        "On Linux, use an unrestricted Mozilla or distro Firefox build when possible; Snap/Flatpak Firefox can block Native Messaging. Rerun with `pire-browser install --firefox-path /path/to/firefox`."
+    }
+    #[cfg(not(any(windows, target_os = "macos", unix)))]
+    {
+        "Install Firefox for this platform and rerun with `pire-browser install --firefox-path <path>`."
+    }
+}
+
 fn firefox_path_from_env() -> Option<PathBuf> {
     for name in [
         "PIRE_BROWSER_FIREFOX_PATH",
@@ -82,6 +115,35 @@ fn firefox_path_from_env() -> Option<PathBuf> {
         return Some(PathBuf::from(value));
     }
     None
+}
+
+fn first_firefox_executable_candidate(path: PathBuf) -> Option<PathBuf> {
+    expanded_firefox_candidates(path)
+        .into_iter()
+        .find(|candidate| is_firefox_executable(candidate))
+}
+
+fn expanded_firefox_candidates(path: PathBuf) -> Vec<PathBuf> {
+    let mut paths = vec![path.clone()];
+
+    #[cfg(windows)]
+    {
+        paths.push(path.join("firefox.exe"));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        paths.push(path.join("Contents").join("MacOS").join("firefox"));
+        paths.push(path.join("firefox"));
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        paths.push(path.join("firefox"));
+        paths.push(path.join("firefox-esr"));
+    }
+
+    paths
 }
 
 fn common_firefox_paths() -> Vec<PathBuf> {
@@ -209,6 +271,41 @@ mod tests {
     fn common_paths_include_program_files() {
         let paths = common_firefox_paths();
         assert!(!paths.is_empty());
+    }
+
+    #[test]
+    fn override_path_accepts_directory_containing_firefox() {
+        let root = tempfile::tempdir().unwrap();
+        #[cfg(windows)]
+        let executable = root.path().join("firefox.exe");
+        #[cfg(not(windows))]
+        let executable = root.path().join("firefox");
+        std::fs::write(&executable, "").unwrap();
+
+        let discovered = discover_firefox(Some(root.path().display().to_string())).unwrap();
+        assert_eq!(discovered, executable);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn override_path_accepts_firefox_app_bundle() {
+        let root = tempfile::tempdir().unwrap();
+        let app = root.path().join("Firefox.app");
+        let executable = app.join("Contents").join("MacOS").join("firefox");
+        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        std::fs::write(&executable, "").unwrap();
+
+        let discovered = discover_firefox(Some(app.display().to_string())).unwrap();
+        assert_eq!(discovered, executable);
+    }
+
+    #[test]
+    fn firefox_discovery_error_message_is_actionable() {
+        let message = firefox_discovery_error_message(Some("missing-firefox"));
+        assert!(message.contains("could not discover Firefox"));
+        assert!(message.contains("missing-firefox"));
+        assert!(message.contains("pire-browser install"));
+        assert!(message.contains("PIRE_BROWSER_FIREFOX_PATH"));
     }
 
     #[test]

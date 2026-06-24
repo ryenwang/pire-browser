@@ -9,7 +9,7 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::download::{download_user_js_prefs, ensure_profile_download_dir, sweep_old_downloads};
-use crate::firefox::discover_firefox;
+use crate::firefox::{discover_firefox, firefox_discovery_error_message};
 use crate::protocol::EXTENSION_ID;
 use crate::session::{
     cleanup_stale_sessions, data_dir, ensure_runtime_dirs, list_sessions, now_ms, SessionInfo,
@@ -147,7 +147,7 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
         .map(|session| session.session_id)
         .collect();
     let firefox_path = discover_firefox(options.firefox_path.clone())
-        .context("could not discover Firefox; pass --firefox-path <path>")?;
+        .with_context(|| firefox_discovery_error_message(options.firefox_path.as_deref()))?;
     let extension_launch = resolve_extension_launch(extension_launch_mode)?;
     let extension_source = extension_launch.path().to_path_buf();
     let log = open_append(&log_path)?;

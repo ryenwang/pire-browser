@@ -573,6 +573,7 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 
 - `pire-browser install` registers the platform native messaging host.
 - `pire-browser setup` is the lower-level setup command.
+- `--firefox-path` and `PIRE_BROWSER_FIREFOX_PATH` may point to the Firefox executable, a directory containing it, or `/Applications/Firefox.app` on macOS. If discovery fails, follow the platform repair command in the error output.
 - `pire-browser upgrade` checks for the latest package and applies a safe update when the install method allows it.
 - `pire-browser status` reports install and session state without fixing anything.
 - `pire-browser doctor` gives read-only diagnostics.

@@ -3025,7 +3025,9 @@ Usage:
   pire-browser install [--firefox-path <path>]
 
 Alias for setup. Registers the Firefox Native Messaging host for the current
-user. Use `pire-browser doctor` for read-only diagnostics.
+user. `--firefox-path` accepts the Firefox executable, a directory containing
+the executable, or a macOS Firefox.app bundle. Use `pire-browser doctor` for
+read-only diagnostics.
 "##;
 
 const UPDATE_HELP: &str = r##"
@@ -3049,7 +3051,9 @@ Usage:
 
 Registers the Firefox Native Messaging host for the current user. `--windows`
 is a deprecated compatibility alias and is ignored on non-Windows platforms.
-`pire-browser install` is a public alias for this setup step.
+`--firefox-path` accepts the Firefox executable, a directory containing the
+executable, or a macOS Firefox.app bundle. `pire-browser install` is a public
+alias for this setup step.
 "##;
 
 const LAUNCH_HELP: &str = r##"
@@ -4937,6 +4941,10 @@ mod tests {
         assert!(help_text(Some("install"))
             .unwrap()
             .contains("Alias for setup"));
+        assert!(help_text(Some("install")).unwrap().contains("Firefox.app"));
+        assert!(help_text(Some("setup"))
+            .unwrap()
+            .contains("directory containing the"));
         assert!(help_text(Some("upgrade"))
             .unwrap()
             .contains("agent-browser-style"));
