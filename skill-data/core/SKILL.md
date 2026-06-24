@@ -13,6 +13,7 @@ Use `pire-browser` when the user asks you to inspect or control Firefox. Do not 
 pire-browser open https://example.com
 pire-browser snapshot -i
 pire-browser fill '@e2' "hello@example.com"
+pire-browser press Enter
 pire-browser wait '@e4'
 pire-browser click '@e4'
 pire-browser snapshot -i
@@ -52,6 +53,29 @@ pire-browser find text "Save" --exact
 ```
 
 Use `--exact` when nearby text would otherwise create substring matches.
+
+Use focused keyboard commands when the page behavior depends on key events:
+
+```bash
+pire-browser click '<input-ref>'
+pire-browser keyboard type "hello@example.com"
+pire-browser press Enter
+pire-browser keydown Shift
+pire-browser keyup Shift
+pire-browser get value '<input-ref>'
+```
+
+`keyboard type`, `keyboard inserttext`, `keydown`, and `keyup` act at the
+current page focus. Click or focus the intended control first. Use `type
+<target> <text>` or `fill <target> <text>` when you have a selector/ref and do
+not need focused keyboard edges. Use `dblclick <target>` when the UI requires a
+double-click:
+
+```bash
+pire-browser snapshot -i
+pire-browser dblclick '<item-ref>'
+pire-browser snapshot -i
+```
 
 Read documents, docs pages, and article text before falling back to snapshots:
 

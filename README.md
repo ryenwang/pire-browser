@@ -110,6 +110,7 @@ pire-browser open https://example.com
 pire-browser snapshot -i                    # Get accessibility tree with refs
 pire-browser click '@e2'                    # Click by ref from snapshot
 pire-browser fill '@e3' "test@example.com"  # Fill by ref
+pire-browser press Enter                    # Press a key at current focus
 pire-browser get text '@e1'                 # Get text by ref
 pire-browser screenshot page.png
 pire-browser close
@@ -140,9 +141,14 @@ pire-browser open                    # Launch managed Firefox if needed
 pire-browser open <url>              # Launch + navigate to URL (aliases: goto, navigate)
 pire-browser read [url]              # Agent-friendly text; URL reads do not launch Firefox
 pire-browser click <sel>             # Click element
+pire-browser dblclick <sel>          # Double-click element
 pire-browser fill <sel> <text>       # Clear and fill
 pire-browser type <sel> <text>       # Type into element
 pire-browser press <key>             # Press key, such as Enter or Tab
+pire-browser keyboard type <text>    # Type with current-focus key events
+pire-browser keyboard inserttext <text> # Insert text at current focus without key events
+pire-browser keydown <key>           # Hold key down at current focus
+pire-browser keyup <key>             # Release key at current focus
 pire-browser hover <sel>             # Hover element
 pire-browser focus <sel>             # Focus element
 pire-browser select <sel> <val>      # Select dropdown option
@@ -164,6 +170,10 @@ pire-browser activity list --json    # Recent redacted command activity
 pire-browser close                   # Close targeted managed Firefox session
 pire-browser close --all             # Close all managed Firefox sessions
 ```
+
+`keyboard type`, `keyboard inserttext`, `keydown`, and `keyup` act at the
+current page focus. Click or focus the intended control first, then verify with
+`get value`, `snapshot -i`, or another targeted check.
 
 PDF capture is available as an image-backed visual evidence file. CDP connect, runtime viewport streaming, and natural-language chat are not implemented in the current Firefox backend.
 

@@ -8,9 +8,14 @@ pire-browser goto <url>              # Alias for navigation
 pire-browser navigate <url>          # Alias for navigation
 pire-browser read [url]              # Agent-friendly text; URL reads do not launch Firefox
 pire-browser click <sel>             # Click ref or selector
+pire-browser dblclick <sel>          # Double-click ref or selector
 pire-browser fill <sel> <text>       # Clear and fill
 pire-browser type <sel> <text>       # Type into element
 pire-browser press <key>             # Press key such as Enter or Tab
+pire-browser keyboard type <text>    # Type with current-focus key events
+pire-browser keyboard inserttext <text> # Insert text at focus without key events
+pire-browser keydown <key>           # Hold key down at current focus
+pire-browser keyup <key>             # Release key at current focus
 pire-browser hover <sel>             # Hover element
 pire-browser focus <sel>             # Focus element
 pire-browser select <sel> <value>    # Select dropdown option
@@ -25,6 +30,7 @@ pire-browser snapshot -i             # Accessibility tree with refs
 pire-browser eval <js>               # Run JavaScript with policy checks
 pire-browser close                   # Close targeted session`),
   p("Refs must usually be quoted in PowerShell, for example <code>pire-browser click '@e2'</code>. Re-run <code>snapshot -i</code> after navigation, DOM changes, dialogs, downloads, or failed actions. If a click reports that the target is covered by another element, handle the covering element first, then re-snapshot before retrying."),
+  p("<code>keyboard type</code>, <code>keyboard inserttext</code>, <code>keydown</code>, and <code>keyup</code> act at the current page focus. Click or focus the intended control first, then verify with <code>get value</code>, <code>snapshot -i</code>, or another targeted check."),
   code(`pire-browser screenshot page.png
 pire-browser screenshot --screenshot-dir ./shots page.png
 pire-browser screenshot --screenshot-dir ./shots
@@ -112,6 +118,7 @@ pire-browser wait --download [path] [--timeout <ms>]`),
   statusNote("mouseAndDrag"),
   code(`pire-browser hover <sel>             # Element hover is available
 pire-browser click <sel>             # Element click is available
+pire-browser dblclick <sel>          # Element double-click is available
 pire-browser mouse move 80 80        # Dispatch page mousemove at viewport coords
 pire-browser mouse down
 pire-browser mouse up

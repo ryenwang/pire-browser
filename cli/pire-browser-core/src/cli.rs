@@ -2135,7 +2135,12 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "get" => GET_HELP,
         "is" => IS_HELP,
         "click" => CLICK_HELP,
+        "dblclick" => DBLCLICK_HELP,
         "fill" => FILL_HELP,
+        "type" => TYPE_HELP,
+        "press" | "key" => PRESS_HELP,
+        "keyboard" => KEYBOARD_HELP,
+        "keydown" | "keyup" => KEY_EDGE_HELP,
         "wait" => WAIT_HELP,
         "pushstate" => PUSHSTATE_HELP,
         "console" => CONSOLE_HELP,
@@ -2206,7 +2211,14 @@ Common commands:
   diff screenshot --baseline before.png Compare current screenshot to baseline
   diff url <url1> <url2>           Compare two URLs by snapshot
   click '@e4'                     Click a ref from snapshot/find output
+  dblclick '@e4'                  Double-click a ref from snapshot/find output
   fill '@e2' "text"               Fill a ref from snapshot/find output
+  type '@e2' "text"               Type into a ref from snapshot/find output
+  press Enter                     Press a key at the current page focus
+  keyboard type "hello"           Type with focused-page key events
+  keyboard inserttext "hello"     Insert text at focus without key events
+  keydown Shift                   Hold a key down at the current page focus
+  keyup Shift                     Release a held key at the current page focus
   find label "Email" fill "x@y"   Find by semantic locator and act
   get text '@e1'                  Read text/title/url/attrs/box/styles
   is visible '@e1'                Check visible/enabled/checked state
@@ -2491,12 +2503,65 @@ Usage:
 Clicks a ref or selector. If a ref is stale, rerun snapshot -i or find.
 "##;
 
+const DBLCLICK_HELP: &str = r##"
+Usage:
+  pire-browser dblclick '@e4'
+  pire-browser dblclick "#item"
+
+Double-clicks a ref or selector in the active Firefox tab. Use a fresh ref from
+`snapshot -i` or semantic find output. If the page changes after the
+double-click, verify with `snapshot -i`, `get`, or `is` before reporting
+success.
+"##;
+
 const FILL_HELP: &str = r##"
 Usage:
   pire-browser fill '@e2' "hello"
   pire-browser fill "input[name=email]" "hello@example.com"
 
 Fills a ref or selector. Quote refs in PowerShell, for example '@e2'.
+"##;
+
+const TYPE_HELP: &str = r##"
+Usage:
+  pire-browser type '@e2' "hello"
+  pire-browser type "input[name=email]" "hello@example.com"
+
+Types into a ref or selector in the active Firefox tab. Use `fill` when you want
+to clear an editable control first. Use `keyboard type <text>` when the target is
+already focused and the page needs focused key events rather than a selector.
+"##;
+
+const PRESS_HELP: &str = r##"
+Usage:
+  pire-browser press Enter
+  pire-browser press Tab
+  pire-browser key Enter
+
+Presses one key at the current page focus. Focus or click the intended control
+first when the target is ambiguous. Use `keydown <key>` and `keyup <key>` when a
+flow needs a held modifier key.
+"##;
+
+const KEYBOARD_HELP: &str = r##"
+Usage:
+  pire-browser keyboard type "hello"
+  pire-browser keyboard inserttext "hello"
+
+`keyboard type` dispatches focused-page key events for the provided text.
+`keyboard inserttext` inserts text at the current focus without key events. Use
+`focus <target>` or `click <target>` first when the focused element is unclear,
+then verify with `get value`, `snapshot -i`, or another targeted check.
+"##;
+
+const KEY_EDGE_HELP: &str = r##"
+Usage:
+  pire-browser keydown Shift
+  pire-browser keyup Shift
+
+Dispatches a focused-page keydown or keyup event. These commands act at the
+current page focus, so focus or click the intended control first. Use `press`
+for one-shot keys such as Enter or Tab.
 "##;
 
 const WAIT_HELP: &str = r##"
@@ -4818,6 +4883,11 @@ mod tests {
     fn help_text_includes_ref_quoting_guidance() {
         let text = help_text(None).unwrap();
         assert!(text.contains("click '@e4'"));
+        assert!(text.contains("dblclick '@e4'"));
+        assert!(text.contains("keyboard type \"hello\""));
+        assert!(text.contains("keyboard inserttext \"hello\""));
+        assert!(text.contains("keydown Shift"));
+        assert!(text.contains("keyup Shift"));
         assert!(text.contains("skills cat core"));
         assert!(text.contains("pushstate /dashboard"));
         assert!(text.contains("get text '@e1'"));
@@ -4975,6 +5045,25 @@ mod tests {
         assert!(help_text(Some("find"))
             .unwrap()
             .contains("find text \"Save\" --exact"));
+        assert!(help_text(Some("dblclick"))
+            .unwrap()
+            .contains("pire-browser dblclick '@e4'"));
+        assert!(help_text(Some("type"))
+            .unwrap()
+            .contains("keyboard type <text>"));
+        assert!(help_text(Some("press")).unwrap().contains("keydown <key>"));
+        assert!(help_text(Some("key"))
+            .unwrap()
+            .contains("pire-browser key Enter"));
+        assert!(help_text(Some("keyboard"))
+            .unwrap()
+            .contains("keyboard inserttext"));
+        assert!(help_text(Some("keydown"))
+            .unwrap()
+            .contains("pire-browser keydown Shift"));
+        assert!(help_text(Some("keyup"))
+            .unwrap()
+            .contains("pire-browser keyup Shift"));
         assert!(help_text(Some("get"))
             .unwrap()
             .contains("get attr <sel> <attr>"));

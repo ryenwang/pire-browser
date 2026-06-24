@@ -25,6 +25,8 @@ pire-browser read                            # Read rendered text from the activ
 pire-browser snapshot -i                 # Get interactive elements with refs
 pire-browser click '@e2'                 # Click by ref
 pire-browser fill '@e3' "test@example.com" # Fill input by ref
+pire-browser press Enter                 # Press a key at current focus
+pire-browser keyboard type "hello"       # Type at current focus
 pire-browser get text '@e1'              # Get text content
 pire-browser is visible '@e1'            # Check element state
 pire-browser screenshot                  # Save to generated path
@@ -35,6 +37,7 @@ pire-browser close`),
   code(`pire-browser click "#submit"
 pire-browser fill "input[name=email]" "hello@example.com"
 pire-browser find role button --name "Submit" click`),
+  p("<code>keyboard type</code>, <code>keyboard inserttext</code>, <code>keydown</code>, and <code>keyup</code> use the current page focus. Click or focus the target first, then verify the page state."),
   h2("Headed mode", "headed-mode"),
   code(`pire-browser --headed open https://example.com`),
   p("The current Firefox backend launches a managed visible Firefox session through <code>web-ext</code>; <code>--headed</code> and <code>--headless</code> are accepted as legacy launch inputs."),

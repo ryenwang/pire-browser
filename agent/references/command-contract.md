@@ -40,6 +40,8 @@ Browser commands may auto-launch a managed Firefox session when safe. Read the r
 - Use `pire-browser vitals [url]` for best-effort page performance diagnostics: TTFB, FCP, LCP, CLS, INP, DOMContentLoaded, load, readyState, and captured hydration warnings.
 - If `vitals` reports unavailable metrics, treat that as a Firefox/WebExtension API limitation instead of inventing estimates.
 - Use `pire-browser get title`, `get url`, `get text <target>`, `get attr <target> <attr>`, and `is visible|enabled|checked <target>` for targeted verification when you already know the page or element to inspect.
+- Use `pire-browser dblclick <target>` when the UI requires a double-click. Verify with a fresh snapshot or targeted `get`/`is` command afterward.
+- Use `pire-browser keyboard type <text>`, `keyboard inserttext <text>`, `keydown <key>`, and `keyup <key>` only at the current page focus. Click or focus the intended control first; use `type <target> <text>` or `fill <target> <text>` when you have a selector/ref.
 - Use `pire-browser wait --fn <expression>` for short, side-effect-free page-world readiness predicates such as `window.appReady === true`; re-run `snapshot -i` before acting on refs after the wait.
 - Use `pire-browser set device "iPhone 14"` or `pire-browser set viewport <w> <h>` before responsive QA screenshots. Device presets are viewport-only best effort on Firefox.
 - Use `pire-browser set geo <lat> <lng>` for best-effort geolocation QA. It shims `navigator.geolocation` in managed pages but does not change Firefox's native permission prompt, OS location services, or IP-based location.
