@@ -505,6 +505,14 @@ fn tool_command_args(
                 args.push("--label".to_string());
                 args.push(label);
             }
+            for path in optional_string_array(object, "initScriptPaths")? {
+                args.push("--init-script".to_string());
+                args.push(path);
+            }
+            if object.contains_key("headers") {
+                args.push("--headers".to_string());
+                args.push(required_headers_json(object)?);
+            }
         }
         (_, "pire_browser_snapshot") => {
             args.push("snapshot".to_string());
@@ -1573,7 +1581,62 @@ fn target_args(object: &Map<String, Value>) -> std::result::Result<Vec<String>, 
         args.push("--profile".to_string());
         args.push(profile);
     }
+    if let Some(state_path) = optional_string(object, "statePath")? {
+        args.push("--state".to_string());
+        args.push(state_path);
+    }
+    let allowed_domains = optional_string_or_csv_array(object, "allowedDomains")?;
+    let no_allowed_domains = optional_bool(object, "noAllowedDomains")?;
+    if allowed_domains.is_some() && no_allowed_domains {
+        return Err("cannot use allowedDomains and noAllowedDomains together".to_string());
+    }
+    if let Some(allowed_domains) = allowed_domains {
+        args.push("--allowed-domains".to_string());
+        args.push(allowed_domains);
+    }
+    if no_allowed_domains {
+        args.push("--no-allowed-domains".to_string());
+    }
+    push_optional_flag_value(&mut args, object, "actionPolicy", "--action-policy")?;
+    push_optional_flag_value(&mut args, object, "confirmActions", "--confirm-actions")?;
+    if optional_bool(object, "confirmInteractive")? {
+        args.push("--confirm-interactive".to_string());
+    }
+    if optional_bool(object, "allowFileAccess")? {
+        args.push("--allow-file-access".to_string());
+    }
+    push_optional_flag_value(&mut args, object, "proxy", "--proxy")?;
+    push_optional_flag_value(&mut args, object, "proxyBypass", "--proxy-bypass")?;
+    if let Some(max_output) = optional_u64(object, "maxOutput")? {
+        args.push("--max-output".to_string());
+        args.push(max_output.to_string());
+    }
+    if optional_bool(object, "contentBoundaries")? {
+        args.push("--content-boundaries".to_string());
+    }
+    push_optional_flag_value(&mut args, object, "executablePath", "--executable-path")?;
     Ok(args)
+}
+
+fn optional_string_or_csv_array(
+    object: &Map<String, Value>,
+    key: &str,
+) -> std::result::Result<Option<String>, String> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        Some(Value::Array(values)) => {
+            let mut strings = Vec::new();
+            for value in values {
+                let Some(value) = value.as_str() else {
+                    return Err(format!("{key} entries must be strings"));
+                };
+                strings.push(value.to_string());
+            }
+            Ok(Some(strings.join(",")))
+        }
+        Some(_) => Err(format!("{key} must be a string or array of strings")),
+    }
 }
 
 fn required_string(object: &Map<String, Value>, key: &str) -> std::result::Result<String, String> {
@@ -1722,6 +1785,8 @@ fn core_tools() -> Vec<Value> {
                     ("newTab", bool_prop("Open in a new tab.")),
                     ("label", string_prop("Optional stable tab label.")),
                     ("colorScheme", string_prop("Optional page color scheme: dark, light, or auto.")),
+                    ("headers", headers_prop_with_description("Optional request headers to apply to the target URL origin for this open command. Values may contain secrets.")),
+                    ("initScriptPaths", string_array_prop("Local JavaScript files to register as best-effort document-start init scripts for this navigation.")),
                 ],
                 &[],
             ),
@@ -2895,6 +2960,56 @@ fn common_properties() -> Map<String, Value> {
         string_prop("Managed Firefox profile name or path."),
     );
     map.insert(
+        "statePath".to_string(),
+        string_prop("Optional state file path to load before this browser command."),
+    );
+    map.insert(
+        "allowFileAccess".to_string(),
+        bool_prop("Allow local file:// URL access for this command."),
+    );
+    map.insert(
+        "allowedDomains".to_string(),
+        string_or_array_prop(
+            "Comma-separated allowlist or array of domains for navigation/network guardrails.",
+        ),
+    );
+    map.insert(
+        "noAllowedDomains".to_string(),
+        bool_prop("Disable configured domain allowlist checks for this command."),
+    );
+    map.insert(
+        "actionPolicy".to_string(),
+        string_prop("Action-policy JSON file path for this command."),
+    );
+    map.insert(
+        "confirmActions".to_string(),
+        string_prop("Comma-separated action classes that require explicit confirmation, such as eval,navigate,network."),
+    );
+    map.insert(
+        "confirmInteractive".to_string(),
+        bool_prop("Also require confirmation for interactive page actions."),
+    );
+    map.insert(
+        "contentBoundaries".to_string(),
+        bool_prop("Mark page-sourced output with content boundaries."),
+    );
+    map.insert(
+        "maxOutput".to_string(),
+        number_prop("Maximum emitted browser command text."),
+    );
+    map.insert(
+        "proxy".to_string(),
+        string_prop("Firefox proxy URL to apply before browser bridge commands."),
+    );
+    map.insert(
+        "proxyBypass".to_string(),
+        string_prop("Comma-separated Firefox proxy bypass list."),
+    );
+    map.insert(
+        "executablePath".to_string(),
+        string_prop("Firefox executable path override for auto-launch."),
+    );
+    map.insert(
         "extraArgs".to_string(),
         json!({
             "type": "array",
@@ -2932,9 +3047,13 @@ fn scalar_prop(description: &str) -> Value {
 }
 
 fn headers_prop() -> Value {
+    headers_prop_with_description("Header names to string, number, or boolean values. Empty object clears headers for the active origin.")
+}
+
+fn headers_prop_with_description(description: &str) -> Value {
     json!({
         "type": "object",
-        "description": "Header names to string, number, or boolean values. Empty object clears headers for the active origin.",
+        "description": description,
         "additionalProperties": {
             "oneOf": [
                 { "type": "string" },
@@ -2942,6 +3061,27 @@ fn headers_prop() -> Value {
                 { "type": "boolean" }
             ]
         }
+    })
+}
+
+fn string_array_prop(description: &str) -> Value {
+    json!({
+        "type": "array",
+        "items": { "type": "string" },
+        "description": description
+    })
+}
+
+fn string_or_array_prop(description: &str) -> Value {
+    json!({
+        "oneOf": [
+            { "type": "string" },
+            {
+                "type": "array",
+                "items": { "type": "string" }
+            }
+        ],
+        "description": description
     })
 }
 
@@ -3058,6 +3198,26 @@ mod tests {
         assert_eq!(
             wait["inputSchema"]["properties"]["function"]["type"],
             "string"
+        );
+        let open = tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_open")
+            .unwrap();
+        assert_eq!(
+            open["inputSchema"]["properties"]["statePath"]["type"],
+            "string"
+        );
+        assert_eq!(
+            open["inputSchema"]["properties"]["allowedDomains"]["oneOf"][1]["type"],
+            "array"
+        );
+        assert_eq!(
+            open["inputSchema"]["properties"]["headers"]["type"],
+            "object"
+        );
+        assert_eq!(
+            open["inputSchema"]["properties"]["initScriptPaths"]["type"],
+            "array"
         );
     }
 
@@ -3224,6 +3384,68 @@ mod tests {
                 "https://example.com",
                 "--label",
                 "docs"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_open",
+            &json!({
+                "sessionName": "qa",
+                "statePath": ".pire-state/app.json",
+                "allowedDomains": ["example.com", "*.example.com"],
+                "actionPolicy": "policy.json",
+                "confirmActions": "eval,navigate",
+                "confirmInteractive": true,
+                "allowFileAccess": true,
+                "proxy": "http://proxy.example:8080",
+                "proxyBypass": "localhost,*.internal",
+                "maxOutput": 50000,
+                "contentBoundaries": true,
+                "executablePath": "C:/Program Files/Mozilla Firefox/firefox.exe",
+                "url": "https://example.com/app",
+                "headers": {
+                    "X-Preview": "on",
+                    "X-Trace": 42,
+                    "X-Enabled": true
+                },
+                "initScriptPaths": ["scripts/bootstrap.js", "scripts/flags.js"]
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "--session-name",
+                "qa",
+                "--state",
+                ".pire-state/app.json",
+                "--allowed-domains",
+                "example.com,*.example.com",
+                "--action-policy",
+                "policy.json",
+                "--confirm-actions",
+                "eval,navigate",
+                "--confirm-interactive",
+                "--allow-file-access",
+                "--proxy",
+                "http://proxy.example:8080",
+                "--proxy-bypass",
+                "localhost,*.internal",
+                "--max-output",
+                "50000",
+                "--content-boundaries",
+                "--executable-path",
+                "C:/Program Files/Mozilla Firefox/firefox.exe",
+                "open",
+                "https://example.com/app",
+                "--init-script",
+                "scripts/bootstrap.js",
+                "--init-script",
+                "scripts/flags.js",
+                "--headers",
+                r#"{"X-Enabled":true,"X-Preview":"on","X-Trace":42}"#
             ]
         );
 
@@ -4439,6 +4661,14 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("limit must be a positive integer"));
+
+        let error = tool_command_args(
+            "pire_browser_open",
+            &json!({ "allowedDomains": "example.com", "noAllowedDomains": true }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("cannot use allowedDomains and noAllowedDomains together"));
 
         let error = tool_command_args(
             "pire_browser_doctor",

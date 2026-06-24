@@ -25,12 +25,26 @@ pire-browser mcp --tools all`),
     ]
   ),
   p("The server uses the same installed binary and command behavior as the CLI, so policies, setup, sessions, profiles, and Firefox runtime behavior stay shared."),
+  h2("Common Typed Fields", "common-typed-fields"),
+  p("Every MCP tool accepts common typed fields for CLI-global behavior that must be placed before the command. Prefer these fields over <code>extraArgs</code> when setting guardrails or launch context."),
+  table(
+    ["Field", "Purpose"],
+    [
+      ["session / sessionName / profile", "Target an existing live session, named managed profile, or managed profile path."],
+      ["statePath", "Load a plaintext state file before the browser command."],
+      ["allowFileAccess", "Allow local file:// URL access for the command."],
+      ["allowedDomains / noAllowedDomains", "Apply or explicitly bypass domain allowlist checks for the command."],
+      ["actionPolicy / confirmActions / confirmInteractive", "Apply action-policy and confirmation guardrails before the command runs."],
+      ["contentBoundaries / maxOutput", "Mark page-sourced output boundaries or cap emitted browser command text."],
+      ["proxy / proxyBypass / executablePath", "Configure Firefox proxy settings or the Firefox executable used for auto-launch."],
+    ]
+  ),
   h2("Tool Surface", "tool-surface"),
   table(
     ["Tool", "Purpose"],
     [
       ["pire_browser_tools_profiles", "Describe MCP profiles and active selection."],
-      ["pire_browser_open", "Launch Firefox and optionally navigate."],
+      ["pire_browser_open", "Launch Firefox and optionally navigate. Supports typed one-shot headers and initScriptPaths for pre-navigation setup."],
       ["pire_browser_read", "Read agent-friendly URL text without launching Firefox, or rendered text from the active tab."],
       ["pire_browser_snapshot", "Inspect the page and return refs."],
       ["pire_browser_find", "Find by role, label, text, placeholder, alt text, title, test id, first, last, or nth; optionally act on the single match."],

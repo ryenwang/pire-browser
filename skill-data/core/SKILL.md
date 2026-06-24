@@ -506,6 +506,14 @@ DevTools introspection tools. Use `all` only when the host can tolerate the full
 tool surface. The `pire_browser_tools_profiles` MCP tool returns this profile
 list in-band.
 
+For MCP guardrails and launch context, prefer typed common fields over
+`extraArgs`: `statePath`, `allowFileAccess`, `allowedDomains`,
+`noAllowedDomains`, `actionPolicy`, `confirmActions`, `confirmInteractive`,
+`contentBoundaries`, `maxOutput`, `proxy`, `proxyBypass`, and
+`executablePath`. Use typed `pire_browser_open.headers` and
+`pire_browser_open.initScriptPaths` when a navigation needs one-shot request
+headers or pre-navigation init scripts.
+
 ## Snapshot Options
 
 ```bash
