@@ -16,7 +16,7 @@ use pire_browser_core::activity::{
 use pire_browser_core::auth_handoff::{auth_handoff_text, collect_default_auth_handoff};
 use pire_browser_core::cli::{
     apply_config_defaults, build_command_request, format_cli_result, help_text, parse_cli_args,
-    ConfigWarning, GlobalFlagWarning, LocalCommand, SessionTarget,
+    ConfigWarning, GlobalFlagWarning, LocalCommand, ReadActiveUrlOptions, SessionTarget,
 };
 use pire_browser_core::confirmation_policy::{
     confirmation_policy_diagnostic_from_args, confirmation_policy_text,
@@ -83,8 +83,8 @@ use crate::mcp::{run_mcp_server, McpToolsProfile};
 use crate::read::{read_url, ReadUrlOptions};
 
 const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &[
-    "connect", "device", "install", "profiler", "react", "record", "stream", "swipe", "tap",
-    "trace", "upgrade",
+    "connect", "device", "profiler", "react", "record", "stream", "swipe", "tap", "trace",
+    "upgrade",
 ];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -614,6 +614,32 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             println!("{}", format_cli_result(&result, json)?);
             print_config_warnings(&config_warnings);
         }
+        LocalCommand::ReadActiveUrl {
+            target,
+            json,
+            ignored_global_flags,
+            domain_policy,
+            action_policy,
+            confirmation_policy,
+            options,
+        } => {
+            handle_read_active_url(
+                &target,
+                json,
+                &ignored_global_flags,
+                PolicyArgsBundle {
+                    domain_policy,
+                    action_policy,
+                    confirmation_policy,
+                },
+                options,
+                &output_guards,
+                &config_warnings,
+                firefox_path_override.as_deref(),
+                color_scheme.as_deref(),
+                proxy_config.as_ref(),
+            )?;
+        }
         LocalCommand::InstallStatus {
             json,
             domain_policy,
@@ -869,7 +895,135 @@ fn finish_cli_activity(activity: Option<&ActivityEvent>, error: Option<&anyhow::
 }
 
 fn defer_config_warnings(command: &LocalCommand) -> bool {
-    matches!(command, LocalCommand::Remote { .. })
+    matches!(
+        command,
+        LocalCommand::Remote { .. }
+            | LocalCommand::ReadUrl { .. }
+            | LocalCommand::ReadActiveUrl { .. }
+    )
+}
+
+fn handle_read_active_url(
+    target: &SessionTarget,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    policies: PolicyArgsBundle,
+    options: ReadActiveUrlOptions,
+    output_guards: &OutputGuardOptions,
+    config_warnings: &[ConfigWarning],
+    firefox_path_override: Option<&str>,
+    color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
+) -> Result<()> {
+    let domain_decision =
+        resolve_domain_policy_or_exit(&policies.domain_policy, json_output, ignored_global_flags)?;
+    let action_decision =
+        resolve_action_policy_or_exit(&policies.action_policy, json_output, ignored_global_flags)?;
+    let get_url_args = vec!["get".to_string(), "url".to_string()];
+    if let Err(err) = ensure_policy_sequences_allowed(&action_decision, &get_url_args) {
+        exit_with_anyhow_error(err, json_output, ignored_global_flags)?;
+        unreachable!();
+    }
+    let confirmation_decision = resolve_confirmation_policy_or_exit(
+        &policies.confirmation_policy,
+        json_output,
+        ignored_global_flags,
+    )?;
+    let interactively_approved = match require_confirmation_for_sequences_or_exit(
+        &get_url_args,
+        ConfirmationGate {
+            confirmation_decision: &confirmation_decision,
+            target: pending_target_from_session_target(target),
+            domain_decision: &domain_decision,
+            action_decision: &action_decision,
+            json_output,
+            ignored_global_flags,
+            metadata: None,
+        },
+    ) {
+        Ok(interactively_approved) => interactively_approved,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, ignored_global_flags)?;
+            unreachable!();
+        }
+    };
+    let active = execute_remote_value_with_policies(
+        target,
+        get_url_args,
+        json_output,
+        ignored_global_flags,
+        &domain_decision,
+        &action_decision,
+        &confirmation_decision,
+        interactively_approved,
+        firefox_path_override,
+        color_scheme,
+        proxy_config,
+    )?;
+    let url = match active_url_from_get_url_result(&active) {
+        Ok(url) => url,
+        Err(err) => {
+            exit_with_anyhow_error_with_domain_policy(
+                err,
+                json_output,
+                ignored_global_flags,
+                &domain_decision.warnings,
+            )?;
+            unreachable!();
+        }
+    };
+    if let Err(err) = ensure_url_allowed(&domain_decision, &url) {
+        exit_with_anyhow_error_with_domain_policy(
+            err,
+            json_output,
+            ignored_global_flags,
+            &domain_decision.warnings,
+        )?;
+        unreachable!();
+    }
+    let read_options = options.with_url(url);
+    let mut result = match read_url(&ReadUrlOptions {
+        url: read_options.url,
+        raw: read_options.raw,
+        require_md: read_options.require_md,
+        outline: read_options.outline,
+        llms: read_options.llms,
+        filter: read_options.filter,
+        timeout_ms: read_options.timeout_ms,
+    }) {
+        Ok(result) => result,
+        Err(err) => {
+            exit_with_anyhow_error_with_domain_policy(
+                err,
+                json_output,
+                ignored_global_flags,
+                &domain_decision.warnings,
+            )?;
+            unreachable!();
+        }
+    };
+    append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json_output)?;
+    append_ignored_global_flag_warnings(&mut result, ignored_global_flags);
+    apply_output_guards(&mut result, output_guards, json_output);
+    println!("{}", format_cli_result(&result, json_output)?);
+    print_config_warnings(config_warnings);
+    Ok(())
+}
+
+fn active_url_from_get_url_result(result: &Value) -> Result<String> {
+    for key in ["value", "url", "text"] {
+        if let Some(url) = result
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+        {
+            return Ok(url.to_string());
+        }
+    }
+    bail!(
+        "invalid_args: active tab did not report a URL; open a page or pass an explicit URL to `pire-browser read <url>`"
+    )
 }
 
 fn maybe_write_network_har(args: &[String], result: &mut Value) -> Result<()> {
@@ -7450,6 +7604,24 @@ mod tests {
     }
 
     #[test]
+    fn active_url_extractor_accepts_get_url_result_value_or_text() {
+        assert_eq!(
+            active_url_from_get_url_result(&json!({ "value": "https://example.com/docs" }))
+                .unwrap(),
+            "https://example.com/docs"
+        );
+        assert_eq!(
+            active_url_from_get_url_result(&json!({ "text": "https://example.com/from-text" }))
+                .unwrap(),
+            "https://example.com/from-text"
+        );
+        assert!(active_url_from_get_url_result(&json!({ "text": "" }))
+            .unwrap_err()
+            .to_string()
+            .contains("active tab did not report a URL"));
+    }
+
+    #[test]
     fn content_boundaries_wrap_text_and_add_json_metadata() {
         let mut text_result = json!({ "text": "page says hello" });
         apply_content_boundaries(&mut text_result, false);
@@ -7649,6 +7821,7 @@ mod tests {
             "pdf",
             "addinitscript",
             "removeinitscript",
+            "install",
             "skills",
             "skill",
             "dashboard",

@@ -82,12 +82,16 @@ On Linux, distro Firefox builds work best. Snap and Flatpak Firefox are detected
 Check and apply updates:
 
 ```bash
+pire-browser upgrade
 pire-browser update check --json
 pire-browser update apply
 pire-browser update configure --mode off|notify|patch
 ```
 
-Patch auto-update is allowed only for global npm installs or confirmed Pi-managed installs, and only when no managed Firefox session is active. Local project installs and minor/major updates notify only.
+`upgrade` checks for the latest package first, then applies a safe update using
+the same rules as `update apply`. Patch auto-update is allowed only for global
+npm installs or confirmed Pi-managed installs, and only when no managed Firefox
+session is active. Local project installs and minor/major updates notify only.
 
 ### Requirements
 
@@ -168,13 +172,15 @@ pire-browser read https://example.com/article --filter overview
 pire-browser read https://example.com/article --outline
 pire-browser read https://docs.example.com --llms index --filter auth
 pire-browser read https://docs.example.com --llms full --filter auth
+pire-browser read --llms index --filter auth
+pire-browser read --require-md
 pire-browser read example.com/article --require-md
 pire-browser read https://example.com/article --json
 ```
 
 `read <url>` fetches markdown, plain text, or HTML directly from the CLI without launching Firefox. It extracts readable text from HTML, supports `--filter`, `--outline`, nearest-ancestor `llms.txt` / `llms-full.txt`, `--require-md`, `--raw`, and `--timeout <ms>`, and still honors domain/output guardrails.
 
-Omit the URL to read rendered text from the active Firefox tab, including client-side state and authenticated content. Use `read` for documents and articles; use `snapshot -i` when you need interaction refs.
+Omit the URL to read rendered text from the active Firefox tab, including client-side state and authenticated content. When `--llms`, `--require-md`, `--raw`, or `--timeout` is used without a URL, `pire-browser` first reads the active tab URL and then performs the same guarded no-browser URL fetch for that HTTP resource. Use `read` for documents and articles; use `snapshot -i` when you need interaction refs.
 
 ### Get Info
 

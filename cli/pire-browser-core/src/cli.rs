@@ -60,6 +60,37 @@ pub struct ReadCommandOptions {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadActiveUrlOptions {
+    pub raw: bool,
+    pub require_md: bool,
+    pub outline: bool,
+    pub llms: Option<String>,
+    pub filter: Option<String>,
+    pub timeout_ms: u64,
+}
+
+impl ReadActiveUrlOptions {
+    pub fn with_url(self, url: String) -> ReadCommandOptions {
+        ReadCommandOptions {
+            url,
+            raw: self.raw,
+            require_md: self.require_md,
+            outline: self.outline,
+            llms: self.llms,
+            filter: self.filter,
+            timeout_ms: self.timeout_ms,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ParsedReadArgs {
+    RemoteActiveTab,
+    Url(ReadCommandOptions),
+    ActiveUrl(ReadActiveUrlOptions),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LocalCommand {
     Help {
         topic: Option<String>,
@@ -92,6 +123,15 @@ pub enum LocalCommand {
         ignored_global_flags: Vec<GlobalFlagWarning>,
         domain_policy: DomainPolicyArgs,
         options: ReadCommandOptions,
+    },
+    ReadActiveUrl {
+        target: SessionTarget,
+        json: bool,
+        ignored_global_flags: Vec<GlobalFlagWarning>,
+        domain_policy: DomainPolicyArgs,
+        action_policy: ActionPolicyArgs,
+        confirmation_policy: ConfirmationPolicyArgs,
+        options: ReadActiveUrlOptions,
     },
     ProfilesList {
         json: bool,
@@ -918,14 +958,27 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     if command == "read" {
         let mut read_args = args.clone();
         read_args.remove(0);
-        let parsed = parse_read_args(&mut read_args, &mut json_output)?;
-        if let Some(options) = parsed {
-            return Ok(LocalCommand::ReadUrl {
-                json: json_output,
-                ignored_global_flags,
-                domain_policy,
-                options,
-            });
+        match parse_read_args(&mut read_args, &mut json_output)? {
+            ParsedReadArgs::RemoteActiveTab => {}
+            ParsedReadArgs::Url(options) => {
+                return Ok(LocalCommand::ReadUrl {
+                    json: json_output,
+                    ignored_global_flags,
+                    domain_policy,
+                    options,
+                });
+            }
+            ParsedReadArgs::ActiveUrl(options) => {
+                return Ok(LocalCommand::ReadActiveUrl {
+                    target: session_target,
+                    json: json_output,
+                    ignored_global_flags,
+                    domain_policy,
+                    action_policy,
+                    confirmation_policy,
+                    options,
+                });
+            }
         }
     }
 
@@ -1862,7 +1915,7 @@ fn parse_single_state_arg(
 fn parse_read_args(
     args: &mut Vec<String>,
     json_output: &mut bool,
-) -> Result<Option<ReadCommandOptions>> {
+) -> Result<ParsedReadArgs> {
     let mut url = None;
     let mut raw = false;
     let mut require_md = false;
@@ -1913,15 +1966,28 @@ fn parse_read_args(
         }
         i += 1;
     }
-    Ok(url.map(|url| ReadCommandOptions {
-        url,
-        raw,
-        require_md,
-        outline,
-        llms,
-        filter,
-        timeout_ms,
-    }))
+    if let Some(url) = url {
+        return Ok(ParsedReadArgs::Url(ReadCommandOptions {
+            url,
+            raw,
+            require_md,
+            outline,
+            llms,
+            filter,
+            timeout_ms,
+        }));
+    }
+    if raw || require_md || llms.is_some() || timeout_ms != READ_TIMEOUT_MS {
+        return Ok(ParsedReadArgs::ActiveUrl(ReadActiveUrlOptions {
+            raw,
+            require_md,
+            outline,
+            llms,
+            filter,
+            timeout_ms,
+        }));
+    }
+    Ok(ParsedReadArgs::RemoteActiveTab)
 }
 
 fn parse_download_args(args: &mut Vec<String>) -> Result<(String, String, u64)> {
@@ -2050,6 +2116,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "doctor" | "install-status" => DOCTOR_HELP,
         "config" | "--config" => CONFIG_HELP,
         "install" => INSTALL_HELP,
+        "update" | "upgrade" => UPDATE_HELP,
         "open" | "goto" | "navigate" => OPEN_HELP,
         "read" => READ_HELP,
         "snapshot" => SNAPSHOT_HELP,
@@ -2111,6 +2178,7 @@ Usage:
 Common commands:
   status [--json]                 Show live Firefox sessions and default target
   install [--firefox-path <path>]  Register the Firefox Native Messaging host
+  upgrade                         Check and apply a safe package update
   doctor [--json] [--offline]     Check setup health and PATH/install hints
   mcp [--tools core|network|state|debug|tabs|mobile|react|all]
                                   Start the MCP stdio server
@@ -2282,7 +2350,9 @@ Usage:
   pire-browser read <url> --outline
   pire-browser read <url> --llms index
   pire-browser read <url> --llms full
+  pire-browser read --llms index
   pire-browser read <url> --require-md
+  pire-browser read --require-md
   pire-browser read <url> --raw
   pire-browser read <url> --timeout <ms>
   pire-browser read
@@ -2290,7 +2360,10 @@ Usage:
 Reads agent-friendly text. With a URL, the CLI fetches the page directly without
 launching Firefox, accepts markdown/plain/html, extracts readable text from HTML,
 and honors domain/output guardrails. Without a URL, the command reads the
-rendered text from the active Firefox tab, including client-side page state.
+rendered text from the active Firefox tab, including client-side page state. If
+`--llms`, `--require-md`, `--raw`, or `--timeout` is used without a URL, the CLI
+first reads the active tab URL, then performs the same guarded URL fetch for
+that HTTP resource.
 
 `--llms index` walks ancestor paths for the nearest llms.txt. `--llms full`
 walks ancestor paths for the nearest llms-full.txt. `--require-md` fails unless
@@ -2873,6 +2946,20 @@ Alias for setup. Registers the Firefox Native Messaging host for the current
 user. Use `pire-browser doctor` for read-only diagnostics.
 "##;
 
+const UPDATE_HELP: &str = r##"
+Usage:
+  pire-browser upgrade
+  pire-browser update check [--json]
+  pire-browser update apply [--json]
+  pire-browser update configure --mode off|notify|patch
+
+`upgrade` is the agent-browser-style installed-package alias. In npm/Pi installs,
+the JavaScript launcher runs an update check, then applies a safe package update
+using the existing update rules. Patch auto-update is allowed only for global npm
+installs or confirmed Pi-managed installs, and only when no managed Firefox
+session is active. Local project installs and minor/major updates notify only.
+"##;
+
 const SETUP_HELP: &str = r##"
 Usage:
   pire-browser setup [--firefox-path <path>]
@@ -3117,6 +3204,85 @@ mod tests {
                 action_policy: default_action_policy(),
                 confirmation_policy: default_confirmation_policy(),
                 args: s(&["read", "--filter", "auth"])
+            }
+        );
+    }
+
+    #[test]
+    fn read_llms_without_url_uses_active_tab_url_fetch() {
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "--session-name",
+                "Docs",
+                "read",
+                "--llms",
+                "index",
+                "--filter",
+                "auth",
+                "--json",
+            ]))
+            .unwrap(),
+            LocalCommand::ReadActiveUrl {
+                target: SessionTarget::Name("Docs".to_string()),
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                options: ReadActiveUrlOptions {
+                    raw: false,
+                    require_md: false,
+                    outline: false,
+                    llms: Some("index".to_string()),
+                    filter: Some("auth".to_string()),
+                    timeout_ms: READ_TIMEOUT_MS,
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn read_require_md_without_url_uses_active_tab_url_fetch() {
+        assert_eq!(
+            parse_cli_args(&s(&["read", "--require-md", "--timeout", "3000"])).unwrap(),
+            LocalCommand::ReadActiveUrl {
+                target: SessionTarget::Default,
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                options: ReadActiveUrlOptions {
+                    raw: false,
+                    require_md: true,
+                    outline: false,
+                    llms: None,
+                    filter: None,
+                    timeout_ms: 3000,
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn read_timeout_without_url_uses_active_tab_url_fetch() {
+        assert_eq!(
+            parse_cli_args(&s(&["read", "--timeout", "3000", "--filter", "auth"])).unwrap(),
+            LocalCommand::ReadActiveUrl {
+                target: SessionTarget::Default,
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                options: ReadActiveUrlOptions {
+                    raw: false,
+                    require_md: false,
+                    outline: false,
+                    llms: None,
+                    filter: Some("auth".to_string()),
+                    timeout_ms: 3000,
+                }
             }
         );
     }
@@ -4634,6 +4800,7 @@ mod tests {
         assert!(text.contains("diff snapshot"));
         assert!(text.contains("highlight '#submit'"));
         assert!(text.contains("install [--firefox-path <path>]"));
+        assert!(text.contains("upgrade"));
         assert!(text.contains("--config ./ci-config.json open <url>"));
         assert!(text.contains("open <url> --headers"));
         assert!(text.contains("--proxy http://proxy.example:8080 open <url>"));
@@ -4656,6 +4823,12 @@ mod tests {
         assert!(help_text(Some("install"))
             .unwrap()
             .contains("Alias for setup"));
+        assert!(help_text(Some("upgrade"))
+            .unwrap()
+            .contains("agent-browser-style"));
+        assert!(help_text(Some("update"))
+            .unwrap()
+            .contains("update check"));
         assert!(help_text(Some("config"))
             .unwrap()
             .contains("PIRE_BROWSER_CONFIG"));
@@ -4681,6 +4854,9 @@ mod tests {
             .unwrap()
             .contains("--headers <json>"));
         assert!(help_text(Some("open")).unwrap().contains("--proxy <url>"));
+        assert!(help_text(Some("read"))
+            .unwrap()
+            .contains("active tab URL"));
         assert!(help_text(Some("snapshot"))
             .unwrap()
             .contains("snapshot -i -c"));

@@ -58,12 +58,17 @@ pire-browser read https://example.com/article --filter overview
 pire-browser read https://example.com/article --outline
 pire-browser read https://docs.example.com --llms index --filter auth
 pire-browser read https://docs.example.com --llms full --filter auth
+pire-browser read --llms index --filter auth
+pire-browser read --require-md
 pire-browser read
 ```
 
 Use `read <url>` for no-browser markdown/plain/html text fetches. Omit the URL
 to read rendered text from the active Firefox tab, including client-side state
-and authenticated content. Use `snapshot -i` when you need interaction refs.
+and authenticated content. When `--llms`, `--require-md`, `--raw`, or
+`--timeout` is used without a URL, `pire-browser` first reads the active tab URL
+and then performs the same guarded URL fetch. Use `snapshot -i` when you need
+interaction refs.
 
 Read and check state without dumping a whole snapshot when you already know the
 target:
@@ -498,6 +503,7 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 
 - `pire-browser install` registers the platform native messaging host.
 - `pire-browser setup` is the lower-level setup command.
+- `pire-browser upgrade` checks for the latest package and applies a safe update when the install method allows it.
 - `pire-browser status` reports install and session state without fixing anything.
 - `pire-browser doctor` gives read-only diagnostics.
 - Browser commands that need auto-launch may run lazy setup when native host registration is missing or mismatched.

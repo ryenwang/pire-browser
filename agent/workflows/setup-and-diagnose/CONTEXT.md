@@ -20,6 +20,7 @@ Use this when install, launch, native messaging, optional native package resolut
 
 - `status` and `doctor` must remain observational.
 - Browser commands that need auto-launch may run lazy setup when registration is stale.
+- Use `pire-browser upgrade` for a foreground package update; use `update check/apply` only when you need the lower-level status or JSON path.
 - On Windows, close managed Firefox sessions before replacing binaries during an update.
 - Do not claim setup is fixed until a verification command succeeds.
 

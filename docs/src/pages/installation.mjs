@@ -31,9 +31,11 @@ cd ..`),
   h2("Linux notes", "linux-notes"),
   p("Distro Firefox builds work best. Snap and Flatpak Firefox are detected, but sandboxed Native Messaging may require the WebExtensions portal or a non-sandboxed Mozilla Firefox build."),
   h2("Updating", "updating"),
-  code(`pire-browser update check --json
+  code(`pire-browser upgrade
+pire-browser update check --json
 pire-browser update apply
 pire-browser update configure --mode off|notify|patch`),
+  p("<code>upgrade</code> checks for the latest package first, then applies a safe update using the same patch-only global/Pi-managed install rules as <code>update apply</code>."),
   h2("Doctor", "doctor"),
   code(`pire-browser doctor
 pire-browser doctor --offline --quick

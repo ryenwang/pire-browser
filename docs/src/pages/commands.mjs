@@ -53,9 +53,11 @@ pire-browser read https://example.com/article --filter overview
 pire-browser read https://example.com/article --outline
 pire-browser read https://docs.example.com --llms index --filter auth
 pire-browser read https://docs.example.com --llms full --filter auth
+pire-browser read --llms index --filter auth
+pire-browser read --require-md
 pire-browser read example.com/article --require-md
 pire-browser read https://example.com/article --json`),
-  p("<code>read &lt;url&gt;</code> fetches markdown, plain text, or HTML directly from the CLI without launching Firefox. Omit the URL to read rendered text from the active Firefox tab, including client-side state and authenticated content. Use <code>read</code> for documents and articles; use <code>snapshot -i</code> when you need interaction refs."),
+  p("<code>read &lt;url&gt;</code> fetches markdown, plain text, or HTML directly from the CLI without launching Firefox. Omit the URL to read rendered text from the active Firefox tab, including client-side state and authenticated content. When <code>--llms</code>, <code>--require-md</code>, <code>--raw</code>, or <code>--timeout</code> is used without a URL, <code>pire-browser</code> first reads the active tab URL and then performs the same guarded no-browser URL fetch. Use <code>read</code> for documents and articles; use <code>snapshot -i</code> when you need interaction refs."),
 
   h2("Get info", "get-info"),
   code(`pire-browser get text <sel>          # Get text content

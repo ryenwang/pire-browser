@@ -1370,7 +1370,7 @@ function parseReadOptions(args: string[]): ReadOptions | { error: RpcResponse["e
       return {
         error: {
           code: "invalid_args",
-          message: `${arg} is only supported for read <url>; run \`pire-browser read <url> ${arg}\`.`,
+          message: `${arg} is handled by the CLI URL reader; run \`pire-browser read ${arg}\` to use the active tab URL or \`pire-browser read <url> ${arg}\`.`,
         },
       };
     }
@@ -1379,7 +1379,7 @@ function parseReadOptions(args: string[]): ReadOptions | { error: RpcResponse["e
         error: {
           code: "invalid_args",
           message:
-            "--llms is only supported for read <url>; run `pire-browser get url`, then `pire-browser read <url> --llms index|full`.",
+            "--llms is handled by the CLI URL reader; run `pire-browser read --llms index|full` to use the active tab URL or `pire-browser read <url> --llms index|full`.",
         },
       };
     }

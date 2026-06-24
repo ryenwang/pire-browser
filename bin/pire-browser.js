@@ -25,6 +25,11 @@ if (args[0] === "update") {
   process.exit(status);
 }
 
+if (args[0] === "upgrade") {
+  const status = handleUpgrade(args.slice(1));
+  process.exit(status);
+}
+
 maybeStartBackgroundUpdateCheck(args);
 const resolved = resolveNativeBinary({ root });
 if (!resolved.ok) {
@@ -110,6 +115,16 @@ function handleUpdate(updateArgs) {
   return outputUpdateError(`unsupported update command: ${subcommand}`, json, background);
 }
 
+function handleUpgrade(upgradeArgs) {
+  const json = removeFlag(upgradeArgs, "--json");
+  if (upgradeArgs.length > 0) {
+    return outputUpdateError(`unsupported upgrade option: ${upgradeArgs[0]}`, json, false);
+  }
+  const checkStatus = checkUpdate({ json: false, background: false, silent: true });
+  if (checkStatus !== 0) return checkStatus;
+  return applyUpdate({ json, background: false });
+}
+
 function configureUpdate(updateArgs, json) {
   let mode = null;
   for (let i = 0; i < updateArgs.length; i += 1) {
@@ -130,7 +145,7 @@ function configureUpdate(updateArgs, json) {
   return 0;
 }
 
-function checkUpdate({ json, background }) {
+function checkUpdate({ json, background, silent = false }) {
   const currentVersion = packageJson.version;
   if (isOfflineEnv()) {
     const update = {
@@ -141,7 +156,7 @@ function checkUpdate({ json, background }) {
       latestVersion: null,
       offline: true,
     };
-    if (!background) outputUpdate({ update }, json);
+    if (!background && !silent) outputUpdate({ update }, json);
     return 0;
   }
   const latest = npmViewLatest(background ? 3_000 : 15_000);
@@ -151,7 +166,7 @@ function checkUpdate({ json, background }) {
     : { available: false, kind: "unknown", currentVersion, latestVersion: null };
   const cache = { checkedAt, ...recommendation };
   writeJson(cachePath(), cache);
-  if (!background) outputUpdate({ update: cache }, json);
+  if (!background && !silent) outputUpdate({ update: cache }, json);
   return 0;
 }
 
@@ -160,7 +175,10 @@ function applyUpdate({ json, background, backgroundWorker = false, delayMs = 0 }
   const config = readUpdateConfig();
   if (config.mode === "off") return outputUpdateResult("disabled", "update mode is off", json, background);
   const cache = readJson(cachePath()) ?? {};
-  if (!cache.available) return outputUpdateResult("current", "no cached update is available", json, background);
+  if (!cache.available) {
+    const message = cache.kind === "none" ? "already current" : "no cached update is available";
+    return outputUpdateResult("current", message, json, background);
+  }
   if (cache.kind !== "patch") return outputUpdateResult("notify", "minor and major updates are notify-only", json, background);
   const installKind = detectInstallKind();
   if (!["global", "pi"].includes(installKind.kind)) {
