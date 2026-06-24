@@ -310,7 +310,7 @@ pire-browser auth login app
 pire-browser snapshot -i --compact
 ```
 
-Prefer `--password-stdin` over `--password` when saving credentials so the password is not placed in shell history. This is a best-effort Firefox profile-local auth path, not a full encrypted auth vault or credential-provider plugin flow. Do not report login success until a fresh snapshot, URL, or page state confirms it.
+Prefer `--password-stdin` over `--password` when saving credentials so the password is not placed in shell history. When using MCP, only call `pire_browser_auth_save` with user-approved credentials; use `pire_browser_auth_login`, then verify with a fresh snapshot, URL, or page state before reporting success. This is a best-effort Firefox profile-local auth path, not a full encrypted auth vault or credential-provider plugin flow.
 
 Open tabs and windows:
 
@@ -416,7 +416,7 @@ typing, semantic find, double-click, hover, focus, select, check, uncheck,
 scroll, drag, mouse events, get, state checks, wait, screenshot/PDF evidence,
 console/errors/dialog/highlight/vitals diagnostics, download, wait-download,
 upload, clipboard, settings/emulation, cookies/storage, network
-requests/routes/HAR, plaintext state file management, session/profile
+requests/routes/HAR, auth helpers, plaintext state file management, session/profile
 inspection, status, tab/frame/window controls, close, eval, and skill guidance. It
 invokes the same installed CLI binary, so setup, policies, sessions, profiles,
 and Firefox runtime behavior stay shared with normal `pire-browser` commands.

@@ -112,7 +112,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs, mouse/debugging tools, settings/emulation, cookies/storage, network/state/session/profile tools, transfers, clipboard, tabs/frames/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use pire_browser_open, pire_browser_snapshot, semantic find/action tools, pire_browser_get, pire_browser_is, waits, screenshots/PDFs, mouse/debugging tools, settings/emulation, cookies/storage, network/auth/state/session/profile tools, transfers, clipboard, tabs/frames/windows/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -682,6 +682,48 @@ fn tool_command_args(
             if let Some(target) = optional_string(object, "target")? {
                 args.push(target);
             }
+        }
+        (_, "pire_browser_auth_save") => {
+            args.push("auth".to_string());
+            args.push("save".to_string());
+            args.push(required_string(object, "name")?);
+            args.push("--url".to_string());
+            args.push(required_string(object, "url")?);
+            args.push("--username".to_string());
+            args.push(required_string(object, "username")?);
+            args.push("--password".to_string());
+            args.push(required_string(object, "password")?);
+            if let Some(selector) = optional_string(object, "usernameSelector")? {
+                args.push("--username-selector".to_string());
+                args.push(selector);
+            }
+            if let Some(selector) = optional_string(object, "passwordSelector")? {
+                args.push("--password-selector".to_string());
+                args.push(selector);
+            }
+            if let Some(selector) = optional_string(object, "submitSelector")? {
+                args.push("--submit-selector".to_string());
+                args.push(selector);
+            }
+        }
+        (_, "pire_browser_auth_login") => {
+            args.push("auth".to_string());
+            args.push("login".to_string());
+            args.push(required_string(object, "name")?);
+        }
+        (_, "pire_browser_auth_list") => {
+            args.push("auth".to_string());
+            args.push("list".to_string());
+        }
+        (_, "pire_browser_auth_show") => {
+            args.push("auth".to_string());
+            args.push("show".to_string());
+            args.push(required_string(object, "name")?);
+        }
+        (_, "pire_browser_auth_delete") => {
+            args.push("auth".to_string());
+            args.push("delete".to_string());
+            args.push(required_string(object, "name")?);
         }
         (_, "pire_browser_state_save") => {
             args.push("state".to_string());
@@ -1867,6 +1909,52 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_auth_save",
+            "Save auth profile",
+            "Save a selector-driven auth profile in the managed Firefox profile. Password is sensitive; shell users should prefer auth save --password-stdin.",
+            tool_schema(
+                vec![
+                    ("name", string_prop("Auth profile name.")),
+                    ("url", string_prop("Login page URL.")),
+                    ("username", string_prop("Username value.")),
+                    ("password", string_prop("Password value. Sensitive.")),
+                    ("usernameSelector", string_prop("Optional username input CSS selector.")),
+                    ("passwordSelector", string_prop("Optional password input CSS selector.")),
+                    ("submitSelector", string_prop("Optional submit control CSS selector.")),
+                ],
+                &["name", "url", "username", "password"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_auth_login",
+            "Run auth login",
+            "Open a saved auth profile URL, fill configured selectors, and submit the form.",
+            tool_schema(vec![("name", string_prop("Auth profile name."))], &["name"]),
+            false,
+        ),
+        tool(
+            "pire_browser_auth_list",
+            "List auth profiles",
+            "List saved selector-driven auth profiles without printing passwords.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
+            "pire_browser_auth_show",
+            "Show auth profile",
+            "Show metadata for one saved auth profile without printing the password.",
+            tool_schema(vec![("name", string_prop("Auth profile name."))], &["name"]),
+            true,
+        ),
+        tool(
+            "pire_browser_auth_delete",
+            "Delete auth profile",
+            "Delete a saved selector-driven auth profile.",
+            tool_schema(vec![("name", string_prop("Auth profile name."))], &["name"]),
+            false,
+        ),
+        tool(
             "pire_browser_state_save",
             "Save state",
             "Save active-origin cookies and Web Storage to a plaintext state file.",
@@ -2261,6 +2349,9 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_state_save"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_auth_login"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_state_load"));
@@ -2888,6 +2979,70 @@ mod tests {
             args,
             vec!["--json", "network", "unroute", "**/api/config**"]
         );
+
+        let args = tool_command_args(
+            "pire_browser_auth_save",
+            &json!({
+                "name": "app",
+                "url": "https://example.com/login",
+                "username": "agent@example.com",
+                "password": "secret",
+                "usernameSelector": "#email",
+                "passwordSelector": "#password",
+                "submitSelector": "button[type=submit]"
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "auth",
+                "save",
+                "app",
+                "--url",
+                "https://example.com/login",
+                "--username",
+                "agent@example.com",
+                "--password",
+                "secret",
+                "--username-selector",
+                "#email",
+                "--password-selector",
+                "#password",
+                "--submit-selector",
+                "button[type=submit]"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_auth_login",
+            &json!({ "name": "app" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "auth", "login", "app"]);
+
+        let args =
+            tool_command_args("pire_browser_auth_list", &json!({}), McpToolsProfile::Core).unwrap();
+        assert_eq!(args, vec!["--json", "auth", "list"]);
+
+        let args = tool_command_args(
+            "pire_browser_auth_show",
+            &json!({ "name": "app" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "auth", "show", "app"]);
+
+        let args = tool_command_args(
+            "pire_browser_auth_delete",
+            &json!({ "name": "app" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "auth", "delete", "app"]);
 
         let args = tool_command_args(
             "pire_browser_state_save",
