@@ -3090,7 +3090,8 @@ helpers, screenshots/PDFs, diffs, eval, status, basic tabs, profiles, close, and
 installed skill guidance. Add comma-separated profiles when needed: `network`,
 `state`, `debug`, `tabs`, `mobile`, or `react`. The `debug` profile includes
 lower-level launch, install/repair, safe upgrade, typed batch, doctor/activity
-diagnostics, console/errors, dialogs, highlight, and vitals. `react` is accepted for
+diagnostics, console/errors, dialogs, highlight, and vitals. Agent-browser-style
+action/tab/frame aliases are available alongside older compatible names. `react` is accepted for
 compatibility but currently only returns profile guidance because pire-browser
 does not ship React DevTools introspection. Use `all` for every currently
 implemented MCP tool. The server defaults to MCP protocol 2025-11-25 and

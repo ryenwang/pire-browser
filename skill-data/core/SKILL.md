@@ -567,7 +567,7 @@ pire-browser click @e4
 pire-browser frame main
 ```
 
-After `frame @e2`, snapshots and selector-based actions are scoped to that iframe. Use `frame main` before returning to controls outside the iframe. When using MCP, prefer `pire_browser_frame_select` to enter an iframe and `pire_browser_frame_main` before returning to outer-page controls. Re-run `snapshot -i` after each frame switch and use the fresh refs from the new context.
+After `frame @e2`, snapshots and selector-based actions are scoped to that iframe. Use `frame main` before returning to controls outside the iframe. When using MCP, prefer the agent-browser-style `pire_browser_frame_switch` to enter an iframe and `pire_browser_frame_main` before returning to outer-page controls; `pire_browser_frame_select` remains available for compatibility. Re-run `snapshot -i` after each frame switch and use the fresh refs from the new context.
 
 ## Setup And Diagnostics
 

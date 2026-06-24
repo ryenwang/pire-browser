@@ -177,7 +177,9 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
 fn tool_profile_bits(name: &str) -> u16 {
     match name {
         TOOLS_PROFILES_TOOL => PROFILE_ALL,
-        "pire_browser_tabs_list" | "pire_browser_tab_new" => PROFILE_CORE | PROFILE_TABS,
+        "pire_browser_tabs_list" | "pire_browser_tab_list" | "pire_browser_tab_new" => {
+            PROFILE_CORE | PROFILE_TABS
+        }
         "pire_browser_profiles_list" => PROFILE_CORE | PROFILE_STATE | PROFILE_DEBUG,
         "pire_browser_skills_get_core" => PROFILE_CORE | PROFILE_STATE,
         "pire_browser_status" => PROFILE_CORE | PROFILE_DEBUG,
@@ -195,6 +197,8 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_keyboard_insert_text"
         | "pire_browser_key_down"
         | "pire_browser_key_up"
+        | "pire_browser_keydown"
+        | "pire_browser_keyup"
         | "pire_browser_mouse_move"
         | "pire_browser_mouse_down"
         | "pire_browser_mouse_up"
@@ -206,6 +210,7 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_find"
         | "pire_browser_click"
         | "pire_browser_double_click"
+        | "pire_browser_dblclick"
         | "pire_browser_fill"
         | "pire_browser_type"
         | "pire_browser_press"
@@ -288,16 +293,19 @@ fn tool_profile_bits(name: &str) -> u16 {
         "pire_browser_dialog_status"
         | "pire_browser_dialog_accept"
         | "pire_browser_dialog_dismiss" => PROFILE_DEBUG | PROFILE_TABS,
-        "pire_browser_tabs_select" | "pire_browser_tabs_close" | "pire_browser_tabs_label" => {
-            PROFILE_TABS
-        }
+        "pire_browser_tabs_select"
+        | "pire_browser_tab_switch"
+        | "pire_browser_tabs_close"
+        | "pire_browser_tab_close"
+        | "pire_browser_tabs_label" => PROFILE_TABS,
         "pire_browser_back"
         | "pire_browser_forward"
         | "pire_browser_reload"
         | "pire_browser_pushstate" => PROFILE_CORE | PROFILE_TABS,
-        "pire_browser_frame_select" | "pire_browser_frame_main" | "pire_browser_window_new" => {
-            PROFILE_TABS
-        }
+        "pire_browser_frame_select"
+        | "pire_browser_frame_switch"
+        | "pire_browser_frame_main"
+        | "pire_browser_window_new" => PROFILE_TABS,
         "pire_browser_add_init_script" | "pire_browser_remove_init_script" => {
             PROFILE_CORE | PROFILE_DEBUG
         }
@@ -723,6 +731,10 @@ fn tool_command_args(
             args.push("dblclick".to_string());
             args.push(required_string(object, "selector")?);
         }
+        (_, "pire_browser_dblclick") => {
+            args.push("dblclick".to_string());
+            args.push(required_string(object, "selector")?);
+        }
         (_, "pire_browser_fill") => {
             args.push("fill".to_string());
             args.push(required_string(object, "selector")?);
@@ -752,6 +764,14 @@ fn tool_command_args(
             args.push(required_string(object, "key")?);
         }
         (_, "pire_browser_key_up") => {
+            args.push("keyup".to_string());
+            args.push(required_string(object, "key")?);
+        }
+        (_, "pire_browser_keydown") => {
+            args.push("keydown".to_string());
+            args.push(required_string(object, "key")?);
+        }
+        (_, "pire_browser_keyup") => {
             args.push("keyup".to_string());
             args.push(required_string(object, "key")?);
         }
@@ -1504,6 +1524,10 @@ fn tool_command_args(
             args.push("tabs".to_string());
             args.push("list".to_string());
         }
+        (_, "pire_browser_tab_list") => {
+            args.push("tab".to_string());
+            args.push("list".to_string());
+        }
         (_, "pire_browser_tab_new") => {
             args.push("tab".to_string());
             args.push("new".to_string());
@@ -1520,11 +1544,23 @@ fn tool_command_args(
             args.push("select".to_string());
             args.push(required_string(object, "target")?);
         }
+        (_, "pire_browser_tab_switch") => {
+            args.push("tabs".to_string());
+            args.push("select".to_string());
+            args.push(required_string(object, "tab")?);
+        }
         (_, "pire_browser_tabs_close") => {
             args.push("tabs".to_string());
             args.push("close".to_string());
             if let Some(target) = optional_string(object, "target")? {
                 args.push(target);
+            }
+        }
+        (_, "pire_browser_tab_close") => {
+            args.push("tabs".to_string());
+            args.push("close".to_string());
+            if let Some(tab) = optional_string(object, "tab")? {
+                args.push(tab);
             }
         }
         (_, "pire_browser_tabs_label") => {
@@ -1557,6 +1593,10 @@ fn tool_command_args(
         (_, "pire_browser_frame_select") => {
             args.push("frame".to_string());
             args.push(required_string(object, "target")?);
+        }
+        (_, "pire_browser_frame_switch") => {
+            args.push("frame".to_string());
+            args.push(required_string(object, "frame")?);
         }
         (_, "pire_browser_frame_main") => {
             args.push("frame".to_string());
@@ -2320,6 +2360,16 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_dblclick",
+            "Double-click",
+            "Agent-browser-style alias for double-clicking a ref or selector.",
+            tool_schema(
+                vec![("selector", string_prop("Ref or selector to double-click."))],
+                &["selector"],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_fill",
             "Fill",
             "Clear and fill a ref or selector.",
@@ -2380,6 +2430,20 @@ fn core_tools() -> Vec<Value> {
             "pire_browser_key_up",
             "Key up",
             "Dispatch a keyup event for the active page focus.",
+            tool_schema(vec![("key", string_prop("Key to release."))], &["key"]),
+            false,
+        ),
+        tool(
+            "pire_browser_keydown",
+            "Key down",
+            "Agent-browser-style alias for dispatching a keydown event.",
+            tool_schema(vec![("key", string_prop("Key to press down."))], &["key"]),
+            false,
+        ),
+        tool(
+            "pire_browser_keyup",
+            "Key up",
+            "Agent-browser-style alias for dispatching a keyup event.",
             tool_schema(vec![("key", string_prop("Key to release."))], &["key"]),
             false,
         ),
@@ -3368,6 +3432,13 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_tab_list",
+            "List tabs",
+            "Agent-browser-style alias for listing managed Firefox tabs.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
             "pire_browser_tab_new",
             "New tab",
             "Open a new tab, optionally navigating to a URL and assigning a label.",
@@ -3391,10 +3462,27 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_tab_switch",
+            "Switch tab",
+            "Agent-browser-style alias for switching to an existing tab by tab id or label.",
+            tool_schema(
+                vec![("tab", string_prop("Tab id such as t2, or tab label."))],
+                &["tab"],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_tabs_close",
             "Close tab",
             "Close an existing tab by tab id or label, or the active tab when target is omitted.",
             tool_schema(vec![("target", string_prop("Optional tab id or label."))], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_tab_close",
+            "Close tab",
+            "Agent-browser-style alias for closing a tab by tab id or label, or the active tab when omitted.",
+            tool_schema(vec![("tab", string_prop("Optional tab id or label."))], &[]),
             false,
         ),
         tool(
@@ -3468,6 +3556,16 @@ fn core_tools() -> Vec<Value> {
             tool_schema(
                 vec![("target", string_prop("Iframe ref such as @e3, or CSS selector."))],
                 &["target"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_frame_switch",
+            "Switch frame",
+            "Agent-browser-style alias for scoping snapshots and selector-based actions to an iframe.",
+            tool_schema(
+                vec![("frame", string_prop("Iframe ref such as @e3, or CSS selector."))],
+                &["frame"],
             ),
             false,
         ),
@@ -3924,6 +4022,9 @@ mod tests {
             .any(|tool| tool["name"] == "pire_browser_double_click"));
         assert!(tools
             .iter()
+            .any(|tool| tool["name"] == "pire_browser_dblclick"));
+        assert!(tools
+            .iter()
             .any(|tool| tool["name"] == "pire_browser_hover"));
         assert!(tools
             .iter()
@@ -4185,6 +4286,18 @@ mod tests {
         assert!(tabs
             .iter()
             .any(|tool| tool["name"] == "pire_browser_tab_new"));
+        assert!(tabs
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_tab_list"));
+        assert!(tabs
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_tab_switch"));
+        assert!(tabs
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_tab_close"));
+        assert!(tabs
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_frame_switch"));
 
         let mobile = mcp_tools(McpToolsProfile::Mobile);
         assert!(mobile
@@ -4918,6 +5031,30 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "dblclick", "@e7"]);
+
+        let args = tool_command_args(
+            "pire_browser_dblclick",
+            &json!({ "selector": "@e7" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "dblclick", "@e7"]);
+
+        let args = tool_command_args(
+            "pire_browser_keydown",
+            &json!({ "key": "Shift" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "keydown", "Shift"]);
+
+        let args = tool_command_args(
+            "pire_browser_keyup",
+            &json!({ "key": "Shift" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "keyup", "Shift"]);
 
         let args = tool_command_args(
             "pire_browser_drag",
@@ -5748,6 +5885,10 @@ mod tests {
             ]
         );
 
+        let args =
+            tool_command_args("pire_browser_tab_list", &json!({}), McpToolsProfile::Core).unwrap();
+        assert_eq!(args, vec!["--json", "tab", "list"]);
+
         let args = tool_command_args(
             "pire_browser_tabs_select",
             &json!({ "target": "docs" }),
@@ -5757,8 +5898,24 @@ mod tests {
         assert_eq!(args, vec!["--json", "tabs", "select", "docs"]);
 
         let args = tool_command_args(
+            "pire_browser_tab_switch",
+            &json!({ "tab": "docs" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "tabs", "select", "docs"]);
+
+        let args = tool_command_args(
             "pire_browser_tabs_close",
             &json!({ "target": "t2" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "tabs", "close", "t2"]);
+
+        let args = tool_command_args(
+            "pire_browser_tab_close",
+            &json!({ "tab": "t2" }),
             McpToolsProfile::Core,
         )
         .unwrap();
@@ -5775,6 +5932,14 @@ mod tests {
         let args = tool_command_args(
             "pire_browser_frame_select",
             &json!({ "target": "@e3" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "frame", "@e3"]);
+
+        let args = tool_command_args(
+            "pire_browser_frame_switch",
+            &json!({ "frame": "@e3" }),
             McpToolsProfile::Core,
         )
         .unwrap();
