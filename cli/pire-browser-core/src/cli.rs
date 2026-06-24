@@ -2378,6 +2378,7 @@ return a best-effort warning because native Ctrl+C/Ctrl+V handlers are not run.
 const AUTH_HELP: &str = r##"
 Usage:
   pire-browser auth save <name> --url <url> --username <user> --password <pass>
+  echo "pass" | pire-browser auth save <name> --url <url> --username <user> --password-stdin
   pire-browser auth save <name> --url <url> --username <user> --password <pass> --username-selector <sel> --password-selector <sel> --submit-selector <sel>
   pire-browser auth login <name>
   pire-browser auth list
@@ -2386,8 +2387,9 @@ Usage:
 
 Stores a best-effort local auth profile in the managed Firefox profile, then
 opens the URL, fills username/password selectors, and clicks the submit selector
-on login. Passwords are not printed by list/show output. This is not
-a full encrypted auth vault.
+on login. Passwords are not printed by list/show output. Use --password-stdin
+to avoid putting the password in shell history. This is not a full encrypted
+auth vault.
 "##;
 
 const STATE_HELP: &str = r##"
@@ -4307,6 +4309,9 @@ mod tests {
             .unwrap()
             .contains("--username-selector"));
         assert!(help_text(Some("auth")).unwrap().contains("auth login"));
+        assert!(help_text(Some("auth"))
+            .unwrap()
+            .contains("--password-stdin"));
         assert!(help_text(Some("tabs")).unwrap().contains("tab new"));
         assert!(help_text(Some("window")).unwrap().contains("window new"));
         assert!(help_text(Some("close")).unwrap().contains("quit"));

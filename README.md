@@ -496,6 +496,7 @@ The stdio MCP server exposes the core browser workflow as typed tools: open, sna
 
 - Use `--headers` for header-authenticated origins.
 - Use managed Firefox profiles for normal browser login state.
+- Use `auth save --password-stdin` when saving a selector-driven auth helper to avoid shell history.
 - Use `state save` and `state load` for active-origin cookies and Web Storage.
 - Do not commit `.pire-state/` files.
 
@@ -528,6 +529,22 @@ Headers and Basic credentials are scoped to the active/opened URL's origin and
 secret values are not echoed in command output. `set credentials` stores values
 only in the current managed Firefox extension session; it is not an encrypted
 auth vault.
+
+### Selector-driven auth helper
+
+For simple username/password forms, save a best-effort profile-local auth helper
+and reuse it later:
+
+```bash
+echo "secret" | pire-browser auth save app --url https://example.com/login --username user --password-stdin --username-selector "#email" --password-selector "#password" --submit-selector "button[type=submit]"
+pire-browser auth login app
+pire-browser snapshot -i
+```
+
+`--password-stdin` is the recommended save path because it avoids putting the
+password in shell history. Auth profiles are stored in the managed Firefox
+extension's local storage and are not a full encrypted vault. Do not claim login
+success until a fresh snapshot, URL, or page state confirms it.
 
 ### Proxy authentication
 

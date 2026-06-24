@@ -1123,6 +1123,8 @@ describe("command shape parity", () => {
     expect(body).toContain('"--username-selector"');
     expect(body).toContain('"--password-selector"');
     expect(body).toContain('"--submit-selector"');
+    expect(body).toContain("auth save --password-stdin must be expanded by the CLI");
+    expect(body).not.toContain("auth save --password-stdin is not implemented");
     expect(body).toContain("authStorageWarning()");
     expect(body).toContain("not a full encrypted auth vault");
 

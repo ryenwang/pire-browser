@@ -253,12 +253,12 @@ Mouse and drag commands are Firefox WebExtension paths. They dispatch page event
 Save and reuse a simple login form profile:
 
 ```bash
-pire-browser auth save app --url https://example.com/login --username user --password pass --username-selector "#email" --password-selector "#password" --submit-selector "button[type=submit]"
+echo "pass" | pire-browser auth save app --url https://example.com/login --username user --password-stdin --username-selector "#email" --password-selector "#password" --submit-selector "button[type=submit]"
 pire-browser auth login app
 pire-browser snapshot -i --compact
 ```
 
-This is a best-effort Firefox profile-local auth path, not a full encrypted auth vault. Do not report login success until a fresh snapshot, URL, or page state confirms it.
+Prefer `--password-stdin` over `--password` when saving credentials so the password is not placed in shell history. This is a best-effort Firefox profile-local auth path, not a full encrypted auth vault or credential-provider plugin flow. Do not report login success until a fresh snapshot, URL, or page state confirms it.
 
 Open tabs and windows:
 

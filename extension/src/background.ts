@@ -4172,9 +4172,9 @@ function parseAuthSaveArgs(args: string[]):
     if (arg === "--password-stdin") {
       return {
         error: {
-          code: "NotAvailableError",
-          message: "auth save --password-stdin is not implemented by pire-browser yet; pass --password for this best-effort profile path",
-          data: { feature: "auth --password-stdin", status: "not_supported" },
+          code: "InvalidArgumentError",
+          message: "auth save --password-stdin must be expanded by the CLI before extension dispatch; run `pire-browser auth save ... --password-stdin` and pipe the password on stdin",
+          data: { feature: "auth --password-stdin", status: "cli_only" },
         },
       };
     }

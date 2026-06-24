@@ -220,12 +220,14 @@ pire-browser highlight <sel>`),
   h2("Auth vault", "auth-vault"),
   statusNote("auth"),
   code(`pire-browser auth save app --url https://example.com/login --username user --password pass --username-selector "#email" --password-selector "#password" --submit-selector "button[type=submit]"
+echo "pass" | pire-browser auth save app --url https://example.com/login --username user --password-stdin
 pire-browser auth login app
 pire-browser auth list
 pire-browser auth show app
 pire-browser auth delete app
 # set credentials covers session-only HTTP Basic auth.
-# Encrypted auth vault storage and auth save --password-stdin are not available yet`),
+# --password-stdin avoids putting saved auth passwords in shell history.
+# Encrypted auth vault storage and credential-provider plugins are not available yet`),
 
   h2("Confirmation", "confirmation"),
   code(`pire-browser --confirm-actions eval eval "document.title"

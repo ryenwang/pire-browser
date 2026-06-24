@@ -63,7 +63,7 @@ export const featureStatuses = {
   },
   auth: {
     status: "partial",
-    summary: "`auth save/login/list/show/delete` provide a local Firefox-profile auth helper; encrypted vault storage and `--password-stdin` are not available yet.",
+    summary: "`auth save/login/list/show/delete` provide a local Firefox-profile auth helper, including CLI-expanded `auth save --password-stdin`; encrypted vault storage and credential-provider plugins are not available yet.",
     sources: ["README.md", "skill-data/core/SKILL.md", "extension/src/background.ts"],
   },
   networkControls: {
