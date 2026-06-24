@@ -154,6 +154,7 @@ pub enum LocalCommand {
     },
     DoctorFix {
         json: bool,
+        firefox_path: Option<String>,
     },
     Status {
         json: bool,
@@ -1224,24 +1225,35 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         let doctorish = command.clone();
         args.remove(0);
         let mut fix = false;
-        while let Some(arg) = args.first() {
-            match arg.as_str() {
+        let mut firefox_path = None;
+        let mut i = 0;
+        while i < args.len() {
+            match args[i].as_str() {
                 "--json" => {
-                    args.remove(0);
                     json_output = true;
                 }
                 "--offline" | "--quick" => {
-                    args.remove(0);
+                    // Compatibility flags: diagnostics stay local and quick in this backend.
                 }
                 "--fix" => {
-                    args.remove(0);
                     fix = true;
+                }
+                "--firefox-path" => {
+                    i += 1;
+                    let Some(path) = args.get(i).cloned() else {
+                        bail!("--firefox-path requires a path");
+                    };
+                    firefox_path = Some(path);
                 }
                 other => bail!("unsupported {doctorish} option: {other}"),
             }
+            i += 1;
         }
         if fix {
-            return Ok(LocalCommand::DoctorFix { json: json_output });
+            return Ok(LocalCommand::DoctorFix {
+                json: json_output,
+                firefox_path,
+            });
         }
         return Ok(LocalCommand::InstallStatus {
             json: json_output,
@@ -1912,10 +1924,7 @@ fn parse_single_state_arg(
     path.ok_or_else(|| anyhow::anyhow!("invalid_args: state {subcommand} requires <path>"))
 }
 
-fn parse_read_args(
-    args: &mut Vec<String>,
-    json_output: &mut bool,
-) -> Result<ParsedReadArgs> {
+fn parse_read_args(args: &mut Vec<String>, json_output: &mut bool) -> Result<ParsedReadArgs> {
     let mut url = None;
     let mut raw = false;
     let mut require_md = false;
@@ -2179,7 +2188,8 @@ Common commands:
   status [--json]                 Show live Firefox sessions and default target
   install [--firefox-path <path>]  Register the Firefox Native Messaging host
   upgrade                         Check and apply a safe package update
-  doctor [--json] [--offline]     Check setup health and PATH/install hints
+  doctor [--json] [--offline] [--fix]
+                                  Check setup health; --fix repairs setup
   mcp [--tools core|network|state|debug|tabs|mobile|react|all]
                                   Start the MCP stdio server
   dashboard start [--port 4848]   Start a local status/session/activity dashboard
@@ -2266,13 +2276,14 @@ the active page when Firefox has reported one, and advisory policy diagnostics.
 const DOCTOR_HELP: &str = r##"
 Usage:
   pire-browser doctor [--json] [--offline] [--quick]
+  pire-browser doctor --fix [--json] [--firefox-path <path>]
   pire-browser install-status [--json]
 
 Checks Firefox discovery, native messaging setup, extension build files, managed
 profile state, live sessions, and CLI/PATH advisories. --offline and --quick are
 accepted as no-op compatibility flags. Domain allowlist, action policy,
 confirmation policy, and state policy entries are advisory diagnostics. --fix is
-not implemented yet.
+an explicit repair path that reruns native host setup and then verifies status.
 "##;
 
 const ACTIVITY_HELP: &str = r##"
@@ -4778,7 +4789,28 @@ mod tests {
             }
         );
         let parsed = parse_cli_args(&s(&["doctor", "--fix", "--json"])).unwrap();
-        assert_eq!(parsed, LocalCommand::DoctorFix { json: true });
+        assert_eq!(
+            parsed,
+            LocalCommand::DoctorFix {
+                json: true,
+                firefox_path: None
+            }
+        );
+        let parsed = parse_cli_args(&s(&[
+            "doctor",
+            "--fix",
+            "--firefox-path",
+            "/Applications/Firefox.app/Contents/MacOS/firefox",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::DoctorFix {
+                json: true,
+                firefox_path: Some("/Applications/Firefox.app/Contents/MacOS/firefox".to_string())
+            }
+        );
     }
 
     #[test]
@@ -4826,9 +4858,7 @@ mod tests {
         assert!(help_text(Some("upgrade"))
             .unwrap()
             .contains("agent-browser-style"));
-        assert!(help_text(Some("update"))
-            .unwrap()
-            .contains("update check"));
+        assert!(help_text(Some("update")).unwrap().contains("update check"));
         assert!(help_text(Some("config"))
             .unwrap()
             .contains("PIRE_BROWSER_CONFIG"));
@@ -4854,9 +4884,7 @@ mod tests {
             .unwrap()
             .contains("--headers <json>"));
         assert!(help_text(Some("open")).unwrap().contains("--proxy <url>"));
-        assert!(help_text(Some("read"))
-            .unwrap()
-            .contains("active tab URL"));
+        assert!(help_text(Some("read")).unwrap().contains("active tab URL"));
         assert!(help_text(Some("snapshot"))
             .unwrap()
             .contains("snapshot -i -c"));

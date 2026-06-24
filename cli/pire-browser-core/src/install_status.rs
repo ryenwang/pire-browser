@@ -383,8 +383,35 @@ fn check_extension_build() -> CheckStatus {
 }
 
 fn extension_dir() -> PathBuf {
-    std::env::var_os("PIRE_BROWSER_EXTENSION_DIR")
-        .map(PathBuf::from)
+    extension_dir_from_candidates(
+        std::env::var_os("PIRE_BROWSER_EXTENSION_DIR").map(PathBuf::from),
+        extension_dir_candidates(),
+    )
+}
+
+fn extension_dir_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(current_dir) = std::env::current_dir() {
+        candidates.push(current_dir.join("extension"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors() {
+            candidates.push(ancestor.join("extension"));
+        }
+    }
+    candidates
+}
+
+fn extension_dir_from_candidates(
+    env_path: Option<PathBuf>,
+    candidates: impl IntoIterator<Item = PathBuf>,
+) -> PathBuf {
+    if let Some(path) = env_path {
+        return path;
+    }
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.join("manifest.json").exists())
         .unwrap_or_else(|| {
             std::env::current_dir()
                 .unwrap_or_else(|_| PathBuf::from("."))
@@ -531,5 +558,25 @@ mod tests {
         let flatpak = firefox_install_message(Some("flatpak")).unwrap();
         assert!(flatpak.contains("Flatpak Firefox detected"));
         assert!(flatpak.contains("unrestricted Firefox"));
+    }
+
+    #[test]
+    fn extension_dir_discovers_first_candidate_with_manifest() {
+        let root = tempfile::tempdir().unwrap();
+        let missing = root.path().join("missing").join("extension");
+        let valid = root.path().join("repo").join("extension");
+        fs::create_dir_all(&valid).unwrap();
+        fs::write(valid.join("manifest.json"), "{}").unwrap();
+
+        let resolved = extension_dir_from_candidates(None, vec![missing, valid.clone()]);
+        assert_eq!(resolved, valid);
+    }
+
+    #[test]
+    fn extension_dir_env_path_is_authoritative() {
+        let explicit = PathBuf::from("custom-extension");
+        let fallback = PathBuf::from("repo").join("extension");
+        let resolved = extension_dir_from_candidates(Some(explicit.clone()), vec![fallback]);
+        assert_eq!(resolved, explicit);
     }
 }

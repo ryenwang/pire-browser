@@ -38,7 +38,7 @@ use pire_browser_core::download::{
     display_download_url, finalize_download, sweep_old_downloads, DOWNLOAD_TIMEOUT_MS,
 };
 use pire_browser_core::install_status::{
-    collect_install_status, install_status_json, install_status_text,
+    collect_install_status, install_status_json, install_status_text, InstallStatusReport,
 };
 use pire_browser_core::ipc::send_pipe_request;
 use pire_browser_core::launch::{
@@ -54,7 +54,7 @@ use pire_browser_core::session::{
     session_cleanup_text, session_cleanup_value, session_status_text, session_status_value,
     SessionInfo,
 };
-use pire_browser_core::setup::{setup, setup_result_text};
+use pire_browser_core::setup::{setup, setup_result_text, SetupResult};
 use pire_browser_core::skills::{list_skills, skill_content};
 use pire_browser_core::state_file::{
     display_url_without_query_or_fragment, read_state_file_with_metadata,
@@ -659,12 +659,9 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 println!("{}", install_status_text(&report));
             }
         }
-        LocalCommand::DoctorFix { json } => {
-            let message =
-                "`doctor --fix` is not implemented yet; run `pire-browser setup` or rebuild the extension manually based on doctor output.";
-            let result = not_available_result("doctor --fix", message, json, &[])?;
-            println!("{result}");
-            std::process::exit(exit_code_for_error("NotAvailableError"));
+        LocalCommand::DoctorFix { json, firefox_path } => {
+            let firefox_path = firefox_path.or_else(|| firefox_path_override.clone());
+            handle_doctor_fix(json, firefox_path)?;
         }
         LocalCommand::Confirm { id, json } => {
             handle_confirm(id, json)?;
@@ -1100,6 +1097,151 @@ fn print_config_warnings(warnings: &[ConfigWarning]) {
             redact_text(&warning.path.display().to_string())
         );
     }
+}
+
+fn handle_doctor_fix(json_output: bool, firefox_path: Option<String>) -> Result<()> {
+    let before = collect_install_status()?;
+    let setup_result = match setup(firefox_path) {
+        Ok(result) => result,
+        Err(err) => {
+            print_doctor_fix_error(
+                "setup_failed",
+                &format!("{err:#}"),
+                &before,
+                None,
+                None,
+                json_output,
+            )?;
+            std::process::exit(1);
+        }
+    };
+    let after = collect_install_status()?;
+    if !after.ok {
+        print_doctor_fix_error(
+            "repair_incomplete",
+            "doctor --fix ran setup, but install status still needs attention",
+            &before,
+            Some(&setup_result),
+            Some(&after),
+            json_output,
+        )?;
+        std::process::exit(1);
+    }
+
+    let value = doctor_fix_success_value(&before, &setup_result, &after)?;
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
+fn doctor_fix_success_value(
+    before: &InstallStatusReport,
+    setup_result: &SetupResult,
+    after: &InstallStatusReport,
+) -> Result<Value> {
+    Ok(json!({
+        "text": doctor_fix_text(before, setup_result, after, true),
+        "fixed": !before.ok && after.ok,
+        "ranSetup": true,
+        "setup": setup_result_value(setup_result),
+        "before": serde_json::to_value(before)?,
+        "after": serde_json::to_value(after)?
+    }))
+}
+
+fn print_doctor_fix_error(
+    code: &str,
+    message: &str,
+    before: &InstallStatusReport,
+    setup_result: Option<&SetupResult>,
+    after: Option<&InstallStatusReport>,
+    json_output: bool,
+) -> Result<()> {
+    if json_output {
+        let mut data = json!({
+            "phase": "repair",
+            "ranSetup": setup_result.is_some(),
+            "before": serde_json::to_value(before)?,
+        });
+        if let Some(setup_result) = setup_result {
+            data["setup"] = setup_result_value(setup_result);
+        }
+        if let Some(after) = after {
+            data["after"] = serde_json::to_value(after)?;
+        }
+        redact_json_value(&mut data);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "success": false,
+                "error": {
+                    "code": code,
+                    "message": redact_text(message),
+                    "data": data
+                },
+                "warnings": []
+            }))?
+        );
+        return Ok(());
+    }
+
+    let mut text = if let (Some(setup_result), Some(after)) = (setup_result, after) {
+        doctor_fix_text(before, setup_result, after, false)
+    } else {
+        format!(
+            "pire-browser doctor --fix failed\n{}\n\nBefore repair:\n{}",
+            redact_text(message),
+            install_status_text(before)
+        )
+    };
+    if let Some(after) = after {
+        text.push_str("\n\nRemaining diagnostics:\n");
+        text.push_str(&install_status_text(after));
+    }
+    eprintln!("{text}");
+    Ok(())
+}
+
+fn doctor_fix_text(
+    before: &InstallStatusReport,
+    setup_result: &SetupResult,
+    after: &InstallStatusReport,
+    complete: bool,
+) -> String {
+    let heading = if complete {
+        "pire-browser doctor --fix complete"
+    } else {
+        "pire-browser doctor --fix ran setup, but status still needs attention"
+    };
+    let mut lines = vec![
+        heading.to_string(),
+        setup_result_text(setup_result),
+        format!("Before: {}", install_health_label(before.ok)),
+        format!("After: {}", install_health_label(after.ok)),
+    ];
+    if !after.ok {
+        lines.push("Run `pire-browser doctor` for the remaining diagnostics.".to_string());
+    }
+    lines.join("\n")
+}
+
+fn install_health_label(ok: bool) -> &'static str {
+    if ok {
+        "ok"
+    } else {
+        "needs attention"
+    }
+}
+
+fn setup_result_value(result: &SetupResult) -> Value {
+    let mut value = json!({
+        "firefoxPath": result.firefox_path.display().to_string(),
+        "hostPath": result.host_path.display().to_string(),
+        "manifestPath": result.manifest_path.display().to_string(),
+    });
+    if let Some(note) = &result.note {
+        value["note"] = json!(note);
+    }
+    value
 }
 
 fn firefox_path_override_from_args_and_env(raw: &[String]) -> Option<String> {

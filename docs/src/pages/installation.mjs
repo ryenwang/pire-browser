@@ -38,9 +38,11 @@ pire-browser update configure --mode off|notify|patch`),
   p("<code>upgrade</code> checks for the latest package first, then applies a safe update using the same patch-only global/Pi-managed install rules as <code>update apply</code>."),
   h2("Doctor", "doctor"),
   code(`pire-browser doctor
+pire-browser doctor --fix
+pire-browser doctor --fix --firefox-path /path/to/firefox
 pire-browser doctor --offline --quick
 pire-browser doctor --json`),
-  p("Doctor checks Firefox discovery, Native Messaging registration, extension build files, profile state, live sessions, PATH hints, and local policy diagnostics."),
+  p("Doctor checks Firefox discovery, Native Messaging registration, extension build files, profile state, live sessions, PATH hints, and local policy diagnostics. Plain doctor is read-only; <code>doctor --fix</code> explicitly reruns native host setup and verifies the follow-up status."),
   h2("Custom Firefox", "custom-firefox"),
   code(`# macOS/Linux
 PIRE_BROWSER_FIREFOX_PATH=/path/to/firefox pire-browser install

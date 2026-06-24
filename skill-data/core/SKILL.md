@@ -509,6 +509,7 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 - `pire-browser upgrade` checks for the latest package and applies a safe update when the install method allows it.
 - `pire-browser status` reports install and session state without fixing anything.
 - `pire-browser doctor` gives read-only diagnostics.
+- `pire-browser doctor --fix` explicitly reruns native host setup and verifies status; use it when the user wants repair, not for observation.
 - Browser commands that need auto-launch may run lazy setup when native host registration is missing or mismatched.
 - If `open` reports a recoverable page-readiness warning, continue with `pire-browser snapshot -i`.
 - If an installed command reports a missing optional native package, reinstall with optional dependencies enabled.

@@ -503,11 +503,13 @@ pire-browser setup --firefox-path /path/to/firefox
 pire-browser status
 pire-browser status --json
 pire-browser doctor
+pire-browser doctor --fix
+pire-browser doctor --fix --firefox-path /path/to/firefox
 pire-browser doctor --offline --quick
 pire-browser doctor --json
 ```
 
-`status` and `doctor` are observational. Browser commands that need auto-launch can run lazy setup when native host registration is missing or mismatched.
+`status` and plain `doctor` are observational. Use `doctor --fix` only when you explicitly want the agent-browser-style repair path: it reruns native host setup and then verifies status before reporting success. Browser commands that need auto-launch can run lazy setup when native host registration is missing or mismatched.
 
 ### Skills
 

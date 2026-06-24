@@ -309,10 +309,12 @@ pire-browser activity list --json`),
 
   h2("Doctor", "doctor"),
   code(`pire-browser doctor
+pire-browser doctor --fix
+pire-browser doctor --fix --firefox-path /path/to/firefox
 pire-browser doctor --offline --quick
 pire-browser doctor --json
 pire-browser install-status --json`),
-  p("Exit code is <code>0</code> when checks pass or report only advisory warnings, and nonzero when setup is missing or arguments are invalid."),
+  p("Exit code is <code>0</code> when checks pass or report only advisory warnings, and nonzero when setup is missing or arguments are invalid. Plain doctor is read-only; <code>doctor --fix</code> explicitly reruns native host setup and exits nonzero if the follow-up status still needs attention."),
 
   h2("Chat", "chat"),
   code(`# Natural-language chat is not implemented in pire-browser yet.
