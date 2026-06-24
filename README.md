@@ -494,7 +494,7 @@ pire-browser mcp --tools core
 pire-browser mcp --tools all
 ```
 
-The stdio MCP server exposes the core browser workflow as typed tools: open, snapshot, click, fill, type, press, get page/element info, check element state, wait, screenshot, status, tabs, close, eval, and skill guidance. `--tools all` is accepted as an alias for all currently available MCP tools. The MCP tools call the same installed CLI binary, so setup, policies, sessions, profiles, and Firefox runtime behavior stay shared with normal `pire-browser` commands.
+The stdio MCP server exposes the core browser workflow as typed tools: open, snapshot, click, fill, type, press, keyboard typing, hover/focus/select/check/scroll/drag, get page/element info, check element state, wait, screenshot, download, wait-download, upload, clipboard, status, tabs, close, eval, and skill guidance. `--tools all` is accepted as an alias for all currently available MCP tools. The MCP tools call the same installed CLI binary, so setup, policies, sessions, profiles, and Firefox runtime behavior stay shared with normal `pire-browser` commands.
 
 ## Authentication
 

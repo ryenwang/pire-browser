@@ -112,7 +112,7 @@ fn initialize_result() -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use pire_browser_open, pire_browser_snapshot, action tools, pire_browser_get, pire_browser_is, waits, screenshots, tabs/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use pire_browser_open, pire_browser_snapshot, action tools, pire_browser_get, pire_browser_is, waits, screenshots, transfers, clipboard, tabs/status, and pire_browser_skills_get_core for Firefox-backed browser automation. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -246,6 +246,70 @@ fn tool_command_args(
             args.push("press".to_string());
             args.push(required_string(object, "key")?);
         }
+        (_, "pire_browser_keyboard_type") => {
+            args.push("keyboard".to_string());
+            args.push("type".to_string());
+            args.push(required_string(object, "text")?);
+        }
+        (_, "pire_browser_keyboard_insert_text") => {
+            args.push("keyboard".to_string());
+            args.push("inserttext".to_string());
+            args.push(required_string(object, "text")?);
+        }
+        (_, "pire_browser_key_down") => {
+            args.push("keydown".to_string());
+            args.push(required_string(object, "key")?);
+        }
+        (_, "pire_browser_key_up") => {
+            args.push("keyup".to_string());
+            args.push(required_string(object, "key")?);
+        }
+        (_, "pire_browser_hover") => {
+            args.push("hover".to_string());
+            args.push(required_string(object, "selector")?);
+        }
+        (_, "pire_browser_focus") => {
+            args.push("focus".to_string());
+            args.push(required_string(object, "selector")?);
+        }
+        (_, "pire_browser_select") => {
+            args.push("select".to_string());
+            args.push(required_string(object, "selector")?);
+            args.push(required_string(object, "value")?);
+        }
+        (_, "pire_browser_check") => {
+            args.push("check".to_string());
+            args.push(required_string(object, "selector")?);
+        }
+        (_, "pire_browser_uncheck") => {
+            args.push("uncheck".to_string());
+            args.push(required_string(object, "selector")?);
+        }
+        (_, "pire_browser_scroll") => {
+            args.push("scroll".to_string());
+            let direction =
+                optional_string(object, "direction")?.unwrap_or_else(|| "down".to_string());
+            if !matches!(direction.as_str(), "up" | "down" | "left" | "right") {
+                return Err("direction must be up, down, left, or right".to_string());
+            }
+            args.push(direction);
+            if let Some(pixels) = optional_u64(object, "pixels")? {
+                args.push(pixels.to_string());
+            }
+            if let Some(selector) = optional_string(object, "selector")? {
+                args.push("--selector".to_string());
+                args.push(selector);
+            }
+        }
+        (_, "pire_browser_scroll_into_view") => {
+            args.push("scrollintoview".to_string());
+            args.push(required_string(object, "selector")?);
+        }
+        (_, "pire_browser_drag") => {
+            args.push("drag".to_string());
+            args.push(required_string(object, "source")?);
+            args.push(required_string(object, "target")?);
+        }
         (_, "pire_browser_wait") => {
             args.push("wait".to_string());
             let condition_count = ["milliseconds", "selector", "text", "url", "loadState"]
@@ -309,6 +373,46 @@ fn tool_command_args(
             if let Some(quality) = optional_u64(object, "quality")? {
                 args.push("--screenshot-quality".to_string());
                 args.push(quality.to_string());
+            }
+        }
+        (_, "pire_browser_download") => {
+            args.push("download".to_string());
+            args.push(required_string(object, "selector")?);
+            args.push(required_string(object, "path")?);
+            if let Some(timeout) = optional_u64(object, "timeout")? {
+                args.push("--timeout".to_string());
+                args.push(timeout.to_string());
+            }
+        }
+        (_, "pire_browser_wait_download") => {
+            args.push("wait".to_string());
+            args.push("--download".to_string());
+            if let Some(path) = optional_string(object, "path")? {
+                args.push(path);
+            }
+            if let Some(timeout) = optional_u64(object, "timeout")? {
+                args.push("--timeout".to_string());
+                args.push(timeout.to_string());
+            }
+        }
+        (_, "pire_browser_upload") => {
+            args.push("upload".to_string());
+            args.push(required_string(object, "selector")?);
+            let files = optional_string_array(object, "files")?;
+            if files.is_empty() {
+                return Err("files must contain at least one path".to_string());
+            }
+            args.extend(files);
+        }
+        (_, "pire_browser_clipboard") => {
+            args.push("clipboard".to_string());
+            let action = required_string(object, "action")?;
+            if !matches!(action.as_str(), "read" | "write" | "copy" | "paste") {
+                return Err("action must be read, write, copy, or paste".to_string());
+            }
+            args.push(action.clone());
+            if action == "write" {
+                args.push(required_string(object, "text")?);
             }
         }
         (_, "pire_browser_get") => {
@@ -560,6 +664,115 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_keyboard_type",
+            "Type at focus",
+            "Type text at the current focused element.",
+            tool_schema(vec![("text", string_prop("Text to type at focus."))], &["text"]),
+            false,
+        ),
+        tool(
+            "pire_browser_keyboard_insert_text",
+            "Insert text at focus",
+            "Insert text at the current focused element without key events.",
+            tool_schema(
+                vec![("text", string_prop("Text to insert at focus."))],
+                &["text"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_key_down",
+            "Key down",
+            "Dispatch a keydown event for the active page focus.",
+            tool_schema(vec![("key", string_prop("Key to press down."))], &["key"]),
+            false,
+        ),
+        tool(
+            "pire_browser_key_up",
+            "Key up",
+            "Dispatch a keyup event for the active page focus.",
+            tool_schema(vec![("key", string_prop("Key to release."))], &["key"]),
+            false,
+        ),
+        tool(
+            "pire_browser_hover",
+            "Hover",
+            "Hover a ref or selector using Firefox page-level events.",
+            tool_schema(vec![("selector", string_prop("Ref or selector to hover."))], &["selector"]),
+            false,
+        ),
+        tool(
+            "pire_browser_focus",
+            "Focus",
+            "Focus a ref or selector.",
+            tool_schema(vec![("selector", string_prop("Ref or selector to focus."))], &["selector"]),
+            false,
+        ),
+        tool(
+            "pire_browser_select",
+            "Select option",
+            "Select an option value or visible text in a dropdown.",
+            tool_schema(
+                vec![
+                    ("selector", string_prop("Ref or selector for the select element.")),
+                    ("value", string_prop("Option value or visible text to select.")),
+                ],
+                &["selector", "value"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_check",
+            "Check",
+            "Check a checkbox or radio input.",
+            tool_schema(vec![("selector", string_prop("Ref or selector to check."))], &["selector"]),
+            false,
+        ),
+        tool(
+            "pire_browser_uncheck",
+            "Uncheck",
+            "Uncheck a checkbox input.",
+            tool_schema(vec![("selector", string_prop("Ref or selector to uncheck."))], &["selector"]),
+            false,
+        ),
+        tool(
+            "pire_browser_scroll",
+            "Scroll",
+            "Scroll the page or a scrollable container.",
+            tool_schema(
+                vec![
+                    ("direction", string_prop("up, down, left, or right. Defaults to down.")),
+                    ("pixels", number_prop("Positive pixel distance. Defaults to 900.")),
+                    ("selector", string_prop("Optional scroll container selector.")),
+                ],
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_scroll_into_view",
+            "Scroll into view",
+            "Scroll a ref or selector into view.",
+            tool_schema(
+                vec![("selector", string_prop("Ref or selector to scroll into view."))],
+                &["selector"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_drag",
+            "Drag",
+            "Drag from one ref or selector to another using page-level events.",
+            tool_schema(
+                vec![
+                    ("source", string_prop("Source ref or selector.")),
+                    ("target", string_prop("Target ref or selector.")),
+                ],
+                &["source", "target"],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_wait",
             "Wait",
             "Wait for milliseconds, selector, text, URL pattern, or load state.",
@@ -593,6 +806,66 @@ fn core_tools() -> Vec<Value> {
                 &[],
             ),
             true,
+        ),
+        tool(
+            "pire_browser_download",
+            "Download",
+            "Click a target to trigger a Firefox download and save it to a path.",
+            tool_schema(
+                vec![
+                    ("selector", string_prop("Ref or selector that triggers the download.")),
+                    ("path", string_prop("Output path for the downloaded file.")),
+                    ("timeout", number_prop("Timeout in milliseconds.")),
+                ],
+                &["selector", "path"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_wait_download",
+            "Wait for download",
+            "Wait for a recent or new Firefox download and optionally save it to a path.",
+            tool_schema(
+                vec![
+                    ("path", string_prop("Optional output path for the downloaded file.")),
+                    ("timeout", number_prop("Timeout in milliseconds.")),
+                ],
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_upload",
+            "Upload",
+            "Assign one or more small local files to a file input or associated label.",
+            tool_schema(
+                vec![
+                    ("selector", string_prop("Ref or selector for the upload target.")),
+                    (
+                        "files",
+                        json!({
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Local file paths to upload."
+                        }),
+                    ),
+                ],
+                &["selector", "files"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_clipboard",
+            "Clipboard",
+            "Read, write, copy, or paste text through the Firefox extension clipboard path.",
+            tool_schema(
+                vec![
+                    ("action", string_prop("read, write, copy, or paste.")),
+                    ("text", string_prop("Text to write when action is write.")),
+                ],
+                &["action"],
+            ),
+            false,
         ),
         tool(
             "pire_browser_get",
@@ -790,6 +1063,18 @@ mod tests {
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_is"));
         assert!(tools
             .iter()
+            .any(|tool| tool["name"] == "pire_browser_hover"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_upload"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_wait_download"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_clipboard"));
+        assert!(tools
+            .iter()
             .any(|tool| tool["name"] == "pire_browser_skills_get_core"));
         let snapshot = tools
             .iter()
@@ -904,6 +1189,96 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "is", "visible", "#submit"]);
+
+        let args = tool_command_args(
+            "pire_browser_keyboard_type",
+            &json!({ "text": "hello" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "keyboard", "type", "hello"]);
+
+        let args = tool_command_args(
+            "pire_browser_select",
+            &json!({ "selector": "#country", "value": "US" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "select", "#country", "US"]);
+
+        let args = tool_command_args(
+            "pire_browser_scroll",
+            &json!({ "direction": "down", "pixels": 400, "selector": "#panel" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "scroll", "down", "400", "--selector", "#panel"]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_drag",
+            &json!({ "source": "@e1", "target": "@e2" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "drag", "@e1", "@e2"]);
+
+        let args = tool_command_args(
+            "pire_browser_download",
+            &json!({ "selector": "@e3", "path": "report.csv", "timeout": 60000 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "download",
+                "@e3",
+                "report.csv",
+                "--timeout",
+                "60000"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_wait_download",
+            &json!({ "path": "report.csv", "timeout": 60000 }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "wait",
+                "--download",
+                "report.csv",
+                "--timeout",
+                "60000"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_upload",
+            &json!({ "selector": "#file", "files": ["one.txt", "two.txt"] }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "upload", "#file", "one.txt", "two.txt"]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_clipboard",
+            &json!({ "action": "write", "text": "hello" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "clipboard", "write", "hello"]);
     }
 
     #[test]
@@ -943,6 +1318,30 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("state must be visible"));
+
+        let error = tool_command_args(
+            "pire_browser_scroll",
+            &json!({ "direction": "sideways" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("direction must be up"));
+
+        let error = tool_command_args(
+            "pire_browser_upload",
+            &json!({ "selector": "#file", "files": [] }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("files must contain"));
+
+        let error = tool_command_args(
+            "pire_browser_clipboard",
+            &json!({ "action": "clear" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("action must be read"));
     }
 
     #[test]

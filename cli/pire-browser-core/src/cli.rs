@@ -2632,9 +2632,10 @@ Usage:
 
 Starts a Model Context Protocol server over stdio. The current public MCP
 profile is `core`: open, inspect, interact, get page/element info, check
-element state, wait, capture screenshots, inspect tabs/status, close sessions,
-and fetch installed skill guidance. `all` is accepted as an alias for all
-currently available MCP tools.
+element state, keyboard/focus/scroll/dropdown/checkbox helpers, wait, capture
+screenshots, transfer files, use clipboard text, inspect tabs/status, close
+sessions, and fetch installed skill guidance. `all` is accepted as an alias for
+all currently available MCP tools.
 "##;
 
 const SKILLS_HELP: &str = r##"
@@ -4391,6 +4392,7 @@ mod tests {
             .unwrap()
             .contains("Model Context Protocol server"));
         assert!(help_text(Some("mcp")).unwrap().contains("get page/element"));
+        assert!(help_text(Some("mcp")).unwrap().contains("transfer files"));
         assert!(help_text(Some("skills"))
             .unwrap()
             .contains("skills get core"));

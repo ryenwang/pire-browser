@@ -21,7 +21,7 @@ Use this folder when you are operating an installed `pire-browser` package. It i
 - Do not claim success until `pire-browser` output confirms it.
 - If output returns `confirm <id>`, ask the user before running it.
 - Prefer `pire-browser skills get core` when an agent skill needs complete operational guidance.
-- If your host supports MCP tools, `pire-browser mcp --tools core` exposes the core browser workflow through stdio.
+- If your host supports MCP tools, `pire-browser mcp --tools core` exposes typed tools for the core inspect, interact, get/check, wait, download/wait-download/upload, clipboard, tab, and close workflow through stdio.
 
 ## Installed Package Boundaries
 
