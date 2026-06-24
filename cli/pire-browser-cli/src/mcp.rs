@@ -6,6 +6,7 @@ use std::process::{Command, Output};
 
 const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 const SERVER_NAME: &str = "pire-browser";
+const TOOL_LIST_PAGE_SIZE: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum McpToolsProfile {
@@ -327,14 +328,16 @@ fn handle_value(value: &Value, profile: McpToolsProfile) -> Option<Value> {
         Some("initialize") => id.map(|id| jsonrpc_result(id, initialize_result())),
         Some("notifications/initialized" | "notifications/cancelled") => None,
         Some("ping") => id.map(|id| jsonrpc_result(id, json!({}))),
-        Some("tools/list") => id.map(|id| {
-            jsonrpc_result(
-                id,
-                json!({
-                    "tools": mcp_tools(profile)
-                }),
-            )
-        }),
+        Some("tools/list") => {
+            let Some(id) = id else {
+                return None;
+            };
+            let params = value.get("params");
+            match tools_list_result(params, profile) {
+                Ok(result) => Some(jsonrpc_result(id, result)),
+                Err(message) => Some(jsonrpc_error(id, -32602, &message)),
+            }
+        }
         Some("tools/call") => {
             let Some(id) = id else {
                 return None;
@@ -376,6 +379,38 @@ fn initialize_result() -> Value {
         },
         "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade for safe package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
+}
+
+fn tools_list_result(
+    params: Option<&Value>,
+    profile: McpToolsProfile,
+) -> std::result::Result<Value, String> {
+    let tools = mcp_tools(profile);
+    let start = tool_list_cursor(params, tools.len())?;
+    let end = (start + TOOL_LIST_PAGE_SIZE).min(tools.len());
+    let mut result = json!({
+        "tools": tools[start..end].to_vec()
+    });
+    if end < tools.len() {
+        result["nextCursor"] = json!(end.to_string());
+    }
+    Ok(result)
+}
+
+fn tool_list_cursor(params: Option<&Value>, total: usize) -> std::result::Result<usize, String> {
+    let Some(cursor) = params.and_then(|params| params.get("cursor")) else {
+        return Ok(0);
+    };
+    let cursor = cursor
+        .as_str()
+        .ok_or_else(|| "tools/list cursor must be a string".to_string())?;
+    let index = cursor
+        .parse::<usize>()
+        .map_err(|_| "Invalid tools/list cursor".to_string())?;
+    if index > total {
+        return Err("Invalid tools/list cursor".to_string());
+    }
+    Ok(index)
 }
 
 fn handle_tools_call(
@@ -3812,6 +3847,82 @@ mod tests {
         .unwrap();
         assert_eq!(list["id"], "tools");
         assert!(list["result"]["tools"].as_array().unwrap().len() >= 10);
+    }
+
+    #[test]
+    fn tools_list_paginates_large_profiles_with_string_cursors() {
+        let total = mcp_tools(McpToolsProfile::All).len();
+        assert!(total > TOOL_LIST_PAGE_SIZE);
+
+        let first = handle_message(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}"#,
+            McpToolsProfile::All,
+        )
+        .unwrap();
+        assert_eq!(
+            first["result"]["tools"].as_array().unwrap().len(),
+            TOOL_LIST_PAGE_SIZE
+        );
+        assert_eq!(
+            first["result"]["nextCursor"],
+            TOOL_LIST_PAGE_SIZE.to_string()
+        );
+
+        let next_cursor = TOOL_LIST_PAGE_SIZE.to_string();
+        let second = handle_message(
+            &format!(
+                r#"{{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{{"cursor":"{next_cursor}"}}}}"#
+            ),
+            McpToolsProfile::All,
+        )
+        .unwrap();
+        assert_eq!(
+            second["result"]["tools"].as_array().unwrap().len(),
+            (total - TOOL_LIST_PAGE_SIZE).min(TOOL_LIST_PAGE_SIZE)
+        );
+        if total > TOOL_LIST_PAGE_SIZE * 2 {
+            assert_eq!(
+                second["result"]["nextCursor"],
+                (TOOL_LIST_PAGE_SIZE * 2).to_string()
+            );
+        } else {
+            assert!(second["result"].get("nextCursor").is_none());
+        }
+
+        let end = handle_message(
+            &format!(
+                r#"{{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{{"cursor":"{total}"}}}}"#
+            ),
+            McpToolsProfile::All,
+        )
+        .unwrap();
+        assert_eq!(end["result"]["tools"].as_array().unwrap().len(), 0);
+        assert!(end["result"].get("nextCursor").is_none());
+    }
+
+    #[test]
+    fn tools_list_rejects_invalid_cursors() {
+        for (id, cursor) in [
+            ("bad_string", json!("not-a-number")),
+            ("bad_type", json!(1)),
+            (
+                "too_large",
+                json!((mcp_tools(McpToolsProfile::Core).len() + 1).to_string()),
+            ),
+        ] {
+            let result = handle_value(
+                &json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "method": "tools/list",
+                    "params": { "cursor": cursor }
+                }),
+                McpToolsProfile::Core,
+            )
+            .unwrap();
+            assert_eq!(result["id"], id);
+            assert_eq!(result["error"]["code"], -32602);
+        }
     }
 
     #[test]
