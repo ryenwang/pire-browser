@@ -3864,9 +3864,10 @@ directly. Use `--no-manifest --capability <name>` when a plugin has no manifest.
 custom capability, for example `captcha.solve`. It cannot invoke core plugin
 capabilities or protocol request types directly. Use `auth login
 --credential-provider` for `credential.read`. Configured `launch.mutate`
-plugins run before local Firefox launches and can append `launch.args` or set
-`launch.userAgent`; `browser.provider` is discoverable but not executed by this
-Firefox backend.
+plugins run before local Firefox launches and can append `launch.args`, set
+`launch.userAgent`, or provide pre-navigation `launch.initScripts`; returned
+`launch.extensions` and `browser.provider` are discoverable but not executed by
+this Firefox backend.
 Use `--confirm-actions plugin:<name>:<capability>` when a plugin capability
 should require user approval before it runs. Plugin stderr is suppressed.
 "##;
@@ -4901,6 +4902,18 @@ mod tests {
             parse_cli_args(&s(&["open", "--help"])).unwrap(),
             LocalCommand::Help {
                 topic: Some("open".to_string())
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["mcp", "--help"])).unwrap(),
+            LocalCommand::Help {
+                topic: Some("mcp".to_string())
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["plugin", "--help"])).unwrap(),
+            LocalCommand::Help {
+                topic: Some("plugin".to_string())
             }
         );
     }
@@ -6661,6 +6674,9 @@ mod tests {
             .unwrap()
             .contains("plugin run <name> <capability>"));
         assert!(help_text(Some("plugins")).unwrap().contains("command.run"));
+        assert!(help_text(Some("plugin"))
+            .unwrap()
+            .contains("launch.initScripts"));
         assert!(help_text(Some("config")).unwrap().contains("autoConnect"));
         assert!(help_text(Some("config")).unwrap().contains("proxyBypass"));
         assert!(help_text(Some("state"))
