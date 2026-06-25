@@ -329,7 +329,7 @@ pire-browser dashboard start
 pire-browser dashboard start --port 4848
 pire-browser dashboard start --port 0 --json
 pire-browser activity list --json`),
-  p("Starts a foreground localhost status dashboard. It shows install health, live sessions, managed profiles, recent redacted command activity, and capability notes. Press <code>Ctrl+C</code> in the terminal to stop it. Live viewport streaming is still not available in the Firefox backend; use <code>record start</code> / <code>record stop</code> for screenshot-sequence evidence."),
+  p("Starts a foreground localhost status dashboard. It shows install health, live sessions, managed profiles, a read-only still viewport preview, recent redacted command activity, and capability notes. Press <code>Ctrl+C</code> in the terminal to stop it. Live viewport streaming is still not available in the Firefox backend; use <code>record start</code> / <code>record stop</code> for screenshot-sequence evidence."),
 
   h2("Doctor", "doctor"),
   code(`pire-browser doctor

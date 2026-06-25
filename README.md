@@ -170,7 +170,7 @@ pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80
 pire-browser pdf page.pdf            # Image-backed page PDF
 pire-browser snapshot -i             # Accessibility tree with refs
 pire-browser eval <js>               # Run JavaScript with policy checks
-pire-browser dashboard start         # Local status/session/activity dashboard
+pire-browser dashboard start         # Local status/session/preview/activity dashboard
 pire-browser activity list --json    # Recent redacted command activity
 pire-browser close                   # Close targeted managed Firefox session
 pire-browser close --all             # Close all managed Firefox sessions
@@ -803,8 +803,8 @@ pire-browser pdf viewport.pdf --viewport
 ## Observability Dashboard
 
 Start a foreground localhost dashboard when you want a quick view of install
-health, live sessions, managed profiles, recent redacted command activity, and
-current capability notes:
+health, live sessions, managed profiles, a read-only still viewport preview,
+recent redacted command activity, and current capability notes:
 
 ```bash
 pire-browser dashboard start
@@ -824,9 +824,10 @@ pire-browser activity list
 pire-browser activity list --limit 50 --json
 ```
 
-The dashboard does not provide live viewport WebSocket streaming. Use
-screenshots, screenshot-sequence recording, and diagnostics commands for visual
-evidence, page-state verification, and scriptable observability:
+The dashboard can refresh a read-only still preview for the selected live
+session, but it does not provide live viewport WebSocket streaming. Use
+snapshots, screenshots, screenshot-sequence recording, and diagnostics commands
+for visual evidence, page-state verification, and scriptable observability:
 
 ```bash
 pire-browser record start
@@ -987,8 +988,9 @@ Chrome DevTools Protocol mode is not available. `pire-browser` commands are medi
 
 ## Streaming And Recording
 
-Runtime WebSocket viewport streaming is not available. Use screenshots,
-screenshot-sequence recording, and status output for observable workflows:
+Runtime WebSocket viewport streaming is not available. Use the dashboard still
+preview, screenshots, screenshot-sequence recording, and status output for
+observable workflows:
 
 ```bash
 pire-browser screenshot page.png

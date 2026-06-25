@@ -235,7 +235,8 @@ and Suspense detail commands are not implemented yet; use snapshots, targeted
 get/is checks, console/errors, and vitals for supporting evidence.
 
 Start the local dashboard when a human or agent needs a quick view of setup,
-live sessions, managed profiles, and recent command activity:
+live sessions, managed profiles, a read-only still viewport preview, and recent
+command activity:
 
 ```bash
 pire-browser dashboard start
@@ -245,17 +246,18 @@ pire-browser dashboard start --port 0 --json
 
 The dashboard is a foreground localhost server; stop it with `Ctrl+C`. It shows
 install health, live sessions, managed profiles, a bounded redacted command
-activity feed, and capability notes. For scripts, use:
+activity feed, a refreshable still preview for the selected session, and
+capability notes. For scripts, use:
 
 ```bash
 pire-browser activity list --json
 ```
 
 Activity shows what commands ran; it does not prove page success. The dashboard
-does not provide live viewport WebSocket streaming, so keep using `snapshot -i`,
-`screenshot`, `record start` / `record stop`, `status`, and `doctor` as the
-primary machine-readable evidence path. `record` is screenshot-sequence
-evidence, not native WebM video.
+still preview is read-only and does not provide live viewport WebSocket
+streaming, so keep using `snapshot -i`, `screenshot`, `record start` /
+`record stop`, `status`, and `doctor` as the primary machine-readable evidence
+path. `record` is screenshot-sequence evidence, not native WebM video.
 
 Handle page JavaScript dialogs when warnings mention `PAGE_DIALOG`:
 

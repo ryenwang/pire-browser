@@ -483,6 +483,7 @@ name = "pire-browser-cli"
 version = "0.2.2"
 dependencies = [
  "anyhow",
+ "base64",
  "clap",
  "image",
  "pire-browser-core",

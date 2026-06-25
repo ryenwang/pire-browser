@@ -2,6 +2,7 @@ mod mcp;
 mod read;
 
 use anyhow::{bail, Context, Result};
+use base64::Engine as _;
 use image::{ImageFormat, Rgba, RgbaImage};
 use pire_browser_core::action_policy::{
     action_policy_diagnostic_from_args, action_policy_text,
@@ -2110,6 +2111,32 @@ fn dashboard_response_for_path(path: &str) -> DashboardResponse {
                 },
             }
         }
+        path if path == "/api/preview" || path.starts_with("/api/preview/") => {
+            let session_id = dashboard_preview_session_id(path);
+            match dashboard_preview_value(session_id.as_deref())
+                .and_then(|value| format_cli_result(&value, true))
+            {
+                Ok(body) => DashboardResponse {
+                    status: 200,
+                    reason: "OK",
+                    content_type: "application/json; charset=utf-8",
+                    body,
+                },
+                Err(err) => DashboardResponse {
+                    status: 503,
+                    reason: "Service Unavailable",
+                    content_type: "application/json; charset=utf-8",
+                    body: serde_json::to_string_pretty(&json!({
+                        "success": false,
+                        "error": {
+                            "code": "dashboard_preview_failed",
+                            "message": redact_text(&format!("{err:#}")),
+                        }
+                    }))
+                    .unwrap_or_else(|_| "{\"success\":false}".to_string()),
+                },
+            }
+        }
         "/favicon.ico" => DashboardResponse {
             status: 204,
             reason: "No Content",
@@ -2171,10 +2198,66 @@ fn dashboard_capabilities_value() -> Value {
         "statusDashboard": true,
         "liveViewport": false,
         "webSocketStreaming": false,
+        "readOnlyViewportPreview": true,
         "screenshotSequenceRecording": true,
         "videoRecording": false,
         "activityFeed": true
     })
+}
+
+fn dashboard_preview_session_id(path: &str) -> Option<String> {
+    let suffix = path.strip_prefix("/api/preview/")?;
+    let value = suffix.trim_matches('/');
+    (!value.is_empty()).then(|| value.to_string())
+}
+
+fn dashboard_preview_value(session_id: Option<&str>) -> Result<Value> {
+    cleanup_stale_sessions(now_ms())?;
+    let temp_path = std::env::temp_dir().join(format!(
+        "pire-browser-dashboard-preview-{}.png",
+        Uuid::new_v4()
+    ));
+    let request = build_command_request(vec![
+        "screenshot".to_string(),
+        temp_path.to_string_lossy().to_string(),
+    ]);
+    let (response, actual_session_id) = send_to_session(session_id, &request)?;
+    if !response.ok {
+        let error = response
+            .error
+            .unwrap_or(pire_browser_core::protocol::RpcError {
+                code: "unknown_error".into(),
+                message: "unknown extension error".into(),
+                data: None,
+            });
+        bail!("{}: {}", error.code, error.message);
+    }
+    let result = response.result.unwrap_or_else(|| json!({}));
+    let bytes = fs::read(&temp_path)
+        .with_context(|| format!("failed to read preview image {}", temp_path.display()));
+    let _ = fs::remove_file(&temp_path);
+    let bytes = bytes?;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+    let active_page = select_session(Some(&actual_session_id))
+        .ok()
+        .and_then(|session| session.active_page);
+    Ok(json!({
+        "text": format!("Captured dashboard preview for session {actual_session_id}"),
+        "preview": {
+            "sessionId": actual_session_id,
+            "capturedAt": now_ms(),
+            "mimeType": "image/png",
+            "dataUrl": format!("data:image/png;base64,{encoded}"),
+            "activePage": active_page,
+            "source": "firefox-webextension-visible-viewport-screenshot",
+            "liveViewport": false,
+            "webSocketStreaming": false,
+        },
+        "screenshot": {
+            "path": result.get("screenshotPath").cloned().unwrap_or(Value::Null),
+            "text": result.get("text").cloned().unwrap_or(Value::Null),
+        }
+    }))
 }
 
 fn dashboard_index_html() -> String {
@@ -2204,6 +2287,12 @@ fn dashboard_index_html() -> String {
     th { color: color-mix(in srgb, CanvasText 70%, transparent); font-weight: 600; }
     .stack { display: grid; gap: 16px; }
     .note { color: color-mix(in srgb, CanvasText 68%, transparent); line-height: 1.45; }
+    .preview-wrap { display: grid; gap: 10px; }
+    .preview-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .preview-frame { width: 100%; min-height: 220px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 6px; background: color-mix(in srgb, Canvas 88%, CanvasText 12%); display: grid; place-items: center; overflow: hidden; }
+    .preview-frame img { display: block; max-width: 100%; height: auto; }
+    button { border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 6px; padding: 6px 10px; background: Canvas; color: CanvasText; cursor: pointer; }
+    button:hover { background: color-mix(in srgb, Canvas 86%, CanvasText 14%); }
   </style>
 </head>
 <body>
@@ -2224,6 +2313,16 @@ fn dashboard_index_html() -> String {
     </section>
     <section class="stack">
       <div class="panel">
+        <h2>Viewport Preview</h2>
+        <div class="preview-wrap">
+          <div class="preview-bar">
+            <div class="meta" id="preview-meta">No preview captured yet.</div>
+            <button id="preview-refresh" type="button">Refresh preview</button>
+          </div>
+          <div class="preview-frame" id="preview-frame"><span class="note">Open a managed Firefox session to see a read-only still preview.</span></div>
+        </div>
+      </div>
+      <div class="panel">
         <h2>Recent Activity</h2>
         <div id="activity"></div>
       </div>
@@ -2237,7 +2336,7 @@ fn dashboard_index_html() -> String {
       </div>
       <div class="panel">
         <h2>Capability Notes</h2>
-        <p class="note">This dashboard shows setup status, live sessions, managed profiles, and a bounded redacted command activity feed. Live viewport streaming and native WebM video recording are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>record start</code> / <code>record stop</code>, <code>status</code>, and <code>doctor</code> for evidence today.</p>
+        <p class="note">This dashboard shows setup status, live sessions, managed profiles, a read-only still viewport preview, and a bounded redacted command activity feed. Live viewport WebSocket streaming, remote input events, and native WebM video recording are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>record start</code> / <code>record stop</code>, <code>status</code>, and <code>doctor</code> for evidence today.</p>
       </div>
     </section>
   </main>
@@ -2245,6 +2344,9 @@ fn dashboard_index_html() -> String {
     const text = (id, value) => { document.getElementById(id).textContent = value; };
     const cls = (id, name) => { document.getElementById(id).className = "value " + name; };
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+    let previewSessionId = null;
+    let previewInFlight = false;
+    let lastPreviewAt = 0;
     function table(rows, columns) {
       if (!rows.length) return "<p class='note'>None.</p>";
       const head = columns.map(([key, label]) => `<th>${label}</th>`).join("");
@@ -2259,6 +2361,13 @@ fn dashboard_index_html() -> String {
       text("sessions-count", data.sessions.length);
       text("profiles-count", data.profiles.length);
       text("activity-count", (data.activity || []).length);
+      previewSessionId = data.sessions[0]?.sessionId || null;
+      if (!previewSessionId) {
+        text("preview-meta", "No live session.");
+        document.getElementById("preview-frame").innerHTML = "<span class='note'>Open a managed Firefox session to see a read-only still preview.</span>";
+      } else if (Date.now() - lastPreviewAt > 5000) {
+        refreshPreview(previewSessionId);
+      }
       document.getElementById("activity").innerHTML = table((data.activity || []).map(event => ({
         status: event.status,
         command: event.command,
@@ -2278,6 +2387,25 @@ fn dashboard_index_html() -> String {
         path: profile.path
       })), [["name", "Name"], ["live", "Live"], ["url", "URL"], ["path", "Path"]]);
     }
+    async function refreshPreview(sessionId) {
+      if (!sessionId || previewInFlight) return;
+      previewInFlight = true;
+      text("preview-meta", "Capturing preview...");
+      try {
+        const response = await fetch("/api/preview/" + encodeURIComponent(sessionId), { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok || payload.success === false) throw new Error(payload.error?.message || "preview failed");
+        const preview = (payload.data || payload).preview;
+        const page = preview.activePage?.title || preview.activePage?.url || preview.sessionId;
+        document.getElementById("preview-frame").innerHTML = `<img alt="Read-only Firefox viewport preview" src="${preview.dataUrl}">`;
+        text("preview-meta", `Preview captured ${new Date(preview.capturedAt).toLocaleTimeString()} for ${page}`);
+        lastPreviewAt = Date.now();
+      } catch (error) {
+        text("preview-meta", "Preview unavailable: " + error.message);
+      } finally {
+        previewInFlight = false;
+      }
+    }
     async function refresh() {
       try {
         const response = await fetch("/api/status", { cache: "no-store" });
@@ -2287,6 +2415,10 @@ fn dashboard_index_html() -> String {
         text("updated", "Dashboard refresh failed: " + error.message);
       }
     }
+    document.getElementById("preview-refresh").addEventListener("click", () => {
+      lastPreviewAt = 0;
+      refreshPreview(previewSessionId);
+    });
     refresh();
     setInterval(refresh, 2500);
   </script>
@@ -8078,6 +8210,14 @@ mod tests {
             json!(false)
         );
         assert_eq!(
+            value["dashboard"]["capabilities"]["readOnlyViewportPreview"],
+            json!(true)
+        );
+        assert_eq!(
+            value["dashboard"]["capabilities"]["screenshotSequenceRecording"],
+            json!(true)
+        );
+        assert_eq!(
             value["dashboard"]["capabilities"]["activityFeed"],
             json!(true)
         );
@@ -8088,6 +8228,11 @@ mod tests {
         assert_eq!(
             dashboard_path_from_request_line("GET /api/status?fresh=1 HTTP/1.1\r\n").as_deref(),
             Some("/api/status")
+        );
+        assert_eq!(
+            dashboard_path_from_request_line("GET /api/preview/s1?fresh=1 HTTP/1.1\r\n")
+                .as_deref(),
+            Some("/api/preview/s1")
         );
         assert_eq!(
             dashboard_path_from_request_line("HEAD / HTTP/1.1\r\n").as_deref(),
@@ -8106,17 +8251,33 @@ mod tests {
         assert_eq!(index.status, 200);
         assert!(index.body.contains("pire-browser dashboard"));
         assert!(index.body.contains("/api/status"));
+        assert!(index.body.contains("/api/preview/"));
+        assert!(index.body.contains("Viewport Preview"));
+        assert!(index.body.contains("read-only still viewport preview"));
         assert!(index.body.contains("Recent Activity"));
         assert!(index
             .body
             .contains("bounded redacted command activity feed"));
-        assert!(index.body.contains("Live viewport streaming"));
+        assert!(index.body.contains("Live viewport WebSocket streaming"));
 
         let missing = dashboard_response_for_path("/missing");
         assert_eq!(missing.status, 404);
 
         let method = dashboard_response_for_path("/__method_not_allowed__");
         assert_eq!(method.status, 405);
+    }
+
+    #[test]
+    fn dashboard_preview_session_id_parses_optional_session() {
+        assert_eq!(dashboard_preview_session_id("/api/preview").as_deref(), None);
+        assert_eq!(
+            dashboard_preview_session_id("/api/preview/s1").as_deref(),
+            Some("s1")
+        );
+        assert_eq!(
+            dashboard_preview_session_id("/api/preview/s1/").as_deref(),
+            Some("s1")
+        );
     }
 
     #[test]

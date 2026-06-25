@@ -6,9 +6,10 @@ const streamingBlocks = [
   code(`pire-browser screenshot page.png
 pire-browser record start
 pire-browser record stop recording-dir
+pire-browser dashboard start
 pire-browser status --json
 pire-browser session list --json`),
-  p("Use screenshots, screenshot-sequence recording bundles, and status output for observable CLI workflows while runtime viewport streaming is still being designed."),
+  p("Use the dashboard's read-only still preview, screenshots, screenshot-sequence recording bundles, and status output for observable CLI workflows while runtime viewport streaming is still being designed."),
 ];
 
 export default page({
