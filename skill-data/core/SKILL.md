@@ -370,6 +370,20 @@ pire-browser screenshot --screenshot-dir screenshots
 
 Use `highlight <target>` with the same refs, selectors, text, and semantic targets you would use for `click` or `fill`. Use `screenshot --full` when the report needs the whole page, `screenshot --annotate` when numbered element evidence is more useful than a single target overlay, and `pdf <path>` when the report needs a portable visual evidence file. `pdf` embeds a screenshot into a one-page image-backed PDF; text is not selectable and print CSS is not applied. `screenshot` with no path writes a generated file under the local `pire-browser/screenshots` data directory and prints the resolved path. `--screenshot-dir <dir>` generates a timestamped filename inside that directory when no filename is provided. Relative screenshot paths resolve from the command's current working directory. These are visual QA helpers; styling is Firefox-specific, so do not rely on pixel-identical annotation behavior across browsers.
 
+Upload local files through file input controls:
+
+```bash
+pire-browser snapshot -i
+pire-browser upload '<file-input-ref-or-selector>' ./fixture.png
+pire-browser snapshot -i
+```
+
+Use a fresh snapshot to verify the target is an `input[type=file]`, an
+associated label, or a container with a nested file input. Uploads are chunked
+through the native host and capped at 8 MiB total raw bytes per command. Native
+OS file-picker control, directory upload, and drag/drop upload are not
+implemented, so verify success through fresh page state after the upload.
+
 Compare page structure before and after an action:
 
 ```bash

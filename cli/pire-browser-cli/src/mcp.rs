@@ -3064,7 +3064,7 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_upload",
             "Upload",
-            "Assign one or more small local files to a file input or associated label.",
+            "Assign one or more bounded local files to a file input or associated label.",
             tool_schema(
                 vec![
                     ("selector", string_prop("Ref or selector for the upload target.")),

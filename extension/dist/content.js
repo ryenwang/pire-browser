@@ -791,9 +791,10 @@
             const item = raw;
             const name = typeof item.name === "string" ? item.name : "";
             const type = typeof item.mimeType === "string" ? item.mimeType : "application/octet-stream";
-            const bytesBase64 = typeof item.bytesBase64 === "string" ? item.bytesBase64 : "";
+            const hasBytesBase64 = typeof item.bytesBase64 === "string";
+            const bytesBase64 = hasBytesBase64 ? item.bytesBase64 : "";
             const expectedSize = typeof item.size === "number" ? item.size : -1;
-            if (!name || !bytesBase64 || expectedSize < 0) {
+            if (!name || !hasBytesBase64 || expectedSize < 0) {
                 return { error: { code: "InvalidArgumentError", message: "upload file payload is missing name, bytes, or size" }, dialogs: drainDialogs() };
             }
             const bytes = decodeBase64Bytes(bytesBase64);

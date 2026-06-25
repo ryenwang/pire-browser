@@ -980,9 +980,10 @@ Open and interact with supported local HTML files using `file://` URLs:
 pire-browser --allow-file-access open file:///path/to/page.html
 pire-browser screenshot output.png
 pire-browser pdf output.pdf
+pire-browser upload '#file' ./fixture.png
 ```
 
-For repeatable agent tests, an HTTP fixture server is usually more reliable than file URLs. PDF output is image-backed visual evidence, not a selectable-text print export.
+For repeatable agent tests, an HTTP fixture server is usually more reliable than file URLs. Uploads are chunked through the native host and capped at 8 MiB total raw bytes per command. They assign files to `input[type=file]` controls or associated labels; native OS file-picker control, directory upload, and drag/drop upload are not implemented. PDF output is image-backed visual evidence, not a selectable-text print export.
 
 ## CDP Mode
 

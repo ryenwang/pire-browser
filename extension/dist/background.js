@@ -2,6 +2,7 @@
 {
     const HOST_NAME = "dev.pi.pire_browser";
     const CHUNK_SIZE = 700000;
+    const UPLOAD_CHUNK_TIMEOUT_MS = 10000;
     const CLOSE_TEARDOWN_DELAY_MS = 0;
     const TAB_READY_POLL_INTERVAL_MS = 100;
     const NETWORK_IDLE_QUIET_MS = 500;
@@ -42,6 +43,7 @@
     const visualRecordingsByTabId = new Map();
     const networkRoutes = new Map();
     const networkRouteMatchesByRequestId = new Map();
+    const pendingUploadChunks = new Map();
     let offlineModeEnabled = false;
     let nextRuntimeInitScriptNumber = 1;
     let nextNetworkRouteNumber = 1;
@@ -186,6 +188,22 @@
             const request = message;
             const response = await executeRequest(request);
             postNative(response);
+        }
+        else if (message.type === "upload_chunk_response") {
+            handleUploadChunkResponse(message);
+        }
+    }
+    function handleUploadChunkResponse(message) {
+        const pending = pendingUploadChunks.get(message.request_id);
+        if (!pending)
+            return;
+        pendingUploadChunks.delete(message.request_id);
+        clearTimeout(pending.timer);
+        if (message.ok) {
+            pending.resolve(message);
+        }
+        else {
+            pending.reject(new Error(message.error?.message || message.error?.code || "upload chunk request failed"));
         }
     }
     async function executeRequest(request) {
@@ -781,7 +799,7 @@
             case "download":
                 return downloadCommand(rest);
             case "upload":
-                return uploadCommand(rest, params.uploadFiles);
+                return uploadCommand(rest, params);
             case "auth":
                 return authCommand(rest, domainPolicy);
             case "network":
@@ -1880,11 +1898,11 @@
         }
         return watcher.promise;
     }
-    async function uploadCommand(args, filesValue) {
+    async function uploadCommand(args, params) {
         const target = args[0];
         if (!target)
             return { error: { code: "InvalidArgumentError", message: "upload requires <target> <files...>" } };
-        const files = uploadFilesFromParams(filesValue);
+        const files = await uploadFilesFromParams(params.uploadFiles, params.uploadFilesRef);
         if ("error" in files)
             return files;
         const locator = locatorFromTarget(target);
@@ -1894,7 +1912,10 @@
         const response = await sendFrame(tab.tabId, locator.frameId, { type: "upload_files", locator: locator.locator, files: files.files }, { staleOnFrameRoutingError: true });
         return normalizeContentResponse(response);
     }
-    function uploadFilesFromParams(value) {
+    async function uploadFilesFromParams(value, refValue) {
+        if (refValue) {
+            return uploadFilesFromRef(refValue);
+        }
         if (!Array.isArray(value) || value.length === 0) {
             return { error: { code: "InvalidArgumentError", message: "upload requires file payloads from the pire-browser CLI" } };
         }
@@ -1916,6 +1937,91 @@
             });
         }
         return { files };
+    }
+    async function uploadFilesFromRef(value) {
+        const uploadRef = parseUploadFilesRef(value);
+        if ("error" in uploadRef)
+            return uploadRef;
+        const files = [];
+        for (let fileIndex = 0; fileIndex < uploadRef.ref.files.length; fileIndex++) {
+            const file = uploadRef.ref.files[fileIndex];
+            let bytesBase64 = "";
+            for (let chunkIndex = 0; chunkIndex < file.chunks; chunkIndex++) {
+                let chunk;
+                try {
+                    chunk = await requestUploadChunk(uploadRef.ref.transferId, fileIndex, chunkIndex);
+                }
+                catch (error) {
+                    return {
+                        error: {
+                            code: "upload_chunk_failed",
+                            message: `Failed to read upload chunk for ${file.name}: ${error instanceof Error ? error.message : String(error)}`,
+                        },
+                    };
+                }
+                if (chunk.total !== file.chunks) {
+                    return {
+                        error: {
+                            code: "upload_chunk_failed",
+                            message: `Upload chunk count changed for ${file.name}: expected ${file.chunks}, got ${chunk.total}`,
+                        },
+                    };
+                }
+                bytesBase64 += chunk.data;
+            }
+            files.push({
+                name: file.name,
+                mimeType: file.mimeType ?? "application/octet-stream",
+                size: file.size,
+                sha256: file.sha256,
+                bytesBase64,
+            });
+        }
+        return { files };
+    }
+    function parseUploadFilesRef(value) {
+        if (!value || typeof value !== "object") {
+            return { error: { code: "InvalidArgumentError", message: "upload file reference is malformed" } };
+        }
+        const candidate = value;
+        if (typeof candidate.transferId !== "string" || !Array.isArray(candidate.files)) {
+            return { error: { code: "InvalidArgumentError", message: "upload file reference is missing transfer metadata" } };
+        }
+        const files = [];
+        for (const item of candidate.files) {
+            if (!item || typeof item !== "object") {
+                return { error: { code: "InvalidArgumentError", message: "upload file metadata is malformed" } };
+            }
+            const file = item;
+            if (typeof file.name !== "string" || typeof file.size !== "number" || typeof file.chunks !== "number") {
+                return { error: { code: "InvalidArgumentError", message: "upload file metadata is missing name, size, or chunks" } };
+            }
+            files.push({
+                name: file.name,
+                mimeType: typeof file.mimeType === "string" ? file.mimeType : "application/octet-stream",
+                size: file.size,
+                sha256: typeof file.sha256 === "string" ? file.sha256 : undefined,
+                chunks: file.chunks,
+            });
+        }
+        return { ref: { transferId: candidate.transferId, files } };
+    }
+    function requestUploadChunk(transferId, fileIndex, chunkIndex) {
+        const requestId = crypto.randomUUID();
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                pendingUploadChunks.delete(requestId);
+                reject(new Error("timed out waiting for native upload chunk"));
+            }, UPLOAD_CHUNK_TIMEOUT_MS);
+            pendingUploadChunks.set(requestId, { resolve, reject, timer });
+            postNative({
+                type: "upload_chunk_request",
+                request_id: requestId,
+                transfer_id: transferId,
+                file_index: fileIndex,
+                chunk_index: chunkIndex,
+            });
+        });
     }
     async function waitDownloadCommand(args) {
         const timeoutResult = parseTimeoutOption(args, DOWNLOAD_TIMEOUT_MS);

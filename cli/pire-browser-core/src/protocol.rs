@@ -92,6 +92,12 @@ pub enum NativeInbound {
         sha256: String,
         data: String,
     },
+    UploadChunkRequest {
+        request_id: String,
+        transfer_id: String,
+        file_index: u32,
+        chunk_index: u32,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,5 +112,16 @@ pub enum NativeOutbound {
     HostStatus {
         session_id: String,
         pipe_name: String,
+    },
+    UploadChunkResponse {
+        request_id: String,
+        ok: bool,
+        transfer_id: String,
+        file_index: u32,
+        chunk_index: u32,
+        total: u32,
+        data: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<RpcError>,
     },
 }

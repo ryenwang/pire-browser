@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
 use crossbeam_channel::{bounded, Sender};
@@ -20,6 +20,9 @@ use crate::protocol::{
 };
 use crate::session::{now_ms, remove_session, write_session_atomic, ActivePageInfo, SessionInfo};
 use crate::transfer::{ResultTransferMeta, ScreenshotTransferMeta, TransferStore};
+
+const OUTBOUND_UPLOAD_CHUNK_BASE64_BYTES: usize = 512 * 1024;
+const OUTBOUND_UPLOAD_TTL: Duration = Duration::from_secs(60);
 
 #[derive(Clone)]
 struct SharedSession {
@@ -50,6 +53,7 @@ struct NativeBridge {
     pending: Mutex<HashMap<String, Sender<RpcResponse>>>,
     session: SharedSession,
     transfers: Mutex<TransferStore>,
+    outbound_uploads: Mutex<OutboundUploadStore>,
 }
 
 impl NativeBridge {
@@ -61,6 +65,21 @@ impl NativeBridge {
             .and_then(|value| value.as_str())
             .map(PathBuf::from);
         self.pending.lock().unwrap().insert(request.id.clone(), tx);
+        let mut params = request.params.clone();
+        let staged_upload_id = match stage_outbound_upload_params(
+            &mut params,
+            &mut self.outbound_uploads.lock().unwrap(),
+        ) {
+            Ok(staged_upload_id) => staged_upload_id,
+            Err(err) => {
+                self.pending.lock().unwrap().remove(&request.id);
+                return RpcResponse::err(
+                    request.id,
+                    "upload_staging_failed",
+                    format!("failed to stage upload payload: {err}"),
+                );
+            }
+        };
 
         log_host(&native_outbound_request_log(&request.id));
         let write_result = {
@@ -70,7 +89,7 @@ impl NativeBridge {
                 &NativeOutbound::Request {
                     id: request.id.clone(),
                     method: request.method.clone(),
-                    params: request.params.clone(),
+                    params,
                 },
             )
         };
@@ -78,6 +97,9 @@ impl NativeBridge {
         if let Err(err) = write_result {
             log_host(&format!("native outbound write failed: {err}"));
             self.pending.lock().unwrap().remove(&request.id);
+            if let Some(transfer_id) = staged_upload_id {
+                self.outbound_uploads.lock().unwrap().remove(&transfer_id);
+            }
             return RpcResponse::err(
                 request.id,
                 "extension_disconnected",
@@ -85,7 +107,7 @@ impl NativeBridge {
             );
         }
 
-        match rx.recv_timeout(Duration::from_secs(30)) {
+        let response = match rx.recv_timeout(Duration::from_secs(30)) {
             Ok(mut response) => {
                 log_host(&native_inbound_response_log(&response.id, response.ok));
                 if let Some(result) = response.result.as_mut() {
@@ -123,7 +145,11 @@ impl NativeBridge {
                     "timed out waiting for Firefox extension response",
                 )
             }
+        };
+        if let Some(transfer_id) = staged_upload_id {
+            self.outbound_uploads.lock().unwrap().remove(&transfer_id);
         }
+        response
     }
 
     fn maybe_reassemble_large_result(&self, result: &mut Value) -> Result<()> {
@@ -216,8 +242,217 @@ impl NativeBridge {
                     data,
                 );
             }
+            NativeInbound::UploadChunkRequest {
+                request_id,
+                transfer_id,
+                file_index,
+                chunk_index,
+            } => {
+                let response = self.outbound_uploads.lock().unwrap().chunk_response(
+                    request_id,
+                    transfer_id,
+                    file_index,
+                    chunk_index,
+                );
+                let mut stdout = self.stdout.lock().unwrap();
+                if let Err(err) = write_native_message(&mut *stdout, &response) {
+                    log_host(&format!("native upload chunk response failed: {err}"));
+                }
+            }
         }
     }
+}
+
+#[derive(Debug, Default)]
+struct OutboundUploadStore {
+    transfers: HashMap<String, OutboundUploadTransfer>,
+}
+
+#[derive(Debug)]
+struct OutboundUploadTransfer {
+    files: Vec<OutboundUploadFile>,
+    started_at: Instant,
+}
+
+#[derive(Debug)]
+struct OutboundUploadFile {
+    bytes_base64: String,
+    chunk_count: u32,
+}
+
+impl OutboundUploadStore {
+    fn insert(&mut self, transfer_id: String, files: Vec<OutboundUploadFile>) {
+        self.cleanup_expired();
+        self.transfers.insert(
+            transfer_id,
+            OutboundUploadTransfer {
+                files,
+                started_at: Instant::now(),
+            },
+        );
+    }
+
+    fn remove(&mut self, transfer_id: &str) {
+        self.transfers.remove(transfer_id);
+    }
+
+    fn chunk_response(
+        &mut self,
+        request_id: String,
+        transfer_id: String,
+        file_index: u32,
+        chunk_index: u32,
+    ) -> NativeOutbound {
+        self.cleanup_expired();
+        let Some(transfer) = self.transfers.get(&transfer_id) else {
+            return upload_chunk_error(
+                request_id,
+                transfer_id,
+                file_index,
+                chunk_index,
+                "upload_transfer_not_found",
+                "upload transfer is no longer available",
+            );
+        };
+        let Some(file) = transfer.files.get(file_index as usize) else {
+            return upload_chunk_error(
+                request_id,
+                transfer_id,
+                file_index,
+                chunk_index,
+                "upload_file_not_found",
+                "upload file index is out of range",
+            );
+        };
+        if chunk_index >= file.chunk_count {
+            return upload_chunk_error(
+                request_id,
+                transfer_id,
+                file_index,
+                chunk_index,
+                "upload_chunk_not_found",
+                "upload chunk index is out of range",
+            );
+        }
+        let start = chunk_index as usize * OUTBOUND_UPLOAD_CHUNK_BASE64_BYTES;
+        let end = (start + OUTBOUND_UPLOAD_CHUNK_BASE64_BYTES).min(file.bytes_base64.len());
+        NativeOutbound::UploadChunkResponse {
+            request_id,
+            ok: true,
+            transfer_id,
+            file_index,
+            chunk_index,
+            total: file.chunk_count,
+            data: file.bytes_base64[start..end].to_string(),
+            error: None,
+        }
+    }
+
+    fn cleanup_expired(&mut self) {
+        self.transfers
+            .retain(|_, transfer| transfer.started_at.elapsed() <= OUTBOUND_UPLOAD_TTL);
+    }
+}
+
+fn upload_chunk_error(
+    request_id: String,
+    transfer_id: String,
+    file_index: u32,
+    chunk_index: u32,
+    code: &str,
+    message: &str,
+) -> NativeOutbound {
+    NativeOutbound::UploadChunkResponse {
+        request_id,
+        ok: false,
+        transfer_id,
+        file_index,
+        chunk_index,
+        total: 0,
+        data: String::new(),
+        error: Some(RpcError {
+            code: code.to_string(),
+            message: message.to_string(),
+            data: None,
+        }),
+    }
+}
+
+fn stage_outbound_upload_params(
+    params: &mut Value,
+    store: &mut OutboundUploadStore,
+) -> Result<Option<String>> {
+    let Some(object) = params.as_object_mut() else {
+        return Ok(None);
+    };
+    let Some(upload_files) = object.remove("uploadFiles") else {
+        return Ok(None);
+    };
+    let files = upload_files
+        .as_array()
+        .ok_or_else(|| anyhow!("uploadFiles must be an array"))?;
+    let transfer_id = Uuid::new_v4().to_string();
+    let mut staged_files = Vec::with_capacity(files.len());
+    let mut metadata_files = Vec::with_capacity(files.len());
+
+    for file in files {
+        let file = file
+            .as_object()
+            .ok_or_else(|| anyhow!("upload file payload must be an object"))?;
+        let name = json_string(file, "name")?;
+        let mime_type =
+            json_string(file, "mimeType").unwrap_or_else(|_| "application/octet-stream".into());
+        let size = json_u64(file, "size")?;
+        let sha256 = json_string(file, "sha256").unwrap_or_default();
+        let bytes_base64 = json_string(file, "bytesBase64")?;
+        let chunk_count = upload_chunk_count(bytes_base64.len())?;
+        staged_files.push(OutboundUploadFile {
+            bytes_base64,
+            chunk_count,
+        });
+        metadata_files.push(json!({
+            "name": name,
+            "mimeType": mime_type,
+            "size": size,
+            "sha256": sha256,
+            "chunks": chunk_count,
+        }));
+    }
+
+    object.insert(
+        "uploadFilesRef".into(),
+        json!({
+            "transferId": transfer_id,
+            "chunkSize": OUTBOUND_UPLOAD_CHUNK_BASE64_BYTES,
+            "files": metadata_files,
+        }),
+    );
+    store.insert(transfer_id.clone(), staged_files);
+    Ok(Some(transfer_id))
+}
+
+fn json_string(object: &serde_json::Map<String, Value>, key: &str) -> Result<String> {
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .ok_or_else(|| anyhow!("{key} must be a string"))
+}
+
+fn json_u64(object: &serde_json::Map<String, Value>, key: &str) -> Result<u64> {
+    object
+        .get(key)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| anyhow!("{key} must be an unsigned integer"))
+}
+
+fn upload_chunk_count(encoded_len: usize) -> Result<u32> {
+    let chunks = if encoded_len == 0 {
+        0
+    } else {
+        (encoded_len + OUTBOUND_UPLOAD_CHUNK_BASE64_BYTES - 1) / OUTBOUND_UPLOAD_CHUNK_BASE64_BYTES
+    };
+    u32::try_from(chunks).context("upload payload requires too many chunks")
 }
 
 fn write_screenshots_in_value(
@@ -356,6 +591,7 @@ pub fn run_native_host() -> Result<()> {
         pending: Mutex::new(HashMap::new()),
         session: shared_session.clone(),
         transfers: Mutex::new(TransferStore::default()),
+        outbound_uploads: Mutex::new(OutboundUploadStore::default()),
     });
 
     {
@@ -753,5 +989,79 @@ mod tests {
             path,
             PathBuf::from("/agent/data/pire-browser/screenshots/ignored.png")
         );
+    }
+
+    #[test]
+    fn stages_upload_payloads_out_of_native_outbound_requests() {
+        let encoded = "a".repeat(OUTBOUND_UPLOAD_CHUNK_BASE64_BYTES + 16);
+        let mut params = json!({
+            "args": ["upload", "#file", "large.bin"],
+            "uploadFiles": [{
+                "name": "large.bin",
+                "mimeType": "application/octet-stream",
+                "size": 786432u64,
+                "sha256": "abc123",
+                "bytesBase64": encoded,
+            }]
+        });
+        let mut store = OutboundUploadStore::default();
+
+        let transfer_id = stage_outbound_upload_params(&mut params, &mut store)
+            .unwrap()
+            .unwrap();
+
+        assert!(params.get("uploadFiles").is_none());
+        let upload_ref = params.get("uploadFilesRef").unwrap();
+        assert_eq!(
+            upload_ref.get("transferId").and_then(Value::as_str),
+            Some(transfer_id.as_str())
+        );
+        assert_eq!(
+            upload_ref
+                .get("files")
+                .and_then(Value::as_array)
+                .and_then(|files| files.first())
+                .and_then(|file| file.get("chunks"))
+                .and_then(Value::as_u64),
+            Some(2)
+        );
+
+        match store.chunk_response("req-1".into(), transfer_id.clone(), 0, 0) {
+            NativeOutbound::UploadChunkResponse {
+                ok, data, total, ..
+            } => {
+                assert!(ok);
+                assert_eq!(total, 2);
+                assert_eq!(data.len(), OUTBOUND_UPLOAD_CHUNK_BASE64_BYTES);
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+        match store.chunk_response("req-2".into(), transfer_id, 0, 1) {
+            NativeOutbound::UploadChunkResponse {
+                ok, data, total, ..
+            } => {
+                assert!(ok);
+                assert_eq!(total, 2);
+                assert_eq!(data.len(), 16);
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn upload_chunk_response_reports_missing_transfer() {
+        let mut store = OutboundUploadStore::default();
+
+        match store.chunk_response("req-1".into(), "missing".into(), 0, 0) {
+            NativeOutbound::UploadChunkResponse {
+                ok,
+                error: Some(error),
+                ..
+            } => {
+                assert!(!ok);
+                assert_eq!(error.code, "upload_transfer_not_found");
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
     }
 }

@@ -32,6 +32,32 @@ type UploadFilePayload = {
   bytesBase64: string;
 };
 
+type UploadFilesRef = {
+  transferId: string;
+  files: {
+    name: string;
+    mimeType?: string;
+    size: number;
+    sha256?: string;
+    chunks: number;
+  }[];
+};
+
+type UploadChunkResponse = {
+  type: "upload_chunk_response";
+  request_id: string;
+  ok: boolean;
+  transfer_id: string;
+  file_index: number;
+  chunk_index: number;
+  total: number;
+  data: string;
+  error?: {
+    code: string;
+    message: string;
+  };
+};
+
 type RpcResponse = {
   type: "response";
   id: string;
@@ -306,6 +332,7 @@ type RecordValueResult = { value: number };
 
 const HOST_NAME = "dev.pi.pire_browser";
 const CHUNK_SIZE = 700_000;
+const UPLOAD_CHUNK_TIMEOUT_MS = 10_000;
 const CLOSE_TEARDOWN_DELAY_MS = 0;
 const TAB_READY_POLL_INTERVAL_MS = 100;
 const NETWORK_IDLE_QUIET_MS = 500;
@@ -348,6 +375,7 @@ const traceRecordingsByTabId = new Map<number, TraceRecording>();
 const visualRecordingsByTabId = new Map<number, VisualRecording>();
 const networkRoutes = new Map<string, NetworkRouteRule>();
 const networkRouteMatchesByRequestId = new Map<string, { routeId: string; action: "continue" | "abort" | "mock" }>();
+const pendingUploadChunks = new Map<string, { resolve: (message: UploadChunkResponse) => void; reject: (error: Error) => void; timer: number }>();
 let offlineModeEnabled = false;
 let nextRuntimeInitScriptNumber = 1;
 let nextNetworkRouteNumber = 1;
@@ -511,6 +539,20 @@ async function handleNativeMessage(message: any) {
     const request = message as RpcRequest;
     const response = await executeRequest(request);
     postNative(response);
+  } else if (message.type === "upload_chunk_response") {
+    handleUploadChunkResponse(message as UploadChunkResponse);
+  }
+}
+
+function handleUploadChunkResponse(message: UploadChunkResponse) {
+  const pending = pendingUploadChunks.get(message.request_id);
+  if (!pending) return;
+  pendingUploadChunks.delete(message.request_id);
+  clearTimeout(pending.timer);
+  if (message.ok) {
+    pending.resolve(message);
+  } else {
+    pending.reject(new Error(message.error?.message || message.error?.code || "upload chunk request failed"));
   }
 }
 
@@ -1085,7 +1127,7 @@ async function executeCommand(
     case "download":
       return downloadCommand(rest);
     case "upload":
-      return uploadCommand(rest, params.uploadFiles);
+      return uploadCommand(rest, params);
     case "auth":
       return authCommand(rest, domainPolicy);
     case "network":
@@ -2253,10 +2295,10 @@ async function downloadCommand(args: string[]) {
   return watcher.promise;
 }
 
-async function uploadCommand(args: string[], filesValue: unknown) {
+async function uploadCommand(args: string[], params: Record<string, any>) {
   const target = args[0];
   if (!target) return { error: { code: "InvalidArgumentError", message: "upload requires <target> <files...>" } };
-  const files = uploadFilesFromParams(filesValue);
+  const files = await uploadFilesFromParams(params.uploadFiles, params.uploadFilesRef);
   if ("error" in files) return files;
   const locator = locatorFromTarget(target);
   if ("error" in locator) return locator;
@@ -2270,7 +2312,13 @@ async function uploadCommand(args: string[], filesValue: unknown) {
   return normalizeContentResponse(response);
 }
 
-function uploadFilesFromParams(value: unknown): { files: UploadFilePayload[] } | { error: Record<string, unknown> } {
+async function uploadFilesFromParams(
+  value: unknown,
+  refValue?: unknown
+): Promise<{ files: UploadFilePayload[] } | { error: Record<string, unknown> }> {
+  if (refValue) {
+    return uploadFilesFromRef(refValue);
+  }
   if (!Array.isArray(value) || value.length === 0) {
     return { error: { code: "InvalidArgumentError", message: "upload requires file payloads from the pire-browser CLI" } };
   }
@@ -2292,6 +2340,92 @@ function uploadFilesFromParams(value: unknown): { files: UploadFilePayload[] } |
     });
   }
   return { files };
+}
+
+async function uploadFilesFromRef(value: unknown): Promise<{ files: UploadFilePayload[] } | { error: Record<string, unknown> }> {
+  const uploadRef = parseUploadFilesRef(value);
+  if ("error" in uploadRef) return uploadRef;
+  const files: UploadFilePayload[] = [];
+  for (let fileIndex = 0; fileIndex < uploadRef.ref.files.length; fileIndex++) {
+    const file = uploadRef.ref.files[fileIndex];
+    let bytesBase64 = "";
+    for (let chunkIndex = 0; chunkIndex < file.chunks; chunkIndex++) {
+      let chunk: UploadChunkResponse;
+      try {
+        chunk = await requestUploadChunk(uploadRef.ref.transferId, fileIndex, chunkIndex);
+      } catch (error) {
+        return {
+          error: {
+            code: "upload_chunk_failed",
+            message: `Failed to read upload chunk for ${file.name}: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        };
+      }
+      if (chunk.total !== file.chunks) {
+        return {
+          error: {
+            code: "upload_chunk_failed",
+            message: `Upload chunk count changed for ${file.name}: expected ${file.chunks}, got ${chunk.total}`,
+          },
+        };
+      }
+      bytesBase64 += chunk.data;
+    }
+    files.push({
+      name: file.name,
+      mimeType: file.mimeType ?? "application/octet-stream",
+      size: file.size,
+      sha256: file.sha256,
+      bytesBase64,
+    });
+  }
+  return { files };
+}
+
+function parseUploadFilesRef(value: unknown): { ref: UploadFilesRef } | { error: Record<string, unknown> } {
+  if (!value || typeof value !== "object") {
+    return { error: { code: "InvalidArgumentError", message: "upload file reference is malformed" } };
+  }
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.transferId !== "string" || !Array.isArray(candidate.files)) {
+    return { error: { code: "InvalidArgumentError", message: "upload file reference is missing transfer metadata" } };
+  }
+  const files: UploadFilesRef["files"] = [];
+  for (const item of candidate.files) {
+    if (!item || typeof item !== "object") {
+      return { error: { code: "InvalidArgumentError", message: "upload file metadata is malformed" } };
+    }
+    const file = item as Record<string, unknown>;
+    if (typeof file.name !== "string" || typeof file.size !== "number" || typeof file.chunks !== "number") {
+      return { error: { code: "InvalidArgumentError", message: "upload file metadata is missing name, size, or chunks" } };
+    }
+    files.push({
+      name: file.name,
+      mimeType: typeof file.mimeType === "string" ? file.mimeType : "application/octet-stream",
+      size: file.size,
+      sha256: typeof file.sha256 === "string" ? file.sha256 : undefined,
+      chunks: file.chunks,
+    });
+  }
+  return { ref: { transferId: candidate.transferId, files } };
+}
+
+function requestUploadChunk(transferId: string, fileIndex: number, chunkIndex: number): Promise<UploadChunkResponse> {
+  const requestId = crypto.randomUUID();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingUploadChunks.delete(requestId);
+      reject(new Error("timed out waiting for native upload chunk"));
+    }, UPLOAD_CHUNK_TIMEOUT_MS);
+    pendingUploadChunks.set(requestId, { resolve, reject, timer });
+    postNative({
+      type: "upload_chunk_request",
+      request_id: requestId,
+      transfer_id: transferId,
+      file_index: fileIndex,
+      chunk_index: chunkIndex,
+    });
+  });
 }
 
 async function waitDownloadCommand(args: string[]) {

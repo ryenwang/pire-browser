@@ -7,7 +7,7 @@ pire-browser wait --download ./downloads/report.txt --timeout 60000`),
   h2("Uploads", "uploads"),
   code(`pire-browser upload '#file' ./path/to/file.txt
 pire-browser upload '#multi-file' ./one.txt ./two.json --json`),
-  p("Uploads are limited to small text-safe payloads, capped at 512 KiB total raw bytes. Native OS file-picker control is not implemented."),
+  p("Uploads are chunked through the native host and capped at 8 MiB total raw bytes per command. The command assigns files to input[type=file] controls or associated labels; native OS file-picker control, directory upload, and drag/drop upload are not implemented."),
   h2("Clipboard", "clipboard"),
   code(`pire-browser clipboard read
 pire-browser clipboard write "hello"

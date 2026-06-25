@@ -2309,7 +2309,7 @@ Common commands:
   removeinitscript init1          Remove a runtime init script
   download '@e4' out.txt          Click a target and save a download
   wait --download out.txt         Wait for a recent/new download and save it
-  upload '#file' ./fixture.txt    Assign a small local file to a file input
+  upload '#file' ./fixture.txt    Assign bounded local files to a file input
   auth login app                  Open a saved login form and submit it
   clipboard read                  Read text from the system clipboard
   skills list                     List installed agent skills
@@ -2985,11 +2985,13 @@ const UPLOAD_HELP: &str = r##"
 Usage:
   pire-browser upload <target> <file> [more-files...] [--json]
 
-Assigns small local files to a targeted input[type=file] or associated label in
-the active Firefox page. V1 reads files in the CLI and sends them to the
-extension as text-safe payloads, capped at 512 KiB total raw bytes.
-No native OS file picker, directory upload, drag/drop upload, or large-file
-chunking is implemented.
+Assigns bounded local files to a targeted input[type=file] or associated label
+in the active Firefox page. The CLI reads files locally, stages payloads through
+the native host, and streams chunks to the extension so Firefox's Native
+Messaging message limit is not exceeded. Total raw upload bytes are capped at
+8 MiB per command.
+
+No native OS file picker, directory upload, or drag/drop upload is implemented.
 "##;
 
 const CLIPBOARD_HELP: &str = r##"

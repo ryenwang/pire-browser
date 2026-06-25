@@ -407,6 +407,19 @@ describe("pire-browser command foundations", () => {
     expect(body).toContain("largeResult");
   });
 
+  it("rehydrates upload payloads from native-host chunks", () => {
+    const body = background();
+    const contentBody = content();
+    expect(body).toContain("type UploadFilesRef = {");
+    expect(body).toContain("const pendingUploadChunks = new Map");
+    expect(body).toContain('message.type === "upload_chunk_response"');
+    expect(body).toContain("async function uploadFilesFromRef");
+    expect(body).toContain('type: "upload_chunk_request"');
+    expect(body).toContain("uploadFilesRef");
+    expect(contentBody).toContain("const hasBytesBase64 = typeof item.bytesBase64 === \"string\";");
+    expect(contentBody).not.toContain("if (!name || !bytesBase64 || expectedSize < 0)");
+  });
+
   it("keeps page targets tied to both Firefox tab and window ids", () => {
     const body = background();
     expect(body).toContain("type PageRecord = {");
@@ -745,8 +758,9 @@ describe("pire-browser command foundations", () => {
     const backgroundBody = background();
     const contentBody = content();
     expect(backgroundBody).toContain('case "upload":');
-    expect(backgroundBody).toContain("return uploadCommand(rest, params.uploadFiles);");
+    expect(backgroundBody).toContain("return uploadCommand(rest, params);");
     expect(backgroundBody).toContain("function uploadFilesFromParams");
+    expect(backgroundBody).toContain("function uploadFilesFromRef");
     expect(backgroundBody).toContain('return "upload";');
     expect(contentBody).toContain('message.type === "upload_files"');
     expect(contentBody).toContain("function uploadFilesLocator");
