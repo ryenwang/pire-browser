@@ -3901,9 +3901,9 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_frame_select",
             "Select iframe",
-            "Scope snapshots and selector-based actions to an iframe selected by ref or CSS selector.",
+            "Scope snapshots and selector-based actions to an iframe selected by ref, CSS selector, frame name, or URL.",
             tool_schema(
-                vec![("target", string_prop("Iframe ref such as @e3, or CSS selector."))],
+                vec![("target", string_prop("Iframe ref such as @e3, CSS selector, frame name/id/title/label, or URL."))],
                 &["target"],
             ),
             false,
@@ -3913,7 +3913,7 @@ fn core_tools() -> Vec<Value> {
             "Switch frame",
             "Agent-browser-style alias for scoping snapshots and selector-based actions to an iframe.",
             tool_schema(
-                vec![("frame", string_prop("Iframe ref such as @e3, or CSS selector."))],
+                vec![("frame", string_prop("Iframe ref such as @e3, CSS selector, frame name/id/title/label, or URL."))],
                 &["frame"],
             ),
             false,
@@ -6548,11 +6548,14 @@ mod tests {
 
         let args = tool_command_args(
             "pire_browser_frame_switch",
-            &json!({ "frame": "@e3" }),
+            &json!({ "frame": "https://checkout.example/frame" }),
             McpToolsProfile::Core,
         )
         .unwrap();
-        assert_eq!(args, vec!["--json", "frame", "@e3"]);
+        assert_eq!(
+            args,
+            vec!["--json", "frame", "https://checkout.example/frame"]
+        );
 
         let args = tool_command_args("pire_browser_frame_main", &json!({}), McpToolsProfile::Core)
             .unwrap();

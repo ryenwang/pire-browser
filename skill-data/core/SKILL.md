@@ -670,17 +670,25 @@ Use `-c`/`--compact` on noisy pages. Use `-C`/`--cursor-interactive` when custom
 
 ## Iframes
 
-If a snapshot shows an iframe ref, select it before working inside that frame:
+Snapshots inspect iframe content when Firefox can reach it. Refs inside iframes
+carry frame context, so direct actions usually work without switching first:
+
+```bash
+pire-browser snapshot -i
+pire-browser fill @e3 "value"   # @e3 may be inside an iframe
+pire-browser click @e4
+```
+
+Use `frame <ref|selector|name|url>` only when you want scoped snapshots or selector-based actions inside one iframe:
 
 ```bash
 pire-browser frame @e2
 pire-browser snapshot -i
-pire-browser fill @e3 "value"
-pire-browser click @e4
+pire-browser fill '#card-number' "4111111111111111"
 pire-browser frame main
 ```
 
-After `frame @e2`, snapshots and selector-based actions are scoped to that iframe. Use `frame main` before returning to controls outside the iframe. When using MCP, prefer the agent-browser-style `pire_browser_frame_switch` to enter an iframe and `pire_browser_frame_main` before returning to outer-page controls; `pire_browser_frame_select` remains available for compatibility. Re-run `snapshot -i` after each frame switch and use the fresh refs from the new context.
+After `frame @e2`, snapshots and selector-based actions are scoped to that iframe. `frame payment-frame` and `frame https://checkout.example/frame` are also supported when a frame name/id/title/label or URL is clearer than a ref. Use `frame main` before returning to outer-page selectors. When using MCP, prefer the agent-browser-style `pire_browser_frame_switch`; `pire_browser_frame_select` remains available for compatibility. Re-run `snapshot -i` after each frame switch and use the fresh refs from the new context.
 
 ## Setup And Diagnostics
 

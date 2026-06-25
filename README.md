@@ -407,10 +407,12 @@ Tab ids are stable strings such as `t1`, `t2`, and `t3`. Labels are user-assigne
 ```bash
 pire-browser frame <sel>
 pire-browser frame '@e3'
+pire-browser frame payment-frame
+pire-browser frame https://checkout.example/frame
 pire-browser frame main
 ```
 
-Iframe nodes are surfaced in snapshots when Firefox can inspect them from the current page context. Refs assigned inside iframes carry frame context for direct interactions.
+Iframe nodes are surfaced in snapshots when Firefox can inspect them from the current page context. Refs assigned inside iframes carry frame context, so agents can usually click/fill those refs directly without switching first. Use `frame <ref|selector|name|url>` only when you want scoped snapshots or selector-based actions inside one iframe, then `frame main` before returning to outer-page selectors.
 
 ### Dialogs
 

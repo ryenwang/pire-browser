@@ -42,6 +42,8 @@
             return Promise.resolve(findElements(message.locator));
         if (message.type === "frame_target")
             return Promise.resolve(frameTargetLocator(message.locator));
+        if (message.type === "frame_target_by_name")
+            return Promise.resolve(frameTargetByName(String(message.name ?? "")));
         if (message.type === "click")
             return Promise.resolve(clickLocator(message.locator));
         if (message.type === "click_new_tab")
@@ -322,6 +324,42 @@
                 dialogs: drainDialogs(),
             };
         }
+        return frameTargetElement(element);
+    }
+    function frameTargetByName(name) {
+        const target = name.trim();
+        if (!target) {
+            return {
+                error: { code: "invalid_args", message: "frame name target must not be empty" },
+                dialogs: drainDialogs(),
+            };
+        }
+        const matches = Array.from(document.querySelectorAll("iframe, frame")).filter((element) => frameNameMatches(element, target));
+        if (matches.length === 0) {
+            return {
+                error: { code: "not_found", message: `No iframe matched name, id, title, or label: ${target}` },
+                dialogs: drainDialogs(),
+            };
+        }
+        if (matches.length > 1) {
+            return {
+                error: { code: "ambiguous_locator", message: `${matches.length} iframes matched name, id, title, or label: ${target}` },
+                dialogs: drainDialogs(),
+            };
+        }
+        return frameTargetElement(matches[0]);
+    }
+    function frameNameMatches(element, target) {
+        const candidates = [
+            attr(element, "name"),
+            attr(element, "id"),
+            attr(element, "title"),
+            attr(element, "aria-label"),
+            accessibleName(element),
+        ].filter((value) => Boolean(value));
+        return candidates.some((value) => value === target);
+    }
+    function frameTargetElement(element) {
         return {
             text: `Frame target ${accessibleName(element) || attr(element, "src") || describeElement(element)}`,
             href: frameSourceFor(element),

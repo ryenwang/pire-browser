@@ -3364,12 +3364,16 @@ const FRAME_HELP: &str = r##"
 Usage:
   pire-browser frame <selector-or-ref>
   pire-browser frame '@e3'
+  pire-browser frame payment-frame
+  pire-browser frame https://checkout.example/frame
   pire-browser frame main
 
 Selects an iframe context for subsequent snapshots and selector-based actions
-in the active Firefox tab. Use an iframe ref from `snapshot -i`, or a selector
-that targets an iframe element. Run `frame main` to return to the main page.
-Re-run `snapshot -i` after switching frames and use fresh refs.
+in the active Firefox tab. Use an iframe ref from `snapshot -i`, a selector
+that targets an iframe element, or a frame name/id/title/label/URL. Refs inside
+iframes carry frame context and usually work directly without switching first.
+Run `frame main` to return to the main page. Re-run `snapshot -i` after
+switching frames and use fresh refs.
 "##;
 
 const WINDOW_HELP: &str = r##"
@@ -3482,10 +3486,10 @@ helpers, screenshots/PDFs, diffs, eval, status, basic tabs, profiles, close, and
 installed skill guidance. Add comma-separated profiles when needed: `network`,
 `state`, `debug`, `tabs`, `mobile`, or `react`. The `debug` profile includes
 lower-level launch, install/repair, safe upgrade, typed batch, doctor/activity
-diagnostics, console/errors, dialogs, highlight, and vitals. Agent-browser-style
-action/tab/frame aliases are available alongside older compatible names. The
-`react` profile exposes best-effort Firefox React Fiber tree/inspect/render
-recording/Suspense tools and vitals.
+diagnostics, console/errors, dialogs, highlight, trace/profiler/record evidence,
+and vitals. Agent-browser-style action/tab/frame aliases are available alongside
+older compatible names. The `react` profile exposes best-effort Firefox React
+Fiber tree/inspect/render recording/Suspense tools and vitals.
 Use `all` for every currently implemented MCP tool. The server defaults to MCP
 protocol 2025-11-25 and accepts older supported client protocol versions during
 initialization. Tool discovery is paginated for large profiles.
@@ -5736,7 +5740,10 @@ mod tests {
         assert!(help_text(Some("mcp")).unwrap().contains("semantic find"));
         assert!(help_text(Some("mcp")).unwrap().contains("2025-11-25"));
         assert!(help_text(Some("mcp")).unwrap().contains("paginated"));
-        assert!(help_text(Some("mcp")).unwrap().contains("React Fiber"));
+        assert!(help_text(Some("mcp"))
+            .unwrap()
+            .contains("trace/profiler/record evidence"));
+        assert!(help_text(Some("mcp")).unwrap().contains("Fiber tree"));
         assert!(help_text(Some("cookies"))
             .unwrap()
             .contains("cookies set <name> <value>"));
@@ -5747,6 +5754,8 @@ mod tests {
             .unwrap()
             .contains("storage session set <key> <value>"));
         assert!(help_text(Some("frame")).unwrap().contains("frame main"));
+        assert!(help_text(Some("frame")).unwrap().contains("frame payment-frame"));
+        assert!(help_text(Some("frame")).unwrap().contains("name/id/title/label/URL"));
         assert!(help_text(Some("skills"))
             .unwrap()
             .contains("skills get core"));

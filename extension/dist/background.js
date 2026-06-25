@@ -3337,23 +3337,57 @@
         const target = args[0];
         const tab = await targetTab();
         if (!target)
-            return { error: { code: "invalid_args", message: "frame requires <ref|selector> or main" } };
+            return { error: { code: "invalid_args", message: "frame requires <ref|selector|name|url> or main" } };
         if (target === "main") {
             selectedFramesByTabId.delete(tab.tabId);
             return { text: "Frame targeting reset to main", frame: { frameId: 0, main: true } };
         }
+        const parentFrameId = selectedFrameIdForTab(tab.tabId) ?? 0;
+        if (looksLikeFrameUrlTarget(target)) {
+            return selectFrameByUrlTarget(tab.tabId, parentFrameId, target);
+        }
         const locator = locatorFromTarget(target);
         if ("error" in locator)
             return locator;
-        const parentFrameId = targetFrameIdForTab(tab.tabId, locator.frameId) ?? 0;
-        const response = await sendFrame(tab.tabId, parentFrameId, { type: "frame_target", locator: locator.locator }, { staleOnFrameRoutingError: true });
+        const targetParentFrameId = targetFrameIdForTab(tab.tabId, locator.frameId) ?? parentFrameId;
+        const response = await sendFrame(tab.tabId, targetParentFrameId, { type: "frame_target", locator: locator.locator }, { staleOnFrameRoutingError: true });
+        const targetResult = normalizeContentResponse(response);
+        if ("error" in targetResult && !target.startsWith("@")) {
+            const named = await selectFrameByNameTarget(tab.tabId, targetParentFrameId, target);
+            if (!("error" in named))
+                return named;
+            const byUrl = await selectFrameByUrlTarget(tab.tabId, targetParentFrameId, target);
+            if (!("error" in byUrl))
+                return byUrl;
+        }
+        if ("error" in targetResult)
+            return targetResult;
+        const child = await childFrameForTarget(tab.tabId, targetParentFrameId, targetResult);
+        if ("error" in child)
+            return child;
+        return selectFrameResult(tab.tabId, targetParentFrameId, child, targetResult);
+    }
+    async function selectFrameByNameTarget(tabId, parentFrameId, target) {
+        const response = await sendFrame(tabId, parentFrameId, { type: "frame_target_by_name", name: target }, { staleOnFrameRoutingError: true });
         const targetResult = normalizeContentResponse(response);
         if ("error" in targetResult)
             return targetResult;
-        const child = await childFrameForTarget(tab.tabId, parentFrameId, targetResult);
+        const child = await childFrameForTarget(tabId, parentFrameId, targetResult);
         if ("error" in child)
             return child;
-        selectedFramesByTabId.set(tab.tabId, {
+        return selectFrameResult(tabId, parentFrameId, child, targetResult);
+    }
+    async function selectFrameByUrlTarget(tabId, parentFrameId, target) {
+        const child = await childFrameForUrlTarget(tabId, parentFrameId, target);
+        if ("error" in child)
+            return child;
+        return selectFrameResult(tabId, parentFrameId, child, {
+            text: `Frame target ${child.url ?? target}`,
+            frameUrl: child.url,
+        });
+    }
+    function selectFrameResult(tabId, parentFrameId, child, targetResult) {
+        selectedFramesByTabId.set(tabId, {
             frameId: child.frameId,
             parentFrameId,
             url: child.url,
@@ -5804,6 +5838,29 @@
         const frame = matches[0];
         return { frameId: frame.frameId, url: frame.url };
     }
+    async function childFrameForUrlTarget(tabId, parentFrameId, target) {
+        const frames = await browser.webNavigation.getAllFrames({ tabId }).catch(() => []);
+        const childFrames = frames.filter((frame) => frame.parentFrameId === parentFrameId);
+        const matches = childFrames.filter((frame) => frameUrlMatchesTarget(frame.url, target));
+        if (matches.length === 0) {
+            return {
+                error: {
+                    code: "not_found",
+                    message: `No child frame matched URL: ${target}`,
+                },
+            };
+        }
+        if (matches.length > 1) {
+            return {
+                error: {
+                    code: "ambiguous_locator",
+                    message: `${matches.length} child frames matched URL: ${target}`,
+                },
+            };
+        }
+        const frame = matches[0];
+        return { frameId: frame.frameId, url: frame.url };
+    }
     function frameUrlCandidates(target) {
         return [target.frameUrl, target.href]
             .filter((value) => typeof value === "string" && value.length > 0)
@@ -5823,6 +5880,18 @@
             return false;
         const normalized = normalizeFrameUrl(left);
         return normalized === right;
+    }
+    function frameUrlMatchesTarget(frameUrl, target) {
+        if (typeof frameUrl !== "string" || !frameUrl)
+            return false;
+        const normalizedFrameUrl = normalizeFrameUrl(frameUrl) ?? frameUrl;
+        const normalizedTarget = normalizeFrameUrl(target);
+        if (normalizedTarget)
+            return normalizedFrameUrl === normalizedTarget;
+        return normalizedFrameUrl.includes(target) || frameUrl.includes(target);
+    }
+    function looksLikeFrameUrlTarget(target) {
+        return Boolean(normalizeFrameUrl(target)) || /^(about|data|blob|file):/i.test(target) || target.includes("://");
     }
     async function sendFrame(tabId, frameId, message, behavior = {}) {
         const target = typeof frameId === "number" ? { frameId } : undefined;

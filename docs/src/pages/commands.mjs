@@ -213,6 +213,8 @@ pire-browser tab label <tN> <label>
 pire-browser window new
 pire-browser frame <sel>
 pire-browser frame '@e3'
+pire-browser frame payment-frame
+pire-browser frame https://checkout.example/frame
 pire-browser frame main`),
   h3("Stable tab ids and labels", "stable-tab-ids-and-labels"),
   code(`pire-browser tab new --label docs https://docs.example.com
@@ -231,6 +233,7 @@ pire-browser click '@e5'
 pire-browser frame '@e3'
 pire-browser snapshot -i
 pire-browser frame main`),
+  p("Refs inside iframes carry frame context, so direct actions such as <code>fill '@e4'</code> and <code>click '@e5'</code> usually work without switching first. Use <code>frame &lt;ref|selector|name|url&gt;</code> for scoped snapshots or selector-based actions inside one iframe, then <code>frame main</code> before returning to outer-page selectors."),
 
   h2("Dialogs", "dialogs"),
   statusNote("dialogs"),

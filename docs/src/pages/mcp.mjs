@@ -82,7 +82,7 @@ pire-browser mcp --tools all`),
       ["pire_browser_status", "Inspect install/session state."],
       ["pire_browser_confirm / deny", "Approve or deny a pending confirmation id after explicit user approval."],
       ["pire_browser_tab_list / tab_new / tab_switch / tab_close / tabs_label", "Agent-browser-style tab tools for listing, creating, switching, and closing tabs; tabs_list/tabs_select/tabs_close remain compatible."],
-      ["pire_browser_frame_switch / frame_select / frame_main", "Scope snapshots and selector-based actions to an iframe, or return to the main page frame. Prefer frame_switch for new MCP clients; frame_select remains compatible."],
+      ["pire_browser_frame_switch / frame_select / frame_main", "Scope snapshots and selector-based actions to an iframe by ref, selector, name, or URL; iframe refs from snapshots can usually be acted on directly. Prefer frame_switch for new MCP clients; frame_select remains compatible."],
       ["pire_browser_window_new", "Open a separate Firefox window."],
       ["pire_browser_close", "Close managed sessions."],
       ["pire_browser_skills_get_core", "Return version-matched agent guidance."],
@@ -94,7 +94,7 @@ pire-browser mcp --tools all`),
 3. Call pire_browser_snapshot with compact=true for noisy pages, cursorInteractive=true for custom clickable controls missing from the default snapshot, or use pire_browser_find when labels/roles are clear.
 4. Use fresh refs or semantic find locators in click/double-click/fill/type/press/select/check/scroll/drag/mouse/download/upload tools.
 5. Use typed get/check tools for targeted verification when you already have a fresh target: get_text, get_value, get_attr, get_url, get_title, is_visible, is_enabled, or is_checked. Use pire_browser_get and pire_browser_is only for compatibility.
-6. Use frame_select when a snapshot shows an iframe you need to work inside; run frame_main before returning to outer-page controls.
+6. Use iframe refs directly when a snapshot includes inner-frame controls. Use frame_switch only for scoped iframe snapshots or selector actions, and run frame_main before returning to outer-page selectors.
 7. Use settings tools before screenshots or stateful QA when viewport, device preset, geolocation, headers, credentials, media, or offline mode matters.
 8. Use diff tools when comparing before/after UI, screenshots, or two URLs for QA evidence.
 9. Use console/errors/dialog/highlight/vitals/network tools when a page is stuck, blocked, or needs evidence.

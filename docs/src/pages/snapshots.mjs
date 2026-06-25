@@ -21,7 +21,7 @@ pire-browser snapshot --json`),
 pire-browser click '@e2'
 pire-browser snapshot -i`),
   h2("Iframes", "iframes"),
-  p("Iframe content is surfaced through the extension when it can be inspected from the current page context. Use <code>frame</code> commands for explicit scoped work."),
+  p("Iframe content is surfaced through the extension when it can be inspected from the current page context. Refs inside iframes carry frame context, so direct click/fill/get actions usually work without switching first. Use <code>frame &lt;ref|selector|name|url&gt;</code> only when you want scoped snapshots or selector-based actions inside one iframe."),
 ];
 
 export default page({
