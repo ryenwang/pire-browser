@@ -70,7 +70,10 @@ current page focus. Click or focus the intended control first. Use `type
 <target> <text>` or `fill <target> <text>` when you have a selector/ref and do
 not need focused keyboard edges. Use `dblclick <target>` when the UI requires a
 double-click. Use `tap <target>` only as a best-effort alias for `click
-<target>`; it is not native touch input or mobile browser emulation.
+<target>`; it is not native touch input or mobile browser emulation. Use
+`swipe <direction> [pixels]` only as a best-effort mobile helper that maps touch
+direction to page scroll (`swipe up` scrolls down); use `scroll` for direct
+scroll direction.
 
 ```bash
 pire-browser snapshot -i
@@ -276,10 +279,11 @@ pire-browser screenshot desktop.png
 pire-browser set device "iPhone 14"
 pire-browser set geo 37.7749 -122.4194
 pire-browser snapshot -i --compact
+pire-browser swipe up 500
 pire-browser screenshot mobile.png
 ```
 
-`set viewport`, `set device`, and `set geo` are Firefox best-effort paths. Viewport and device settings resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `set device` reports a preset User-Agent/touch/scale profile but does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. `set geo` installs a page-level `navigator.geolocation` shim for managed Firefox pages; it does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state.
+`set viewport`, `set device`, `set geo`, `tap`, and `swipe` are Firefox best-effort paths. Viewport and device settings resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `set device` reports a preset User-Agent/touch/scale profile but does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. `swipe` maps touch direction to page scroll and is not native touch input. `set geo` installs a page-level `navigator.geolocation` shim for managed Firefox pages; it does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state.
 
 When using MCP, prefer the typed setting tools (`pire_browser_set_viewport`,
 `pire_browser_set_device`, `pire_browser_set_geo`, `pire_browser_set_headers`,
@@ -394,10 +398,11 @@ pire-browser mouse down
 pire-browser mouse up
 pire-browser mouse wheel 400
 pire-browser tap '<target-ref>'
+pire-browser swipe up 500
 pire-browser drag '<source-ref>' '<target-ref>'
 ```
 
-Mouse, tap, and drag commands are Firefox WebExtension paths. They dispatch page events, not native OS cursor movement, native touch input, or browser-chrome drag state, so verify with page state afterwards.
+Mouse, tap, swipe, and drag commands are Firefox WebExtension paths. They dispatch page events, not native OS cursor movement, native touch input, or browser-chrome drag state, so verify with page state afterwards.
 
 Save and reuse a simple login form profile:
 
@@ -519,7 +524,7 @@ close, and skill guidance. Add comma-separated profiles only when needed:
 and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair, safe
 upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/vitals,
 `tabs` for tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
-helpers including click-equivalent `pire_browser_tap`. `react` is accepted for compatibility but currently has no React
+helpers including click-equivalent `pire_browser_tap` and touch-direction page-scroll `pire_browser_swipe`. `react` is accepted for compatibility but currently has no React
 DevTools introspection tools. Use `all` only when the host can tolerate the full
 tool surface. The `pire_browser_tools_profiles` MCP tool returns this profile
 list in-band.
@@ -537,7 +542,8 @@ For MCP guardrails and launch context, prefer typed common fields over
 `pire_browser_open.initScriptPaths` when a navigation needs one-shot request
 headers or pre-navigation init scripts. Prefer `pire_browser_open` for normal
 launch/navigation; use `pire_browser_tap` only when an agent-browser-style tap
-recipe means click-equivalent page interaction. Add the `debug` profile and use `pire_browser_launch` only
+recipe means click-equivalent page interaction, and `pire_browser_swipe` only
+when a mobile-style recipe means touch-direction page scroll. Add the `debug` profile and use `pire_browser_launch` only
 for lower-level launch diagnostics. Use debug-profile `pire_browser_install`
 only when the user wants explicit native-host setup or repair, and
 `pire_browser_upgrade` only when the user wants package update. Use

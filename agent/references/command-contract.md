@@ -42,6 +42,7 @@ Browser commands may auto-launch a managed Firefox session when safe. Read the r
 - If `vitals` reports unavailable metrics, treat that as a Firefox/WebExtension API limitation instead of inventing estimates.
 - Use `pire-browser get title`, `get url`, `get text <target>`, `get attr <target> <attr>`, and `is visible|enabled|checked <target>` for targeted verification when you already know the page or element to inspect.
 - Use `pire-browser tap <target>` only as a best-effort alias for `click <target>`. It is not native touch input or mobile browser emulation.
+- Use `pire-browser swipe <direction> [pixels]` only as a best-effort mobile helper. It maps touch direction to page scroll (`swipe up` scrolls down), not native touch input.
 - Use `pire-browser dblclick <target>` when the UI requires a double-click. Verify with a fresh snapshot or targeted `get`/`is` command afterward.
 - Use `pire-browser keyboard type <text>`, `keyboard inserttext <text>`, `keydown <key>`, and `keyup <key>` only at the current page focus. Click or focus the intended control first; use `type <target> <text>` or `fill <target> <text>` when you have a selector/ref.
 - Use `pire-browser wait --fn <expression>` for short, side-effect-free page-world readiness predicates such as `window.appReady === true`; re-run `snapshot -i` before acting on refs after the wait.

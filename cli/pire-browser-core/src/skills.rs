@@ -185,6 +185,7 @@ mod tests {
         assert!(skill.content.contains("pire-browser auth login"));
         assert!(skill.content.contains("pire-browser tab new"));
         assert!(skill.content.contains("pire-browser tap"));
+        assert!(skill.content.contains("pire-browser swipe up"));
         assert!(skill.content.contains("pire-browser window new"));
         assert!(skill.content.contains("pire-browser open --init-script"));
         assert!(skill.content.contains("pire-browser addinitscript"));

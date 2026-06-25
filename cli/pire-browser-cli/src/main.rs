@@ -83,7 +83,7 @@ use crate::mcp::{run_mcp_server, McpToolsProfile};
 use crate::read::{read_url, ReadUrlOptions};
 
 const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &[
-    "connect", "device", "profiler", "react", "record", "stream", "swipe", "trace", "upgrade",
+    "connect", "device", "profiler", "react", "record", "stream", "trace", "upgrade",
 ];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -6997,6 +6997,7 @@ fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
                 | "focus"
                 | "mouse"
                 | "drag"
+                | "swipe"
                 | "select"
                 | "check"
                 | "uncheck"
@@ -7055,6 +7056,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "highlight"
             | "mouse"
             | "drag"
+            | "swipe"
             | "select"
             | "check"
             | "uncheck"
@@ -7121,6 +7123,7 @@ fn command_suggestions(command: &str) -> Vec<String> {
         "pdf",
         "mouse",
         "drag",
+        "swipe",
         "addinitscript",
         "removeinitscript",
         "upload",
@@ -8038,6 +8041,7 @@ mod tests {
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"open"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"click"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"tap"));
+        assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"swipe"));
     }
 
     #[test]
@@ -8067,6 +8071,7 @@ mod tests {
             "find",
             "wait",
             "mouse",
+            "swipe",
             "download",
             "upload",
             "diff",

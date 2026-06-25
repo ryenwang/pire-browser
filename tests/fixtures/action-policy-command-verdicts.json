@@ -150,6 +150,13 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "swipe maps to scroll",
+      "args": ["swipe", "up", "500"],
+      "policy": { "default": "deny", "allow": ["scroll"] },
+      "expectedCategory": "scroll",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "set device maps to state",
       "args": ["set", "device", "iPhone 14"],
       "policy": { "default": "deny", "allow": ["state"] },

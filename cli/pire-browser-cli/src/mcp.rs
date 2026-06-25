@@ -159,7 +159,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "mobile",
             bits: PROFILE_MOBILE,
-            description: "Viewport, device preset, geolocation, media/offline settings, keyboard, tap-as-click, mouse, scroll, and screenshot helpers.",
+            description: "Viewport, device preset, geolocation, media/offline settings, keyboard, tap-as-click, swipe-as-scroll, mouse, scroll, and screenshot helpers.",
         },
         McpProfileDescriptor {
             name: "react",
@@ -204,7 +204,7 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_mouse_up"
         | "pire_browser_mouse_wheel"
         | "pire_browser_scroll" => PROFILE_CORE | PROFILE_MOBILE,
-        "pire_browser_tap" => PROFILE_CORE | PROFILE_MOBILE,
+        "pire_browser_tap" | "pire_browser_swipe" => PROFILE_CORE | PROFILE_MOBILE,
         "pire_browser_open"
         | "pire_browser_read"
         | "pire_browser_snapshot"
@@ -420,7 +420,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade for safe package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade for safe package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -812,6 +812,22 @@ fn tool_command_args(
             args.push("scroll".to_string());
             let direction =
                 optional_string(object, "direction")?.unwrap_or_else(|| "down".to_string());
+            if !matches!(direction.as_str(), "up" | "down" | "left" | "right") {
+                return Err("direction must be up, down, left, or right".to_string());
+            }
+            args.push(direction);
+            if let Some(pixels) = optional_u64(object, "pixels")? {
+                args.push(pixels.to_string());
+            }
+            if let Some(selector) = optional_string(object, "selector")? {
+                args.push("--selector".to_string());
+                args.push(selector);
+            }
+        }
+        (_, "pire_browser_swipe") => {
+            args.push("swipe".to_string());
+            let direction =
+                optional_string(object, "direction")?.unwrap_or_else(|| "up".to_string());
             if !matches!(direction.as_str(), "up" | "down" | "left" | "right") {
                 return Err("direction must be up, down, left, or right".to_string());
             }
@@ -2528,6 +2544,20 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_swipe",
+            "Swipe",
+            "Best-effort mobile swipe alias that maps touch direction to page scroll. This is not native touch input.",
+            tool_schema(
+                vec![
+                    ("direction", string_prop("up, down, left, or right. Defaults to up.")),
+                    ("pixels", number_prop("Positive pixel distance. Defaults to 500.")),
+                    ("selector", string_prop("Optional scroll container selector.")),
+                ],
+                &[],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_scroll_into_view",
             "Scroll into view",
             "Scroll a ref or selector into view.",
@@ -4045,6 +4075,9 @@ mod tests {
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_tap"));
         assert!(tools
             .iter()
+            .any(|tool| tool["name"] == "pire_browser_swipe"));
+        assert!(tools
+            .iter()
             .any(|tool| tool["name"] == "pire_browser_double_click"));
         assert!(tools
             .iter()
@@ -4334,6 +4367,9 @@ mod tests {
             .iter()
             .any(|tool| tool["name"] == "pire_browser_screenshot"));
         assert!(mobile.iter().any(|tool| tool["name"] == "pire_browser_tap"));
+        assert!(mobile
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_swipe"));
 
         let combined = mcp_tools(McpToolsProfile::parse("core,network").unwrap());
         assert!(combined
@@ -5055,6 +5091,17 @@ mod tests {
         assert_eq!(
             args,
             vec!["--json", "scroll", "down", "400", "--selector", "#panel"]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_swipe",
+            &json!({ "direction": "up", "pixels": 500, "selector": "#panel" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "swipe", "up", "500", "--selector", "#panel"]
         );
 
         let args = tool_command_args(
@@ -6183,6 +6230,14 @@ mod tests {
 
         let error = tool_command_args(
             "pire_browser_scroll",
+            &json!({ "direction": "sideways" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("direction must be up"));
+
+        let error = tool_command_args(
+            "pire_browser_swipe",
             &json!({ "direction": "sideways" }),
             McpToolsProfile::Core,
         )

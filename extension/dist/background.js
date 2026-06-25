@@ -419,6 +419,7 @@
                 return "eval";
             case "scroll":
             case "scrollintoview":
+            case "swipe":
                 return "scroll";
             case "mouse":
                 return subcommand === "wheel" ? "scroll" : "interact";
@@ -509,7 +510,6 @@
             "react",
             "record",
             "stream",
-            "swipe",
             "trace",
             "upgrade",
         ].includes(command);
@@ -609,6 +609,7 @@
             "uncheck",
             "scroll",
             "scrollintoview",
+            "swipe",
             "mouse",
             "drag",
             "screenshot",
@@ -710,6 +711,8 @@
                 return targetActionCommand(command, rest);
             case "scroll":
                 return scrollCommand(rest);
+            case "swipe":
+                return swipeCommand(rest);
             case "mouse":
                 return mouseCommand(rest);
             case "drag":
@@ -784,7 +787,6 @@
             case "pdf":
             case "connect":
             case "device":
-            case "swipe":
                 return notAvailable(command, "This command is not supported by the Firefox WebExtension backend yet.");
             case "close":
             case "quit":
@@ -1632,6 +1634,47 @@
         const tab = await targetTab();
         const response = await sendFrame(tab.tabId, selectedFrameIdForTab(tab.tabId), { type: "scroll", direction, pixels, selector });
         return normalizeContentResponse(response);
+    }
+    async function swipeCommand(args) {
+        const direction = args[0] ?? "up";
+        const pixels = Number(firstPositionalArg(args.slice(1), ["--selector"]) ?? "500");
+        const selector = valueAfter(args, "--selector");
+        const scrollDirection = swipeScrollDirection(direction);
+        if (!scrollDirection || !Number.isFinite(pixels) || pixels <= 0) {
+            return { error: { code: "InvalidArgumentError", message: "swipe requires up|down|left|right [positive_pixels]" } };
+        }
+        const scrollArgs = [scrollDirection, String(pixels)];
+        if (selector)
+            scrollArgs.push("--selector", selector);
+        const result = await scrollCommand(scrollArgs);
+        if ("error" in result)
+            return result;
+        return {
+            ...result,
+            text: [`Swiped ${direction} ${pixels}px as best-effort page scroll ${scrollDirection}.`, result.text]
+                .filter(Boolean)
+                .join("\n"),
+            swipe: {
+                direction,
+                pixels,
+                mappedScrollDirection: scrollDirection,
+            },
+            warnings: mergeWarnings(result.warnings, bestEffortWarning("swipe", "Firefox WebExtensions cannot dispatch native touch gestures; swipe maps touch direction to page scroll.")),
+        };
+    }
+    function swipeScrollDirection(direction) {
+        switch (direction) {
+            case "up":
+                return "down";
+            case "down":
+                return "up";
+            case "left":
+                return "right";
+            case "right":
+                return "left";
+            default:
+                return null;
+        }
     }
     async function mouseCommand(args) {
         const [subcommand = "", ...rest] = args;

@@ -28,7 +28,7 @@ export const featureStatuses = {
   },
   mcp: {
     status: "available",
-    summary: "`pire-browser mcp --tools core` starts a stdio MCP server with typed tools for the default inspect-before-act workflow, including agent-browser-style split get/check tools for targeted verification, split wait tools for milliseconds, selector, text, URL, load state, and page function predicates, and action/tab/frame aliases that match common agent-browser tool names. Agent-browser-style profiles `network`, `state`, `debug`, `tabs`, `mobile`, `react`, and `all` can be selected or comma-combined to keep MCP context small while exposing broader tools on demand; `state` includes typed clipboard tools, and `debug` includes lower-level launch, install/repair, safe upgrade, typed batch, diagnostics, console/errors, dialogs, highlight, and vitals. The server defaults to MCP protocol `2025-11-25`, accepts older supported client protocol versions during initialization, paginates tool discovery, and marks local maintenance/context tools as non-open-world for clearer host prompts.",
+    summary: "`pire-browser mcp --tools core` starts a stdio MCP server with typed tools for the default inspect-before-act workflow, including agent-browser-style split get/check tools for targeted verification, split wait tools for milliseconds, selector, text, URL, load state, and page function predicates, and action/tab/frame/mobile aliases that match common agent-browser tool names. Agent-browser-style profiles `network`, `state`, `debug`, `tabs`, `mobile`, `react`, and `all` can be selected or comma-combined to keep MCP context small while exposing broader tools on demand; `mobile` includes tap-as-click and swipe-as-scroll helpers, `state` includes typed clipboard tools, and `debug` includes lower-level launch, install/repair, safe upgrade, typed batch, diagnostics, console/errors, dialogs, highlight, and vitals. The server defaults to MCP protocol `2025-11-25`, accepts older supported client protocol versions during initialization, paginates tool discovery, and marks local maintenance/context tools as non-open-world for clearer host prompts.",
     sources: ["README.md", "docs/src/pages/mcp.mjs", "cli/pire-browser-cli/src/mcp.rs", "cli/pire-browser-core/src/cli.rs"],
   },
   managedProfiles: {
@@ -53,7 +53,7 @@ export const featureStatuses = {
   },
   mouseAndDrag: {
     status: "best_effort",
-    summary: "`tap` is a click-equivalent alias, and `mouse`/`drag` dispatch page-level Firefox WebExtension events; they are not native OS cursor, native touch input, or browser-chrome drag control.",
+    summary: "`tap` is a click-equivalent alias, `swipe` maps touch direction to page scroll, and `mouse`/`drag` dispatch page-level Firefox WebExtension events; they are not native OS cursor, native touch input, or browser-chrome drag control.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/cli.rs"],
   },
   initScripts: {
@@ -178,7 +178,7 @@ export const commandRootStatus = {
   status: "available",
   storage: "available",
   stream: "not_available",
-  swipe: "not_available",
+  swipe: "best_effort",
   tab: "available",
   tabs: "available",
   tap: "best_effort",

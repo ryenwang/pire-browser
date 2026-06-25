@@ -2167,6 +2167,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "highlight" => HIGHLIGHT_HELP,
         "set" => SET_HELP,
         "mouse" => MOUSE_HELP,
+        "swipe" => SWIPE_HELP,
         "drag" => DRAG_HELP,
         "batch" => BATCH_HELP,
         "addinitscript" | "removeinitscript" | "init-scripts" => INIT_SCRIPTS_HELP,
@@ -2252,6 +2253,7 @@ Common commands:
   highlight '#submit'             Draw a visible overlay around a target
   set viewport 1280 720           Approximate the active page viewport
   mouse move 80 80                Dispatch page mouse events at viewport coords
+  swipe up 500                    Best-effort mobile swipe as page scroll
   drag '@e1' '@e2'                Dispatch page drag/drop events
   batch "open <url>" "snapshot -i" Run multiple commands in one invocation
   addinitscript <js>              Register a document-start init script
@@ -2797,6 +2799,20 @@ Usage:
 
 Dispatches page-level mouse events at viewport coordinates in the active page.
 This is a Firefox WebExtension compatibility path, not native OS mouse control.
+"##;
+
+const SWIPE_HELP: &str = r##"
+Usage:
+  pire-browser swipe up
+  pire-browser swipe down 500
+  pire-browser swipe left 300
+  pire-browser swipe right 300
+
+Best-effort agent-browser-style mobile swipe helper. Firefox WebExtensions
+cannot dispatch native touch gestures, so this maps touch direction to page
+scroll: swipe up scrolls down, swipe down scrolls up, swipe left scrolls right,
+and swipe right scrolls left. Use `scroll` when you want direct scroll
+direction rather than touch-gesture semantics.
 "##;
 
 const DRAG_HELP: &str = r##"
@@ -4979,6 +4995,7 @@ mod tests {
         assert!(text.contains("profiles [--json]"));
         assert!(text.contains("set viewport"));
         assert!(text.contains("mouse move"));
+        assert!(text.contains("swipe up 500"));
         assert!(text.contains("drag '@e1' '@e2'"));
         assert!(text.contains("batch \"open <url>\""));
         assert!(text.contains("addinitscript <js>"));
@@ -5141,6 +5158,10 @@ mod tests {
         assert!(help_text(Some("get")).unwrap().contains("get title"));
         assert!(help_text(Some("is")).unwrap().contains("is visible <sel>"));
         assert!(help_text(Some("mouse")).unwrap().contains("mouse wheel"));
+        assert!(help_text(Some("swipe")).unwrap().contains("swipe down 500"));
+        assert!(help_text(Some("swipe"))
+            .unwrap()
+            .contains("swipe up scrolls down"));
         assert!(help_text(Some("drag"))
             .unwrap()
             .contains("drag <src> <dst>"));

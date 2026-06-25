@@ -289,6 +289,7 @@ describe("pire-browser command foundations", () => {
       "check",
       "uncheck",
       "scrollintoview",
+      "swipe",
       "get",
       "is",
       "tab",
@@ -896,6 +897,7 @@ describe("pire-browser command foundations", () => {
       ["uncheck", "@e1"],
       ["scroll"],
       ["scrollintoview", "@e1"],
+      ["swipe", "up"],
       ["set", "viewport", "1280", "720"],
       ["set", "device", "iPhone 14"],
       ["set", "geo", "37.7749", "-122.4194"],
@@ -1208,6 +1210,19 @@ describe("command shape parity", () => {
     expect(contentBody).toContain("new WheelEvent");
     expect(contentBody).toContain("dispatchPointerMouse");
     expect(contentBody).toContain("document.elementFromPoint");
+  });
+
+  it("routes swipe as best-effort touch-direction page scroll", () => {
+    const body = background();
+    expect(body).toContain('case "swipe":');
+    expect(body).toContain("return swipeCommand(rest);");
+    expect(body).toContain("async function swipeCommand");
+    expect(body).toContain('const direction = args[0] ?? "up";');
+    expect(body).toContain('?? "500"');
+    expect(body).toContain("function swipeScrollDirection");
+    expect(body).toContain('case "up":');
+    expect(body).toContain('return "down";');
+    expect(body).toContain('"Firefox WebExtensions cannot dispatch native touch gestures');
   });
 
   it("fails clicks early when another element covers the click point", () => {

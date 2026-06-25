@@ -394,6 +394,15 @@
       "source": "upstream"
     },
     {
+      "root": "swipe",
+      "signature": "swipe <direction> [amount]",
+      "category": "scroll",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream",
+      "reason": "best-effort mobile swipe alias that maps touch direction to page scroll; not native touch input"
+    },
+    {
       "root": "wait",
       "signature": "wait [selector|--load|--text|--url|--fn|ms]",
       "category": "wait",
