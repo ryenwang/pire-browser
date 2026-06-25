@@ -8,8 +8,8 @@ This inventory describes the source sets expected in a public installed `pire-br
 - `pi/extensions/`: Pi extension wrapper and runtime helpers used by coding agents.
 - `extension/manifest.json` and `extension/dist/`: Firefox extension manifest and built background assets.
 - `agent/`: compact routing guidance for installed agents.
-- `pire-browser.schema.json`: authoritative packaged config schema for `pire-browser` defaults, including credential-provider plugin entries.
-- `agent-browser.schema.json`: legacy packaged schema filename alias kept for existing configs; mirrors the supported config keys including `plugins`.
+- `pire-browser.schema.json`: authoritative packaged config schema for `pire-browser` defaults, including launch args/User-Agent defaults and credential-provider plugin entries.
+- `agent-browser.schema.json`: legacy packaged schema filename alias kept for existing configs; mirrors the supported config keys including launch defaults and `plugins`.
 - `skills/pire-browser/SKILL.md`: small discovery stub for skill installers and agents.
 - `skill-data/core/SKILL.md` and `skill-data/dogfood/SKILL.md`: version-matched core and exploratory QA skills served by `pire-browser skills cat/get/path <name>`; the JS launcher can serve this guidance even when native setup needs repair. `PIRE_BROWSER_SKILLS_DIR` and `AGENT_BROWSER_SKILLS_DIR` can override the runtime skill root for local skill development.
 - `scripts/pi-postinstall.mjs`, `scripts/pi-install-migration.mjs`: best-effort postinstall setup and Pi duplicate-source reconciliation hooks for npm, legacy GitHub/local installs, and old direct extension shims.

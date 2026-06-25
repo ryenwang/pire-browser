@@ -146,6 +146,8 @@ pire-browser clipboard paste`),
   statusNote("settings"),
   code(`pire-browser --headed open https://example.com          # Visible managed Firefox, the default
 pire-browser --headless open https://example.com        # Headless managed Firefox for CI
+pire-browser --args "-private-window" open https://example.com
+pire-browser --user-agent "qa-bot/1.0" open https://example.com
 pire-browser --color-scheme dark open https://example.com
 pire-browser --proxy http://proxy.example:8080 open https://example.com
 pire-browser --proxy http://proxy.example:8080 --proxy-bypass "localhost,*.internal" open https://example.com
@@ -162,7 +164,8 @@ pire-browser open https://api.example.com --headers '{"Authorization":"Bearer to
 pire-browser --executable-path /path/to/firefox open https://example.com
 # device/set device is best-effort viewport-only. set offline is best-effort request blocking.
 # set credentials is memory-only HTTP Basic auth for the active origin.
-# set geo is a page-level navigator.geolocation shim; TLS-ignore launch flags are not available
+# set geo is a page-level navigator.geolocation shim; --args and --user-agent are launch-time
+# Firefox settings for newly launched managed sessions; TLS-ignore launch flags are not available
 # --proxy is extension-applied for bridge commands; prefer --proxy ... open <url>`),
   code(`pire-browser launch --profile Default
 pire-browser launch --url https://example.com

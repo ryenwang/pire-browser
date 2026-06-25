@@ -126,6 +126,14 @@ pire-browser close
 
 PowerShell treats `@` specially, so quote refs such as `'@e1'`.
 
+Launch-time options can be placed before the command when a new managed
+Firefox session needs a specific browser context:
+
+```bash
+pire-browser --args "-private-window" open https://example.com
+pire-browser --user-agent "qa-bot/1.0" open https://example.com
+```
+
 Clicks fail early when another element covers the target's click point, such as
 a consent banner or modal. Dismiss or interact with the reported covering
 element, then run `snapshot -i` before retrying the original ref.
@@ -644,11 +652,13 @@ tools. Agent-browser-style aliases such as `pire_browser_tap`,
 
 Most browser-command tools accept common typed fields for session/profile
 targeting, state files, file access, domain allowlists, confirmation/action
-policies, content boundaries, output limits, proxy settings, and Firefox
-executable overrides; use those fields instead of `extraArgs` for guardrails.
+policies, content boundaries, output limits, Firefox launch args, User-Agent
+overrides, proxy settings, and Firefox executable overrides; use those fields
+instead of `extraArgs` for guardrails.
 Use typed `headless` for CI-style runs where a tool may launch a new managed
-Firefox session, or `headed` to force the visible default. Existing live sessions
-keep their current mode.
+Firefox session, `headed` to force the visible default, `args` for comma- or
+newline-separated Firefox launch args, or `userAgent` for a Firefox User-Agent
+override. Existing live sessions keep their current launch context.
 `pire_browser_open`, `pire_browser_goto`, and `pire_browser_navigate` also accept typed one-shot `headers`, `initScriptPaths`,
 and `enableReactDevtools` for pre-navigation setup. Prefer these tools for normal
 launch/navigation; the `debug` profile exposes `pire_browser_launch` as a
@@ -950,6 +960,8 @@ pire-browser pdf viewport.pdf --viewport
 --proxy <url>                   # Firefox proxy URL for browser bridge commands
 --proxy-bypass <list>           # Firefox proxy passthrough hosts
 --executable-path <path>        # Custom Firefox executable
+--args <list>                   # Comma/newline-separated Firefox launch args
+--user-agent <value>            # User-Agent override for newly launched sessions
 --allow-file-access             # Allow supported local file workflows
 --json                          # JSON output
 --headed                        # Launch managed Firefox visibly (default)
@@ -1087,6 +1099,8 @@ For editor autocomplete:
   "state": "./.pire-state/work.json",
   "allowedDomains": ["app.example.com", "*.example.com"],
   "downloadPath": "./downloads",
+  "args": "-private-window",
+  "userAgent": "qa-bot/1.0",
   "plugins": [
     {
       "name": "vault",
@@ -1187,6 +1201,21 @@ Use `&&` when you do not need to parse intermediate output. Run commands separat
 pire-browser --headed open https://example.com
 pire-browser --headless open https://example.com
 ```
+
+## Launch Args And User-Agent
+
+Use agent-browser-style launch context flags when a new managed Firefox session
+needs raw Firefox arguments or a custom User-Agent. Values apply when Firefox is
+launched; existing live sessions keep their current launch context.
+
+```bash
+pire-browser --args "-private-window,--disable-features=Example" open https://example.com
+pire-browser --user-agent "qa-bot/1.0" open https://example.com
+```
+
+Config keys and environment variables are also accepted:
+`args`, `userAgent`, `PIRE_BROWSER_ARGS`, `AGENT_BROWSER_ARGS`,
+`PIRE_BROWSER_USER_AGENT`, and `AGENT_BROWSER_USER_AGENT`.
 
 ## Custom Browser Executable
 

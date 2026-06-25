@@ -107,6 +107,14 @@
       "type": "string",
       "description": "Default Firefox download directory for newly launched managed sessions."
     },
+    "args": {
+      "type": "string",
+      "description": "Comma- or newline-separated Firefox launch arguments for newly launched managed sessions."
+    },
+    "userAgent": {
+      "type": "string",
+      "description": "Firefox User-Agent override for newly launched managed sessions."
+    },
     "engine": {
       "type": "string",
       "description": "Engine selection input."

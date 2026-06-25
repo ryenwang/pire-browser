@@ -44,6 +44,10 @@ pire-browser find role button --name "Submit" click`),
 pire-browser --headless open https://example.com
 PIRE_BROWSER_HEADLESS=1 pire-browser open https://example.com`),
   p("The Firefox backend launches visible managed sessions through <code>web-ext</code> by default. Use <code>--headless</code>, <code>PIRE_BROWSER_HEADLESS=1</code>, <code>AGENT_BROWSER_HEADLESS=1</code>, or <code>headless: true</code> in config when a CI command should start a new headless managed session. Existing live sessions keep their current mode."),
+  h2("Launch context", "launch-context"),
+  code(`pire-browser --args "-private-window" open https://example.com
+pire-browser --user-agent "qa-bot/1.0" open https://example.com`),
+  p("Use <code>--args</code> for comma- or newline-separated Firefox launch arguments and <code>--user-agent</code> for a Firefox User-Agent override. These apply when a command launches a new managed Firefox session; existing live sessions keep their current launch context."),
   h2("Wait for content", "wait-for-content"),
   code(`pire-browser wait '@e1'                  # Wait for element
 pire-browser wait --load networkidle    # Wait for active-tab network idle

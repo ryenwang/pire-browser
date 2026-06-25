@@ -371,6 +371,8 @@ const GLOBAL_VALUE_FLAGS: &[&str] = &[
     "--download-path",
     "--engine",
     "--provider",
+    "--args",
+    "--user-agent",
     "--proxy",
     "--proxy-bypass",
     "-p",
@@ -948,6 +950,15 @@ fn config_args_from_map(config: &Map<String, Value>, raw: &[String]) -> Vec<Stri
         "provider",
         "--provider",
         &["--provider", "-p"],
+    );
+    push_value_config(&mut args, config, raw, "args", "--args", &["--args"]);
+    push_value_config(
+        &mut args,
+        config,
+        raw,
+        "userAgent",
+        "--user-agent",
+        &["--user-agent"],
     );
     push_value_config(&mut args, config, raw, "model", "--model", &["--model"]);
 
@@ -2864,6 +2875,10 @@ Common commands:
   open                            Launch/reuse Firefox without navigating
   open <url> [--label <name>]      Open a URL, auto-launching Firefox if needed
   --headless open <url>            Launch managed Firefox headlessly for CI
+  --args "-private-window" open <url>
+                                  Pass Firefox args when launching a new session
+  --user-agent "qa-bot/1.0" open <url>
+                                  Override User-Agent for a new session
   open <url> --headers '{"Authorization":"Bearer token"}'
   --proxy http://proxy.example:8080 open <url>
   --allow-file-access open file:///path/to/page.html
@@ -3047,16 +3062,18 @@ auto-discovered files are ignored. Malformed auto-discovered files print a
 warning and continue; explicit --config, PIRE_BROWSER_CONFIG, or
 AGENT_BROWSER_CONFIG paths must exist and contain a JSON object.
 
-Supported camelCase defaults include json, profile, sessionName, session, state, autoConnect, allowedDomains,
-noAllowedDomains, actionPolicy, confirmActions, confirmInteractive,
-allowFileAccess, headed, headless, colorScheme, proxy, proxyBypass,
-downloadPath, maxOutput, contentBoundaries, engine, provider, model, and
-plugins. `plugins` configures credential-provider and command/custom
-integrations; `plugin add` can write entries, but configured plugins do not
-synthesize CLI flags. CLI flags override config defaults. Unknown keys are
-ignored. `headless: true`, `--headless`, PIRE_BROWSER_HEADLESS=1, and
-AGENT_BROWSER_HEADLESS=1 make newly launched managed Firefox sessions run
-headlessly; existing live sessions keep their current mode.
+Supported camelCase defaults include json, profile, sessionName, session,
+state, autoConnect, allowedDomains, noAllowedDomains, actionPolicy,
+confirmActions, confirmInteractive, allowFileAccess, headed, headless,
+colorScheme, proxy, proxyBypass, args, userAgent, downloadPath, maxOutput,
+contentBoundaries, engine, provider, model, and plugins. `plugins` configures
+credential-provider and command/custom integrations; `plugin add` can write
+entries, but configured plugins do not synthesize CLI flags. CLI flags override
+config defaults. Unknown keys are ignored. `headless: true`, `--headless`,
+PIRE_BROWSER_HEADLESS=1, and AGENT_BROWSER_HEADLESS=1 make newly launched
+managed Firefox sessions run headlessly; existing live sessions keep their
+current mode. `args`, `userAgent`, `--args`, and `--user-agent` also apply only
+when a new managed Firefox session is launched.
 "##;
 
 const OPEN_HELP: &str = r##"
@@ -3064,6 +3081,8 @@ Usage:
   pire-browser open
   pire-browser open <url> [--label <name>] [--new|--new-tab]
   pire-browser open <url> --headers '{"Authorization":"Bearer token"}'
+  pire-browser --args "-private-window,--disable-features=Example" open <url>
+  pire-browser --user-agent "qa-bot/1.0" open <url>
   pire-browser --proxy http://proxy.example:8080 open <url>
   pire-browser --proxy http://proxy.example:8080 --proxy-bypass "localhost,*.internal" open <url>
   pire-browser --download-path ./downloads open <url>
@@ -3079,6 +3098,10 @@ auto-launching managed Firefox when needed.
 `--new` and `--new-tab` open a new tab in the current managed Firefox window;
 for a separate Firefox window, run `pire-browser window new` first, then open
 the URL.
+`--args <list>` passes comma- or newline-separated Firefox arguments when a new
+managed session is launched. `--user-agent <value>` writes a Firefox
+User-Agent override into that new managed profile. Existing live sessions keep
+their current launch context.
 `--allow-file-access` supports opening local HTML file URLs. PDF local-file
 behavior is not supported yet.
 `--headers <json>` applies request headers to the target URL's origin for the
@@ -4071,10 +4094,16 @@ when Firefox is missing.
 const LAUNCH_HELP: &str = r##"
 Usage:
   pire-browser launch [--profile Default] [--url <url>] [--firefox-path <path>] [--headless]
+  pire-browser --args "-private-window" launch --url <url>
+  pire-browser --user-agent "qa-bot/1.0" launch --url <url>
 
 Starts the managed Firefox profile and waits for the extension to connect.
 `--headless` starts Firefox headlessly when creating a new managed session;
 the default is visible/headed Firefox through web-ext.
+Global `--args <list>` passes comma- or newline-separated Firefox arguments,
+and global `--user-agent <value>` writes a Firefox User-Agent override when a
+new managed session is launched. Existing live sessions keep their current
+launch context.
 For reusable named command workflows, use `--profile <name-or-path> <command>`,
 `--session <name> <command>`, or `--session-name <name> <command>`.
 `launch --profile <name-or-path>` only starts or reuses the profile.
@@ -4298,6 +4327,47 @@ mod tests {
                     allowed_domains: Some("example.com,*.example.com".to_string()),
                     no_allowed_domains: false,
                 },
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["open", "https://example.com"])
+            }
+        );
+    }
+
+    #[test]
+    fn applies_launch_args_and_user_agent_config_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("pire-browser.json");
+        fs::write(
+            &config,
+            r#"{
+              "args": "-private-window,--disable-features=Example",
+              "userAgent": "pire-test/1.0"
+            }"#,
+        )
+        .unwrap();
+
+        let expanded = apply_config_defaults_with_options(
+            &s(&["open", "https://example.com"]),
+            config_options(Some(config)),
+        )
+        .unwrap();
+        assert_eq!(
+            expanded.args[0..4],
+            s(&[
+                "--args",
+                "-private-window,--disable-features=Example",
+                "--user-agent",
+                "pire-test/1.0"
+            ])
+        );
+        assert_eq!(
+            parse_cli_args(&expanded.args).unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
                 confirmation_policy: default_confirmation_policy(),
                 args: s(&["open", "https://example.com"])
@@ -5177,6 +5247,32 @@ mod tests {
             "http://proxy.example:8080",
             "--proxy-bypass",
             "localhost,*.internal",
+            "open",
+            "https://example.com",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["open", "https://example.com"])
+            }
+        );
+    }
+
+    #[test]
+    fn accepts_launch_args_and_user_agent_as_global_flags() {
+        let parsed = parse_cli_args(&s(&[
+            "--args",
+            "-private-window,--disable-features=Example",
+            "--user-agent",
+            "pire-test/1.0",
             "open",
             "https://example.com",
             "--json",

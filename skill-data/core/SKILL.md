@@ -655,9 +655,11 @@ pire-browser --config ./ci-config.json open https://example.com
 PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com
 ```
 
-Config files use camelCase keys. Useful defaults include `json`, `profile`, `sessionName`, `session`, `state`, `allowedDomains`, `confirmActions`, `confirmInteractive`, `allowFileAccess`, `headed`, `headless`, `colorScheme`, `downloadPath`, `maxOutput`, and `contentBoundaries`. CLI flags override config defaults. Unknown keys are ignored.
+Config files use camelCase keys. Useful defaults include `json`, `profile`, `sessionName`, `session`, `state`, `allowedDomains`, `confirmActions`, `confirmInteractive`, `allowFileAccess`, `headed`, `headless`, `colorScheme`, `args`, `userAgent`, `downloadPath`, `maxOutput`, and `contentBoundaries`. CLI flags override config defaults. Unknown keys are ignored.
 
 Use `--headless`, `PIRE_BROWSER_HEADLESS=1`, `AGENT_BROWSER_HEADLESS=1`, or `headless: true` in config for CI-style runs. Headless applies when a command launches a new managed Firefox session; existing live sessions keep their current mode.
+
+Use `--args "<comma-or-newline-separated Firefox args>"`, `PIRE_BROWSER_ARGS`, `AGENT_BROWSER_ARGS`, or `args` in config when a newly launched managed session needs raw Firefox launch args. Use `--user-agent "<value>"`, `PIRE_BROWSER_USER_AGENT`, `AGENT_BROWSER_USER_AGENT`, or `userAgent` in config when the new managed profile needs a Firefox User-Agent override. Existing live sessions keep their current launch context; close/relaunch the managed session before relying on these settings. If the User-Agent matters, verify with `pire-browser eval "navigator.userAgent"` or app-visible behavior after launch.
 
 List and target managed profiles or live sessions:
 
@@ -743,9 +745,11 @@ For MCP guardrails and launch context, prefer typed common fields over
 `extraArgs`: `statePath`, `allowFileAccess`, `allowedDomains`,
 `noAllowedDomains`, `actionPolicy`, `confirmActions`, `confirmInteractive`,
 `contentBoundaries`, `maxOutput`, `headless`, `headed`, `proxy`,
-`proxyBypass`, and `executablePath`, `downloadPath`. Use typed `headless` for
-CI-style runs where a tool may launch a new managed Firefox session, or `headed`
-to force the visible default; existing live sessions keep their current mode.
+`proxyBypass`, `args`, `userAgent`, and `executablePath`, `downloadPath`. Use
+typed `headless` for CI-style runs where a tool may launch a new managed Firefox
+session, `headed` to force the visible default, `args` for Firefox launch args,
+or `userAgent` for a Firefox User-Agent override. Existing live sessions keep
+their current launch context.
 Use typed `headers`, `initScriptPaths`, and
 `enableReactDevtools` on `pire_browser_open`, `pire_browser_goto`, or
 `pire_browser_navigate` when a navigation needs one-shot request headers,

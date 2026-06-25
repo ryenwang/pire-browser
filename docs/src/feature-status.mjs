@@ -23,7 +23,7 @@ export const featureStatuses = {
   },
   configFiles: {
     status: "available",
-    summary: "`--config`, `PIRE_BROWSER_CONFIG`, auto-discovered config files, the packaged JSON Schema, and defaults such as `downloadPath` are supported for pire-browser defaults.",
+    summary: "`--config`, `PIRE_BROWSER_CONFIG`, auto-discovered config files, the packaged JSON Schema, and defaults such as `downloadPath`, `args`, and `userAgent` are supported for pire-browser defaults.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/cli.rs", "pire-browser.schema.json"],
   },
   mcp: {
@@ -98,7 +98,7 @@ export const featureStatuses = {
   },
   proxy: {
     status: "partial",
-    summary: "`--proxy`, `--proxy-bypass`, proxy env vars, and in-memory proxy authentication are implemented through Firefox browser.proxy.settings; TLS-ignore launch behavior is not implemented.",
+    summary: "`--proxy`, `--proxy-bypass`, proxy env vars, in-memory proxy authentication, `--args`, and `--user-agent` are implemented for newly launched managed Firefox sessions; TLS-ignore launch behavior is not implemented.",
     sources: ["README.md", "cli/pire-browser-core/src/cli.rs", "extension/src/background.ts"],
   },
   providerIntegrations: {

@@ -26,6 +26,8 @@ pub struct LaunchOptions {
     pub firefox_path: Option<String>,
     pub download_dir: Option<PathBuf>,
     pub headless: bool,
+    pub extra_args: Vec<String>,
+    pub user_agent: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +39,8 @@ pub struct LaunchResult {
     pub launcher_pid: u32,
     pub log_path: PathBuf,
     pub headless: bool,
+    pub extra_args: Vec<String>,
+    pub user_agent: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -147,6 +151,7 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
         &download_dir,
         extension_launch_mode,
         allow_unsigned_xpi,
+        options.user_agent.as_deref(),
     )?;
     restrict_current_user_dir_best_effort(&profile_path);
     restrict_current_user_dir_best_effort(&metadata_dir);
@@ -167,6 +172,8 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
                 launcher_pid: metadata.launcher_pid,
                 log_path,
                 headless: metadata.headless,
+                extra_args: Vec::new(),
+                user_agent: None,
             });
         }
 
@@ -217,6 +224,9 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
             if options.headless {
                 command.arg("-headless");
             }
+            for arg in &options.extra_args {
+                command.arg(arg);
+            }
             if let Some(url) = &options.url {
                 command.arg(url);
             }
@@ -243,6 +253,9 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
                 .stderr(Stdio::from(log_err));
             if options.headless {
                 command.arg("--arg=-headless");
+            }
+            for arg in &options.extra_args {
+                command.arg(format!("--arg={arg}"));
             }
             if let Some(url) = &options.url {
                 command.arg("--start-url").arg(url);
@@ -311,6 +324,8 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
                 launcher_pid,
                 log_path,
                 headless: options.headless,
+                extra_args: options.extra_args,
+                user_agent: options.user_agent,
             });
         }
 
@@ -330,7 +345,7 @@ pub fn launch_result_text(result: &LaunchResult) -> String {
     } else {
         "headed"
     };
-    format!(
+    let mut text = format!(
         "pire-browser {action} Firefox profile {}\nSession: {}\nMode: {}\nProfile path: {}\nLauncher PID: {}\nLog: {}",
         result.profile_name,
         result.session.session_id,
@@ -338,7 +353,14 @@ pub fn launch_result_text(result: &LaunchResult) -> String {
         result.profile_path.display(),
         result.launcher_pid,
         result.log_path.display()
-    )
+    );
+    if !result.extra_args.is_empty() {
+        text.push_str(&format!("\nFirefox args: {}", result.extra_args.join(", ")));
+    }
+    if let Some(user_agent) = &result.user_agent {
+        text.push_str(&format!("\nUser-Agent override: {user_agent}"));
+    }
+    text
 }
 
 pub fn default_profile_status() -> Result<(PathBuf, Option<LauncherMetadata>, bool)> {
@@ -1172,6 +1194,7 @@ fn write_profile_startup_prefs(
     download_dir: &Path,
     extension_launch_mode: ExtensionLaunchMode,
     allow_unsigned_xpi: bool,
+    user_agent: Option<&str>,
 ) -> Result<()> {
     const BEGIN: &str = "// BEGIN pire-browser startup prefs";
     const END: &str = "// END pire-browser startup prefs";
@@ -1191,10 +1214,12 @@ user_pref("browser.aboutwelcome.enabled", false);
 user_pref("browser.shell.checkDefaultBrowser", false);
 {}
 {}
+{}
 {END}
 "#,
         extension_user_js_prefs(extension_launch_mode, allow_unsigned_xpi),
-        download_user_js_prefs(download_dir)
+        download_user_js_prefs(download_dir),
+        user_agent_user_js_pref(user_agent)
     );
 
     let existing = fs::read_to_string(&user_js).unwrap_or_default();
@@ -1218,6 +1243,16 @@ user_pref("browser.shell.checkDefaultBrowser", false);
     fs::write(&user_js, updated).with_context(|| format!("failed to write {}", user_js.display()))
 }
 
+fn user_agent_user_js_pref(user_agent: Option<&str>) -> String {
+    let Some(user_agent) = user_agent.map(str::trim).filter(|value| !value.is_empty()) else {
+        return String::new();
+    };
+    format!(
+        "user_pref(\"general.useragent.override\", \"{}\");",
+        user_js_string(user_agent)
+    )
+}
+
 fn extension_user_js_prefs(
     extension_launch_mode: ExtensionLaunchMode,
     allow_unsigned_xpi: bool,
@@ -1231,6 +1266,10 @@ fn extension_user_js_prefs(
         prefs.push_str("user_pref(\"xpinstall.signatures.required\", false);\n");
     }
     prefs
+}
+
+fn user_js_string(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 #[cfg(windows)]
@@ -1425,11 +1464,15 @@ mod tests {
             launcher_pid: 42,
             log_path: PathBuf::from("web-ext.log"),
             headless: true,
+            extra_args: vec!["-private-window".into()],
+            user_agent: Some("test-agent/1.0".into()),
         };
 
         let text = launch_result_text(&result);
 
         assert!(text.contains("Mode: headless"));
+        assert!(text.contains("Firefox args: -private-window"));
+        assert!(text.contains("User-Agent override: test-agent/1.0"));
     }
 
     #[test]
@@ -1486,12 +1529,27 @@ mod tests {
         let downloads = root.path().join("downloads");
         fs::create_dir_all(&profile).unwrap();
 
-        write_profile_startup_prefs(&profile, &downloads, ExtensionLaunchMode::Xpi, true).unwrap();
+        write_profile_startup_prefs(
+            &profile,
+            &downloads,
+            ExtensionLaunchMode::Xpi,
+            true,
+            Some(r#"agent "quoted" \ slash"#),
+        )
+        .unwrap();
 
         let body = fs::read_to_string(profile.join("user.js")).unwrap();
         assert!(body.contains("extensions.autoDisableScopes"));
         assert!(body.contains("xpinstall.signatures.required"));
         assert!(body.contains("browser.download.dir"));
+        assert!(body
+            .contains(r#"user_pref("general.useragent.override", "agent \"quoted\" \\ slash");"#));
+    }
+
+    #[test]
+    fn user_agent_pref_ignores_empty_values() {
+        assert_eq!(user_agent_user_js_pref(None), "");
+        assert_eq!(user_agent_user_js_pref(Some("  ")), "");
     }
 
     #[test]

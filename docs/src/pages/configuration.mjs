@@ -11,7 +11,7 @@ pire-browser --config ./ci-config.json open https://example.com
 PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
   p("Defaults are loaded from <code>~/.pire-browser/config.json</code>, <code>./pire-browser.json</code>, <code>PIRE_BROWSER_CONFIG</code>, and explicit <code>--config</code>, in that order. CLI flags override config defaults. Missing auto-discovered files are ignored; malformed auto-discovered files warn and continue. Explicit config paths must exist and contain a JSON object. Agent-browser-compatible aliases <code>~/.agent-browser/config.json</code>, <code>./agent-browser.json</code>, and <code>AGENT_BROWSER_CONFIG</code> are accepted for existing installs."),
   h2("Supported defaults", "supported-defaults"),
-  p("Supported camelCase defaults include <code>json</code>, <code>profile</code>, <code>sessionName</code>, <code>session</code>, <code>state</code>, <code>autoConnect</code>, <code>allowedDomains</code>, <code>noAllowedDomains</code>, <code>actionPolicy</code>, <code>confirmActions</code>, <code>confirmInteractive</code>, <code>allowFileAccess</code>, <code>headed</code>, <code>headless</code>, <code>colorScheme</code>, <code>proxy</code>, <code>proxyBypass</code>, <code>downloadPath</code>, <code>maxOutput</code>, <code>contentBoundaries</code>, <code>engine</code>, <code>provider</code>, <code>model</code>, and <code>plugins</code>. Unknown keys are ignored so newer config files do not fail older installs."),
+  p("Supported camelCase defaults include <code>json</code>, <code>profile</code>, <code>sessionName</code>, <code>session</code>, <code>state</code>, <code>autoConnect</code>, <code>allowedDomains</code>, <code>noAllowedDomains</code>, <code>actionPolicy</code>, <code>confirmActions</code>, <code>confirmInteractive</code>, <code>allowFileAccess</code>, <code>headed</code>, <code>headless</code>, <code>colorScheme</code>, <code>proxy</code>, <code>proxyBypass</code>, <code>args</code>, <code>userAgent</code>, <code>downloadPath</code>, <code>maxOutput</code>, <code>contentBoundaries</code>, <code>engine</code>, <code>provider</code>, <code>model</code>, and <code>plugins</code>. Unknown keys are ignored so newer config files do not fail older installs."),
   code(`{
   "$schema": "./node_modules/pire-browser/pire-browser.schema.json",
   "json": true,
@@ -21,6 +21,8 @@ PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
   "allowedDomains": ["app.example.com", "*.example.com"],
   "proxy": "http://proxy.example:8080",
   "proxyBypass": "localhost,*.internal",
+  "args": "-private-window",
+  "userAgent": "qa-bot/1.0",
   "downloadPath": "./downloads",
   "autoConnect": true,
   "plugins": [
@@ -36,7 +38,7 @@ PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
     }
   ]
 }`, "json"),
-  p("The packaged schema lives at <code>pire-browser.schema.json</code> in the repo and <code>./node_modules/pire-browser/pire-browser.schema.json</code> in an installed package. <code>headless: true</code> launches new managed Firefox sessions headlessly for CI while existing live sessions keep their current mode. <code>plugins</code> entries configure agent-browser-compatible credential providers and command/custom plugins; use <code>pire-browser plugin add &lt;package-or-repo&gt;</code> to create or update entries without hand-editing JSON. Configured plugins do not synthesize CLI flags."),
+  p("The packaged schema lives at <code>pire-browser.schema.json</code> in the repo and <code>./node_modules/pire-browser/pire-browser.schema.json</code> in an installed package. <code>headless: true</code>, <code>args</code>, and <code>userAgent</code> apply when a command launches a new managed Firefox session; existing live sessions keep their current launch context. <code>plugins</code> entries configure agent-browser-compatible credential providers and command/custom plugins; use <code>pire-browser plugin add &lt;package-or-repo&gt;</code> to create or update entries without hand-editing JSON. Configured plugins do not synthesize CLI flags."),
   h2("Common flags", "common-flags"),
   code(`pire-browser --config ./ci-config.json open https://example.com
 pire-browser --profile Work open https://example.com
@@ -46,6 +48,8 @@ pire-browser --auto-connect state save ./.pire-state/current.json
 pire-browser --allowed-domains "example.com,*.example.com" snapshot -i
 pire-browser --proxy http://proxy.example:8080 open https://example.com
 pire-browser --proxy http://proxy.example:8080 --proxy-bypass "localhost,*.internal" open https://example.com
+pire-browser --args "-private-window" open https://example.com
+pire-browser --user-agent "qa-bot/1.0" open https://example.com
 pire-browser --download-path ./downloads open https://example.com
 pire-browser --headless open https://example.com
 pire-browser --action-policy ./policy.json eval "document.title"
@@ -90,6 +94,10 @@ pire-browser set offline off`),
     ["<code>PIRE_BROWSER_ALLOWED_DOMAINS</code>", "Cooperative domain allowlist."],
     ["<code>PIRE_BROWSER_PROXY</code>", "Proxy URL for managed browser bridge commands."],
     ["<code>PIRE_BROWSER_PROXY_BYPASS</code>", "Firefox proxy passthrough hosts."],
+    ["<code>PIRE_BROWSER_ARGS</code>", "Comma- or newline-separated Firefox launch arguments for newly launched managed sessions."],
+    ["<code>AGENT_BROWSER_ARGS</code>", "Agent-browser-compatible alias for Firefox launch arguments."],
+    ["<code>PIRE_BROWSER_USER_AGENT</code>", "Firefox User-Agent override for newly launched managed sessions."],
+    ["<code>AGENT_BROWSER_USER_AGENT</code>", "Agent-browser-compatible alias for the Firefox User-Agent override."],
     ["<code>PIRE_BROWSER_DOWNLOAD_PATH</code>", "Default Firefox download directory for newly launched managed sessions."],
     ["<code>AGENT_BROWSER_DOWNLOAD_PATH</code>", "Agent-browser-compatible alias for the default Firefox download directory."],
     ["<code>PIRE_BROWSER_PROXY_USERNAME</code>", "Proxy authentication username."],

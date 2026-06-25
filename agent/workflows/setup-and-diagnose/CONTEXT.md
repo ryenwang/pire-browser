@@ -19,7 +19,7 @@ Use this when install, launch, native messaging, optional native package resolut
 3. If postinstall was skipped by `--ignore-scripts`, run setup or retry the browser command that needs auto-launch.
 4. If Pi reports a duplicate `pire-browser` tool from `npm:pire-browser` and an older GitHub, local-checkout, or legacy shim source, wait a moment and rerun `pi`; if it remains, remove the older source shown in Pi's error and then run `pi install npm:pire-browser`.
 5. If optional native packages were skipped, reinstall with optional dependencies enabled.
-6. For CI-style launch reproduction, use `--headless`, `PIRE_BROWSER_HEADLESS=1`, or `AGENT_BROWSER_HEADLESS=1`; existing live sessions keep their current mode.
+6. For launch reproduction, use `--headless`, `PIRE_BROWSER_HEADLESS=1`, or `AGENT_BROWSER_HEADLESS=1` for CI-style headless mode; use `--args`, `PIRE_BROWSER_ARGS`, or `AGENT_BROWSER_ARGS` for raw Firefox launch args; and use `--user-agent`, `PIRE_BROWSER_USER_AGENT`, or `AGENT_BROWSER_USER_AGENT` for a Firefox User-Agent override. These apply when a command launches a new managed Firefox session; existing live sessions keep their current launch context.
 7. Verify setup with `pire-browser status`, `pire-browser doctor`, or a fresh browser command.
 
 ## Audit
