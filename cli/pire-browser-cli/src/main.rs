@@ -76,6 +76,8 @@ use serde_json::{json, Value};
 use std::fs;
 use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -87,6 +89,14 @@ use crate::read::{read_url, ReadUrlOptions};
 
 const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &["connect", "profiler", "stream", "upgrade"];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
+#[cfg(windows)]
+const DASHBOARD_DETACHED_PROCESS: u32 = 0x0000_0008;
+#[cfg(windows)]
+const DASHBOARD_CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+#[cfg(windows)]
+const DASHBOARD_CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[cfg(windows)]
+const DASHBOARD_CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
 struct PolicyArgsBundle {
     domain_policy: DomainPolicyArgs,
@@ -2098,37 +2108,31 @@ fn spawn_dashboard_worker(port: u16, log_path: &Path, err_path: &Path) -> Result
         std::env::current_exe().context("failed to resolve current pire-browser executable")?;
     #[cfg(windows)]
     {
-        fs::write(log_path, "").with_context(|| {
-            format!("failed to initialize dashboard log {}", log_path.display())
-        })?;
-        fs::write(err_path, "").with_context(|| {
+        let stdout = fs::File::create(log_path)
+            .with_context(|| format!("failed to create dashboard log {}", log_path.display()))?;
+        let stderr = fs::File::create(err_path).with_context(|| {
             format!(
-                "failed to initialize dashboard error log {}",
+                "failed to create dashboard error log {}",
                 err_path.display()
             )
         })?;
-        let script = format!(
-            "Start-Process -WindowStyle Hidden -FilePath {} -ArgumentList @('dashboard','start','--port','{}','--background-worker')",
-            powershell_quote_path(&exe),
-            port
-        );
-        let status = Command::new("powershell.exe")
+        let mut command = Command::new(exe);
+        command
             .args([
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                &script,
+                "dashboard",
+                "start",
+                "--port",
+                &port.to_string(),
+                "--background-worker",
             ])
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .context("failed to spawn background dashboard worker through PowerShell")?;
-        if !status.success() {
-            bail!("dashboard_start_failed: PowerShell Start-Process failed for dashboard worker");
-        }
-        Ok(None)
+            .stdout(Stdio::from(stdout))
+            .stderr(Stdio::from(stderr));
+        command.creation_flags(dashboard_worker_creation_flags());
+        let child = command
+            .spawn()
+            .context("failed to spawn detached background dashboard worker")?;
+        Ok(Some(child.id()))
     }
     #[cfg(not(windows))]
     {
@@ -2158,8 +2162,11 @@ fn spawn_dashboard_worker(port: u16, log_path: &Path, err_path: &Path) -> Result
 }
 
 #[cfg(windows)]
-fn powershell_quote_path(path: &Path) -> String {
-    format!("'{}'", path.to_string_lossy().replace('\'', "''"))
+fn dashboard_worker_creation_flags() -> u32 {
+    DASHBOARD_DETACHED_PROCESS
+        | DASHBOARD_CREATE_NEW_PROCESS_GROUP
+        | DASHBOARD_CREATE_NO_WINDOW
+        | DASHBOARD_CREATE_BREAKAWAY_FROM_JOB
 }
 
 fn wait_for_background_dashboard(
@@ -8705,6 +8712,24 @@ mod tests {
         );
         assert_eq!(dashboard_state_port(&value), Some(9000));
         assert_eq!(dashboard_state_pid(&value), Some(1234));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn dashboard_worker_creation_flags_break_away_from_runner_jobs() {
+        let flags = dashboard_worker_creation_flags();
+        assert_eq!(
+            flags & DASHBOARD_CREATE_BREAKAWAY_FROM_JOB,
+            DASHBOARD_CREATE_BREAKAWAY_FROM_JOB
+        );
+        assert_eq!(
+            flags & DASHBOARD_DETACHED_PROCESS,
+            DASHBOARD_DETACHED_PROCESS
+        );
+        assert_eq!(
+            flags & DASHBOARD_CREATE_NO_WINDOW,
+            DASHBOARD_CREATE_NO_WINDOW
+        );
     }
 
     #[test]
