@@ -20,12 +20,15 @@ PIRE_BROWSER_ALLOWED_DOMAINS="app.example.com" pire-browser snapshot -i`),
 }`),
   h2("Confirmation", "confirmation"),
   code(`pire-browser --confirm-actions eval,download eval "document.title"
+pire-browser --confirm-actions plugin:vault:credential.read auth login app --credential-provider vault --item "My App"
 pire-browser confirm c_8f3a1234
 pire-browser deny c_8f3a1234`),
   h2("State files", "state-files"),
   p("State files may contain cookies or Web Storage secrets. They are plaintext by default for compatibility. Set <code>PIRE_BROWSER_ENCRYPTION_KEY</code> or the agent-browser-compatible <code>AGENT_BROWSER_ENCRYPTION_KEY</code> to a 64-character hex AES-256 key to write and load AES-256-GCM encrypted state files. Prefer <code>.pire-state/</code>, which this project gitignores, keep the key out of logs and shell history, and use <code>state inspect --record</code> before loading sensitive state."),
   h2("Auth vault", "auth-vault"),
   p("<code>auth save</code> stores selector-driven username/password profiles in a local AES-256-GCM encrypted auth vault under the OS app-data directory. The key comes from <code>PIRE_BROWSER_AUTH_ENCRYPTION_KEY</code>, <code>PIRE_BROWSER_ENCRYPTION_KEY</code>, <code>AGENT_BROWSER_ENCRYPTION_KEY</code>, or an auto-generated local key file. <code>auth list</code> and <code>auth show</code> never print passwords; <code>auth login</code> decrypts locally and sends a one-shot profile payload to the managed Firefox extension."),
+  h2("Credential providers", "credential-providers"),
+  p("<code>auth login --credential-provider</code> runs a configured local plugin with the agent-browser plugin protocol and capability <code>credential.read</code>. Keep vault tokens out of plugin args; use the vault vendor's own local session, keychain, or environment setup. This core login path suppresses plugin stderr and plugin-provided error text to reduce accidental secret exposure. Use <code>--confirm-actions plugin:&lt;name&gt;:credential.read</code> when provider access should require user approval before the plugin runs."),
 ];
 
 export default page({

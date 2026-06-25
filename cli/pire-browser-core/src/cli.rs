@@ -29,6 +29,7 @@ pub struct ConfigWarning {
 pub struct ConfigApplyResult {
     pub args: Vec<String>,
     pub warnings: Vec<ConfigWarning>,
+    pub config: Map<String, Value>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -403,7 +404,11 @@ pub fn apply_config_defaults_with_options(
     let mut args = config_args_from_map(&merged, raw);
     push_session_env_defaults(&mut args, raw);
     args.extend_from_slice(raw);
-    Ok(ConfigApplyResult { args, warnings })
+    Ok(ConfigApplyResult {
+        args,
+        warnings,
+        config: merged,
+    })
 }
 
 fn push_session_env_defaults(args: &mut Vec<String>, raw: &[String]) {
@@ -2403,6 +2408,8 @@ Common commands:
                                   Use a default Firefox download directory
   upload '#file' ./fixture.txt    Assign bounded local files to a file input
   auth login app                  Open a saved login form and submit it
+  auth login app --credential-provider vault --item "My App"
+                                  Resolve credentials through a configured plugin
   clipboard read                  Read text from the system clipboard
   skills list                     List installed agent skills
   skills cat core                 Print the version-matched core agent skill
@@ -2488,8 +2495,10 @@ a JSON object.
 Supported camelCase defaults include json, profile, sessionName, session, autoConnect, allowedDomains,
 noAllowedDomains, actionPolicy, confirmActions, confirmInteractive,
 allowFileAccess, headed, headless, colorScheme, proxy, proxyBypass,
-downloadPath, maxOutput, contentBoundaries, engine, provider, and model. CLI
-flags override config defaults. Unknown keys are ignored.
+downloadPath, maxOutput, contentBoundaries, engine, provider, model, and
+plugins. `plugins` is used for credential-provider integrations but does not
+synthesize CLI flags. CLI flags override config defaults. Unknown keys are
+ignored.
 "##;
 
 const OPEN_HELP: &str = r##"
@@ -3205,6 +3214,8 @@ Usage:
   echo "pass" | pire-browser auth save <name> --url <url> --username <user> --password-stdin
   pire-browser auth save <name> --url <url> --username <user> --password <pass> --username-selector <sel> --password-selector <sel> --submit-selector <sel>
   pire-browser auth login <name>
+  pire-browser auth login <name> --credential-provider <provider> --item <item-ref> --url <url>
+  pire-browser --confirm-actions plugin:vault:credential.read auth login <name> --credential-provider vault --item <item-ref>
   pire-browser auth list
   pire-browser auth show <name>
   pire-browser auth delete <name>
@@ -3215,6 +3226,13 @@ login. Passwords are not printed by list/show output. Use --password-stdin to
 avoid putting the password in shell history. The vault uses AES-256-GCM with
 PIRE_BROWSER_AUTH_ENCRYPTION_KEY, PIRE_BROWSER_ENCRYPTION_KEY,
 AGENT_BROWSER_ENCRYPTION_KEY, or an auto-generated local key file.
+Credential-provider plugins use the agent-browser plugin protocol. Configure
+`plugins` with name, command, args, and capability credential.read in
+pire-browser.json / agent-browser.json, or set AGENT_BROWSER_PLUGINS to the same
+JSON array. The plugin receives credential.resolve and must return credential
+with username, password, url, and optional usernameSelector/passwordSelector/
+submitSelector. Plugin stderr and plugin error text are suppressed for this core
+login path to reduce accidental secret exposure.
 "##;
 
 const STATE_HELP: &str = r##"
@@ -3903,6 +3921,7 @@ mod tests {
             r#"{
               "$schema": "./node_modules/pire-browser/pire-browser.schema.json",
               "json": true,
+              "plugins": [{ "name": "vault", "command": "agent-browser-plugin-vault", "capabilities": ["credential.read"] }],
               "unknownFutureKey": { "nested": "ignored" }
             }"#,
         )
@@ -3914,6 +3933,8 @@ mod tests {
         )
         .unwrap();
         assert!(expanded.warnings.is_empty());
+        assert!(expanded.config.get("plugins").is_some());
+        assert!(expanded.config.get("unknownFutureKey").is_some());
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Status {
@@ -5443,6 +5464,7 @@ mod tests {
         assert!(text.contains("addinitscript <js>"));
         assert!(text.contains("--allow-file-access open file:///path/to/page.html"));
         assert!(text.contains("auth login"));
+        assert!(text.contains("auth login app --credential-provider vault"));
         assert_eq!(help_text(Some("commands")), Some(text));
         assert!(help_text(Some("status")).unwrap().contains("status"));
         assert!(help_text(Some("install"))
@@ -5463,6 +5485,10 @@ mod tests {
         assert!(help_text(Some("config"))
             .unwrap()
             .contains("PIRE_BROWSER_CONFIG"));
+        assert!(help_text(Some("config")).unwrap().contains("plugins"));
+        assert!(help_text(Some("auth"))
+            .unwrap()
+            .contains("credential-provider"));
         assert!(help_text(Some("config")).unwrap().contains("autoConnect"));
         assert!(help_text(Some("config")).unwrap().contains("proxyBypass"));
         assert!(help_text(Some("state"))
@@ -5754,8 +5780,12 @@ mod tests {
             .unwrap()
             .contains("storage session set <key> <value>"));
         assert!(help_text(Some("frame")).unwrap().contains("frame main"));
-        assert!(help_text(Some("frame")).unwrap().contains("frame payment-frame"));
-        assert!(help_text(Some("frame")).unwrap().contains("name/id/title/label/URL"));
+        assert!(help_text(Some("frame"))
+            .unwrap()
+            .contains("frame payment-frame"));
+        assert!(help_text(Some("frame"))
+            .unwrap()
+            .contains("name/id/title/label/URL"));
         assert!(help_text(Some("skills"))
             .unwrap()
             .contains("skills get core"));

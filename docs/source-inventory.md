@@ -15,8 +15,8 @@ This inventory records which public source sets are authoritative for `pire-brow
 | `extension/src/` | Firefox WebExtension source | Browser-side command handling, DOM inspection/actions, dialogs, refs, frames, and screenshot capture. |
 | `pi/extensions/` | Pi extension adapters | Pi-facing runtime wrapper/helpers for `pire-browser`; tests are repository-only. |
 | `agent/` | Installed agent guidance | Public routing context for installed packages; directs agents to compact workflow/reference files. |
-| `pire-browser.schema.json` | Config schema | Authoritative packaged JSON Schema for `pire-browser` config defaults; referenced from README and skill examples. |
-| `agent-browser.schema.json` | Legacy config schema alias | Tracked filename alias for existing configs that reference the earlier schema path. |
+| `pire-browser.schema.json` | Config schema | Authoritative packaged JSON Schema for `pire-browser` config defaults and credential-provider plugin entries; referenced from README and skill examples. |
+| `agent-browser.schema.json` | Legacy config schema alias | Tracked filename alias for existing configs that reference the earlier schema path; mirrors the supported config keys including `plugins`. |
 | `skills/pire-browser/SKILL.md` | Installed skill discovery stub | Small skill entry point that points agents to the version-matched runtime skill command. |
 | `skill-data/core/SKILL.md` | Embedded runtime skill content | Full core skill served by `pire-browser skills cat core` through Rust `include_str!`; keep version matched to CLI behavior. |
 | `bin/pire-browser.js`, `scripts/platform.mjs`, `scripts/pi-install-migration.mjs`, `scripts/pi-postinstall.mjs` | Public npm launcher/install helpers | Root package launcher, platform resolver, Pi migration helper, and postinstall setup. |

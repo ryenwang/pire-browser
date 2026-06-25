@@ -16,7 +16,7 @@ use pire_browser_core::activity::{
 };
 use pire_browser_core::auth_handoff::{auth_handoff_text, collect_default_auth_handoff};
 use pire_browser_core::auth_vault::{
-    auth_vault_value, AuthProfileInput, AuthSelectors, AuthVault, PublicAuthProfile,
+    auth_vault_value, AuthProfile, AuthProfileInput, AuthSelectors, AuthVault, PublicAuthProfile,
 };
 use pire_browser_core::cli::{
     apply_config_defaults, build_command_request, format_cli_result, help_text, parse_cli_args,
@@ -76,7 +76,7 @@ use pire_browser_core::upload::{
     prepare_upload_files, snapshot_upload_file_identities, verify_upload_file_identities,
     PreparedUpload, UploadFileIdentity,
 };
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::fs;
 use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -85,7 +85,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use crate::mcp::{run_mcp_server, McpToolsProfile};
@@ -93,6 +93,8 @@ use crate::read::{read_url, ReadUrlOptions};
 
 const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &["connect", "stream", "upgrade"];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
+const PLUGIN_PROTOCOL: &str = "agent-browser.plugin.v1";
+const CREDENTIAL_PROVIDER_TIMEOUT_MS: u64 = 10_000;
 #[cfg(windows)]
 const DASHBOARD_DETACHED_PROCESS: u32 = 0x0000_0008;
 #[cfg(windows)]
@@ -174,6 +176,33 @@ struct ProxyConfig {
     source: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AuthLoginOptions {
+    name: String,
+    credential_provider: Option<String>,
+    item_ref: Option<String>,
+    url: Option<String>,
+    username_selector: Option<String>,
+    password_selector: Option<String>,
+    submit_selector: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CredentialProviderConfig {
+    name: String,
+    command: String,
+    args: Vec<String>,
+    capabilities: Vec<String>,
+    timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CredentialProviderResolution {
+    profile: AuthProfile,
+    provider: CredentialProviderConfig,
+    item_ref: Option<String>,
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let activity = begin_cli_activity(&args);
@@ -192,6 +221,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
     let output_guards = output_guard_options_from_effective_args(&config_result.args)?;
     let firefox_path_override = firefox_path_override_from_args_and_env(&config_result.args);
     let download_path_override = download_path_override_from_args_and_env(&config_result.args)?;
+    let config_map = config_result.config.clone();
     let config_warnings = config_result.warnings;
     let command = parse_cli_args(&config_result.args)?;
     if !defer_config_warnings(&command) {
@@ -890,6 +920,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                     firefox_path_override.as_deref(),
                     color_scheme.as_deref(),
                     proxy_config.as_ref(),
+                    &config_map,
                 ) {
                     Ok(result) => result,
                     Err(err) => {
@@ -4383,6 +4414,16 @@ fn execute_confirmed_record(record: PendingConfirmation, json_output: bool) -> R
                 path,
             )
         }
+        Some("auth") if record.args.get(1).map(String::as_str) == Some("login") => {
+            execute_confirmed_auth_login(
+                record,
+                target,
+                domain_decision,
+                action_decision,
+                confirmation_decision,
+                json_output,
+            )
+        }
         _ => execute_confirmed_remote(
             record,
             target,
@@ -4558,6 +4599,34 @@ fn execute_confirmed_remote(
     Ok(())
 }
 
+fn execute_confirmed_auth_login(
+    record: PendingConfirmation,
+    target: SessionTarget,
+    domain_decision: DomainPolicyDecision,
+    action_decision: ActionPolicyDecision,
+    confirmation_decision: ConfirmationPolicyDecision,
+    json_output: bool,
+) -> Result<()> {
+    let config_result = apply_config_defaults(&record.args)?;
+    let mut result = handle_auth_login_command(
+        &target,
+        &record.args,
+        json_output,
+        &[],
+        &domain_decision,
+        &action_decision,
+        &confirmation_decision,
+        true,
+        None,
+        None,
+        None,
+        &config_result.config,
+    )?;
+    append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json_output)?;
+    println!("{}", format_cli_result(&result, json_output)?);
+    Ok(())
+}
+
 fn execute_confirmed_download(
     record: PendingConfirmation,
     target: SessionTarget,
@@ -4574,8 +4643,14 @@ fn execute_confirmed_download(
         record.action_policy.clone(),
         request_context_with_approval(&record),
     )?;
-    let (response, _) =
-        send_download_request(&target, &extension_args, &request, &domain_decision, None, None)?;
+    let (response, _) = send_download_request(
+        &target,
+        &extension_args,
+        &request,
+        &domain_decision,
+        None,
+        None,
+    )?;
     let result = response_result_or_exit_with_domain_policy(
         response,
         json_output,
@@ -5547,13 +5622,86 @@ fn handle_auth_login_command(
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
+    config: &Map<String, Value>,
 ) -> Result<Value> {
-    let name = auth_profile_name_arg(args, 2, "auth login requires <name>")?;
-    reject_extra_auth_args(args, 3, "auth login")?;
+    let options = parse_auth_login_options(args)?;
+    if options.credential_provider.is_some() {
+        let provider_name = options
+            .credential_provider
+            .as_deref()
+            .expect("checked credential provider option");
+        let provider = credential_provider_config(provider_name, config)?;
+        if !interactively_approved {
+            maybe_require_credential_provider_confirmation(
+                target,
+                args,
+                json_output,
+                ignored_global_flags,
+                domain_decision,
+                action_decision,
+                confirmation_decision,
+                &provider,
+                options.item_ref.as_deref(),
+            )?;
+        }
+        let resolution = resolve_credential_provider_profile(&options, provider)?;
+        return dispatch_auth_profile_login(
+            target,
+            args,
+            json_output,
+            ignored_global_flags,
+            domain_decision,
+            action_decision,
+            confirmation_decision,
+            interactively_approved,
+            firefox_path_override,
+            color_scheme,
+            proxy_config,
+            &resolution.profile,
+            Some(&resolution),
+            None,
+        );
+    }
+
     let vault = AuthVault::load()?;
-    let profile = vault.profile(name)?;
+    let profile = vault.profile(&options.name)?;
+    dispatch_auth_profile_login(
+        target,
+        args,
+        json_output,
+        ignored_global_flags,
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+        firefox_path_override,
+        color_scheme,
+        proxy_config,
+        &profile,
+        None,
+        Some(&vault),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn dispatch_auth_profile_login(
+    target: &SessionTarget,
+    original_args: &[String],
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
+    firefox_path_override: Option<&str>,
+    color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
+    profile: &AuthProfile,
+    provider_resolution: Option<&CredentialProviderResolution>,
+    vault: Option<&AuthVault>,
+) -> Result<Value> {
     ensure_url_allowed(domain_decision, &profile.url)?;
-    let inline_payload = serde_json::to_string(&profile)?;
+    let inline_payload = serde_json::to_string(profile)?;
     let inline_args = vec![
         "auth".to_string(),
         "login-inline".to_string(),
@@ -5570,7 +5718,7 @@ fn handle_auth_login_command(
     attach_proxy_config(&mut request, proxy_config)?;
     let (response, _) = dispatch_remote_request_or_exit(
         target,
-        args,
+        original_args,
         &request,
         domain_decision,
         json_output,
@@ -5590,14 +5738,419 @@ fn handle_auth_login_command(
     }
     let mut result = response.result.unwrap_or_else(|| {
         json!({
-            "text": format!("Logged in with auth profile {name}"),
+            "text": format!("Logged in with auth profile {}", profile.name),
         })
     });
     if let Some(object) = result.as_object_mut() {
-        object.insert("vault".to_string(), auth_vault_value(&vault.info()));
-        object.insert("storage".to_string(), json!("encrypted-auth-vault"));
+        if let Some(vault) = vault {
+            object.insert("vault".to_string(), auth_vault_value(&vault.info()));
+            object.insert("storage".to_string(), json!("encrypted-auth-vault"));
+        }
+        if let Some(resolution) = provider_resolution {
+            object.insert("storage".to_string(), json!("credential-provider"));
+            object.insert(
+                "credentialProvider".to_string(),
+                json!({
+                    "name": resolution.provider.name.clone(),
+                    "capability": "credential.read",
+                    "itemRef": resolution.item_ref.clone(),
+                }),
+            );
+        }
     }
     Ok(result)
+}
+
+fn parse_auth_login_options(args: &[String]) -> Result<AuthLoginOptions> {
+    let name = auth_profile_name_arg(args, 2, "auth login requires <name>")?.to_string();
+    let mut credential_provider = None;
+    let mut item_ref = None;
+    let mut url = None;
+    let mut username_selector = None;
+    let mut password_selector = None;
+    let mut submit_selector = None;
+    let mut index = 3;
+    while index < args.len() {
+        let flag = args[index].as_str();
+        if !is_auth_login_option(flag) {
+            bail!("invalid_args: unsupported auth login option: {flag}");
+        }
+        let Some(value) = args.get(index + 1) else {
+            bail!("invalid_args: {flag} requires a value");
+        };
+        if is_auth_login_option(value) {
+            bail!("invalid_args: {flag} requires a value");
+        }
+        match flag {
+            "--credential-provider" => credential_provider = Some(value.clone()),
+            "--item" => item_ref = Some(value.clone()),
+            "--url" => url = Some(value.clone()),
+            "--username-selector" => username_selector = Some(value.clone()),
+            "--password-selector" => password_selector = Some(value.clone()),
+            "--submit-selector" => submit_selector = Some(value.clone()),
+            _ => unreachable!(),
+        }
+        index += 2;
+    }
+    if credential_provider.is_none()
+        && (item_ref.is_some()
+            || url.is_some()
+            || username_selector.is_some()
+            || password_selector.is_some()
+            || submit_selector.is_some())
+    {
+        bail!(
+            "invalid_args: auth login options --item, --url, and selector overrides require --credential-provider <name>"
+        );
+    }
+    Ok(AuthLoginOptions {
+        name,
+        credential_provider,
+        item_ref,
+        url,
+        username_selector,
+        password_selector,
+        submit_selector,
+    })
+}
+
+fn is_auth_login_option(value: &str) -> bool {
+    matches!(
+        value,
+        "--credential-provider"
+            | "--item"
+            | "--url"
+            | "--username-selector"
+            | "--password-selector"
+            | "--submit-selector"
+    )
+}
+
+fn resolve_credential_provider_profile(
+    options: &AuthLoginOptions,
+    provider: CredentialProviderConfig,
+) -> Result<CredentialProviderResolution> {
+    if !provider
+        .capabilities
+        .iter()
+        .any(|capability| capability == "credential.read")
+    {
+        bail!(
+            "plugin_missing_capability: credential provider `{}` must declare capability credential.read",
+            redact_text(&provider.name)
+        );
+    }
+    let response = run_credential_provider(&provider, options)?;
+    let input = credential_response_to_auth_profile_input(&options.name, options, &response)?;
+    let profile = AuthProfile::from_input(input)?;
+    Ok(CredentialProviderResolution {
+        profile,
+        provider,
+        item_ref: options.item_ref.clone(),
+    })
+}
+
+fn credential_provider_config(
+    provider_name: &str,
+    config: &Map<String, Value>,
+) -> Result<CredentialProviderConfig> {
+    let plugins = credential_plugins_value(config)?;
+    let Some(array) = plugins.as_array() else {
+        bail!("config_malformed: plugins must be a JSON array");
+    };
+    let mut names = Vec::new();
+    for value in array {
+        let provider = parse_credential_provider_config(value)?;
+        names.push(provider.name.clone());
+        if provider.name == provider_name {
+            return Ok(provider);
+        }
+    }
+    if names.is_empty() {
+        bail!(
+            "plugin_not_configured: no credential provider plugins are configured; add a plugins array to pire-browser.json or set AGENT_BROWSER_PLUGINS"
+        );
+    }
+    bail!(
+        "plugin_not_configured: credential provider `{}` is not configured; available plugins: {}",
+        redact_text(provider_name),
+        names
+            .iter()
+            .map(|name| redact_text(name))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+fn credential_plugins_value(config: &Map<String, Value>) -> Result<Value> {
+    if let Some(raw) =
+        non_empty_env("PIRE_BROWSER_PLUGINS").or_else(|| non_empty_env("AGENT_BROWSER_PLUGINS"))
+    {
+        return serde_json::from_str(&raw).map_err(|err| {
+            anyhow::anyhow!("config_malformed: plugins env JSON is invalid: {err}")
+        });
+    }
+    Ok(config
+        .get("plugins")
+        .cloned()
+        .unwrap_or_else(|| Value::Array(Vec::new())))
+}
+
+fn parse_credential_provider_config(value: &Value) -> Result<CredentialProviderConfig> {
+    let Some(object) = value.as_object() else {
+        bail!("config_malformed: each plugin entry must be a JSON object");
+    };
+    let name = required_config_string(object, "name")?;
+    let command = required_config_string(object, "command")?;
+    let args = optional_config_string_array(object, "args")?.unwrap_or_default();
+    let capabilities = optional_config_string_array(object, "capabilities")?.unwrap_or_default();
+    let timeout_ms = match object.get("timeoutMs") {
+        Some(value) => value.as_u64().filter(|value| *value > 0).ok_or_else(|| {
+            anyhow::anyhow!("config_malformed: plugin timeoutMs must be a positive integer")
+        })?,
+        None => CREDENTIAL_PROVIDER_TIMEOUT_MS,
+    };
+    Ok(CredentialProviderConfig {
+        name,
+        command,
+        args,
+        capabilities,
+        timeout_ms,
+    })
+}
+
+fn required_config_string(object: &Map<String, Value>, field: &str) -> Result<String> {
+    let value = object
+        .get(field)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!("config_malformed: plugin {field} must be a non-empty string")
+        })?;
+    Ok(value.to_string())
+}
+
+fn optional_config_string_array(
+    object: &Map<String, Value>,
+    field: &str,
+) -> Result<Option<Vec<String>>> {
+    let Some(value) = object.get(field) else {
+        return Ok(None);
+    };
+    let Some(array) = value.as_array() else {
+        bail!("config_malformed: plugin {field} must be an array of strings");
+    };
+    let mut strings = Vec::new();
+    for item in array {
+        let Some(text) = item.as_str() else {
+            bail!("config_malformed: plugin {field} must be an array of strings");
+        };
+        strings.push(text.to_string());
+    }
+    Ok(Some(strings))
+}
+
+fn run_credential_provider(
+    provider: &CredentialProviderConfig,
+    options: &AuthLoginOptions,
+) -> Result<Value> {
+    let request = json!({
+        "protocol": PLUGIN_PROTOCOL,
+        "type": "credential.resolve",
+        "capability": "credential.read",
+        "request": {
+            "profileName": options.name.clone(),
+            "itemRef": options.item_ref.clone(),
+            "url": options.url.clone(),
+        }
+    });
+    let request_bytes = serde_json::to_vec(&request)?;
+    let mut child = Command::new(&provider.command)
+        .args(&provider.args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .with_context(|| {
+            format!(
+                "plugin_launch_failed: failed to start credential provider `{}`",
+                redact_text(&provider.name)
+            )
+        })?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(&request_bytes)
+            .context("plugin_failed: failed to send credential request to provider")?;
+    }
+    let started_at = Instant::now();
+    loop {
+        if child
+            .try_wait()
+            .context("plugin_failed: failed while waiting for credential provider")?
+            .is_some()
+        {
+            let output = child
+                .wait_with_output()
+                .context("plugin_failed: failed to read credential provider output")?;
+            if !output.status.success() {
+                bail!(
+                    "plugin_failed: credential provider `{}` exited unsuccessfully",
+                    redact_text(&provider.name)
+                );
+            }
+            return parse_plugin_response(&output.stdout, &provider.name);
+        }
+        if started_at.elapsed() > Duration::from_millis(provider.timeout_ms) {
+            let _ = child.kill();
+            let _ = child.wait();
+            bail!(
+                "plugin_timeout: credential provider `{}` did not respond within {}ms",
+                redact_text(&provider.name),
+                provider.timeout_ms
+            );
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+}
+
+fn parse_plugin_response(stdout: &[u8], provider_name: &str) -> Result<Value> {
+    let response: Value = serde_json::from_slice(stdout).map_err(|_| {
+        anyhow::anyhow!(
+            "plugin_malformed_response: credential provider `{}` did not write valid JSON to stdout",
+            redact_text(provider_name)
+        )
+    })?;
+    if response.get("protocol").and_then(Value::as_str) != Some(PLUGIN_PROTOCOL) {
+        bail!(
+            "plugin_protocol_error: credential provider `{}` returned an unsupported protocol",
+            redact_text(provider_name)
+        );
+    }
+    if response.get("success").and_then(Value::as_bool) != Some(true) {
+        bail!(
+            "plugin_failed: credential provider `{}` returned an unsuccessful response",
+            redact_text(provider_name)
+        );
+    }
+    Ok(response)
+}
+
+fn credential_response_to_auth_profile_input(
+    name: &str,
+    options: &AuthLoginOptions,
+    response: &Value,
+) -> Result<AuthProfileInput> {
+    let credential = response
+        .get("credential")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "plugin_malformed_response: credential provider response must include a credential object"
+            )
+        })?;
+    let username = credential_string(credential, "username")?;
+    let password = credential_string(credential, "password")?;
+    let url = credential
+        .get("url")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| options.url.clone())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "plugin_malformed_response: credential provider must return credential.url or auth login must include --url <url>"
+            )
+        })?;
+    let defaults = AuthSelectors::default();
+    Ok(AuthProfileInput {
+        name: name.to_string(),
+        url,
+        username,
+        password,
+        selectors: AuthSelectors {
+            username: options
+                .username_selector
+                .clone()
+                .or_else(|| {
+                    credential
+                        .get("usernameSelector")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
+                .unwrap_or(defaults.username),
+            password: options
+                .password_selector
+                .clone()
+                .or_else(|| {
+                    credential
+                        .get("passwordSelector")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
+                .unwrap_or(defaults.password),
+            submit: options
+                .submit_selector
+                .clone()
+                .or_else(|| {
+                    credential
+                        .get("submitSelector")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
+                .unwrap_or(defaults.submit),
+        },
+    })
+}
+
+fn credential_string(credential: &Map<String, Value>, field: &str) -> Result<String> {
+    credential
+        .get(field)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "plugin_malformed_response: credential provider response is missing credential.{field}"
+            )
+        })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn maybe_require_credential_provider_confirmation(
+    target: &SessionTarget,
+    args: &[String],
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    provider: &CredentialProviderConfig,
+    item_ref: Option<&str>,
+) -> Result<bool> {
+    let category = format!(
+        "plugin:{}:credential.read",
+        provider.name.to_ascii_lowercase()
+    );
+    if !confirmation_decision.requires(&category) {
+        return Ok(false);
+    }
+    require_confirmation_for_category_or_exit(
+        &category,
+        args,
+        ConfirmationGate {
+            confirmation_decision,
+            target: pending_target_from_session_target(target),
+            domain_decision,
+            action_decision,
+            json_output,
+            ignored_global_flags,
+            metadata: Some(json!({
+                "plugin": provider.name.clone(),
+                "capability": "credential.read",
+                "itemRef": item_ref,
+            })),
+        },
+    )
 }
 
 fn auth_profile_result_value(
@@ -9502,18 +10055,15 @@ mod tests {
         );
         assert_eq!(profiler_output_path(&s(&["profiler", "status"])), None);
         assert!(default_profiler_output_path(&s(&["profiler", "stop"])).is_some());
-        assert!(default_profiler_output_path(&s(&[
-            "profiler",
-            "stop",
-            "profile.json"
-        ]))
-        .is_none());
+        assert!(default_profiler_output_path(&s(&["profiler", "stop", "profile.json"])).is_none());
     }
 
     #[test]
     fn writes_profiler_profile_for_profiler_stop() {
-        let path =
-            std::env::temp_dir().join(format!("pire-browser-profiler-test-{}.json", Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!(
+            "pire-browser-profiler-test-{}.json",
+            Uuid::new_v4()
+        ));
         let mut result = json!({
             "profile": {
                 "schemaVersion": 1,
@@ -9526,7 +10076,10 @@ mod tests {
         )
         .unwrap();
         assert!(path.exists());
-        assert_eq!(result["profilePath"], json!(path.to_string_lossy().to_string()));
+        assert_eq!(
+            result["profilePath"],
+            json!(path.to_string_lossy().to_string())
+        );
         let _ = fs::remove_file(path);
     }
 
@@ -9971,6 +10524,135 @@ mod tests {
             "auth", "login", "fixture"
         ])));
         assert!(is_auth_login_command(&s(&["auth", "login", "fixture"])));
+    }
+
+    #[test]
+    fn parses_auth_login_for_credential_provider() {
+        let options = parse_auth_login_options(&s(&[
+            "auth",
+            "login",
+            "fixture",
+            "--credential-provider",
+            "vault",
+            "--item",
+            "My App",
+            "--url",
+            "https://example.com/login",
+            "--username-selector",
+            "#email",
+            "--password-selector",
+            "#password",
+            "--submit-selector",
+            "button[type=submit]",
+        ]))
+        .unwrap();
+        assert_eq!(options.name, "fixture");
+        assert_eq!(options.credential_provider.as_deref(), Some("vault"));
+        assert_eq!(options.item_ref.as_deref(), Some("My App"));
+        assert_eq!(options.url.as_deref(), Some("https://example.com/login"));
+        assert_eq!(options.username_selector.as_deref(), Some("#email"));
+        assert!(
+            parse_auth_login_options(&s(&["auth", "login", "fixture", "--item", "My App"]))
+                .unwrap_err()
+                .to_string()
+                .contains("require --credential-provider")
+        );
+    }
+
+    #[test]
+    fn parses_provider_config_and_credential_response() {
+        let mut config = Map::new();
+        config.insert(
+            "plugins".to_string(),
+            json!([
+                {
+                    "name": "vault",
+                    "command": "agent-browser-plugin-vault",
+                    "args": ["--quiet"],
+                    "capabilities": ["credential.read"],
+                    "timeoutMs": 2500
+                }
+            ]),
+        );
+        let provider = credential_provider_config("vault", &config).unwrap();
+        assert_eq!(provider.name, "vault");
+        assert_eq!(provider.command, "agent-browser-plugin-vault");
+        assert_eq!(provider.args, s(&["--quiet"]));
+        assert_eq!(provider.capabilities, s(&["credential.read"]));
+        assert_eq!(provider.timeout_ms, 2500);
+
+        let options = parse_auth_login_options(&s(&[
+            "auth",
+            "login",
+            "fixture",
+            "--credential-provider",
+            "vault",
+            "--url",
+            "https://fallback.example/login",
+            "--submit-selector",
+            "#submit",
+        ]))
+        .unwrap();
+        let input = credential_response_to_auth_profile_input(
+            "fixture",
+            &options,
+            &json!({
+                "protocol": PLUGIN_PROTOCOL,
+                "success": true,
+                "credential": {
+                    "username": "alice@example.com",
+                    "password": "secret",
+                    "url": "https://example.com/login",
+                    "usernameSelector": "#email",
+                    "passwordSelector": "#password"
+                }
+            }),
+        )
+        .unwrap();
+        assert_eq!(input.name, "fixture");
+        assert_eq!(input.url, "https://example.com/login");
+        assert_eq!(input.username, "alice@example.com");
+        assert_eq!(input.password, "secret");
+        assert_eq!(input.selectors.username, "#email");
+        assert_eq!(input.selectors.password, "#password");
+        assert_eq!(input.selectors.submit, "#submit");
+    }
+
+    #[test]
+    fn plugin_response_requires_protocol_success_and_credential() {
+        let ok = parse_plugin_response(
+            br#"{"protocol":"agent-browser.plugin.v1","success":true,"credential":{"username":"u","password":"p","url":"https://example.com"}}"#,
+            "vault",
+        )
+        .unwrap();
+        assert_eq!(ok["success"], json!(true));
+        assert!(parse_plugin_response(br#"{"success":true}"#, "vault")
+            .unwrap_err()
+            .to_string()
+            .contains("unsupported protocol"));
+        assert!(parse_plugin_response(
+            br#"{"protocol":"agent-browser.plugin.v1","success":false,"error":"secret"}"#,
+            "vault",
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("unsuccessful response"));
+        let options = parse_auth_login_options(&s(&[
+            "auth",
+            "login",
+            "fixture",
+            "--credential-provider",
+            "vault",
+        ]))
+        .unwrap();
+        assert!(credential_response_to_auth_profile_input(
+            "fixture",
+            &options,
+            &json!({"protocol": PLUGIN_PROTOCOL, "success": true})
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("credential object"));
     }
 
     #[test]

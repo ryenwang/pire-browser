@@ -145,6 +145,34 @@ impl AuthProfile {
             updated_at: self.updated_at,
         }
     }
+
+    pub fn from_input(input: AuthProfileInput) -> Result<Self> {
+        Self::from_input_with_timestamps(input, now_ms(), None)
+    }
+
+    fn from_input_with_timestamps(
+        input: AuthProfileInput,
+        updated_at: u64,
+        created_at: Option<u64>,
+    ) -> Result<Self> {
+        validate_auth_profile_name(&input.name)?;
+        validate_http_url(&input.url)?;
+        validate_auth_value("username", &input.username)?;
+        validate_auth_value("password", &input.password)?;
+        validate_selector("username selector", &input.selectors.username)?;
+        validate_selector("password selector", &input.selectors.password)?;
+        validate_selector("submit selector", &input.selectors.submit)?;
+        Ok(Self {
+            schema_version: AUTH_PROFILE_SCHEMA_VERSION,
+            name: input.name,
+            url: input.url,
+            username: input.username,
+            password: input.password,
+            selectors: input.selectors,
+            created_at: created_at.unwrap_or(updated_at),
+            updated_at,
+        })
+    }
 }
 
 impl AuthVault {
@@ -162,31 +190,16 @@ impl AuthVault {
     }
 
     pub fn save_profile(&mut self, input: AuthProfileInput) -> Result<PublicAuthProfile> {
-        validate_auth_profile_name(&input.name)?;
-        validate_http_url(&input.url)?;
-        validate_auth_value("username", &input.username)?;
-        validate_auth_value("password", &input.password)?;
-        validate_selector("username selector", &input.selectors.username)?;
-        validate_selector("password selector", &input.selectors.password)?;
-        validate_selector("submit selector", &input.selectors.submit)?;
         let now = now_ms();
         let created_at = self
             .profiles
             .get(&input.name)
             .map(|profile| profile.created_at)
             .unwrap_or(now);
-        let profile = AuthProfile {
-            schema_version: AUTH_PROFILE_SCHEMA_VERSION,
-            name: input.name.clone(),
-            url: input.url,
-            username: input.username,
-            password: input.password,
-            selectors: input.selectors,
-            created_at,
-            updated_at: now,
-        };
+        let name = input.name.clone();
+        let profile = AuthProfile::from_input_with_timestamps(input, now, Some(created_at))?;
         let public = profile.public();
-        self.profiles.insert(input.name, profile);
+        self.profiles.insert(name, profile);
         self.updated_at = now;
         self.persist()?;
         Ok(public)

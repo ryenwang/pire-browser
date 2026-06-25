@@ -1571,6 +1571,30 @@ fn tool_command_args(
             args.push("auth".to_string());
             args.push("login".to_string());
             args.push(required_string(object, "name")?);
+            if let Some(provider) = optional_string(object, "credentialProvider")? {
+                args.push("--credential-provider".to_string());
+                args.push(provider);
+            }
+            if let Some(item) = optional_string(object, "item")? {
+                args.push("--item".to_string());
+                args.push(item);
+            }
+            if let Some(url) = optional_string(object, "url")? {
+                args.push("--url".to_string());
+                args.push(url);
+            }
+            if let Some(selector) = optional_string(object, "usernameSelector")? {
+                args.push("--username-selector".to_string());
+                args.push(selector);
+            }
+            if let Some(selector) = optional_string(object, "passwordSelector")? {
+                args.push("--password-selector".to_string());
+                args.push(selector);
+            }
+            if let Some(selector) = optional_string(object, "submitSelector")? {
+                args.push("--submit-selector".to_string());
+                args.push(selector);
+            }
         }
         (_, "pire_browser_auth_list") => {
             args.push("auth".to_string());
@@ -3622,8 +3646,19 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_auth_login",
             "Run auth login",
-            "Decrypt a saved auth profile locally, open its URL, fill configured selectors, and submit the form.",
-            tool_schema(vec![("name", string_prop("Auth profile name."))], &["name"]),
+            "Decrypt a saved auth profile locally, or resolve credentials through a configured credential-provider plugin, then open the login URL, fill configured selectors, and submit the form.",
+            tool_schema(
+                vec![
+                    ("name", string_prop("Auth profile name.")),
+                    ("credentialProvider", string_prop("Optional configured credential provider plugin name.")),
+                    ("item", string_prop("Optional external vault item reference passed to the credential provider.")),
+                    ("url", string_prop("Optional login URL passed to the credential provider and used if the provider response omits credential.url.")),
+                    ("usernameSelector", string_prop("Optional username input CSS selector override.")),
+                    ("passwordSelector", string_prop("Optional password input CSS selector override.")),
+                    ("submitSelector", string_prop("Optional submit control CSS selector override.")),
+                ],
+                &["name"],
+            ),
             false,
         ),
         tool(
@@ -6313,6 +6348,42 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "auth", "login", "app"]);
+
+        let args = tool_command_args(
+            "pire_browser_auth_login",
+            &json!({
+                "name": "app",
+                "credentialProvider": "vault",
+                "item": "My App",
+                "url": "https://example.com/login",
+                "usernameSelector": "#email",
+                "passwordSelector": "#password",
+                "submitSelector": "button[type=submit]"
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "auth",
+                "login",
+                "app",
+                "--credential-provider",
+                "vault",
+                "--item",
+                "My App",
+                "--url",
+                "https://example.com/login",
+                "--username-selector",
+                "#email",
+                "--password-selector",
+                "#password",
+                "--submit-selector",
+                "button[type=submit]"
+            ]
+        );
 
         let args =
             tool_command_args("pire_browser_auth_list", &json!({}), McpToolsProfile::Core).unwrap();

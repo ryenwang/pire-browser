@@ -11,7 +11,7 @@ pire-browser --config ./ci-config.json open https://example.com
 PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
   p("Defaults are loaded from <code>~/.pire-browser/config.json</code>, <code>./pire-browser.json</code>, <code>PIRE_BROWSER_CONFIG</code>, and explicit <code>--config</code>, in that order. CLI flags override config defaults. Missing auto-discovered files are ignored; malformed auto-discovered files warn and continue. Explicit config paths must exist and contain a JSON object. Legacy config aliases are accepted for existing installs."),
   h2("Supported defaults", "supported-defaults"),
-  p("Supported camelCase defaults include <code>json</code>, <code>profile</code>, <code>sessionName</code>, <code>session</code>, <code>autoConnect</code>, <code>allowedDomains</code>, <code>noAllowedDomains</code>, <code>actionPolicy</code>, <code>confirmActions</code>, <code>confirmInteractive</code>, <code>allowFileAccess</code>, <code>headed</code>, <code>headless</code>, <code>colorScheme</code>, <code>proxy</code>, <code>proxyBypass</code>, <code>downloadPath</code>, <code>maxOutput</code>, <code>contentBoundaries</code>, <code>engine</code>, <code>provider</code>, and <code>model</code>. Unknown keys are ignored so newer config files do not fail older installs."),
+  p("Supported camelCase defaults include <code>json</code>, <code>profile</code>, <code>sessionName</code>, <code>session</code>, <code>autoConnect</code>, <code>allowedDomains</code>, <code>noAllowedDomains</code>, <code>actionPolicy</code>, <code>confirmActions</code>, <code>confirmInteractive</code>, <code>allowFileAccess</code>, <code>headed</code>, <code>headless</code>, <code>colorScheme</code>, <code>proxy</code>, <code>proxyBypass</code>, <code>downloadPath</code>, <code>maxOutput</code>, <code>contentBoundaries</code>, <code>engine</code>, <code>provider</code>, <code>model</code>, and <code>plugins</code>. Unknown keys are ignored so newer config files do not fail older installs."),
   code(`{
   "$schema": "./node_modules/pire-browser/pire-browser.schema.json",
   "json": true,
@@ -20,9 +20,16 @@ PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
   "proxy": "http://proxy.example:8080",
   "proxyBypass": "localhost,*.internal",
   "downloadPath": "./downloads",
-  "autoConnect": true
+  "autoConnect": true,
+  "plugins": [
+    {
+      "name": "vault",
+      "command": "agent-browser-plugin-vault",
+      "capabilities": ["credential.read"]
+    }
+  ]
 }`, "json"),
-  p("The packaged schema lives at <code>pire-browser.schema.json</code> in the repo and <code>./node_modules/pire-browser/pire-browser.schema.json</code> in an installed package."),
+  p("The packaged schema lives at <code>pire-browser.schema.json</code> in the repo and <code>./node_modules/pire-browser/pire-browser.schema.json</code> in an installed package. <code>plugins</code> entries are used for agent-browser-compatible credential providers and do not synthesize CLI flags."),
   h2("Common flags", "common-flags"),
   code(`pire-browser --config ./ci-config.json open https://example.com
 pire-browser --profile Work open https://example.com
@@ -73,6 +80,8 @@ pire-browser set offline off`),
     ["<code>PIRE_BROWSER_PROXY_USERNAME</code>", "Proxy authentication username."],
     ["<code>PIRE_BROWSER_PROXY_PASSWORD</code>", "Proxy authentication password."],
     ["<code>AGENT_BROWSER_PROXY*</code>", "Agent-browser-compatible proxy aliases."],
+    ["<code>AGENT_BROWSER_PLUGINS</code>", "JSON plugin array that replaces config plugin discovery for agent-browser-compatible credential providers."],
+    ["<code>PIRE_BROWSER_PLUGINS</code>", "pire-browser alias for the same JSON plugin array."],
     ["<code>HTTP_PROXY</code> / <code>HTTPS_PROXY</code> / <code>ALL_PROXY</code> / <code>NO_PROXY</code>", "Standard proxy environment fallbacks."],
     ["<code>PIRE_BROWSER_ACTION_POLICY</code>", "Path to an action policy file."],
     ["<code>PIRE_BROWSER_CONFIRM_ACTIONS</code>", "Confirmation category list."],

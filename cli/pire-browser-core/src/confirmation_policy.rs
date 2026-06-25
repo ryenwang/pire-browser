@@ -244,7 +244,7 @@ pub fn parse_confirmation_categories(raw: &str) -> Result<BTreeSet<String>> {
         if category.is_empty() {
             bail!("invalid_args: {CONFIRM_ACTIONS_ENV_VAR} contains an empty action category");
         }
-        if !action_categories().contains(&category.as_str()) {
+        if !valid_confirmation_category(&category) {
             bail!("invalid_args: unknown confirmation action category `{category}`");
         }
         categories.insert(category);
@@ -385,13 +385,38 @@ pub fn validate_pending_confirmation(record: &PendingConfirmation) -> Result<()>
     if !confirmation_id_is_valid(&record.id) {
         bail!("invalid_args: invalid confirmation id in record");
     }
-    if !action_categories().contains(&record.category.as_str()) {
+    if !valid_confirmation_category(&record.category) {
         bail!("invalid_args: invalid confirmation category in record");
     }
     if record.command_root.is_empty() || record.args.is_empty() {
         bail!("invalid_args: confirmation record is missing command metadata");
     }
     Ok(())
+}
+
+fn valid_confirmation_category(category: &str) -> bool {
+    action_categories().contains(&category) || valid_plugin_confirmation_category(category)
+}
+
+fn valid_plugin_confirmation_category(category: &str) -> bool {
+    let mut parts = category.split(':');
+    let Some("plugin") = parts.next() else {
+        return false;
+    };
+    let Some(name) = parts.next() else {
+        return false;
+    };
+    let Some(capability) = parts.next() else {
+        return false;
+    };
+    if parts.next().is_some() || name.is_empty() || capability.is_empty() {
+        return false;
+    }
+    name.chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+        && capability
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
 }
 
 fn parse_bool_env(value: Option<&str>, env_var: &str) -> Result<bool> {
@@ -508,6 +533,17 @@ mod tests {
         assert!(!decision.requires("click"));
         assert!(decision.interactive);
         assert_eq!(decision.diagnostic.source, "flag");
+
+        let plugin_decision = resolve_confirmation_policy_from_env_values(
+            None,
+            None,
+            &ConfirmationPolicyArgs {
+                confirm_actions: Some("plugin:vault:credential.read".to_string()),
+                confirm_interactive: false,
+            },
+        )
+        .unwrap();
+        assert!(plugin_decision.requires("plugin:vault:credential.read"));
 
         let env_decision = resolve_confirmation_policy_from_env_values(
             Some("snapshot"),

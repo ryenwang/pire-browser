@@ -73,7 +73,7 @@ pire-browser mcp --tools all`),
       ["pire_browser_set_viewport / pire_browser_device / pire_browser_set_device / pire_browser_set_geo / pire_browser_set_headers / pire_browser_set_credentials / pire_browser_set_media / pire_browser_set_offline", "Apply Firefox-backed settings and best-effort emulation controls. Prefer pire_browser_device for agent-browser-style device presets; set_device remains compatible."],
       ["pire_browser_cookies_* / pire_browser_storage_*", "Read, set, clear, or import active URL cookies and active-origin Web Storage."],
       ["pire_browser_network_requests / request / har_* / route / unroute", "Inspect active-tab network metadata with redacted request/response headers, record/export metadata HAR, and register best-effort routes."],
-      ["pire_browser_auth_save / pire_browser_auth_login / pire_browser_auth_list / pire_browser_auth_show / pire_browser_auth_delete", "Save and reuse selector-driven encrypted auth-vault profiles without printing passwords in list/show output."],
+      ["pire_browser_auth_save / pire_browser_auth_login / pire_browser_auth_list / pire_browser_auth_show / pire_browser_auth_delete", "Save and reuse selector-driven encrypted auth-vault profiles without printing passwords in list/show output, or pass credentialProvider/item/url to resolve a one-shot login through a configured credential.read plugin."],
       ["pire_browser_state_*", "Save, load, list, show, inspect, rename, clear, or clean active-origin state files. Files are plaintext by default and AES-256-GCM encrypted when a state encryption key is set."],
       ["pire_browser_session_* / profiles_list / profiles_import", "Inspect live sessions and managed Firefox profiles, or copy an existing Firefox profile into managed pire-browser state."],
       ["pire_browser_download / wait_download / upload", "Trigger or wait for browser downloads, or assign bounded local files to file inputs."],
@@ -98,7 +98,7 @@ pire-browser mcp --tools all`),
 7. Use settings tools before screenshots or stateful QA when viewport, device preset, geolocation, headers, credentials, media, or offline mode matters.
 8. Use diff tools when comparing before/after UI, screenshots, or two URLs for QA evidence.
 9. Use console/errors/dialog/highlight/vitals/network tools when a page is stuck, blocked, or needs evidence.
-10. Use auth tools only with user-approved credentials, then verify login with a fresh snapshot, URL, or page state.
+10. Use auth tools only with user-approved credentials. For external vaults, prefer pire_browser_auth_login with credentialProvider/item/url fields over extraArgs, then verify login with a fresh snapshot, URL, or page state.
 11. Use cookies/storage/state tools only when needed for user-approved state debugging or auth handoff; cookie import payloads and values may contain secrets.
 12. Use debug-profile pire_browser_install only when the user wants explicit native-host setup or repair; pass withDeps only for agent-browser-style dependency setup. On Windows/macOS it may install Firefox when missing; on Linux it reports non-Snap/non-Flatpak guidance. Use pire_browser_upgrade only when the user wants package update.
 13. Keep pire_browser_status and plain pire_browser_doctor observational.

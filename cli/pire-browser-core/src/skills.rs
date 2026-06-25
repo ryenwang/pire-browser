@@ -185,9 +185,7 @@ mod tests {
         assert!(skill.content.contains("pire-browser trace start"));
         assert!(skill.content.contains("pire-browser profiler start"));
         assert!(skill.content.contains("pire-browser record start"));
-        assert!(skill
-            .content
-            .contains("screenshot-sequence QA"));
+        assert!(skill.content.contains("screenshot-sequence QA"));
         assert!(skill.content.contains("QA evidence bundle"));
         assert!(skill
             .content

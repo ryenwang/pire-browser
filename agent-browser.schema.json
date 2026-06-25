@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/ryenwang/pire-browser/blob/main/agent-browser.schema.json",
-  "title": "pire-browser legacy config schema alias",
-  "description": "Legacy filename alias for pire-browser config defaults. Unknown keys are allowed for forward compatibility.",
+  "title": "agent-browser-compatible pire-browser config",
+  "description": "Agent-browser-compatible config defaults accepted by pire-browser. Unknown keys are allowed for forward compatibility.",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -114,6 +114,42 @@
     "model": {
       "type": "string",
       "description": "Model selection input."
+    },
+    "plugins": {
+      "type": "array",
+      "description": "Configured agent-browser-compatible local plugins. Credential providers must declare capability credential.read.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name", "command"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Plugin name used by --credential-provider."
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Local executable command. Do not put secrets in command arguments."
+          },
+          "args": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Command arguments for the local plugin executable."
+          },
+          "capabilities": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Plugin capabilities such as credential.read."
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Credential-provider timeout in milliseconds."
+          }
+        }
+      }
     }
   }
 }

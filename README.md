@@ -660,6 +660,7 @@ The server defaults to MCP protocol `2025-11-25` and accepts older supported cli
 - Use `--headers` for header-authenticated origins.
 - Use managed Firefox profiles for normal browser login state.
 - Use `auth save --password-stdin` when saving a selector-driven auth helper to avoid shell history.
+- Use `auth login --credential-provider <name>` when credentials live in an external vault plugin.
 - Use `state save` and `state load` for active-origin cookies and Web Storage.
 - Auth profiles are stored in a local AES-256-GCM encrypted auth vault.
 - Set `PIRE_BROWSER_ENCRYPTION_KEY` or `AGENT_BROWSER_ENCRYPTION_KEY` to a 64-character hex key when saved state files should be encrypted.
@@ -713,8 +714,40 @@ local vault under the OS app-data directory. The vault key comes from
 agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY`, or an auto-generated
 local key file. `auth list` and `auth show` do not print passwords; `auth login`
 decrypts locally and sends a one-shot profile payload to the Firefox extension.
-Credential-provider plugins are not implemented yet. Do not claim login success
-until a fresh snapshot, URL, or page state confirms it.
+
+For external vaults, configure an agent-browser-compatible credential provider
+plugin. The plugin is a local executable that reads one JSON request from stdin
+and writes one JSON response to stdout:
+
+```json
+{
+  "plugins": [
+    {
+      "name": "vault",
+      "command": "agent-browser-plugin-vault",
+      "args": [],
+      "capabilities": ["credential.read"]
+    }
+  ]
+}
+```
+
+Then resolve credentials for one login without saving them in the local auth
+vault:
+
+```bash
+pire-browser auth login app --credential-provider vault --item "My App" --url https://example.com/login
+pire-browser snapshot -i
+```
+
+`AGENT_BROWSER_PLUGINS` and `PIRE_BROWSER_PLUGINS` can replace config discovery
+with the same JSON array. Credential plugins receive `credential.resolve` and
+return `credential` with `username`, `password`, `url`, and optional
+`usernameSelector`, `passwordSelector`, and `submitSelector`. Plugin stderr and
+plugin error text are suppressed in this core login path to reduce accidental
+secret exposure. Use `--confirm-actions plugin:vault:credential.read` when a
+user approval gate should run before the provider is invoked. Do not claim login
+success until a fresh snapshot, URL, or page state confirms it.
 
 ### Proxy authentication
 
@@ -871,6 +904,10 @@ pire-browser pdf viewport.pdf --viewport
 --debug                         # Debug output
 ```
 
+`--confirm-actions` accepts normal action categories such as `eval` and
+`download`, plus plugin capability categories such as
+`plugin:vault:credential.read`.
+
 ## Observability Dashboard
 
 Start a localhost dashboard when you want a quick view of install
@@ -937,7 +974,14 @@ For editor autocomplete:
   "json": true,
   "profile": "Work",
   "allowedDomains": ["app.example.com", "*.example.com"],
-  "downloadPath": "./downloads"
+  "downloadPath": "./downloads",
+  "plugins": [
+    {
+      "name": "vault",
+      "command": "agent-browser-plugin-vault",
+      "capabilities": ["credential.read"]
+    }
+  ]
 }
 ```
 

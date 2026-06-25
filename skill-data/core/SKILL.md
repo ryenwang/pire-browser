@@ -511,7 +511,16 @@ pire-browser auth login app
 pire-browser snapshot -i --compact
 ```
 
-Prefer `--password-stdin` over `--password` when saving credentials so the password is not placed in shell history. Saved auth profiles live in the local AES-256-GCM encrypted auth vault. The vault key comes from `PIRE_BROWSER_AUTH_ENCRYPTION_KEY`, `PIRE_BROWSER_ENCRYPTION_KEY`, `AGENT_BROWSER_ENCRYPTION_KEY`, or an auto-generated local key file. `auth list` and `auth show` do not print passwords; `auth login` decrypts locally and sends a one-shot profile payload to Firefox. When using MCP, only call `pire_browser_auth_save` with user-approved credentials; use `pire_browser_auth_login`, then verify with a fresh snapshot, URL, or page state before reporting success. Credential-provider plugin flows are not implemented yet.
+Prefer `--password-stdin` over `--password` when saving credentials so the password is not placed in shell history. Saved auth profiles live in the local AES-256-GCM encrypted auth vault. The vault key comes from `PIRE_BROWSER_AUTH_ENCRYPTION_KEY`, `PIRE_BROWSER_ENCRYPTION_KEY`, `AGENT_BROWSER_ENCRYPTION_KEY`, or an auto-generated local key file. `auth list` and `auth show` do not print passwords; `auth login` decrypts locally and sends a one-shot profile payload to Firefox.
+
+Use a configured credential-provider plugin when the user keeps credentials in an external vault:
+
+```bash
+pire-browser auth login app --credential-provider vault --item "My App" --url https://example.com/login
+pire-browser snapshot -i --compact
+```
+
+Credential providers use the agent-browser plugin protocol with capability `credential.read`; configure them in `pire-browser.json` / `agent-browser.json` under `plugins`, or set `AGENT_BROWSER_PLUGINS` / `PIRE_BROWSER_PLUGINS` to the same JSON array. Do not put vault tokens or passwords in plugin args. Use `--confirm-actions plugin:vault:credential.read` when provider access should require approval before the plugin runs. When using MCP, only call `pire_browser_auth_save` with user-approved credentials; use `pire_browser_auth_login` with `credentialProvider` and `item` for configured vault providers. Always verify login with a fresh snapshot, URL, or page state before reporting success.
 
 Open tabs and windows:
 
