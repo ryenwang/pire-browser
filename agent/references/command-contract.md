@@ -45,6 +45,7 @@ Browser commands may auto-launch a managed Firefox session when safe. Read the r
 - Use `pire-browser open --enable react-devtools <url>`, `pire-browser react tree`, and `pire-browser react inspect <fiberId|target>` for agent-browser-style React inspection. This is best-effort Firefox Fiber introspection, not full React DevTools render profiling; rerun `react tree` after route or DOM changes before reusing an `rN` id.
 - Use `pire-browser snapshot -i -C` when custom clickable `div`s, menu rows, cards, or cursor-pointer controls are missing from the default accessibility-oriented snapshot.
 - Use `pire-browser get title`, `get url`, `get text <target>`, `get attr <target> <attr>`, and `is visible|enabled|checked <target>` for targeted verification when you already know the page or element to inspect.
+- Use `pire-browser hover <target>`, `focus <target>`, `select <target> <value>`, `check <target>`, `uncheck <target>`, `scroll <direction> [pixels]`, and `scrollintoview <target>` as first-class interaction commands before falling back to JavaScript eval.
 - Use `pire-browser tap <target>` only as a best-effort alias for `click <target>`. It is not native touch input or mobile browser emulation.
 - Use `pire-browser swipe <direction> [pixels]` only as a best-effort mobile helper. It maps touch direction to page scroll (`swipe up` scrolls down), not native touch input.
 - Use `pire-browser dblclick <target>` when the UI requires a double-click. Verify with a fresh snapshot or targeted `get`/`is` command afterward.

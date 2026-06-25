@@ -68,15 +68,24 @@ pire-browser get value '<input-ref>'
 `keyboard type`, `keyboard inserttext`, `keydown`, and `keyup` act at the
 current page focus. Click or focus the intended control first. Use `type
 <target> <text>` or `fill <target> <text>` when you have a selector/ref and do
-not need focused keyboard edges. Use `dblclick <target>` when the UI requires a
-double-click. Use `tap <target>` only as a best-effort alias for `click
-<target>`; it is not native touch input or mobile browser emulation. Use
-`swipe <direction> [pixels]` only as a best-effort mobile helper that maps touch
-direction to page scroll (`swipe up` scrolls down); use `scroll` for direct
-scroll direction.
+not need focused keyboard edges. Use `focus <target>` before focused keyboard
+commands when you know the target, `hover <target>` for menus/tooltips that
+respond to mouseover, `select <target> <value>` for HTML selects, and
+`check <target>` / `uncheck <target>` for checkboxes. Use `dblclick <target>`
+when the UI requires a double-click. Use `tap <target>` only as a best-effort
+alias for `click <target>`; it is not native touch input or mobile browser
+emulation. Use `swipe <direction> [pixels]` only as a best-effort mobile helper
+that maps touch direction to page scroll (`swipe up` scrolls down); use
+`scroll` for direct scroll direction and `scrollintoview <target>` when you
+already know the element you need.
 
 ```bash
 pire-browser snapshot -i
+pire-browser hover '<menu-ref>'
+pire-browser focus '<input-ref>'
+pire-browser select '<country-ref>' US
+pire-browser check '<terms-ref>'
+pire-browser scrollintoview '<submit-ref>'
 pire-browser dblclick '<item-ref>'
 pire-browser snapshot -i
 ```
@@ -453,10 +462,15 @@ pire-browser mouse up
 pire-browser mouse wheel 400
 pire-browser tap '<target-ref>'
 pire-browser swipe up 500
+pire-browser scroll down 500 --selector "#panel"
+pire-browser scrollintoview '<target-ref>'
 pire-browser drag '<source-ref>' '<target-ref>'
 ```
 
-Mouse, tap, swipe, and drag commands are Firefox WebExtension paths. They dispatch page events, not native OS cursor movement, native touch input, or browser-chrome drag state, so verify with page state afterwards.
+Mouse, hover, tap, swipe, scroll, scrollintoview, and drag commands are Firefox
+WebExtension paths. They dispatch page events, not native OS cursor movement,
+native touch input, or browser-chrome drag state. `hover` cannot force native
+`:hover` state on every page, so verify with page state afterwards.
 
 Save and reuse a simple login form profile:
 

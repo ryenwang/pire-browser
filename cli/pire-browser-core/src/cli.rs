@@ -2189,6 +2189,11 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "press" | "key" => PRESS_HELP,
         "keyboard" => KEYBOARD_HELP,
         "keydown" | "keyup" => KEY_EDGE_HELP,
+        "hover" | "focus" => HOVER_FOCUS_HELP,
+        "select" => SELECT_HELP,
+        "check" | "uncheck" => CHECK_HELP,
+        "scroll" => SCROLL_HELP,
+        "scrollintoview" | "scrollinto" => SCROLL_INTO_VIEW_HELP,
         "wait" => WAIT_HELP,
         "pushstate" => PUSHSTATE_HELP,
         "console" => CONSOLE_HELP,
@@ -2276,6 +2281,13 @@ Common commands:
   keyboard inserttext "hello"     Insert text at focus without key events
   keydown Shift                   Hold a key down at the current page focus
   keyup Shift                     Release a held key at the current page focus
+  hover '@e4'                     Dispatch hover events for a ref/selector
+  focus '@e2'                     Focus a ref/selector before keyboard input
+  select '#country' US            Select an option in a <select>
+  check '#terms'                  Check a checkbox or radio
+  uncheck '#terms'                Uncheck a checkbox
+  scroll down 500                 Scroll page or container
+  scrollintoview '@e4'            Scroll a ref/selector into view
   find label "Email" fill "x@y"   Find by semantic locator and act
   get text '@e1'                  Read text/title/url/attrs/box/styles
   is visible '@e1'                Check visible/enabled/checked state
@@ -2529,10 +2541,13 @@ Usage:
   pire-browser find text "Save" --exact
   pire-browser find label "Email" fill "hello@example.com"
   pire-browser find text "Continue" click
+  pire-browser find role checkbox --name "Terms" check
+  pire-browser find role combobox --name "Country" select US
 
 Finds elements by supported selector families and can optionally perform an
-action on the single match. Use `--exact` for whole normalized text/name
-matching instead of substring matching.
+action on the single match. Actions include `click`, `fill`, `type`, `hover`,
+`focus`, `check`, `uncheck`, `select`, and `text`. Use `--exact` for whole
+normalized text/name matching instead of substring matching.
 "##;
 
 const GET_HELP: &str = r##"
@@ -2642,6 +2657,71 @@ Usage:
 Dispatches a focused-page keydown or keyup event. These commands act at the
 current page focus, so focus or click the intended control first. Use `press`
 for one-shot keys such as Enter or Tab.
+"##;
+
+const HOVER_FOCUS_HELP: &str = r##"
+Usage:
+  pire-browser hover <sel>
+  pire-browser focus <sel>
+
+Dispatches page-level hover events or focuses a target in the active Firefox
+tab. Selectors may be CSS selectors, refs from the latest snapshot or find
+output, `text=...`, or `xpath=...`.
+
+`hover` is best-effort: Firefox WebExtensions can dispatch hover/mouseover
+events but cannot force native browser `:hover` state in every page. `focus`
+is the preferred setup step before `keyboard type`, `keyboard inserttext`,
+`keydown`, or `keyup` when you have a selector/ref.
+"##;
+
+const SELECT_HELP: &str = r##"
+Usage:
+  pire-browser select <sel> <value>
+  pire-browser find role combobox --name "Country" select US
+
+Selects an option in a targeted HTML <select> element and dispatches input and
+change events. The value should match the option value. Use a fresh ref from
+`snapshot -i` or a semantic find locator, then verify with `get value <sel>` or
+`snapshot -i`.
+"##;
+
+const CHECK_HELP: &str = r##"
+Usage:
+  pire-browser check <sel>
+  pire-browser uncheck <sel>
+  pire-browser find role checkbox --name "Terms" check
+
+Checks or unchecks a targeted checkbox or radio input and dispatches input and
+change events. Use a fresh ref from `snapshot -i` or semantic find output, then
+verify with `is checked <sel>` or a fresh snapshot. `uncheck` only applies to
+checkboxes; radio buttons usually remain selected until another radio in the
+group is checked.
+"##;
+
+const SCROLL_HELP: &str = r##"
+Usage:
+  pire-browser scroll down
+  pire-browser scroll down 500
+  pire-browser scroll up 500
+  pire-browser scroll left 300
+  pire-browser scroll right 300
+  pire-browser scroll down 500 --selector "#panel"
+
+Scrolls the page or a targeted scroll container in the active Firefox tab.
+Directions are direct page movement, unlike `swipe`, which maps touch direction
+to page scroll for agent-browser-style mobile recipes. Use
+`scrollintoview <target>` when you already know the element you need.
+"##;
+
+const SCROLL_INTO_VIEW_HELP: &str = r##"
+Usage:
+  pire-browser scrollintoview <sel>
+  pire-browser scrollinto <sel>
+
+Scrolls a ref or selector into the visible viewport and returns the element box
+when available. Selectors may be CSS selectors, refs from the latest snapshot or
+find output, `text=...`, or `xpath=...`. Re-run `snapshot -i` after scrolling
+before acting on stale refs.
 "##;
 
 const WAIT_HELP: &str = r##"
@@ -5140,6 +5220,13 @@ mod tests {
         assert!(text.contains("keyboard inserttext \"hello\""));
         assert!(text.contains("keydown Shift"));
         assert!(text.contains("keyup Shift"));
+        assert!(text.contains("hover '@e4'"));
+        assert!(text.contains("focus '@e2'"));
+        assert!(text.contains("select '#country' US"));
+        assert!(text.contains("check '#terms'"));
+        assert!(text.contains("uncheck '#terms'"));
+        assert!(text.contains("scroll down 500"));
+        assert!(text.contains("scrollintoview '@e4'"));
         assert!(text.contains("skills cat core"));
         assert!(text.contains("pushstate /dashboard"));
         assert!(text.contains("get text '@e1'"));
@@ -5360,6 +5447,33 @@ mod tests {
         assert!(help_text(Some("keyup"))
             .unwrap()
             .contains("pire-browser keyup Shift"));
+        assert!(help_text(Some("hover"))
+            .unwrap()
+            .contains("cannot force native browser `:hover`"));
+        assert!(help_text(Some("focus"))
+            .unwrap()
+            .contains("preferred setup step before `keyboard type`"));
+        assert!(help_text(Some("select"))
+            .unwrap()
+            .contains("pire-browser select <sel> <value>"));
+        assert!(help_text(Some("check"))
+            .unwrap()
+            .contains("pire-browser check <sel>"));
+        assert!(help_text(Some("uncheck"))
+            .unwrap()
+            .contains("radio buttons usually remain selected"));
+        assert!(help_text(Some("scroll"))
+            .unwrap()
+            .contains("scroll down 500 --selector"));
+        assert!(help_text(Some("scrollintoview"))
+            .unwrap()
+            .contains("pire-browser scrollintoview <sel>"));
+        assert!(help_text(Some("scrollinto"))
+            .unwrap()
+            .contains("pire-browser scrollinto <sel>"));
+        assert!(help_text(Some("find"))
+            .unwrap()
+            .contains("find role combobox"));
         assert!(help_text(Some("get"))
             .unwrap()
             .contains("get attr <sel> <attr>"));

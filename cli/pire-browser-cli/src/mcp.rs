@@ -5710,14 +5710,20 @@ mod tests {
         .unwrap();
         assert_eq!(args, vec!["--json", "vitals", "https://example.com"]);
 
-        let args =
-            tool_command_args("pire_browser_trace_start", &json!({}), McpToolsProfile::Debug)
-                .unwrap();
+        let args = tool_command_args(
+            "pire_browser_trace_start",
+            &json!({}),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
         assert_eq!(args, vec!["--json", "trace", "start"]);
 
-        let args =
-            tool_command_args("pire_browser_trace_status", &json!({}), McpToolsProfile::Debug)
-                .unwrap();
+        let args = tool_command_args(
+            "pire_browser_trace_status",
+            &json!({}),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
         assert_eq!(args, vec!["--json", "trace", "status"]);
 
         let args = tool_command_args(
@@ -5747,9 +5753,12 @@ mod tests {
             ]
         );
 
-        let args =
-            tool_command_args("pire_browser_record_status", &json!({}), McpToolsProfile::Debug)
-                .unwrap();
+        let args = tool_command_args(
+            "pire_browser_record_status",
+            &json!({}),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
         assert_eq!(args, vec!["--json", "record", "status"]);
 
         let args = tool_command_args(
@@ -5768,7 +5777,15 @@ mod tests {
         .unwrap();
         assert_eq!(
             args,
-            vec!["--json", "react", "tree", "--selector", "#root", "--depth", "3"]
+            vec![
+                "--json",
+                "react",
+                "tree",
+                "--selector",
+                "#root",
+                "--depth",
+                "3"
+            ]
         );
 
         let args = tool_command_args(
