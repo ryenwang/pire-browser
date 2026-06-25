@@ -619,12 +619,12 @@ pire-browser mcp --tools all
 ```
 
 The stdio MCP server exposes typed tools through agent-browser-style profiles.
-`core` is the default inspect-before-act workflow: open, snapshot, semantic
+`core` is the default inspect-before-act workflow: open/goto/navigate, snapshot, semantic
 find, click, tap-as-click, swipe-as-scroll, double-click, hover, focus, select,
 check/uncheck, scroll/scroll-into-view, fill, type, press, keyboard/mouse
 basics, typed get/check verification tools, typed waits, back/forward/reload,
-SPA pushstate navigation, init scripts, screenshots/PDFs/diffs, eval, status,
-confirmation follow-up, basic tabs, profile discovery, close, and skill
+SPA pushstate navigation, init scripts, screenshots/PDFs/diffs, eval/evaluate, status,
+confirmation follow-up, tab list/new/switch/close, profile discovery, close, and skill
 guidance. Generic `pire_browser_get`, `pire_browser_is`, and `pire_browser_wait`
 remain available for compatibility, but new agents should prefer the typed
 tools. Agent-browser-style aliases such as `pire_browser_tap`,
@@ -638,8 +638,8 @@ Most browser-command tools accept common typed fields for session/profile
 targeting, state files, file access, domain allowlists, confirmation/action
 policies, content boundaries, output limits, proxy settings, and Firefox
 executable overrides; use those fields instead of `extraArgs` for guardrails.
-`pire_browser_open` also accepts typed one-shot `headers` and `initScriptPaths`
-for pre-navigation setup. Prefer `pire_browser_open` for normal
+`pire_browser_open`, `pire_browser_goto`, and `pire_browser_navigate` also accept typed one-shot `headers`, `initScriptPaths`,
+and `enableReactDevtools` for pre-navigation setup. Prefer these tools for normal
 launch/navigation; the `debug` profile exposes `pire_browser_launch` as a
 narrower lower-level launch tool, `pire_browser_install` for explicit
 native-host setup or repair, `pire_browser_upgrade` for user-requested package upgrades,

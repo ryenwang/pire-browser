@@ -15,11 +15,11 @@ pire-browser mcp --tools all`),
   table(
     ["Profile", "Purpose"],
     [
-      ["core", "Open, read, inspect, semantic find, interact, typed get/check verification, typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff evidence, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and skill guidance."],
+      ["core", "Open/goto/navigate, read, inspect, semantic find, interact, typed get/check verification, typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff evidence, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, and skill guidance."],
       ["network", "Headers, credentials, offline toggle, network request inspection with redacted headers, safe outgoing request-body previews, bounded text-like response previews, HAR export, and route/unroute controls."],
       ["state", "Cookies, storage, encrypted auth vault helpers, plaintext or opt-in encrypted state files, sessions, profiles including Firefox profile import, downloads/uploads, typed clipboard tools, and skills."],
       ["debug", "Lower-level launch, explicit install/repair, user-requested package upgrade, batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, Firefox trace bundles, screenshot-sequence recording bundles, dashboard-backed stream preview controls, best-effort vitals, diffs, status, sessions/profiles, and close."],
-      ["tabs", "Back/forward/reload, tab list/new/select/label/close, iframe selection, JavaScript dialogs, windows, and close."],
+      ["tabs", "Broader tab/window workflows: compatible tabs_* aliases, tab labels, iframe selection, JavaScript dialogs, windows, and close."],
       ["mobile", "Viewport, device preset, geolocation, media/offline settings, keyboard, tap-as-click, swipe-as-scroll, mouse, scroll, and screenshot helpers."],
       ["react", "Best-effort Firefox React Fiber tree/inspect/render recording/Suspense tools plus vitals."],
       ["all", "Every currently implemented pire-browser MCP tool."],
@@ -28,7 +28,7 @@ pire-browser mcp --tools all`),
   p("The server uses the same installed binary and command behavior as the CLI, so policies, setup, sessions, profiles, and Firefox runtime behavior stay shared."),
   p("The server defaults to MCP protocol <code>2025-11-25</code> and accepts older supported client protocol versions during initialization. Tool discovery is paginated for large profiles. Tool annotations distinguish read-only browser inspection from mutating actions and mark local maintenance/context tools such as install, upgrade, status, sessions, profiles, and skills as non-open-world for clearer host approval prompts."),
   h2("Common Typed Fields", "common-typed-fields"),
-  p("Most browser-command MCP tools accept common typed fields for CLI-global behavior that must be placed before the command. Prefer these fields over <code>extraArgs</code> when setting guardrails or launch context. The lower-level debug-profile <code>pire_browser_launch</code> tool has a narrower launch-specific schema; prefer <code>pire_browser_open</code> for normal launch/navigation."),
+  p("Most browser-command MCP tools accept common typed fields for CLI-global behavior that must be placed before the command. Prefer these fields over <code>extraArgs</code> when setting guardrails or launch context. The lower-level debug-profile <code>pire_browser_launch</code> tool has a narrower launch-specific schema; prefer <code>pire_browser_open</code>, <code>pire_browser_goto</code>, or <code>pire_browser_navigate</code> for normal launch/navigation."),
   table(
     ["Field", "Purpose"],
     [
@@ -50,7 +50,7 @@ pire-browser mcp --tools all`),
       ["pire_browser_install", "Debug-profile native-host setup or repair for the current OS user. Use withDeps only for agent-browser-style dependency recipes; it may install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when missing, while Linux stays guided/manual."],
       ["pire_browser_upgrade", "Debug-profile foreground package upgrade through the installed npm/Pi launcher. Use only when the user asks to update the package."],
       ["pire_browser_batch", "Debug-profile typed batch for short command sequences. Commands may be strings or arrays of args; use bail when later commands depend on earlier success."],
-      ["pire_browser_open", "Launch Firefox and optionally navigate. Supports typed one-shot headers and initScriptPaths for pre-navigation setup."],
+      ["pire_browser_open / goto / navigate", "Launch Firefox and optionally navigate. Supports typed one-shot headers, initScriptPaths, and enableReactDevtools for pre-navigation setup."],
       ["pire_browser_read", "Read agent-friendly URL text without launching Firefox, or rendered text from the active tab."],
       ["pire_browser_snapshot", "Inspect the page and return refs. Use compact for noisy pages and cursorInteractive for visible cursor-pointer or inline onclick controls."],
       ["pire_browser_find", "Find by role, label, text, placeholder, alt text, title, test id, first, last, or nth; optionally act on the single match."],
@@ -66,6 +66,7 @@ pire-browser mcp --tools all`),
       ["pire_browser_wait_ms / wait_for_selector / wait_for_text / wait_for_url / wait_for_load / wait_for_function", "Agent-browser-style typed wait tools. Use these before the generic compatibility wait tool."],
       ["pire_browser_wait", "Compatibility wait tool for time, selector, text, URL, page function condition, or load state."],
       ["pire_browser_back / forward / reload / pushstate", "Use browser history, reload the active tab, or perform same-origin SPA client-side navigation."],
+      ["pire_browser_eval / evaluate", "Evaluate JavaScript in the active page after the normal policy and confirmation checks. Prefer evaluate when following agent-browser-shaped recipes."],
       ["pire_browser_add_init_script / remove_init_script", "Register or remove document-start scripts for future navigations in the managed session."],
       ["pire_browser_screenshot / pdf", "Capture screenshot or image-backed PDF evidence."],
       ["pire_browser_diff_snapshot / pire_browser_diff_screenshot / pire_browser_diff_url", "Compare snapshot text, screenshot pixels, or two URL states for QA evidence."],
@@ -90,7 +91,7 @@ pire-browser mcp --tools all`),
     ]
   ),
   h2("Agent Loop", "agent-loop"),
-  code(`1. Call pire_browser_open with a URL. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics.
+  code(`1. Call pire_browser_open, pire_browser_goto, or pire_browser_navigate with a URL. Use enableReactDevtools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics.
 2. Use pire_browser_read for docs/articles when interaction refs are not needed.
 3. Call pire_browser_snapshot with compact=true for noisy pages, cursorInteractive=true for custom clickable controls missing from the default snapshot, or use pire_browser_find when labels/roles are clear.
 4. Use fresh refs or semantic find locators in click/double-click/fill/type/press/select/check/scroll/drag/mouse/download/upload tools.

@@ -665,14 +665,14 @@ pire-browser mcp --tools all
 ```
 
 Use the smallest MCP profile that fits the task. `core` is the default
-inspect-before-act workflow: open, snapshot, semantic find, interact, typed get/check,
+inspect-before-act workflow: open/goto/navigate, snapshot, semantic find, interact, typed get/check,
 typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff
-evidence, eval, status, confirmation follow-up, basic tabs, profile discovery,
+evidence, eval/evaluate, status, confirmation follow-up, tab list/new/switch/close, profile discovery,
 close, and skill guidance. Add comma-separated profiles only when needed:
 `network` for request diagnostics/routes/HAR, `state` for cookies/storage/auth
 and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair,
 user-requested package upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/trace/profiler/record/stream/vitals,
-`tabs` for tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
+`tabs` for tab labels, frames, dialogs, and separate windows, and `mobile` for viewport/device/geo/media/mouse
 helpers including click-equivalent `pire_browser_tap` and touch-direction page-scroll `pire_browser_swipe`. `react` exposes best-effort typed React Fiber tools
 (`pire_browser_react_tree`, `pire_browser_react_inspect`, `pire_browser_react_renders_start`, `pire_browser_react_renders_stop`, `pire_browser_react_suspense`) plus vitals. Use `all`
 only when the host can tolerate the full tool surface. The
@@ -687,9 +687,10 @@ For MCP guardrails and launch context, prefer typed common fields over
 `extraArgs`: `statePath`, `allowFileAccess`, `allowedDomains`,
 `noAllowedDomains`, `actionPolicy`, `confirmActions`, `confirmInteractive`,
 `contentBoundaries`, `maxOutput`, `proxy`, `proxyBypass`, and
-`executablePath`, `downloadPath`. Use typed `pire_browser_open.headers` and
-`pire_browser_open.initScriptPaths` when a navigation needs one-shot request
-headers or pre-navigation init scripts. Prefer `pire_browser_open` for normal
+`executablePath`, `downloadPath`. Use typed `headers`, `initScriptPaths`, and
+`enableReactDevtools` on `pire_browser_open`, `pire_browser_goto`, or
+`pire_browser_navigate` when a navigation needs one-shot request headers,
+pre-navigation init scripts, or React inspection setup. Prefer those tools for normal
 launch/navigation; use `pire_browser_tap` only when an agent-browser-style tap
 recipe means click-equivalent page interaction, and `pire_browser_swipe` only
 when a mobile-style recipe means touch-direction page scroll. Add the `debug` profile and use `pire_browser_launch` only

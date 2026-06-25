@@ -134,7 +134,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "core",
             bits: PROFILE_CORE,
-            description: "Default inspect-before-act workflow: open, snapshots, semantic find, interactions, waits, navigation helpers, init scripts, reads, screenshots/PDFs, diffs, eval, status, confirmation follow-up, basic tabs, profiles, close, and skill guidance.",
+            description: "Default inspect-before-act workflow: open/goto/navigate, snapshots, semantic find, interactions, waits, navigation helpers, init scripts, reads, screenshots/PDFs, diffs, eval/evaluate, status, confirmation follow-up, tab list/new/switch/close, profiles, close, and skill guidance.",
         },
         McpProfileDescriptor {
             name: "network",
@@ -207,6 +207,8 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_scroll" => PROFILE_CORE | PROFILE_MOBILE,
         "pire_browser_tap" | "pire_browser_swipe" => PROFILE_CORE | PROFILE_MOBILE,
         "pire_browser_open"
+        | "pire_browser_goto"
+        | "pire_browser_navigate"
         | "pire_browser_read"
         | "pire_browser_snapshot"
         | "pire_browser_find"
@@ -245,7 +247,8 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_is_visible"
         | "pire_browser_is_enabled"
         | "pire_browser_is_checked"
-        | "pire_browser_eval" => PROFILE_CORE,
+        | "pire_browser_eval"
+        | "pire_browser_evaluate" => PROFILE_CORE,
         "pire_browser_screenshot" => PROFILE_CORE | PROFILE_MOBILE,
         "pire_browser_download" | "pire_browser_wait_download" | "pire_browser_upload" => {
             PROFILE_CORE | PROFILE_STATE
@@ -312,11 +315,10 @@ fn tool_profile_bits(name: &str) -> u16 {
         "pire_browser_dialog_status"
         | "pire_browser_dialog_accept"
         | "pire_browser_dialog_dismiss" => PROFILE_DEBUG | PROFILE_TABS,
-        "pire_browser_tabs_select"
-        | "pire_browser_tab_switch"
-        | "pire_browser_tabs_close"
-        | "pire_browser_tab_close"
-        | "pire_browser_tabs_label" => PROFILE_TABS,
+        "pire_browser_tab_switch" | "pire_browser_tab_close" => PROFILE_CORE | PROFILE_TABS,
+        "pire_browser_tabs_select" | "pire_browser_tabs_close" | "pire_browser_tabs_label" => {
+            PROFILE_TABS
+        }
         "pire_browser_back"
         | "pire_browser_forward"
         | "pire_browser_reload"
@@ -439,7 +441,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed HTTP polling live preview; it is not full WebSocket frame streaming yet. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, Firefox profile import, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open/goto/navigate, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open, pire_browser_goto, or pire_browser_navigate for normal launch/navigation; use enableReactDevtools on those tools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed HTTP polling live preview; it is not full WebSocket frame streaming yet. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, Firefox profile import, debugging, tab labels/frames/dialogs/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -675,31 +677,9 @@ fn tool_command_args(
             reject_unsupported_fields(object, "pire_browser_upgrade", &[])?;
             args.push("upgrade".to_string());
         }
-        (_, "pire_browser_open") => {
-            if let Some(color_scheme) = optional_color_scheme(object, "colorScheme")? {
-                args.push("--color-scheme".to_string());
-                args.push(color_scheme);
-            }
-            args.push("open".to_string());
-            if let Some(url) = optional_string(object, "url")? {
-                args.push(url);
-            }
-            if optional_bool(object, "newTab")? {
-                args.push("--new-tab".to_string());
-            }
-            if let Some(label) = optional_string(object, "label")? {
-                args.push("--label".to_string());
-                args.push(label);
-            }
-            for path in optional_string_array(object, "initScriptPaths")? {
-                args.push("--init-script".to_string());
-                args.push(path);
-            }
-            if object.contains_key("headers") {
-                args.push("--headers".to_string());
-                args.push(required_headers_json(object)?);
-            }
-        }
+        (_, "pire_browser_open") => push_open_like_args(&mut args, object, "open")?,
+        (_, "pire_browser_goto") => push_open_like_args(&mut args, object, "goto")?,
+        (_, "pire_browser_navigate") => push_open_like_args(&mut args, object, "navigate")?,
         (_, "pire_browser_snapshot") => {
             args.push("snapshot".to_string());
             if optional_bool_default(object, "interactive", true)? {
@@ -1814,6 +1794,10 @@ fn tool_command_args(
             args.push("eval".to_string());
             args.push(required_string(object, "script")?);
         }
+        (_, "pire_browser_evaluate") => {
+            args.push("eval".to_string());
+            args.push(required_string(object, "script")?);
+        }
         (_, "pire_browser_close") => {
             args.push("close".to_string());
             if optional_bool(object, "all")? {
@@ -1845,6 +1829,41 @@ fn tool_command_args(
         args.extend(optional_string_array(object, "extraArgs")?);
     }
     Ok(args)
+}
+
+fn push_open_like_args(
+    args: &mut Vec<String>,
+    object: &Map<String, Value>,
+    command: &str,
+) -> std::result::Result<(), String> {
+    if let Some(color_scheme) = optional_color_scheme(object, "colorScheme")? {
+        args.push("--color-scheme".to_string());
+        args.push(color_scheme);
+    }
+    args.push(command.to_string());
+    if optional_bool(object, "enableReactDevtools")? {
+        args.push("--enable".to_string());
+        args.push("react-devtools".to_string());
+    }
+    if let Some(url) = optional_string(object, "url")? {
+        args.push(url);
+    }
+    if optional_bool(object, "newTab")? {
+        args.push("--new-tab".to_string());
+    }
+    if let Some(label) = optional_string(object, "label")? {
+        args.push("--label".to_string());
+        args.push(label);
+    }
+    for path in optional_string_array(object, "initScriptPaths")? {
+        args.push("--init-script".to_string());
+        args.push(path);
+    }
+    if object.contains_key("headers") {
+        args.push("--headers".to_string());
+        args.push(required_headers_json(object)?);
+    }
+    Ok(())
 }
 
 fn push_wait_timeout_arg(
@@ -2469,17 +2488,21 @@ fn core_tools() -> Vec<Value> {
             "pire_browser_open",
             "Open or launch Firefox",
             "Launch managed Firefox if needed and optionally navigate to a URL.",
-            tool_schema(
-                vec![
-                    ("url", string_prop("URL to open. Omit to just launch or reuse Firefox.")),
-                    ("newTab", bool_prop("Open in a new tab.")),
-                    ("label", string_prop("Optional stable tab label.")),
-                    ("colorScheme", string_prop("Optional page color scheme: dark, light, or auto.")),
-                    ("headers", headers_prop_with_description("Optional request headers to apply to the target URL origin for this open command. Values may contain secrets.")),
-                    ("initScriptPaths", string_array_prop("Local JavaScript files to register as best-effort document-start init scripts for this navigation.")),
-                ],
-                &[],
-            ),
+            open_tool_schema("URL to open. Omit to just launch or reuse Firefox."),
+            false,
+        ),
+        tool(
+            "pire_browser_goto",
+            "Go to URL",
+            "Agent-browser-style navigation alias for opening a URL in the managed Firefox session.",
+            open_tool_schema("URL to navigate to."),
+            false,
+        ),
+        tool(
+            "pire_browser_navigate",
+            "Navigate to URL",
+            "Navigation alias for opening a URL in the managed Firefox session.",
+            open_tool_schema("URL to navigate to."),
             false,
         ),
         tool(
@@ -4018,6 +4041,13 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_evaluate",
+            "Evaluate JavaScript",
+            "Agent-browser-style alias for evaluating JavaScript in the active page. Existing action/confirmation policies still apply.",
+            tool_schema(vec![("script", string_prop("JavaScript source to evaluate."))], &["script"]),
+            false,
+        ),
+        tool(
             "pire_browser_close",
             "Close session",
             "Close the targeted managed Firefox session.",
@@ -4190,6 +4220,39 @@ fn launch_tool_schema() -> Value {
             (
                 "confirmInteractive",
                 bool_prop("Also require confirmation for interactive page actions."),
+            ),
+        ],
+        &[],
+    )
+}
+
+fn open_tool_schema(url_description: &str) -> Value {
+    tool_schema(
+        vec![
+            ("url", string_prop(url_description)),
+            ("newTab", bool_prop("Open in a new tab.")),
+            ("label", string_prop("Optional stable tab label.")),
+            (
+                "colorScheme",
+                string_prop("Optional page color scheme: dark, light, or auto."),
+            ),
+            (
+                "headers",
+                headers_prop_with_description(
+                    "Optional request headers to apply to the target URL origin for this navigation command. Values may contain secrets.",
+                ),
+            ),
+            (
+                "initScriptPaths",
+                string_array_prop(
+                    "Local JavaScript files to register as best-effort document-start init scripts for this navigation.",
+                ),
+            ),
+            (
+                "enableReactDevtools",
+                bool_prop(
+                    "Install the lightweight React DevTools-compatible hook before navigation.",
+                ),
             ),
         ],
         &[],
@@ -4429,6 +4492,10 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_snapshot"));
+        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_goto"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_navigate"));
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_read"));
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_get"));
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_is"));
@@ -4497,10 +4564,19 @@ mod tests {
             .any(|tool| tool["name"] == "pire_browser_add_init_script"));
         assert!(tools
             .iter()
+            .any(|tool| tool["name"] == "pire_browser_evaluate"));
+        assert!(tools
+            .iter()
             .any(|tool| tool["name"] == "pire_browser_confirm"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_profiles_list"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_tab_switch"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_tab_close"));
         assert!(!tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_profiles_import"));
@@ -4534,6 +4610,14 @@ mod tests {
         assert!(!tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_upgrade"));
+        let open = tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_open")
+            .unwrap();
+        assert_eq!(
+            open["inputSchema"]["properties"]["enableReactDevtools"]["type"],
+            "boolean"
+        );
         let snapshot = tools
             .iter()
             .find(|tool| tool["name"] == "pire_browser_snapshot")
@@ -5274,6 +5358,45 @@ mod tests {
                 "scripts/flags.js",
                 "--headers",
                 r#"{"X-Enabled":true,"X-Preview":"on","X-Trace":42}"#
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_goto",
+            &json!({
+                "url": "https://example.com/react",
+                "enableReactDevtools": true,
+                "newTab": true
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "goto",
+                "--enable",
+                "react-devtools",
+                "https://example.com/react",
+                "--new-tab"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_navigate",
+            &json!({ "url": "https://example.com/next", "label": "next" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "navigate",
+                "https://example.com/next",
+                "--label",
+                "next"
             ]
         );
 
@@ -6719,6 +6842,14 @@ mod tests {
         let args = tool_command_args("pire_browser_window_new", &json!({}), McpToolsProfile::Core)
             .unwrap();
         assert_eq!(args, vec!["--json", "window", "new"]);
+
+        let args = tool_command_args(
+            "pire_browser_evaluate",
+            &json!({ "script": "document.title" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "eval", "document.title"]);
 
         let args =
             tool_command_args("pire_browser_back", &json!({}), McpToolsProfile::Core).unwrap();
