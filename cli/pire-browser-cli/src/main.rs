@@ -21,7 +21,7 @@ use pire_browser_core::auth_vault::{
 use pire_browser_core::cli::{
     apply_config_defaults, build_command_request, format_cli_result, help_text, parse_cli_args,
     ConfigWarning, DashboardAction, GlobalFlagWarning, LocalCommand, ReadActiveUrlOptions,
-    SessionTarget,
+    SessionTarget, StreamAction,
 };
 use pire_browser_core::confirmation_policy::{
     confirmation_policy_diagnostic_from_args, confirmation_policy_text,
@@ -91,7 +91,7 @@ use uuid::Uuid;
 use crate::mcp::{run_mcp_server, McpToolsProfile};
 use crate::read::{read_url, ReadUrlOptions};
 
-const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &["connect", "stream", "upgrade"];
+const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &["connect", "upgrade"];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PLUGIN_PROTOCOL: &str = "agent-browser.plugin.v1";
 const CREDENTIAL_PROVIDER_TIMEOUT_MS: u64 = 10_000;
@@ -134,8 +134,6 @@ const DASHBOARD_DETACHED_PROCESS: u32 = 0x0000_0008;
 const DASHBOARD_CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 #[cfg(windows)]
 const DASHBOARD_CREATE_NO_WINDOW: u32 = 0x0800_0000;
-#[cfg(windows)]
-const DASHBOARD_CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
 struct PolicyArgsBundle {
     domain_policy: DomainPolicyArgs,
@@ -716,6 +714,9 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 handle_dashboard_stop(json)?;
             }
         },
+        LocalCommand::Stream { action, port, json } => {
+            handle_stream(action, port, json)?;
+        }
         LocalCommand::ActivityList { json, limit } => {
             handle_activity_list(json, limit)?;
         }
@@ -2613,7 +2614,10 @@ fn run_chat_child_command(config: &ChatConfig, command: &str) -> Result<Value> {
     let Some(root) = args.first().map(String::as_str) else {
         bail!("chat_malformed_plan: command cannot be empty");
     };
-    if matches!(root, "chat" | "confirm" | "deny" | "mcp" | "dashboard") {
+    if matches!(
+        root,
+        "chat" | "confirm" | "deny" | "mcp" | "dashboard" | "stream"
+    ) {
         bail!("chat_unsafe_command: chat cannot run `{root}` automatically");
     }
     let mut child_args = vec![
@@ -2673,7 +2677,7 @@ Rules:
 - Use fresh refs after navigation, DOM changes, dialogs, uploads, downloads, or errors.
 - Prefer semantic find commands for form interactions when refs are unknown.
 - Use `wait` before retrying when a page is still loading.
-- Do not run `confirm`, `deny`, `chat`, `mcp`, or `dashboard`.
+- Do not run `confirm`, `deny`, `chat`, `mcp`, `dashboard`, or `stream`.
 - If a command returns confirmation-required output, stop and ask the user to approve.
 - Use at most five commands per response.
 - Do not claim success until command output proves it."#
@@ -2816,6 +2820,13 @@ fn handle_dashboard_start(
 }
 
 fn handle_dashboard_start_background(port: u16, json_output: bool) -> Result<()> {
+    let value = dashboard_start_background_value(port)?;
+    println!("{}", format_cli_result(&value, json_output)?);
+    io::stdout().flush()?;
+    Ok(())
+}
+
+fn dashboard_start_background_value(port: u16) -> Result<Value> {
     let status = dashboard_lifecycle_status_value()?;
     if status["dashboard"]["running"].as_bool() == Some(true) {
         let mut value = status;
@@ -2824,8 +2835,7 @@ fn handle_dashboard_start_background(port: u16, json_output: bool) -> Result<()>
             "pire-browser dashboard already running on {}",
             value["dashboard"]["url"].as_str().unwrap_or("")
         ));
-        println!("{}", format_cli_result(&value, json_output)?);
-        return Ok(());
+        return Ok(value);
     }
 
     let state_path = dashboard_state_path()?;
@@ -2867,9 +2877,7 @@ fn handle_dashboard_start_background(port: u16, json_output: bool) -> Result<()>
         "pire-browser dashboard listening on {} in the background. Stop it with `pire-browser dashboard stop`.",
         value["dashboard"]["url"].as_str().unwrap_or("")
     ));
-    println!("{}", format_cli_result(&value, json_output)?);
-    io::stdout().flush()?;
-    Ok(())
+    Ok(value)
 }
 
 fn spawn_dashboard_worker(port: u16, log_path: &Path, err_path: &Path) -> Result<Option<u32>> {
@@ -2900,7 +2908,7 @@ fn spawn_dashboard_worker(port: u16, log_path: &Path, err_path: &Path) -> Result
         command.creation_flags(dashboard_worker_creation_flags());
         let child = command
             .spawn()
-            .context("failed to spawn detached background dashboard worker")?;
+            .context("failed to spawn background dashboard worker")?;
         Ok(Some(child.id()))
     }
     #[cfg(not(windows))]
@@ -2932,10 +2940,7 @@ fn spawn_dashboard_worker(port: u16, log_path: &Path, err_path: &Path) -> Result
 
 #[cfg(windows)]
 fn dashboard_worker_creation_flags() -> u32 {
-    DASHBOARD_DETACHED_PROCESS
-        | DASHBOARD_CREATE_NEW_PROCESS_GROUP
-        | DASHBOARD_CREATE_NO_WINDOW
-        | DASHBOARD_CREATE_BREAKAWAY_FROM_JOB
+    DASHBOARD_DETACHED_PROCESS | DASHBOARD_CREATE_NEW_PROCESS_GROUP | DASHBOARD_CREATE_NO_WINDOW
 }
 
 fn wait_for_background_dashboard(
@@ -3135,6 +3140,13 @@ fn dashboard_lifecycle_status_value() -> Result<Value> {
 }
 
 fn handle_dashboard_stop(json_output: bool) -> Result<()> {
+    let value = dashboard_stop_value()?;
+    println!("{}", format_cli_result(&value, json_output)?);
+    io::stdout().flush()?;
+    Ok(())
+}
+
+fn dashboard_stop_value() -> Result<Value> {
     let status = dashboard_lifecycle_status_value()?;
     let running = status["dashboard"]["running"].as_bool() == Some(true);
     let pid = dashboard_state_pid(&status);
@@ -3185,9 +3197,90 @@ fn handle_dashboard_stop(json_output: bool) -> Result<()> {
     if !warnings.is_empty() {
         value["warnings"] = json!(warnings);
     }
+    Ok(value)
+}
+
+fn handle_stream(action: StreamAction, port: u16, json_output: bool) -> Result<()> {
+    let value = match action {
+        StreamAction::Enable => stream_enable_value(port)?,
+        StreamAction::Status => stream_status_value()?,
+        StreamAction::Disable => stream_disable_value()?,
+    };
     println!("{}", format_cli_result(&value, json_output)?);
     io::stdout().flush()?;
     Ok(())
+}
+
+fn stream_enable_value(port: u16) -> Result<Value> {
+    let dashboard = dashboard_start_background_value(port)?;
+    let mut value = stream_value_from_dashboard(dashboard);
+    let url = value["stream"]["dashboardUrl"].as_str().unwrap_or("");
+    value["text"] = json!(format!(
+        "Enabled pire-browser stream preview via dashboard polling on {url}.\nWarning [STREAM_WEBSOCKET_UNAVAILABLE]: Full WebSocket viewport streaming is not implemented in the Firefox backend yet."
+    ));
+    value["warnings"] = json!([stream_websocket_gap_warning()]);
+    Ok(value)
+}
+
+fn stream_status_value() -> Result<Value> {
+    let dashboard = dashboard_lifecycle_status_value()?;
+    let mut value = stream_value_from_dashboard(dashboard);
+    let enabled = value["stream"]["enabled"].as_bool() == Some(true);
+    value["text"] = if enabled {
+        json!(format!(
+            "pire-browser stream preview is enabled via dashboard polling on {}.",
+            value["stream"]["dashboardUrl"].as_str().unwrap_or("")
+        ))
+    } else {
+        json!(
+            "pire-browser stream preview is disabled. Run `pire-browser stream enable` to start the dashboard-backed preview service."
+        )
+    };
+    Ok(value)
+}
+
+fn stream_disable_value() -> Result<Value> {
+    let dashboard = dashboard_stop_value()?;
+    let mut value = stream_value_from_dashboard(dashboard);
+    value["text"] = json!("Disabled pire-browser stream preview.");
+    Ok(value)
+}
+
+fn stream_value_from_dashboard(dashboard_value: Value) -> Value {
+    let dashboard = dashboard_value
+        .get("dashboard")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let running = dashboard["running"].as_bool() == Some(true);
+    let dashboard_url = if running {
+        dashboard.get("url").cloned().unwrap_or(Value::Null)
+    } else {
+        Value::Null
+    };
+    json!({
+        "stream": {
+            "enabled": running,
+            "status": if running { "enabled" } else { "disabled" },
+            "transport": if running { "dashboard-http-polling" } else { "none" },
+            "dashboardUrl": dashboard_url,
+            "webSocketStreaming": false,
+            "webSocketUrl": Value::Null,
+            "liveViewport": true,
+            "liveViewportKind": "polling-screenshot-preview",
+            "readOnlyViewportPreview": true,
+            "activityFeed": true,
+            "note": "Firefox backend currently provides dashboard HTTP polling for viewport preview; full agent-browser WebSocket frame streaming is not implemented yet."
+        },
+        "dashboard": dashboard
+    })
+}
+
+fn stream_websocket_gap_warning() -> Value {
+    json!({
+        "code": "STREAM_WEBSOCKET_UNAVAILABLE",
+        "feature": "stream",
+        "message": "Firefox backend exposes dashboard HTTP polling preview; full WebSocket viewport streaming is not implemented yet."
+    })
 }
 
 fn wait_until_dashboard_stopped(port: u16, timeout: Duration) -> bool {
@@ -10773,17 +10866,37 @@ mod tests {
         assert_eq!(dashboard_state_pid(&value), Some(1234));
     }
 
+    #[test]
+    fn stream_value_reports_dashboard_polling_transport() {
+        let dashboard = dashboard_process_value(9223, "background", 1234, None);
+        let value = stream_value_from_dashboard(dashboard);
+        assert_eq!(value["stream"]["enabled"], json!(true));
+        assert_eq!(
+            value["stream"]["transport"],
+            json!("dashboard-http-polling")
+        );
+        assert_eq!(
+            value["stream"]["dashboardUrl"],
+            json!("http://127.0.0.1:9223")
+        );
+        assert_eq!(value["stream"]["webSocketStreaming"], json!(false));
+        assert_eq!(
+            value["stream"]["liveViewportKind"],
+            json!("polling-screenshot-preview")
+        );
+    }
+
     #[cfg(windows)]
     #[test]
-    fn dashboard_worker_creation_flags_break_away_from_runner_jobs() {
+    fn dashboard_worker_creation_flags_detach_without_breakaway() {
         let flags = dashboard_worker_creation_flags();
-        assert_eq!(
-            flags & DASHBOARD_CREATE_BREAKAWAY_FROM_JOB,
-            DASHBOARD_CREATE_BREAKAWAY_FROM_JOB
-        );
         assert_eq!(
             flags & DASHBOARD_DETACHED_PROCESS,
             DASHBOARD_DETACHED_PROCESS
+        );
+        assert_eq!(
+            flags & DASHBOARD_CREATE_NEW_PROCESS_GROUP,
+            DASHBOARD_CREATE_NEW_PROCESS_GROUP
         );
         assert_eq!(
             flags & DASHBOARD_CREATE_NO_WINDOW,
@@ -10793,12 +10906,6 @@ mod tests {
 
     #[test]
     fn formats_documented_not_available_text() {
-        let result = local_not_available_result(&s(&["stream", "status"]), false, &[])
-            .unwrap()
-            .unwrap();
-        assert!(result.contains("NotAvailableError"));
-        assert!(result.contains("not supported"));
-
         let upgrade = local_not_available_result(&s(&["upgrade"]), false, &[])
             .unwrap()
             .unwrap();
@@ -10808,7 +10915,7 @@ mod tests {
 
     #[test]
     fn loads_documented_not_available_roots_from_public_list() {
-        assert!(DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"stream"));
+        assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"stream"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"dashboard"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"download"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"diff"));
@@ -10864,6 +10971,7 @@ mod tests {
             "skills",
             "skill",
             "dashboard",
+            "stream",
         ] {
             assert!(local_not_available_result(&s(&[root]), false, &[])
                 .unwrap()
@@ -11563,6 +11671,10 @@ mod tests {
             .to_string()
             .contains("chat_unsafe_command"));
         assert!(run_chat_child_command(&config, "confirm c_123")
+            .unwrap_err()
+            .to_string()
+            .contains("chat_unsafe_command"));
+        assert!(run_chat_child_command(&config, "stream enable")
             .unwrap_err()
             .to_string()
             .contains("chat_unsafe_command"));

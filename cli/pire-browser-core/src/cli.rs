@@ -119,6 +119,11 @@ pub enum LocalCommand {
         background: bool,
         background_worker: bool,
     },
+    Stream {
+        action: StreamAction,
+        port: u16,
+        json: bool,
+    },
     ActivityList {
         json: bool,
         limit: usize,
@@ -315,6 +320,13 @@ pub enum DashboardAction {
     Start,
     Status,
     Stop,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamAction {
+    Enable,
+    Status,
+    Disable,
 }
 
 const GLOBAL_VALUE_FLAGS: &[&str] = &[
@@ -1292,6 +1304,56 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             json: json_output,
             background,
             background_worker,
+        });
+    }
+
+    if command == "stream" {
+        args.remove(0);
+        remove_json_flags(&mut args, &mut json_output);
+        let action = match args.first().map(String::as_str) {
+            Some("enable") => {
+                args.remove(0);
+                StreamAction::Enable
+            }
+            Some("status") => {
+                args.remove(0);
+                StreamAction::Status
+            }
+            Some("disable") => {
+                args.remove(0);
+                StreamAction::Disable
+            }
+            _ => StreamAction::Status,
+        };
+        remove_json_flags(&mut args, &mut json_output);
+        let mut port = 4848;
+        let mut i = 0;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--json" => {
+                    json_output = true;
+                }
+                "--port" if action == StreamAction::Enable => {
+                    i += 1;
+                    let Some(value) = args.get(i) else {
+                        bail!("--port requires a port number");
+                    };
+                    port = value
+                        .parse::<u16>()
+                        .map_err(|_| anyhow::anyhow!("--port must be a TCP port number"))?;
+                }
+                "--port" => bail!("stream {action:?} does not support --port"),
+                other if other.starts_with('-') => bail!("unsupported stream option: {other}"),
+                other => {
+                    bail!("unsupported stream command: {other}; try `pire-browser stream status`")
+                }
+            }
+            i += 1;
+        }
+        return Ok(LocalCommand::Stream {
+            action,
+            port,
+            json: json_output,
         });
     }
 
@@ -2360,6 +2422,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "setup" => SETUP_HELP,
         "launch" => LAUNCH_HELP,
         "dashboard" => DASHBOARD_HELP,
+        "stream" | "streaming" => STREAM_HELP,
         "activity" => ACTIVITY_HELP,
         "mcp" => MCP_HELP,
         "skills" | "skill" => SKILLS_HELP,
@@ -2388,6 +2451,8 @@ Common commands:
   dashboard start [--port 4848] [--background]
                                   Start a local status/session/activity dashboard
   dashboard status|stop           Inspect or stop the background dashboard
+  stream enable [--port 4848]     Start dashboard-backed live preview stream
+  stream status|disable           Inspect or stop dashboard-backed preview stream
   activity list [--json]          Show recent redacted CLI command activity
   chat "open example.com and summarize it"
                                   Natural-language browser control via AI Gateway
@@ -3562,6 +3627,23 @@ activity, and current capability notes. The preview polls Firefox
 visible-viewport screenshots. Dashboard chat uses the same bounded command loop
 as `pire-browser chat` and is non-streaming. WebSocket viewport streaming,
 remote input events, and native WebM video are not implemented.
+"##;
+
+const STREAM_HELP: &str = r##"
+Usage:
+  pire-browser stream enable [--port 4848] [--json]
+  pire-browser stream status [--json]
+  pire-browser stream disable [--json]
+
+Agent-browser-style stream controls for the Firefox backend. `stream enable`
+starts the same local dashboard server in the background and exposes a live
+read-only viewport preview through dashboard HTTP polling. `stream status`
+reports the dashboard URL, transport, and live preview capabilities. `stream
+disable` stops that background dashboard process.
+
+This is real observability for agent workflows, but it is not full
+agent-browser WebSocket frame streaming yet: `webSocketStreaming` is reported
+as false and `liveViewportKind` is `polling-screenshot-preview`.
 "##;
 
 const MCP_HELP: &str = r##"
@@ -5196,6 +5278,45 @@ mod tests {
     }
 
     #[test]
+    fn parses_stream_command() {
+        assert_eq!(
+            parse_cli_args(&s(&["stream"])).unwrap(),
+            LocalCommand::Stream {
+                action: StreamAction::Status,
+                port: 4848,
+                json: false
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["stream", "status", "--json"])).unwrap(),
+            LocalCommand::Stream {
+                action: StreamAction::Status,
+                port: 4848,
+                json: true
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["--json", "stream", "enable", "--port", "9223"])).unwrap(),
+            LocalCommand::Stream {
+                action: StreamAction::Enable,
+                port: 9223,
+                json: true
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["stream", "disable"])).unwrap(),
+            LocalCommand::Stream {
+                action: StreamAction::Disable,
+                port: 4848,
+                json: false
+            }
+        );
+        assert!(parse_cli_args(&s(&["stream", "status", "--port", "9223"])).is_err());
+        assert!(parse_cli_args(&s(&["stream", "enable", "--port", "nope"])).is_err());
+        assert!(parse_cli_args(&s(&["stream", "restart"])).is_err());
+    }
+
+    #[test]
     fn parses_activity_command() {
         assert_eq!(
             parse_cli_args(&s(&["activity"])).unwrap(),
@@ -5551,6 +5672,8 @@ mod tests {
         assert!(text.contains("network requests"));
         assert!(text.contains("network route"));
         assert!(text.contains("network har"));
+        assert!(text.contains("stream enable [--port 4848]"));
+        assert!(text.contains("stream status|disable"));
         assert!(text.contains("diff snapshot"));
         assert!(text.contains("highlight '#submit'"));
         assert!(text.contains("device \"iPhone 14\""));
@@ -5690,6 +5813,12 @@ mod tests {
         assert!(help_text(Some("network"))
             .unwrap()
             .contains("network unroute [pattern-or-route-id]"));
+        assert!(help_text(Some("stream"))
+            .unwrap()
+            .contains("dashboard HTTP polling"));
+        assert!(help_text(Some("stream"))
+            .unwrap()
+            .contains("webSocketStreaming"));
         assert!(help_text(Some("trace"))
             .unwrap()
             .contains("pire-browser trace stop [output.json]"));
@@ -5869,6 +5998,9 @@ mod tests {
         assert!(help_text(Some("dashboard"))
             .unwrap()
             .contains("non-streaming"));
+        assert!(help_text(Some("streaming"))
+            .unwrap()
+            .contains("agent-browser WebSocket frame streaming"));
         assert!(help_text(Some("mcp")).unwrap().contains("smallest tools"));
         assert!(help_text(Some("mcp")).unwrap().contains("core,network"));
         assert!(help_text(Some("mcp")).unwrap().contains("network"));

@@ -301,6 +301,9 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_record_status"
         | "pire_browser_record_stop"
         | "pire_browser_vitals" => PROFILE_DEBUG | PROFILE_REACT,
+        "pire_browser_stream_enable"
+        | "pire_browser_stream_status"
+        | "pire_browser_stream_disable" => PROFILE_DEBUG,
         "pire_browser_react_tree"
         | "pire_browser_react_inspect"
         | "pire_browser_react_renders_start"
@@ -436,7 +439,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop for screenshot-sequence evidence, not native WebM video or live streaming. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, Firefox profile import, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed HTTP polling live preview; it is not full WebSocket frame streaming yet. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, Firefox profile import, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -1195,6 +1198,25 @@ fn tool_command_args(
             {
                 args.push(output_dir);
             }
+        }
+        (_, "pire_browser_stream_enable") => {
+            args.push("stream".to_string());
+            args.push("enable".to_string());
+            if let Some(port) = optional_u64(object, "port")? {
+                if port > u16::MAX as u64 {
+                    return Err("port must be a TCP port number".to_string());
+                }
+                args.push("--port".to_string());
+                args.push(port.to_string());
+            }
+        }
+        (_, "pire_browser_stream_status") => {
+            args.push("stream".to_string());
+            args.push("status".to_string());
+        }
+        (_, "pire_browser_stream_disable") => {
+            args.push("stream".to_string());
+            args.push("disable".to_string());
         }
         (_, "pire_browser_react_tree") => {
             args.push("react".to_string());
@@ -3127,6 +3149,27 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_stream_enable",
+            "Enable stream preview",
+            "Start the dashboard-backed live preview stream service. This uses HTTP polling, not WebSocket frame streaming.",
+            tool_schema(vec![("port", number_prop("Optional dashboard TCP port; 0 lets the OS choose."))], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_stream_status",
+            "Stream status",
+            "Report dashboard-backed stream preview status and capability flags.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
+            "pire_browser_stream_disable",
+            "Disable stream preview",
+            "Stop the dashboard-backed stream preview service.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
             "pire_browser_react_tree",
             "React tree",
             "Show the active page's best-effort React component tree from Firefox Fiber data.",
@@ -4697,6 +4740,15 @@ mod tests {
             .any(|tool| tool["name"] == "pire_browser_record_stop"));
         assert!(debug
             .iter()
+            .any(|tool| tool["name"] == "pire_browser_stream_enable"));
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_stream_status"));
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_stream_disable"));
+        assert!(debug
+            .iter()
             .any(|tool| tool["name"] == "pire_browser_session_list"));
         assert!(debug
             .iter()
@@ -5995,6 +6047,38 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "record", "stop", "recording"]);
+
+        let args = tool_command_args(
+            "pire_browser_stream_enable",
+            &json!({ "port": 9223 }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "stream", "enable", "--port", "9223"]);
+
+        let args = tool_command_args(
+            "pire_browser_stream_status",
+            &json!({}),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "stream", "status"]);
+
+        let args = tool_command_args(
+            "pire_browser_stream_disable",
+            &json!({}),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "stream", "disable"]);
+
+        assert!(tool_command_args(
+            "pire_browser_stream_enable",
+            &json!({ "port": 70000 }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap_err()
+        .contains("port must be a TCP port number"));
 
         let args = tool_command_args(
             "pire_browser_react_tree",

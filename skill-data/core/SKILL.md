@@ -286,6 +286,9 @@ pire-browser dashboard start --port 4848
 pire-browser dashboard start --port 0 --json
 pire-browser dashboard status --json
 pire-browser dashboard stop
+pire-browser stream enable
+pire-browser stream status --json
+pire-browser stream disable
 ```
 
 The dashboard is a localhost server. Without `--background`, stop it with
@@ -297,13 +300,17 @@ The preview polls visible-viewport screenshots from the Firefox extension. For
 scripts, use:
 
 ```bash
+pire-browser stream status --json
 pire-browser activity list --json
 ```
 
 Activity shows what commands ran; it does not prove page success. The dashboard
-preview is read-only and does not provide WebSocket viewport streaming, remote
-input events, or native WebM video, so keep using `snapshot -i`, `screenshot`,
-`record start` / `record stop`, `status`, and `doctor` as the primary
+preview is read-only. `stream enable/status/disable` is the
+agent-browser-style lifecycle surface for that same dashboard-backed preview
+service and reports `transport: "dashboard-http-polling"` with
+`webSocketStreaming: false`; it is not full WebSocket frame streaming, remote
+input, or native WebM video. Keep using `snapshot -i`, `screenshot`, `record
+start` / `record stop`, `status`, and `doctor` as the primary
 machine-readable evidence path. `record` is screenshot-sequence evidence, not
 native WebM video.
 
@@ -653,7 +660,7 @@ evidence, eval, status, confirmation follow-up, basic tabs, profile discovery,
 close, and skill guidance. Add comma-separated profiles only when needed:
 `network` for request diagnostics/routes/HAR, `state` for cookies/storage/auth
 and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair,
-user-requested package upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/trace/profiler/record/vitals,
+user-requested package upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/trace/profiler/record/stream/vitals,
 `tabs` for tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
 helpers including click-equivalent `pire_browser_tap` and touch-direction page-scroll `pire_browser_swipe`. `react` exposes best-effort typed React Fiber tools
 (`pire_browser_react_tree`, `pire_browser_react_inspect`, `pire_browser_react_renders_start`, `pire_browser_react_renders_stop`, `pire_browser_react_suspense`) plus vitals. Use `all`
@@ -675,7 +682,11 @@ headers or pre-navigation init scripts. Prefer `pire_browser_open` for normal
 launch/navigation; use `pire_browser_tap` only when an agent-browser-style tap
 recipe means click-equivalent page interaction, and `pire_browser_swipe` only
 when a mobile-style recipe means touch-direction page scroll. Add the `debug` profile and use `pire_browser_launch` only
-for lower-level launch diagnostics. Use debug-profile `pire_browser_install`
+for lower-level launch diagnostics. Use debug-profile
+`pire_browser_stream_enable`, `pire_browser_stream_status`, and
+`pire_browser_stream_disable` when the user wants a dashboard-backed live
+preview service; it is HTTP polling, not full WebSocket frame streaming. Use
+debug-profile `pire_browser_install`
 only when the user wants explicit native-host setup or repair, and
 `pire_browser_upgrade` only when the user wants package update. Use
 debug-profile `pire_browser_batch` only for short command sequences where later

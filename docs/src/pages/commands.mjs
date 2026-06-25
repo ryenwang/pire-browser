@@ -244,12 +244,14 @@ pire-browser snapshot -i`),
   p("Dialog support is Firefox WebExtension mediated. <code>alert</code>, <code>confirm</code>, and <code>prompt</code> are shimmed in the page context so they do not hard-block the agent loop. <code>dialog accept [text]</code> configures the next shimmed confirm or prompt to accept, using text as the prompt return value; <code>dialog dismiss</code> configures the next shimmed confirm or prompt to cancel. Observed dialogs surface as <code>PAGE_DIALOG</code> warnings. Re-run <code>snapshot -i</code> after handling a dialog before acting on refs."),
 
   h2("Streaming", "streaming"),
-  code(`# The dashboard provides live read-only polling preview.
-pire-browser dashboard start
-
-# Runtime WebSocket viewport streaming is not available in the current Firefox backend.
+  code(`# Dashboard-backed live read-only preview.
+pire-browser stream enable
 pire-browser stream status
-# Use record start/stop when a screenshot-sequence evidence bundle is enough.`, "bash", { notAvailable: true }),
+pire-browser stream disable
+
+# Full WebSocket viewport streaming is not available in the current Firefox backend.
+# Use record start/stop when a screenshot-sequence evidence bundle is enough.`, "bash"),
+  p("<code>stream enable</code> starts the dashboard-backed preview service in the background. <code>stream status --json</code> reports <code>transport: \"dashboard-http-polling\"</code>, <code>liveViewportKind: \"polling-screenshot-preview\"</code>, and <code>webSocketStreaming: false</code>."),
 
   h2("Debug", "debug"),
   statusNote("debugging"),
@@ -268,7 +270,7 @@ pire-browser profiler stop profile.json
 pire-browser record start
 pire-browser record status
 pire-browser record stop recording-dir`),
-  p("Console, errors, highlight, trace bundles, profiler bundles, and screenshot-sequence recordings are active-tab Firefox diagnostics. <code>trace start</code> / <code>trace stop</code> writes a Firefox QA evidence bundle with console, page-error, network/HAR metadata, vitals, compact snapshot, and screenshot evidence. <code>profiler start</code> / <code>profiler stop</code> writes Chrome Trace Event-shaped JSON from Firefox Performance Timeline entries. <code>record start</code> / <code>record stop</code> writes bounded visible-viewport PNG frames plus <code>recording.json</code>. These are not Chrome DevTools CPU profiles, native WebM video, or live viewport streams."),
+  p("Console, errors, highlight, trace bundles, profiler bundles, stream preview controls, and screenshot-sequence recordings are active-tab Firefox diagnostics. <code>trace start</code> / <code>trace stop</code> writes a Firefox QA evidence bundle with console, page-error, network/HAR metadata, vitals, compact snapshot, and screenshot evidence. <code>profiler start</code> / <code>profiler stop</code> writes Chrome Trace Event-shaped JSON from Firefox Performance Timeline entries. <code>record start</code> / <code>record stop</code> writes bounded visible-viewport PNG frames plus <code>recording.json</code>. These are not Chrome DevTools CPU profiles, native WebM video, or full WebSocket live viewport streams."),
 
   h2("Auth vault", "auth-vault"),
   statusNote("auth"),

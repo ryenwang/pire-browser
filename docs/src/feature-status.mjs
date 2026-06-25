@@ -28,7 +28,7 @@ export const featureStatuses = {
   },
   mcp: {
     status: "available",
-    summary: "`pire-browser mcp --tools core` starts a stdio MCP server with typed tools for the default inspect-before-act workflow, including agent-browser-style split get/check tools for targeted verification, split wait tools for milliseconds, selector, text, URL, load state, and page function predicates, and action/tab/frame/mobile aliases that match common agent-browser tool names. Agent-browser-style profiles `network`, `state`, `debug`, `tabs`, `mobile`, `react`, and `all` can be selected or comma-combined to keep MCP context small while exposing broader tools on demand; `mobile` includes tap-as-click and swipe-as-scroll helpers, `state` includes typed clipboard tools, and `debug` includes lower-level launch, install/repair, user-requested package upgrade, typed batch, diagnostics, console/errors, dialogs, highlight, and vitals. The server defaults to MCP protocol `2025-11-25`, accepts older supported client protocol versions during initialization, paginates tool discovery, and marks local maintenance/context tools as non-open-world for clearer host prompts.",
+    summary: "`pire-browser mcp --tools core` starts a stdio MCP server with typed tools for the default inspect-before-act workflow, including agent-browser-style split get/check tools for targeted verification, split wait tools for milliseconds, selector, text, URL, load state, and page function predicates, and action/tab/frame/mobile aliases that match common agent-browser tool names. Agent-browser-style profiles `network`, `state`, `debug`, `tabs`, `mobile`, `react`, and `all` can be selected or comma-combined to keep MCP context small while exposing broader tools on demand; `mobile` includes tap-as-click and swipe-as-scroll helpers, `state` includes typed clipboard tools, and `debug` includes lower-level launch, install/repair, user-requested package upgrade, typed batch, diagnostics, console/errors, dialogs, highlight, stream preview controls, and vitals. The server defaults to MCP protocol `2025-11-25`, accepts older supported client protocol versions during initialization, paginates tool discovery, and marks local maintenance/context tools as non-open-world for clearer host prompts.",
     sources: ["README.md", "docs/src/pages/mcp.mjs", "cli/pire-browser-cli/src/mcp.rs", "cli/pire-browser-core/src/cli.rs"],
   },
   chat: {
@@ -78,12 +78,12 @@ export const featureStatuses = {
   },
   debugging: {
     status: "partial",
-    summary: "`console`, `errors`, `highlight`, Firefox trace QA bundles, Firefox Performance Timeline profiler bundles, screenshot-sequence recording bundles, best-effort `vitals`, best-effort React Fiber tree/inspect/render recording/Suspense, recent redacted command activity, and the local status/session/activity dashboard with live read-only polling viewport preview are available for Firefox workflows; Chrome DevTools inspect proxy, WebSocket viewport streaming, Chrome CPU profiling, and native WebM/video recording are not implemented.",
+    summary: "`console`, `errors`, `highlight`, Firefox trace QA bundles, Firefox Performance Timeline profiler bundles, screenshot-sequence recording bundles, best-effort `vitals`, best-effort React Fiber tree/inspect/render recording/Suspense, recent redacted command activity, `stream enable/status/disable`, and the local status/session/activity dashboard with live read-only polling viewport preview are available for Firefox workflows; Chrome DevTools inspect proxy, full WebSocket viewport streaming, Chrome CPU profiling, and native WebM/video recording are not implemented.",
     sources: ["README.md", "extension/src/background.ts"],
   },
   dashboard: {
     status: "partial",
-    summary: "`dashboard start` serves a localhost dashboard for install health, live sessions, managed profiles, a live read-only polling viewport preview, optional non-streaming AI Gateway chat, a bounded redacted command activity feed, and capability notes. `dashboard start --background`, `dashboard status`, and `dashboard stop` provide agent-browser-style lifecycle control. Use `record start` / `record stop` for screenshot-sequence QA evidence. WebSocket viewport streaming, streamed chat updates, dashboard-created sessions, remote input events, and native WebM/video recording are not implemented yet.",
+    summary: "`dashboard start` serves a localhost dashboard for install health, live sessions, managed profiles, a live read-only polling viewport preview, optional non-streaming AI Gateway chat, a bounded redacted command activity feed, and capability notes. `dashboard start --background`, `dashboard status`, `dashboard stop`, and `stream enable/status/disable` provide agent-browser-style lifecycle control for the dashboard-backed preview service. Use `record start` / `record stop` for screenshot-sequence QA evidence. Full WebSocket viewport streaming, streamed chat updates, dashboard-created sessions, remote input events, and native WebM/video recording are not implemented yet.",
     sources: ["README.md", "docs/src/pages/dashboard.mjs", "cli/pire-browser-cli/src/main.rs", "cli/pire-browser-core/src/cli.rs"],
   },
   dialogs: {
@@ -183,7 +183,7 @@ export const commandRootStatus = {
   state: "available",
   status: "available",
   storage: "available",
-  stream: "not_available",
+  stream: "partial",
   swipe: "best_effort",
   tab: "available",
   tabs: "available",

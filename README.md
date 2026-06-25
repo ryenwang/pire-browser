@@ -179,6 +179,9 @@ pire-browser dashboard start         # Local status/session/preview/activity das
 pire-browser dashboard start --background
 pire-browser dashboard status
 pire-browser dashboard stop
+pire-browser stream enable           # Start dashboard-backed live preview stream
+pire-browser stream status           # Inspect stream preview status/capabilities
+pire-browser stream disable          # Stop dashboard-backed stream preview
 pire-browser activity list --json    # Recent redacted command activity
 pire-browser chat "open example.com and summarize it"
 pire-browser close                   # Close targeted managed Firefox session
@@ -193,7 +196,7 @@ not native touch input or mobile browser chrome emulation. `swipe` maps touch
 direction to page scroll (`swipe up` scrolls down); use `scroll` when you want
 direct scroll direction.
 
-PDF capture is available as an image-backed visual evidence file. Natural-language chat is available through `pire-browser chat` and the dashboard AI Chat panel when `AI_GATEWAY_API_KEY` is set; both run the same bounded command-plan loop through the normal CLI command paths. CDP connect and WebSocket viewport streaming are not implemented in the current Firefox backend. The dashboard does provide a live read-only viewport preview by polling visible-viewport screenshots.
+PDF capture is available as an image-backed visual evidence file. Natural-language chat is available through `pire-browser chat` and the dashboard AI Chat panel when `AI_GATEWAY_API_KEY` is set; both run the same bounded command-plan loop through the normal CLI command paths. CDP connect and full WebSocket viewport streaming are not implemented in the current Firefox backend. `stream enable/status/disable` provides an agent-browser-style control surface for the dashboard-backed live read-only preview, which polls visible-viewport screenshots.
 
 ### Read Agent-Friendly Text
 
@@ -637,7 +640,8 @@ for pre-navigation setup. Prefer `pire_browser_open` for normal
 launch/navigation; the `debug` profile exposes `pire_browser_launch` as a
 narrower lower-level launch tool, `pire_browser_install` for explicit
 native-host setup or repair, `pire_browser_upgrade` for user-requested package upgrades,
-and `pire_browser_batch` for short command sequences. Pass `withDeps: true` to
+`pire_browser_stream_enable/status/disable` for dashboard-backed live preview
+control, and `pire_browser_batch` for short command sequences. Pass `withDeps: true` to
 `pire_browser_install` only when following an agent-browser-style dependency
 recipe; it may install Firefox through winget/Chocolatey on Windows or Homebrew
 on macOS if Firefox is missing, and reports non-Snap/non-Flatpak guidance on
@@ -648,7 +652,7 @@ Add comma-separated profiles only when needed: `network`, `state`, `debug`,
 `pire_browser_profiles_import` when the user wants existing Firefox login state
 copied into a managed profile. Use `debug` for lower-level launch,
 install/repair, upgrade, batch, doctor/activity diagnostics,
-console/errors/dialogs/highlight/trace/profiler/record/vitals, and
+console/errors/dialogs/highlight/trace/profiler/record/stream/vitals, and
 session/profile inspection. Use `react` for best-effort typed React Fiber
 inspection (`pire_browser_react_tree`, `pire_browser_react_inspect`,
 `pire_browser_react_renders_start`, `pire_browser_react_renders_stop`,
@@ -940,7 +944,7 @@ treated as one instruction. `AI_GATEWAY_MODEL` overrides the default
 `https://ai-gateway.vercel.sh`. Chat child commands inherit important global
 policy/session flags such as `--allowed-domains`, `--confirm-actions`,
 `--action-policy`, `--profile`, and `--session-name`. The chat loop refuses to
-run `confirm`, `deny`, `chat`, `mcp`, or `dashboard` automatically.
+run `confirm`, `deny`, `chat`, `mcp`, `dashboard`, or `stream` automatically.
 
 ## Observability Dashboard
 
@@ -956,6 +960,9 @@ pire-browser dashboard start --port 4848
 pire-browser dashboard start --port 0 --json
 pire-browser dashboard status --json
 pire-browser dashboard stop
+pire-browser stream enable
+pire-browser stream status --json
+pire-browser stream disable
 ```
 
 Open the printed `http://127.0.0.1:<port>` URL in a browser. Without
@@ -973,10 +980,13 @@ pire-browser activity list --limit 50 --json
 ```
 
 The dashboard polls visible-viewport screenshots for the selected live session
-to provide a live read-only preview. It does not provide WebSocket streaming,
-remote input events, or native WebM video. Use snapshots, screenshots,
-screenshot-sequence recording, and diagnostics commands for visual evidence,
-page-state verification, and scriptable observability:
+to provide a live read-only preview. `stream enable/status/disable` is the
+agent-browser-style lifecycle surface for that same dashboard-backed preview,
+and `stream status --json` reports the transport as `dashboard-http-polling`
+with `webSocketStreaming: false`. It does not provide full WebSocket frame
+streaming, remote input events, or native WebM video. Use snapshots,
+screenshots, screenshot-sequence recording, and diagnostics commands for visual
+evidence, page-state verification, and scriptable observability:
 
 ```bash
 pire-browser record start
@@ -1156,17 +1166,26 @@ Chrome DevTools Protocol mode is not available. `pire-browser` commands are medi
 
 ## Streaming And Recording
 
-Runtime WebSocket viewport streaming is not available. Use the dashboard live
-read-only preview, screenshots, screenshot-sequence recording, and status output
-for observable workflows:
+`stream enable` starts the dashboard-backed live read-only preview service in
+the background. It gives agents and humans an agent-browser-style lifecycle
+surface for observability while honestly reporting the current Firefox transport:
+dashboard HTTP polling, not full WebSocket frame streaming.
 
 ```bash
+pire-browser stream enable
+pire-browser stream status --json
+pire-browser stream disable
 pire-browser screenshot page.png
 pire-browser record start
 pire-browser record stop recording-dir
 pire-browser status --json
 pire-browser session list --json
 ```
+
+Use the `stream` commands when you want a stable local dashboard URL and
+machine-readable capability fields such as `webSocketStreaming: false`,
+`transport: "dashboard-http-polling"`, and
+`liveViewportKind: "polling-screenshot-preview"`.
 
 `record start` captures bounded visible-viewport PNG frames from the active
 Firefox tab. `record stop [output-dir]` writes the frames plus `recording.json`.

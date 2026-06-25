@@ -17,7 +17,7 @@ pire-browser mcp --tools all`),
       ["core", "Open, read, inspect, semantic find, interact, typed get/check verification, typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff evidence, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and skill guidance."],
       ["network", "Headers, credentials, offline toggle, network request inspection with redacted request/response headers, metadata HAR, and route/unroute controls."],
       ["state", "Cookies, storage, encrypted auth vault helpers, plaintext or opt-in encrypted state files, sessions, profiles including Firefox profile import, downloads/uploads, typed clipboard tools, and skills."],
-      ["debug", "Lower-level launch, explicit install/repair, user-requested package upgrade, batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, Firefox trace bundles, screenshot-sequence recording bundles, best-effort vitals, diffs, status, sessions/profiles, and close."],
+      ["debug", "Lower-level launch, explicit install/repair, user-requested package upgrade, batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, Firefox trace bundles, screenshot-sequence recording bundles, dashboard-backed stream preview controls, best-effort vitals, diffs, status, sessions/profiles, and close."],
       ["tabs", "Back/forward/reload, tab list/new/select/label/close, iframe selection, JavaScript dialogs, windows, and close."],
       ["mobile", "Viewport, device preset, geolocation, media/offline settings, keyboard, tap-as-click, swipe-as-scroll, mouse, scroll, and screenshot helpers."],
       ["react", "Best-effort Firefox React Fiber tree/inspect/render recording/Suspense tools plus vitals."],
@@ -68,7 +68,7 @@ pire-browser mcp --tools all`),
       ["pire_browser_add_init_script / remove_init_script", "Register or remove document-start scripts for future navigations in the managed session."],
       ["pire_browser_screenshot / pdf", "Capture screenshot or image-backed PDF evidence."],
       ["pire_browser_diff_snapshot / pire_browser_diff_screenshot / pire_browser_diff_url", "Compare snapshot text, screenshot pixels, or two URL states for QA evidence."],
-      ["pire_browser_console / errors / dialog_* / highlight / trace_* / profiler_* / record_* / vitals", "Inspect page logs, errors, JavaScript dialogs, visual targets, Firefox trace QA bundles, Performance Timeline profiler bundles, screenshot-sequence recording bundles, and best-effort performance signals."],
+      ["pire_browser_console / errors / dialog_* / highlight / trace_* / profiler_* / record_* / stream_* / vitals", "Inspect page logs, errors, JavaScript dialogs, visual targets, Firefox trace QA bundles, Performance Timeline profiler bundles, screenshot-sequence recording bundles, dashboard-backed HTTP polling stream preview controls, and best-effort performance signals."],
       ["pire_browser_doctor / activity_list", "Run install diagnostics or inspect recent redacted command activity."],
       ["pire_browser_set_viewport / pire_browser_device / pire_browser_set_device / pire_browser_set_geo / pire_browser_set_headers / pire_browser_set_credentials / pire_browser_set_media / pire_browser_set_offline", "Apply Firefox-backed settings and best-effort emulation controls. Prefer pire_browser_device for agent-browser-style device presets; set_device remains compatible."],
       ["pire_browser_cookies_* / pire_browser_storage_*", "Read, set, clear, or import active URL cookies and active-origin Web Storage."],
@@ -100,11 +100,12 @@ pire-browser mcp --tools all`),
 9. Use console/errors/dialog/highlight/vitals/network tools when a page is stuck, blocked, or needs evidence.
 10. Use auth tools only with user-approved credentials. For external vaults, prefer pire_browser_auth_login with credentialProvider/item/url fields over extraArgs, then verify login with a fresh snapshot, URL, or page state.
 11. Use cookies/storage/state tools only when needed for user-approved state debugging or auth handoff; cookie import payloads and values may contain secrets.
-12. Use debug-profile pire_browser_install only when the user wants explicit native-host setup or repair; pass withDeps only for agent-browser-style dependency setup. On Windows/macOS it may install Firefox when missing; on Linux it reports non-Snap/non-Flatpak guidance. Use pire_browser_upgrade only when the user wants package update.
-13. Keep pire_browser_status and plain pire_browser_doctor observational.
-14. Use debug-profile pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output.
-15. Call the typed wait tool that matches the condition: wait_ms, wait_for_selector, wait_for_text, wait_for_url, wait_for_load, or wait_for_function. Use pire_browser_wait only for compatibility.
-16. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
+12. Use debug-profile pire_browser_stream_enable/status/disable when the user wants a dashboard-backed live preview service. It reports dashboard HTTP polling and not full WebSocket frame streaming.
+13. Use debug-profile pire_browser_install only when the user wants explicit native-host setup or repair; pass withDeps only for agent-browser-style dependency setup. On Windows/macOS it may install Firefox when missing; on Linux it reports non-Snap/non-Flatpak guidance. Use pire_browser_upgrade only when the user wants package update.
+14. Keep pire_browser_status and plain pire_browser_doctor observational.
+15. Use debug-profile pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output.
+16. Call the typed wait tool that matches the condition: wait_ms, wait_for_selector, wait_for_text, wait_for_url, wait_for_load, or wait_for_function. Use pire_browser_wait only for compatibility.
+17. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
   p("MCP tool calls return text content for compatibility and structured command output when the underlying CLI emits JSON. If a tool is missing from the active profile, restart the MCP server with <code>--tools all</code> or a comma-separated profile list such as <code>--tools core,network</code>."),
 ];
 
