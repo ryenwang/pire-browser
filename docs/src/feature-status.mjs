@@ -73,12 +73,12 @@ export const featureStatuses = {
   },
   debugging: {
     status: "partial",
-    summary: "`console`, `errors`, `highlight`, Firefox trace QA bundles, screenshot-sequence recording bundles, best-effort `vitals`, best-effort React Fiber tree/inspect, recent redacted command activity, and the local status/session/activity dashboard with read-only still viewport preview are available for Firefox workflows; Chrome DevTools inspect proxy, live viewport streaming, profiler, React render profiling/Suspense detail, and native WebM/video recording are not implemented.",
+    summary: "`console`, `errors`, `highlight`, Firefox trace QA bundles, screenshot-sequence recording bundles, best-effort `vitals`, best-effort React Fiber tree/inspect, recent redacted command activity, and the local status/session/activity dashboard with live read-only polling viewport preview are available for Firefox workflows; Chrome DevTools inspect proxy, WebSocket viewport streaming, profiler, React render profiling/Suspense detail, and native WebM/video recording are not implemented.",
     sources: ["README.md", "extension/src/background.ts"],
   },
   dashboard: {
     status: "partial",
-    summary: "`dashboard start` serves a localhost dashboard for install health, live sessions, managed profiles, a read-only still viewport preview, a bounded redacted command activity feed, and capability notes. `dashboard start --background`, `dashboard status`, and `dashboard stop` provide agent-browser-style lifecycle control. Use `record start` / `record stop` for screenshot-sequence QA evidence. Live viewport streaming, dashboard-created sessions, and native WebM/video recording are not implemented yet.",
+    summary: "`dashboard start` serves a localhost dashboard for install health, live sessions, managed profiles, a live read-only polling viewport preview, a bounded redacted command activity feed, and capability notes. `dashboard start --background`, `dashboard status`, and `dashboard stop` provide agent-browser-style lifecycle control. Use `record start` / `record stop` for screenshot-sequence QA evidence. WebSocket viewport streaming, dashboard-created sessions, remote input events, and native WebM/video recording are not implemented yet.",
     sources: ["README.md", "docs/src/pages/dashboard.mjs", "cli/pire-browser-cli/src/main.rs", "cli/pire-browser-core/src/cli.rs"],
   },
   dialogs: {

@@ -2610,7 +2610,9 @@ fn dashboard_status_value() -> Result<Value> {
 fn dashboard_capabilities_value() -> Value {
     json!({
         "statusDashboard": true,
-        "liveViewport": false,
+        "liveViewport": true,
+        "liveViewportKind": "polling-screenshot-preview",
+        "liveViewportIntervalMs": 1500,
         "webSocketStreaming": false,
         "readOnlyViewportPreview": true,
         "screenshotSequenceRecording": true,
@@ -2664,7 +2666,8 @@ fn dashboard_preview_value(session_id: Option<&str>) -> Result<Value> {
             "dataUrl": format!("data:image/png;base64,{encoded}"),
             "activePage": active_page,
             "source": "firefox-webextension-visible-viewport-screenshot",
-            "liveViewport": false,
+            "liveViewport": true,
+            "liveViewportKind": "polling-screenshot-preview",
             "webSocketStreaming": false,
         },
         "screenshot": {
@@ -2723,17 +2726,20 @@ fn dashboard_index_html() -> String {
       <div class="panel"><h2>Live Sessions</h2><div class="value" id="sessions-count">-</div></div>
       <div class="panel"><h2>Profiles</h2><div class="value" id="profiles-count">-</div></div>
       <div class="panel"><h2>Activity</h2><div class="value" id="activity-count">-</div></div>
-      <div class="panel"><h2>Streaming</h2><div class="value warn">Not yet</div></div>
+      <div class="panel"><h2>Live Preview</h2><div class="value ok" id="preview-status">On</div></div>
     </section>
     <section class="stack">
       <div class="panel">
         <h2>Viewport Preview</h2>
         <div class="preview-wrap">
           <div class="preview-bar">
-            <div class="meta" id="preview-meta">No preview captured yet.</div>
-            <button id="preview-refresh" type="button">Refresh preview</button>
+            <div class="meta" id="preview-meta">Live preview waiting for a session.</div>
+            <div>
+              <button id="preview-toggle" type="button">Pause live preview</button>
+              <button id="preview-refresh" type="button">Refresh now</button>
+            </div>
           </div>
-          <div class="preview-frame" id="preview-frame"><span class="note">Open a managed Firefox session to see a read-only still preview.</span></div>
+          <div class="preview-frame" id="preview-frame"><span class="note">Open a managed Firefox session to see a live read-only preview.</span></div>
         </div>
       </div>
       <div class="panel">
@@ -2750,7 +2756,7 @@ fn dashboard_index_html() -> String {
       </div>
       <div class="panel">
         <h2>Capability Notes</h2>
-        <p class="note">This dashboard shows setup status, live sessions, managed profiles, a read-only still viewport preview, and a bounded redacted command activity feed. Live viewport WebSocket streaming, remote input events, and native WebM video recording are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>record start</code> / <code>record stop</code>, <code>status</code>, and <code>doctor</code> for evidence today.</p>
+        <p class="note">This dashboard shows setup status, live sessions, managed profiles, a live read-only viewport preview, and a bounded redacted command activity feed. The live preview polls visible-viewport screenshots from the Firefox extension. WebSocket viewport streaming, remote input events, and native WebM video recording are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>record start</code> / <code>record stop</code>, <code>status</code>, and <code>doctor</code> for machine-readable evidence.</p>
       </div>
     </section>
   </main>
@@ -2758,9 +2764,10 @@ fn dashboard_index_html() -> String {
     const text = (id, value) => { document.getElementById(id).textContent = value; };
     const cls = (id, name) => { document.getElementById(id).className = "value " + name; };
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+    const PREVIEW_INTERVAL_MS = 1500;
     let previewSessionId = null;
     let previewInFlight = false;
-    let lastPreviewAt = 0;
+    let previewLive = true;
     function table(rows, columns) {
       if (!rows.length) return "<p class='note'>None.</p>";
       const head = columns.map(([key, label]) => `<th>${label}</th>`).join("");
@@ -2778,9 +2785,7 @@ fn dashboard_index_html() -> String {
       previewSessionId = data.sessions[0]?.sessionId || null;
       if (!previewSessionId) {
         text("preview-meta", "No live session.");
-        document.getElementById("preview-frame").innerHTML = "<span class='note'>Open a managed Firefox session to see a read-only still preview.</span>";
-      } else if (Date.now() - lastPreviewAt > 5000) {
-        refreshPreview(previewSessionId);
+        document.getElementById("preview-frame").innerHTML = "<span class='note'>Open a managed Firefox session to see a live read-only preview.</span>";
       }
       document.getElementById("activity").innerHTML = table((data.activity || []).map(event => ({
         status: event.status,
@@ -2813,12 +2818,14 @@ fn dashboard_index_html() -> String {
         const page = preview.activePage?.title || preview.activePage?.url || preview.sessionId;
         document.getElementById("preview-frame").innerHTML = `<img alt="Read-only Firefox viewport preview" src="${preview.dataUrl}">`;
         text("preview-meta", `Preview captured ${new Date(preview.capturedAt).toLocaleTimeString()} for ${page}`);
-        lastPreviewAt = Date.now();
       } catch (error) {
         text("preview-meta", "Preview unavailable: " + error.message);
       } finally {
         previewInFlight = false;
       }
+    }
+    function tickPreview() {
+      if (previewLive && previewSessionId) refreshPreview(previewSessionId);
     }
     async function refresh() {
       try {
@@ -2829,12 +2836,18 @@ fn dashboard_index_html() -> String {
         text("updated", "Dashboard refresh failed: " + error.message);
       }
     }
+    document.getElementById("preview-toggle").addEventListener("click", () => {
+      previewLive = !previewLive;
+      text("preview-status", previewLive ? "On" : "Paused");
+      document.getElementById("preview-toggle").textContent = previewLive ? "Pause live preview" : "Resume live preview";
+      if (previewLive) tickPreview();
+    });
     document.getElementById("preview-refresh").addEventListener("click", () => {
-      lastPreviewAt = 0;
       refreshPreview(previewSessionId);
     });
     refresh();
     setInterval(refresh, 2500);
+    setInterval(tickPreview, PREVIEW_INTERVAL_MS);
   </script>
 </body>
 </html>
@@ -8619,7 +8632,15 @@ mod tests {
         assert_eq!(value["dashboard"]["pid"], json!(std::process::id() as u64));
         assert_eq!(
             value["dashboard"]["capabilities"]["liveViewport"],
-            json!(false)
+            json!(true)
+        );
+        assert_eq!(
+            value["dashboard"]["capabilities"]["liveViewportKind"],
+            json!("polling-screenshot-preview")
+        );
+        assert_eq!(
+            value["dashboard"]["capabilities"]["liveViewportIntervalMs"],
+            json!(1500)
         );
         assert_eq!(
             value["dashboard"]["capabilities"]["webSocketStreaming"],
@@ -8668,12 +8689,16 @@ mod tests {
         assert!(index.body.contains("/api/status"));
         assert!(index.body.contains("/api/preview/"));
         assert!(index.body.contains("Viewport Preview"));
-        assert!(index.body.contains("read-only still viewport preview"));
+        assert!(index.body.contains("live read-only viewport preview"));
+        assert!(index.body.contains("Pause live preview"));
+        assert!(index
+            .body
+            .contains("setInterval(tickPreview, PREVIEW_INTERVAL_MS)"));
         assert!(index.body.contains("Recent Activity"));
         assert!(index
             .body
             .contains("bounded redacted command activity feed"));
-        assert!(index.body.contains("Live viewport WebSocket streaming"));
+        assert!(index.body.contains("WebSocket viewport streaming"));
 
         let missing = dashboard_response_for_path("/missing");
         assert_eq!(missing.status, 404);

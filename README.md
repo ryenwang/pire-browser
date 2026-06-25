@@ -187,7 +187,7 @@ not native touch input or mobile browser chrome emulation. `swipe` maps touch
 direction to page scroll (`swipe up` scrolls down); use `scroll` when you want
 direct scroll direction.
 
-PDF capture is available as an image-backed visual evidence file. CDP connect, runtime viewport streaming, and natural-language chat are not implemented in the current Firefox backend.
+PDF capture is available as an image-backed visual evidence file. CDP connect, WebSocket viewport streaming, and natural-language chat are not implemented in the current Firefox backend. The dashboard does provide a live read-only viewport preview by polling visible-viewport screenshots.
 
 ### Read Agent-Friendly Text
 
@@ -806,7 +806,7 @@ pire-browser pdf viewport.pdf --viewport
 ## Observability Dashboard
 
 Start a localhost dashboard when you want a quick view of install
-health, live sessions, managed profiles, a read-only still viewport preview,
+health, live sessions, managed profiles, a live read-only viewport preview,
 recent redacted command activity, and current capability notes:
 
 ```bash
@@ -832,10 +832,11 @@ pire-browser activity list
 pire-browser activity list --limit 50 --json
 ```
 
-The dashboard can refresh a read-only still preview for the selected live
-session, but it does not provide live viewport WebSocket streaming. Use
-snapshots, screenshots, screenshot-sequence recording, and diagnostics commands
-for visual evidence, page-state verification, and scriptable observability:
+The dashboard polls visible-viewport screenshots for the selected live session
+to provide a live read-only preview. It does not provide WebSocket streaming,
+remote input events, or native WebM video. Use snapshots, screenshots,
+screenshot-sequence recording, and diagnostics commands for visual evidence,
+page-state verification, and scriptable observability:
 
 ```bash
 pire-browser record start
@@ -997,9 +998,9 @@ Chrome DevTools Protocol mode is not available. `pire-browser` commands are medi
 
 ## Streaming And Recording
 
-Runtime WebSocket viewport streaming is not available. Use the dashboard still
-preview, screenshots, screenshot-sequence recording, and status output for
-observable workflows:
+Runtime WebSocket viewport streaming is not available. Use the dashboard live
+read-only preview, screenshots, screenshot-sequence recording, and status output
+for observable workflows:
 
 ```bash
 pire-browser screenshot page.png
@@ -1011,7 +1012,7 @@ pire-browser session list --json
 
 `record start` captures bounded visible-viewport PNG frames from the active
 Firefox tab. `record stop [output-dir]` writes the frames plus `recording.json`.
-This is useful QA evidence, not native WebM video or live viewport streaming.
+This is useful QA evidence, not native WebM video or WebSocket viewport streaming.
 
 ## Architecture
 

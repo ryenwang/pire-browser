@@ -2813,7 +2813,7 @@ tab. `record start` begins capturing visible viewport PNG frames,
 images plus `recording.json` under the output directory. If no output directory
 is provided, a generated `pire-browser-recording-<timestamp>` directory is used.
 
-This is not native WebM video, live viewport streaming, or Chrome DevTools
+This is not native WebM video, WebSocket viewport streaming, or Chrome DevTools
 screencast output.
 "##;
 
@@ -3251,10 +3251,12 @@ runs in the foreground and stops with Ctrl+C. With `--background`, it records a
 dashboard process state file so `dashboard status` and `dashboard stop` can
 inspect or stop it later.
 
-The dashboard shows setup status, live sessions, managed profiles, a read-only
-still viewport preview, recent redacted command activity, and current capability
-notes. It does not provide live viewport WebSocket streaming yet; use snapshots,
-screenshots, and recording bundles for machine-readable visual evidence.
+The dashboard shows setup status, live sessions, managed profiles, a live
+read-only viewport preview, recent redacted command activity, and current
+capability notes. The preview polls Firefox visible-viewport screenshots; it
+does not provide WebSocket streaming, remote input events, or native WebM video.
+Use snapshots, screenshots, and recording bundles for machine-readable visual
+evidence.
 "##;
 
 const MCP_HELP: &str = r##"
@@ -5407,7 +5409,7 @@ mod tests {
             .contains("local dashboard server"));
         assert!(help_text(Some("dashboard"))
             .unwrap()
-            .contains("does not provide live viewport"));
+            .contains("polls Firefox visible-viewport screenshots"));
         assert!(help_text(Some("mcp")).unwrap().contains("smallest tools"));
         assert!(help_text(Some("mcp")).unwrap().contains("core,network"));
         assert!(help_text(Some("mcp")).unwrap().contains("network"));

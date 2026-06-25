@@ -34,7 +34,7 @@ pire-browser open https://app.example.com
 pire-browser snapshot -i
 pire-browser record status
 pire-browser record stop recording-dir`),
-  p("<code>record start</code> / <code>record stop</code> records bounded visible-viewport PNG frames for the active Firefox tab and writes frame files plus <code>recording.json</code>. It is a screenshot-sequence QA evidence bundle, not native WebM video, live viewport streaming, or Chrome DevTools screencast output."),
+  p("<code>record start</code> / <code>record stop</code> records bounded visible-viewport PNG frames for the active Firefox tab and writes frame files plus <code>recording.json</code>. It is a screenshot-sequence QA evidence bundle, not native WebM video, WebSocket viewport streaming, or Chrome DevTools screencast output."),
   h2("Current debug alternatives", "current-debug-alternatives"),
   code(`pire-browser snapshot -i
 pire-browser get text <sel>
@@ -42,7 +42,7 @@ pire-browser get html <sel>
 pire-browser eval "document.title"
 pire-browser screenshot debug.png`),
   h2("Unavailable debug tools", "unavailable-debug-tools"),
-  list(["Chrome DevTools inspect proxy", "CPU profiler", "Native WebM video recording", "Live viewport streaming"]),
+  list(["Chrome DevTools inspect proxy", "CPU profiler", "Native WebM video recording", "WebSocket viewport streaming"]),
 ];
 
 export default page({

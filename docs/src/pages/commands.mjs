@@ -238,9 +238,11 @@ pire-browser snapshot -i`),
   p("Dialog support is Firefox WebExtension mediated. <code>alert</code>, <code>confirm</code>, and <code>prompt</code> are shimmed in the page context so they do not hard-block the agent loop. <code>dialog accept [text]</code> configures the next shimmed confirm or prompt to accept, using text as the prompt return value; <code>dialog dismiss</code> configures the next shimmed confirm or prompt to cancel. Observed dialogs surface as <code>PAGE_DIALOG</code> warnings. Re-run <code>snapshot -i</code> after handling a dialog before acting on refs."),
 
   h2("Streaming", "streaming"),
-  code(`# Streaming is not available in the current Firefox backend.
-pire-browser stream status
+  code(`# The dashboard provides live read-only polling preview.
+pire-browser dashboard start
+
 # Runtime WebSocket viewport streaming is not available in the current Firefox backend.
+pire-browser stream status
 # Use record start/stop when a screenshot-sequence evidence bundle is enough.`, "bash", { notAvailable: true }),
 
   h2("Debug", "debug"),
@@ -332,7 +334,7 @@ pire-browser dashboard start --port 0 --json
 pire-browser dashboard status --json
 pire-browser dashboard stop
 pire-browser activity list --json`),
-  p("Starts a localhost status dashboard. It shows install health, live sessions, managed profiles, a read-only still viewport preview, recent redacted command activity, and capability notes. Without <code>--background</code>, press <code>Ctrl+C</code> in the terminal to stop it. With <code>--background</code>, use <code>dashboard status</code> and <code>dashboard stop</code>. Live viewport streaming is still not available in the Firefox backend; use <code>record start</code> / <code>record stop</code> for screenshot-sequence evidence."),
+  p("Starts a localhost status dashboard. It shows install health, live sessions, managed profiles, a live read-only polling viewport preview, recent redacted command activity, and capability notes. Without <code>--background</code>, press <code>Ctrl+C</code> in the terminal to stop it. With <code>--background</code>, use <code>dashboard status</code> and <code>dashboard stop</code>. WebSocket viewport streaming is still not available in the Firefox backend; use <code>record start</code> / <code>record stop</code> for screenshot-sequence evidence."),
 
   h2("Doctor", "doctor"),
   code(`pire-browser doctor
