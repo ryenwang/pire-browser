@@ -212,6 +212,19 @@ client-side navigation in the active page, preferring `window.next.router.push`
 when present and falling back to `history.pushState`. Reinspect before acting on
 refs from the new route.
 
+Create a tiny active-page fixture or reproduction without a server:
+
+```bash
+pire-browser open
+pire-browser setcontent '<main><h1>Hello</h1><button>Save</button></main>'
+pire-browser snapshot -i
+```
+
+`setcontent <html>` replaces the active page document HTML. Treat it like
+`eval`: use it only when the user wants a local fixture/repro or explicitly
+approves page mutation, then re-snapshot before acting. It is Firefox
+WebExtension document replacement, not CDP `Page.setDocumentContent`.
+
 Inspect app diagnostics before guessing at failures:
 
 ```bash

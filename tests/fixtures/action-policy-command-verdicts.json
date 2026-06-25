@@ -38,6 +38,13 @@
       "expectedDecision": "deny"
     },
     {
+      "name": "setcontent maps to eval",
+      "args": ["setcontent", "<h1>Hello</h1>"],
+      "policy": { "default": "deny", "allow": ["eval"] },
+      "expectedCategory": "eval",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "snapshot allowed by default deny allowlist",
       "args": ["snapshot", "-i"],
       "policy": { "default": "deny", "allow": ["snapshot"] },

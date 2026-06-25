@@ -63,7 +63,7 @@ export const featureStatuses = {
   },
   initScripts: {
     status: "best_effort",
-    summary: "`open --init-script`, `addinitscript`, and `removeinitscript` use Firefox document-start content script registration and should be verified with fresh page state.",
+    summary: "`open --init-script`, `addinitscript`, and `removeinitscript` use Firefox document-start content script registration and should be verified with fresh page state. `setcontent <html>` replaces the active page document HTML for small fixtures/repros and is gated as an eval action; it is not CDP Page.setDocumentContent.",
     sources: ["README.md", "skill-data/core/SKILL.md", "extension/src/background.ts"],
   },
   auth: {

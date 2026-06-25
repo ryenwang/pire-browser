@@ -277,7 +277,7 @@ describe("pire-browser command foundations", () => {
   it("uses frame-local handles so unnamed textbox refs are immediately actionable", () => {
     const body = content();
     expect(body).toContain('type Locator = NonHandleLocator | { kind: "handle"');
-    expect(body).toContain("const handlesByElement = new WeakMap<Element, string>();");
+    expect(body).toContain("let handlesByElement = new WeakMap<Element, string>();");
     expect(body).toContain("const elementsByHandle = new Map<string, Element>();");
     expect(body).toContain("return { kind: \"handle\", handle, fallback };");
     expect(body).toContain("elementsByHandle.set(handle, element);");
@@ -1119,6 +1119,7 @@ describe("pire-browser command foundations", () => {
       ["get", "title"],
       ["is", "visible", "@e1"],
       ["eval", "document.title"],
+      ["setcontent", "<h1>Hello</h1>"],
       ["addinitscript", "window.__flag=true"],
       ["removeinitscript", "init1"],
       ["network"],
@@ -1415,6 +1416,23 @@ describe("command shape parity", () => {
     expect(body).toContain("recordingFramePath(outputDir, frame.index)");
     expect(body).toContain("not native WebM video");
     expect(body).toContain("visualRecordingsByTabId.delete(tabId)");
+  });
+
+  it("supports agent-browser-style setcontent document replacement", () => {
+    const body = background();
+    expect(body).toContain('case "setcontent":');
+    expect(body).toContain("return setContentCommand(rest);");
+    expect(body).toContain("async function setContentCommand");
+    expect(body).toContain('type: "setcontent"');
+    expect(body).toContain("injectContentScriptIntoTab");
+
+    const contentBody = content();
+    expect(contentBody).toContain('message.type === "setcontent"');
+    expect(contentBody).toContain("function setPageContent");
+    expect(contentBody).toContain("document.open()");
+    expect(contentBody).toContain("document.write(html)");
+    expect(contentBody).toContain("resetElementHandles");
+    expect(contentBody).toContain("Firefox WebExtension setcontent replaces the active document HTML");
   });
 
   it("supports best-effort React tree, inspect, renders, and Suspense diagnostics", () => {

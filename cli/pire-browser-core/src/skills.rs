@@ -233,6 +233,7 @@ mod tests {
         assert!(skill.content.contains("pire-browser open --init-script"));
         assert!(skill.content.contains("pire-browser addinitscript"));
         assert!(skill.content.contains("pire-browser removeinitscript"));
+        assert!(skill.content.contains("pire-browser setcontent"));
         assert!(skill.content.contains("pire-browser install"));
         assert!(skill.content.contains("pire-browser install --with-deps"));
         assert!(skill.content.contains("PIRE_BROWSER_FIREFOX_PATH"));

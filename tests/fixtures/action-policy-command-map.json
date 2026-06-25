@@ -264,6 +264,15 @@
       "source": "upstream"
     },
     {
+      "root": "setcontent",
+      "signature": "setcontent <html>",
+      "category": "eval",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream",
+      "reason": "Firefox WebExtension document replacement, not CDP Page.setDocumentContent"
+    },
+    {
       "root": "snapshot",
       "signature": "snapshot",
       "category": "snapshot",
@@ -969,14 +978,6 @@
     {
       "root": "addscript",
       "signature": "addscript <js>",
-      "category": "eval",
-      "implementationStatus": "reserved",
-      "enforcementLocus": "extension",
-      "source": "upstream"
-    },
-    {
-      "root": "setcontent",
-      "signature": "setcontent <html>",
       "category": "eval",
       "implementationStatus": "reserved",
       "enforcementLocus": "extension",

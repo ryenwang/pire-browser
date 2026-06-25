@@ -248,7 +248,8 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_is_enabled"
         | "pire_browser_is_checked"
         | "pire_browser_eval"
-        | "pire_browser_evaluate" => PROFILE_CORE,
+        | "pire_browser_evaluate"
+        | "pire_browser_set_content" => PROFILE_CORE,
         "pire_browser_screenshot" => PROFILE_CORE | PROFILE_MOBILE,
         "pire_browser_download" | "pire_browser_wait_download" | "pire_browser_upload" => {
             PROFILE_CORE | PROFILE_STATE
@@ -1845,6 +1846,10 @@ fn tool_command_args(
         (_, "pire_browser_evaluate") => {
             args.push("eval".to_string());
             args.push(required_string(object, "script")?);
+        }
+        (_, "pire_browser_set_content") => {
+            args.push("setcontent".to_string());
+            args.push(required_string(object, "html")?);
         }
         (_, "pire_browser_close") => {
             args.push("close".to_string());
@@ -4146,6 +4151,13 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_set_content",
+            "Set page content",
+            "Replace the active page document HTML for a small fixture or repro. Existing eval action/confirmation policies still apply.",
+            tool_schema(vec![("html", string_prop("HTML document or fragment to write into the active page."))], &["html"]),
+            false,
+        ),
+        tool(
             "pire_browser_close",
             "Close session",
             "Close the targeted managed Firefox session.",
@@ -4663,6 +4675,9 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_evaluate"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_set_content"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_confirm"));
@@ -7029,6 +7044,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "eval", "document.title"]);
+
+        let args = tool_command_args(
+            "pire_browser_set_content",
+            &json!({ "html": "<main><h1>Hello</h1></main>" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "setcontent", "<main><h1>Hello</h1></main>"]
+        );
 
         let args =
             tool_command_args("pire_browser_back", &json!({}), McpToolsProfile::Core).unwrap();

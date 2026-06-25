@@ -32,6 +32,7 @@ pire-browser pdf page.pdf            # Capture image-backed PDF evidence
 pire-browser snapshot -i             # Accessibility tree with refs
 pire-browser snapshot -i -C          # Include cursor-pointer custom controls
 pire-browser eval <js>               # Run JavaScript with policy checks
+pire-browser setcontent '<main><h1>Hello</h1></main>' # Replace page HTML for a repro
 pire-browser close                   # Close targeted session`),
   p("Refs must usually be quoted in PowerShell, for example <code>pire-browser click '@e2'</code>. Re-run <code>snapshot -i</code> after navigation, DOM changes, dialogs, downloads, or failed actions. Use <code>snapshot -i -C</code> when custom clickable cards, menu rows, or cursor-pointer controls are missing from the default snapshot. If a click reports that the target is covered by another element, handle the covering element first, then re-snapshot before retrying."),
   p("<code>tap</code> uses the same Firefox WebExtension page-level click path as <code>click</code>; it is not native touch input or mobile browser chrome emulation. <code>swipe</code> maps touch direction to page scroll, so <code>swipe up</code> scrolls down. Use <code>scroll</code> when you want direct scroll direction."),
@@ -423,7 +424,9 @@ pire-browser screenshot page.png`),
   statusNote("initScripts"),
   code(`pire-browser open --init-script ./before-load.js https://example.com
 pire-browser addinitscript "window.__flag = true"
-pire-browser removeinitscript init1`),
+pire-browser removeinitscript init1
+pire-browser setcontent '<main><h1>Hello</h1></main>'`),
+  p("<code>setcontent &lt;html&gt;</code> replaces the active page document HTML for a fixture or repro and is gated as an eval action. Run <code>snapshot -i</code> afterward before acting on refs. It is Firefox WebExtension document replacement, not CDP <code>Page.setDocumentContent</code>."),
 
   h2("Global options", "global-options"),
   code(`--config <path>                 # Load an explicit pire-browser config file

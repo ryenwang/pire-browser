@@ -411,6 +411,7 @@
             case "keyboard":
                 return subcommand === "type" || subcommand === "inserttext" ? "fill" : null;
             case "eval":
+            case "setcontent":
                 return "eval";
             case "pushstate":
                 return "navigate";
@@ -784,6 +785,8 @@
                 return isCommand(rest);
             case "eval":
                 return evalCommand(rest);
+            case "setcontent":
+                return setContentCommand(rest);
             case "pushstate":
                 return pushStateCommand(rest, domainPolicy);
             case "console":
@@ -2419,6 +2422,39 @@
         const tab = await targetTab();
         const response = await sendFrame(tab.tabId, undefined, { type: "eval", script });
         return normalizeContentResponse(response);
+    }
+    async function setContentCommand(args) {
+        const html = args.join(" ");
+        if (!html)
+            return { error: { code: "invalid_args", message: "setcontent requires <html>" } };
+        const tab = await targetTab();
+        let response;
+        try {
+            response = await sendFrame(tab.tabId, 0, { type: "setcontent", html });
+        }
+        catch (error) {
+            if (!isFrameRoutingError(error))
+                throw error;
+            await injectContentScriptIntoTab(tab.tabId);
+            response = await sendFrame(tab.tabId, 0, { type: "setcontent", html });
+        }
+        const result = normalizeContentResponse(response);
+        if (!("error" in result)) {
+            const current = await browser.tabs.get(tab.tabId).catch(() => null);
+            if (current)
+                rememberTab(current);
+        }
+        return result;
+    }
+    async function injectContentScriptIntoTab(tabId) {
+        if (typeof browser.tabs?.executeScript !== "function") {
+            throw new Error("setcontent requires Firefox tabs.executeScript support when no content script is connected.");
+        }
+        await browser.tabs.executeScript(tabId, {
+            file: "dist/content.js",
+            allFrames: false,
+            matchAboutBlank: true,
+        });
     }
     async function pushStateCommand(args, domainPolicy) {
         const target = firstPositionalArg(args, []);

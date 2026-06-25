@@ -175,6 +175,7 @@ pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80
 pire-browser pdf page.pdf            # Image-backed page PDF
 pire-browser snapshot -i             # Accessibility tree with refs
 pire-browser eval <js>               # Run JavaScript with policy checks
+pire-browser setcontent '<h1>Hello</h1>' # Replace active page HTML for a repro
 pire-browser dashboard start         # Local status/session/preview/activity dashboard
 pire-browser dashboard start --background
 pire-browser dashboard status
@@ -574,9 +575,10 @@ pire-browser open --init-script <path> <url>
 AGENT_BROWSER_INIT_SCRIPTS=./before-load.js pire-browser open <url>
 pire-browser addinitscript <js>
 pire-browser removeinitscript <identifier>
+pire-browser setcontent '<main><h1>Hello</h1></main>'
 ```
 
-`open --init-script` applies to one navigation. `PIRE_BROWSER_INIT_SCRIPTS` and the agent-browser-compatible `AGENT_BROWSER_INIT_SCRIPTS` are OS path-lists that add document-start scripts to `open/goto/navigate <url>` when no explicit `--init-script` is present. `addinitscript` registers a document-start script for future navigations in the current managed Firefox session and returns an identifier for `removeinitscript`.
+`open --init-script` applies to one navigation. `PIRE_BROWSER_INIT_SCRIPTS` and the agent-browser-compatible `AGENT_BROWSER_INIT_SCRIPTS` are OS path-lists that add document-start scripts to `open/goto/navigate <url>` when no explicit `--init-script` is present. `addinitscript` registers a document-start script for future navigations in the current managed Firefox session and returns an identifier for `removeinitscript`. `setcontent <html>` replaces the active page document HTML for small fixture/repro pages; run `snapshot -i` afterward before interacting. It is Firefox WebExtension document replacement, not CDP `Page.setDocumentContent`.
 
 ### Setup
 
@@ -859,6 +861,7 @@ pire-browser --content-boundaries snapshot -i
 pire-browser --max-output 50000 get text body
 pire-browser --allowed-domains "app.example.com,*.example.com" open https://app.example.com
 pire-browser --action-policy ./policy.json eval "document.title"
+pire-browser --confirm-actions eval setcontent '<h1>fixture</h1>'
 pire-browser --confirm-actions eval,download eval "document.title"
 ```
 

@@ -97,7 +97,7 @@ const dialogs: DialogRecord[] = [];
 const consoleRecords: ConsoleRecord[] = [];
 const pageErrorRecords: PageErrorRecord[] = [];
 let nextHandleNumber = 1;
-const handlesByElement = new WeakMap<Element, string>();
+let handlesByElement = new WeakMap<Element, string>();
 const elementsByHandle = new Map<string, Element>();
 let mouseX = Math.round(window.innerWidth / 2);
 let mouseY = Math.round(window.innerHeight / 2);
@@ -180,6 +180,7 @@ browser.runtime.onMessage.addListener((message: any) => {
   if (message.type === "react_renders") return Promise.resolve(reactRenders(String(message.action ?? "")));
   if (message.type === "react_suspense") return Promise.resolve(reactSuspense(Boolean(message.onlyDynamic)));
   if (message.type === "eval") return Promise.resolve(evalScript(String(message.script ?? "")));
+  if (message.type === "setcontent") return Promise.resolve(setPageContent(String(message.html ?? "")));
   if (message.type === "pushstate") return pushStateNavigation(String(message.url ?? ""));
   return undefined;
 });
@@ -3285,6 +3286,51 @@ function evaluatePageExpression(expression: string): PageEvaluation {
       return failedPageEvaluation(fallbackError);
     }
   }
+}
+
+function setPageContent(html: string) {
+  if (!html) {
+    return {
+      error: { code: "invalid_args", message: "setcontent requires <html>" },
+      dialogs: drainDialogs(),
+    };
+  }
+  const previousUrl = location.href;
+  const previousTitle = document.title;
+  try {
+    resetElementHandles();
+    document.open();
+    document.write(html);
+    document.close();
+    resetElementHandles();
+    injectDialogShim();
+    return {
+      text: `Set page content (${html.length} chars)`,
+      length: html.length,
+      url: location.href,
+      previousUrl,
+      title: document.title,
+      previousTitle,
+      warnings: [
+        bestEffortWarning(
+          "setcontent",
+          "Firefox WebExtension setcontent replaces the active document HTML; script execution and load timing can differ from Chrome/CDP."
+        ),
+      ],
+      dialogs: drainDialogs(),
+    };
+  } catch (error) {
+    return {
+      error: { code: "command_failed", message: errorMessage(error) },
+      dialogs: drainDialogs(),
+    };
+  }
+}
+
+function resetElementHandles() {
+  handlesByElement = new WeakMap<Element, string>();
+  elementsByHandle.clear();
+  nextHandleNumber = 1;
 }
 
 function delay(ms: number) {

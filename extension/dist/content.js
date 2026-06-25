@@ -6,7 +6,7 @@
     const consoleRecords = [];
     const pageErrorRecords = [];
     let nextHandleNumber = 1;
-    const handlesByElement = new WeakMap();
+    let handlesByElement = new WeakMap();
     const elementsByHandle = new Map();
     let mouseX = Math.round(window.innerWidth / 2);
     let mouseY = Math.round(window.innerHeight / 2);
@@ -134,6 +134,8 @@
             return Promise.resolve(reactSuspense(Boolean(message.onlyDynamic)));
         if (message.type === "eval")
             return Promise.resolve(evalScript(String(message.script ?? "")));
+        if (message.type === "setcontent")
+            return Promise.resolve(setPageContent(String(message.html ?? "")));
         if (message.type === "pushstate")
             return pushStateNavigation(String(message.url ?? ""));
         return undefined;
@@ -3124,6 +3126,47 @@
                 return failedPageEvaluation(fallbackError);
             }
         }
+    }
+    function setPageContent(html) {
+        if (!html) {
+            return {
+                error: { code: "invalid_args", message: "setcontent requires <html>" },
+                dialogs: drainDialogs(),
+            };
+        }
+        const previousUrl = location.href;
+        const previousTitle = document.title;
+        try {
+            resetElementHandles();
+            document.open();
+            document.write(html);
+            document.close();
+            resetElementHandles();
+            injectDialogShim();
+            return {
+                text: `Set page content (${html.length} chars)`,
+                length: html.length,
+                url: location.href,
+                previousUrl,
+                title: document.title,
+                previousTitle,
+                warnings: [
+                    bestEffortWarning("setcontent", "Firefox WebExtension setcontent replaces the active document HTML; script execution and load timing can differ from Chrome/CDP."),
+                ],
+                dialogs: drainDialogs(),
+            };
+        }
+        catch (error) {
+            return {
+                error: { code: "command_failed", message: errorMessage(error) },
+                dialogs: drainDialogs(),
+            };
+        }
+    }
+    function resetElementHandles() {
+        handlesByElement = new WeakMap();
+        elementsByHandle.clear();
+        nextHandleNumber = 1;
     }
     function delay(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));

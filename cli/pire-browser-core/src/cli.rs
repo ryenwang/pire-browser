@@ -2626,7 +2626,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "swipe" => SWIPE_HELP,
         "drag" => DRAG_HELP,
         "batch" => BATCH_HELP,
-        "addinitscript" | "removeinitscript" | "init-scripts" => INIT_SCRIPTS_HELP,
+        "addinitscript" | "removeinitscript" | "setcontent" | "init-scripts" => INIT_SCRIPTS_HELP,
         "download" => DOWNLOAD_HELP,
         "upload" => UPLOAD_HELP,
         "clipboard" => CLIPBOARD_HELP,
@@ -2745,6 +2745,7 @@ Common commands:
   batch "open <url>" "snapshot -i" Run multiple commands in one invocation
   addinitscript <js>              Register a document-start init script
   removeinitscript init1          Remove a runtime init script
+  setcontent '<h1>Hello</h1>'      Replace active page HTML for a repro
   download '@e4' out.txt          Click a target and save a download
   wait --download out.txt         Wait for a recent/new download and save it
   --download-path ./downloads open <url>
@@ -3539,12 +3540,17 @@ const INIT_SCRIPTS_HELP: &str = r##"
 Usage:
   pire-browser addinitscript <js>
   pire-browser removeinitscript <identifier>
+  pire-browser setcontent <html>
   pire-browser open --init-script <path> <url>
 
 Registers JavaScript to run at document_start for future navigations in the
 current managed Firefox session. Runtime registrations return an identifier
 such as init1 that can be passed to removeinitscript. This is a best-effort
 Firefox WebExtension compatibility path.
+
+`setcontent <html>` replaces the active page document HTML. Use it for small
+fixture/repro pages, then run `snapshot -i` before interacting. It is a
+Firefox WebExtension document replacement, not CDP Page.setDocumentContent.
 "##;
 
 const DOWNLOAD_HELP: &str = r##"
@@ -6138,6 +6144,7 @@ mod tests {
         assert!(text.contains("drag '@e1' '@e2'"));
         assert!(text.contains("batch \"open <url>\""));
         assert!(text.contains("addinitscript <js>"));
+        assert!(text.contains("setcontent '<h1>Hello</h1>'"));
         assert!(text.contains("--allow-file-access open file:///path/to/page.html"));
         assert!(text.contains("auth login"));
         assert!(text.contains("auth login app --credential-provider vault"));
@@ -6422,6 +6429,9 @@ mod tests {
         assert!(help_text(Some("addinitscript"))
             .unwrap()
             .contains("removeinitscript <identifier>"));
+        assert!(help_text(Some("setcontent"))
+            .unwrap()
+            .contains("setcontent <html>"));
         assert!(help_text(Some("auth"))
             .unwrap()
             .contains("--username-selector"));
