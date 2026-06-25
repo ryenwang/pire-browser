@@ -36,7 +36,7 @@ PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
     }
   ]
 }`, "json"),
-  p("The packaged schema lives at <code>pire-browser.schema.json</code> in the repo and <code>./node_modules/pire-browser/pire-browser.schema.json</code> in an installed package. <code>headless: true</code> launches new managed Firefox sessions headlessly for CI while existing live sessions keep their current mode. <code>plugins</code> entries configure agent-browser-compatible credential providers and command/custom plugins; they do not synthesize CLI flags."),
+  p("The packaged schema lives at <code>pire-browser.schema.json</code> in the repo and <code>./node_modules/pire-browser/pire-browser.schema.json</code> in an installed package. <code>headless: true</code> launches new managed Firefox sessions headlessly for CI while existing live sessions keep their current mode. <code>plugins</code> entries configure agent-browser-compatible credential providers and command/custom plugins; use <code>pire-browser plugin add &lt;package-or-repo&gt;</code> to create or update entries without hand-editing JSON. Configured plugins do not synthesize CLI flags."),
   h2("Common flags", "common-flags"),
   code(`pire-browser --config ./ci-config.json open https://example.com
 pire-browser --profile Work open https://example.com

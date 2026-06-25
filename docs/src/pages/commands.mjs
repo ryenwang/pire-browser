@@ -283,6 +283,8 @@ pire-browser record stop recording-dir`),
   code(`pire-browser auth save app --url https://example.com/login --username user --password pass --username-selector "#email" --password-selector "#password" --submit-selector "button[type=submit]"
 echo "pass" | pire-browser auth save app --url https://example.com/login --username user --password-stdin
 pire-browser auth login app
+pire-browser plugin add agent-browser-plugin-vault
+pire-browser plugin add agent-browser-plugin-captcha --no-manifest --capability command.run --capability captcha.solve
 pire-browser plugin list
 pire-browser plugin show vault
 pire-browser plugin run captcha captcha.solve --payload '{"siteKey":"abc","url":"https://example.com"}'
@@ -295,6 +297,7 @@ pire-browser auth delete app
 # set credentials covers session-only HTTP Basic auth.
 # --password-stdin avoids putting saved auth passwords in shell history.
 # Auth profiles are stored in the encrypted local auth vault.
+# plugin add writes agent-browser-compatible plugin config entries.
 # plugin list/show inspect configured plugins before running them.
 # Credential providers use configured agent-browser-compatible plugins with capability credential.read.
 # plugin run executes command.run/custom capabilities.

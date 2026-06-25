@@ -241,6 +241,32 @@ struct CredentialProviderResolution {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct PluginReference {
+    reference: String,
+    source: String,
+    command: String,
+    args: Vec<String>,
+    fallback_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PluginManifest {
+    name: String,
+    capabilities: Vec<String>,
+    description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PluginAddResult {
+    plugin: CredentialProviderConfig,
+    config_path: PathBuf,
+    source: String,
+    reference: String,
+    manifest: Option<PluginManifest>,
+    updated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ChatConfig {
     api_key: String,
     api_key_source: String,
@@ -328,6 +354,26 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         }
         LocalCommand::PluginShow { name, json } => {
             handle_plugin_show(&config_map, &name, json)?;
+        }
+        LocalCommand::PluginAdd {
+            reference,
+            name,
+            capabilities,
+            no_manifest,
+            global,
+            json,
+        } => {
+            if let Err(err) = handle_plugin_add(
+                &reference,
+                name.as_deref(),
+                &capabilities,
+                no_manifest,
+                global,
+                json,
+            ) {
+                exit_with_anyhow_error(err, json, &[])?;
+                unreachable!();
+            }
         }
         LocalCommand::PluginRun {
             name,
@@ -2385,6 +2431,386 @@ fn handle_plugin_show(config: &Map<String, Value>, name: &str, json_output: bool
         println!("{}", format_cli_result(&json!({ "plugin": value }), true)?);
     } else {
         println!("{}", plugin_show_text(plugin));
+    }
+    Ok(())
+}
+
+fn handle_plugin_add(
+    reference: &str,
+    name_override: Option<&str>,
+    capabilities: &[String],
+    no_manifest: bool,
+    global: bool,
+    json_output: bool,
+) -> Result<()> {
+    let result = add_plugin(reference, name_override, capabilities, no_manifest, global)?;
+    let mut manifest_value = result.manifest.as_ref().map(|manifest| {
+        json!({
+            "name": manifest.name,
+            "capabilities": manifest.capabilities,
+            "description": manifest.description
+        })
+    });
+    if let Some(value) = manifest_value.as_mut() {
+        redact_json_value(value);
+    }
+    let mut plugin = plugin_value(&result.plugin);
+    redact_json_value(&mut plugin);
+    let value = json!({
+        "text": format!(
+            "{} plugin `{}` in {}. Verify with `pire-browser plugin show {}`.",
+            if result.updated { "Updated" } else { "Added" },
+            redact_text(&result.plugin.name),
+            result.config_path.display(),
+            redact_text(&result.plugin.name),
+        ),
+        "plugin": plugin,
+        "configPath": result.config_path,
+        "source": result.source,
+        "reference": redact_text(&result.reference),
+        "updated": result.updated,
+        "manifest": manifest_value
+    });
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
+fn add_plugin(
+    reference: &str,
+    name_override: Option<&str>,
+    capabilities: &[String],
+    no_manifest: bool,
+    global: bool,
+) -> Result<PluginAddResult> {
+    if reference.trim().is_empty() {
+        bail!("invalid_args: plugin add reference cannot be empty");
+    }
+    if !no_manifest && !capabilities.is_empty() {
+        bail!("invalid_args: plugin add --capability requires --no-manifest");
+    }
+    if no_manifest && capabilities.is_empty() {
+        bail!("invalid_args: plugin add --no-manifest requires at least one --capability");
+    }
+    let resolved = resolve_plugin_reference(reference)?;
+    let manifest = if no_manifest {
+        None
+    } else {
+        Some(probe_plugin_manifest(&resolved).with_context(|| {
+            format!(
+                "plugin_manifest_failed: plugin `{}` did not return a usable manifest; retry with --no-manifest and --capability <name>",
+                redact_text(reference)
+            )
+        })?)
+    };
+    let plugin_name = name_override
+        .map(str::to_string)
+        .or_else(|| manifest.as_ref().map(|manifest| manifest.name.clone()))
+        .unwrap_or_else(|| resolved.fallback_name.clone());
+    validate_plugin_config_name(&plugin_name)?;
+    let plugin_capabilities = if no_manifest {
+        capabilities.to_vec()
+    } else {
+        manifest
+            .as_ref()
+            .map(|manifest| manifest.capabilities.clone())
+            .unwrap_or_default()
+    };
+    validate_plugin_capability_list(&plugin_capabilities)?;
+    let plugin = CredentialProviderConfig {
+        name: plugin_name,
+        command: resolved.command.clone(),
+        args: resolved.args.clone(),
+        capabilities: plugin_capabilities,
+        timeout_ms: CREDENTIAL_PROVIDER_TIMEOUT_MS,
+    };
+    let config_path = plugin_add_config_path(global)?;
+    let updated = write_plugin_config_entry(&config_path, &plugin)?;
+    Ok(PluginAddResult {
+        plugin,
+        config_path,
+        source: resolved.source,
+        reference: resolved.reference,
+        manifest,
+        updated,
+    })
+}
+
+fn resolve_plugin_reference(reference: &str) -> Result<PluginReference> {
+    let reference = reference.trim();
+    if is_local_plugin_reference(reference) {
+        return Ok(PluginReference {
+            reference: reference.to_string(),
+            source: "local".to_string(),
+            command: reference.to_string(),
+            args: Vec::new(),
+            fallback_name: derive_plugin_name(reference),
+        });
+    }
+    if is_github_plugin_reference(reference) {
+        return Ok(PluginReference {
+            reference: reference.to_string(),
+            source: "github".to_string(),
+            command: "npx".to_string(),
+            args: vec!["--yes".to_string(), format!("github:{reference}")],
+            fallback_name: derive_plugin_name(reference),
+        });
+    }
+    if is_npm_plugin_reference(reference) {
+        return Ok(PluginReference {
+            reference: reference.to_string(),
+            source: "npm".to_string(),
+            command: "npx".to_string(),
+            args: vec!["--yes".to_string(), reference.to_string()],
+            fallback_name: derive_plugin_name(reference),
+        });
+    }
+    bail!(
+        "invalid_args: plugin reference `{}` must be an npm package, scoped npm package, owner/repo GitHub reference, or local path",
+        redact_text(reference)
+    )
+}
+
+fn is_local_plugin_reference(reference: &str) -> bool {
+    reference.starts_with('.')
+        || reference.starts_with('/')
+        || reference.starts_with('\\')
+        || reference.contains(':')
+        || reference.contains('\\')
+}
+
+fn is_github_plugin_reference(reference: &str) -> bool {
+    let parts = reference.split('/').collect::<Vec<_>>();
+    parts.len() == 2
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && plugin_ref_part_is_safe(part))
+        && !reference.starts_with('@')
+}
+
+fn is_npm_plugin_reference(reference: &str) -> bool {
+    if reference.starts_with('@') {
+        let parts = reference.split('/').collect::<Vec<_>>();
+        return parts.len() == 2
+            && parts[0].len() > 1
+            && parts.iter().all(|part| {
+                !part.is_empty() && plugin_ref_part_is_safe(part.trim_start_matches('@'))
+            });
+    }
+    !reference.contains('/') && !reference.is_empty() && plugin_ref_part_is_safe(reference)
+}
+
+fn plugin_ref_part_is_safe(value: &str) -> bool {
+    value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+}
+
+fn derive_plugin_name(reference: &str) -> String {
+    let normalized = reference.trim_end_matches(['/', '\\']);
+    let last = normalized
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(normalized)
+        .trim_start_matches("github:")
+        .trim_end_matches(".git");
+    last.strip_prefix("agent-browser-plugin-")
+        .or_else(|| last.strip_prefix("pire-browser-plugin-"))
+        .unwrap_or(last)
+        .to_string()
+}
+
+fn probe_plugin_manifest(reference: &PluginReference) -> Result<PluginManifest> {
+    let provider = CredentialProviderConfig {
+        name: reference.fallback_name.clone(),
+        command: reference.command.clone(),
+        args: reference.args.clone(),
+        capabilities: vec!["plugin.manifest".to_string()],
+        timeout_ms: CREDENTIAL_PROVIDER_TIMEOUT_MS,
+    };
+    let request = json!({
+        "protocol": PLUGIN_PROTOCOL,
+        "type": "plugin.manifest",
+        "capability": "plugin.manifest",
+        "request": {}
+    });
+    let response = run_plugin_protocol_request(&provider, &request, "plugin manifest")?;
+    parse_plugin_manifest(&response)
+}
+
+fn parse_plugin_manifest(response: &Value) -> Result<PluginManifest> {
+    let manifest = response
+        .get("manifest")
+        .and_then(Value::as_object)
+        .ok_or_else(|| anyhow::anyhow!("plugin_malformed_response: plugin manifest response must include a manifest object"))?;
+    let name = manifest
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!("plugin_malformed_response: plugin manifest is missing manifest.name")
+        })?;
+    validate_plugin_config_name(&name)?;
+    let capabilities = manifest
+        .get("capabilities")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("plugin_malformed_response: plugin manifest is missing manifest.capabilities"))?
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_string)
+                .filter(|capability| !capability.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("plugin_malformed_response: manifest.capabilities must be non-empty strings"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    validate_plugin_capability_list(&capabilities)?;
+    let description = manifest
+        .get("description")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .filter(|value| !value.is_empty());
+    Ok(PluginManifest {
+        name,
+        capabilities,
+        description,
+    })
+}
+
+fn plugin_add_config_path(global: bool) -> Result<PathBuf> {
+    if global {
+        let home = user_home_dir()?;
+        let pire = home.join(".pire-browser").join("config.json");
+        if pire.exists() {
+            return Ok(pire);
+        }
+        return Ok(home.join(".agent-browser").join("config.json"));
+    }
+    let cwd =
+        std::env::current_dir().context("config_failed: could not determine current directory")?;
+    let pire = cwd.join("pire-browser.json");
+    if pire.exists() {
+        return Ok(pire);
+    }
+    Ok(cwd.join("agent-browser.json"))
+}
+
+fn user_home_dir() -> Result<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .or_else(|| {
+            let drive = std::env::var_os("HOMEDRIVE")?;
+            let path = std::env::var_os("HOMEPATH")?;
+            let mut value = PathBuf::from(drive);
+            value.push(path);
+            Some(value)
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!("config_failed: could not determine home directory for --global")
+        })
+}
+
+fn write_plugin_config_entry(path: &Path, plugin: &CredentialProviderConfig) -> Result<bool> {
+    let mut config = read_plugin_config_for_write(path)?;
+    let plugins_value = config
+        .entry("plugins".to_string())
+        .or_insert_with(|| Value::Array(Vec::new()));
+    let Some(plugins) = plugins_value.as_array_mut() else {
+        bail!(
+            "config_malformed: config {} has plugins but it is not an array",
+            path.display()
+        );
+    };
+    let entry = plugin_config_entry_value(plugin);
+    let mut updated = false;
+    if let Some(existing) = plugins.iter_mut().find(|value| {
+        value
+            .get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|name| name == plugin.name)
+    }) {
+        *existing = entry;
+        updated = true;
+    } else {
+        plugins.push(entry);
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "config_failed: could not create config directory {}",
+                parent.display()
+            )
+        })?;
+    }
+    let text = serde_json::to_string_pretty(&Value::Object(config))?;
+    fs::write(path, format!("{text}\n")).with_context(|| {
+        format!(
+            "config_failed: could not write plugin config {}",
+            path.display()
+        )
+    })?;
+    Ok(updated)
+}
+
+fn read_plugin_config_for_write(path: &Path) -> Result<Map<String, Value>> {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Map::new()),
+        Err(error) => {
+            bail!(
+                "config_failed: could not read plugin config {}: {error}",
+                path.display()
+            );
+        }
+    };
+    if text.trim().is_empty() {
+        return Ok(Map::new());
+    }
+    let value: Value = serde_json::from_str(&text).with_context(|| {
+        format!(
+            "config_malformed: could not parse plugin config {}",
+            path.display()
+        )
+    })?;
+    value.as_object().cloned().ok_or_else(|| {
+        anyhow::anyhow!(
+            "config_malformed: config {} must contain a JSON object",
+            path.display()
+        )
+    })
+}
+
+fn plugin_config_entry_value(plugin: &CredentialProviderConfig) -> Value {
+    json!({
+        "name": plugin.name,
+        "command": plugin.command,
+        "args": plugin.args,
+        "capabilities": plugin.capabilities
+    })
+}
+
+fn validate_plugin_config_name(name: &str) -> Result<()> {
+    if valid_plugin_category_part(name) {
+        return Ok(());
+    }
+    bail!(
+        "invalid_args: plugin name `{}` must use only letters, numbers, '.', '-', and '_'",
+        redact_text(name)
+    )
+}
+
+fn validate_plugin_capability_list(capabilities: &[String]) -> Result<()> {
+    if capabilities.is_empty() {
+        bail!("invalid_args: plugin capabilities cannot be empty");
+    }
+    for capability in capabilities {
+        if !valid_plugin_category_part(capability) {
+            bail!(
+                "invalid_args: plugin capability `{}` must use only letters, numbers, '.', '-', and '_'",
+                redact_text(capability)
+            );
+        }
     }
     Ok(())
 }
@@ -12743,6 +13169,120 @@ mod tests {
         assert_eq!(input.selectors.username, "#email");
         assert_eq!(input.selectors.password, "#password");
         assert_eq!(input.selectors.submit, "#submit");
+    }
+
+    #[test]
+    fn plugin_add_resolves_reference_shapes() {
+        let npm = resolve_plugin_reference("agent-browser-plugin-captcha").unwrap();
+        assert_eq!(npm.source, "npm");
+        assert_eq!(npm.command, "npx");
+        assert_eq!(npm.args, s(&["--yes", "agent-browser-plugin-captcha"]));
+        assert_eq!(npm.fallback_name, "captcha");
+
+        let scoped = resolve_plugin_reference("@company/agent-browser-plugin-vault").unwrap();
+        assert_eq!(scoped.source, "npm");
+        assert_eq!(
+            scoped.args,
+            s(&["--yes", "@company/agent-browser-plugin-vault"])
+        );
+        assert_eq!(scoped.fallback_name, "vault");
+
+        let github = resolve_plugin_reference("org/agent-browser-plugin-cloud-browser").unwrap();
+        assert_eq!(github.source, "github");
+        assert_eq!(github.command, "npx");
+        assert_eq!(
+            github.args,
+            s(&["--yes", "github:org/agent-browser-plugin-cloud-browser"])
+        );
+        assert_eq!(github.fallback_name, "cloud-browser");
+
+        let local = resolve_plugin_reference("./agent-browser-plugin-captcha").unwrap();
+        assert_eq!(local.source, "local");
+        assert_eq!(local.command, "./agent-browser-plugin-captcha");
+        assert!(local.args.is_empty());
+        assert_eq!(local.fallback_name, "captcha");
+
+        assert!(resolve_plugin_reference("bad/package/name").is_err());
+        assert!(resolve_plugin_reference("bad package").is_err());
+    }
+
+    #[test]
+    fn plugin_manifest_parsing_validates_agent_browser_shape() {
+        let manifest = parse_plugin_manifest(&json!({
+            "protocol": PLUGIN_PROTOCOL,
+            "success": true,
+            "manifest": {
+                "name": "captcha",
+                "description": "Solve captcha challenges",
+                "capabilities": ["command.run", "captcha.solve"]
+            }
+        }))
+        .unwrap();
+        assert_eq!(manifest.name, "captcha");
+        assert_eq!(
+            manifest.description.as_deref(),
+            Some("Solve captcha challenges")
+        );
+        assert_eq!(manifest.capabilities, s(&["command.run", "captcha.solve"]));
+
+        assert!(parse_plugin_manifest(&json!({"success": true}))
+            .unwrap_err()
+            .to_string()
+            .contains("manifest object"));
+        assert!(parse_plugin_manifest(&json!({
+            "manifest": {
+                "name": "captcha"
+            }
+        }))
+        .unwrap_err()
+        .to_string()
+        .contains("manifest.capabilities"));
+        assert!(parse_plugin_manifest(&json!({
+            "manifest": {
+                "name": "bad name",
+                "capabilities": ["command.run"]
+            }
+        }))
+        .unwrap_err()
+        .to_string()
+        .contains("plugin name"));
+    }
+
+    #[test]
+    fn plugin_config_write_adds_and_updates_entries() {
+        let dir = std::env::temp_dir().join(format!("pire-browser-plugin-add-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("agent-browser.json");
+        let first = CredentialProviderConfig {
+            name: "captcha".to_string(),
+            command: "npx".to_string(),
+            args: s(&["--yes", "agent-browser-plugin-captcha"]),
+            capabilities: s(&["command.run", "captcha.solve"]),
+            timeout_ms: CREDENTIAL_PROVIDER_TIMEOUT_MS,
+        };
+        assert!(!write_plugin_config_entry(&path, &first).unwrap());
+        let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(value["plugins"][0]["name"], json!("captcha"));
+        assert_eq!(
+            value["plugins"][0]["capabilities"],
+            json!(["command.run", "captcha.solve"])
+        );
+
+        let second = CredentialProviderConfig {
+            name: "captcha".to_string(),
+            command: "npx".to_string(),
+            args: s(&["--yes", "agent-browser-plugin-captcha"]),
+            capabilities: s(&["command.run", "captcha.solve", "captcha.image"]),
+            timeout_ms: CREDENTIAL_PROVIDER_TIMEOUT_MS,
+        };
+        assert!(write_plugin_config_entry(&path, &second).unwrap());
+        let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(value["plugins"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            value["plugins"][0]["capabilities"],
+            json!(["command.run", "captcha.solve", "captcha.image"])
+        );
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

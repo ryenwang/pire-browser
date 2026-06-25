@@ -744,9 +744,26 @@ agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY`, or an auto-generated
 local key file. `auth list` and `auth show` do not print passwords; `auth login`
 decrypts locally and sends a one-shot profile payload to the Firefox extension.
 
-For external vaults, configure an agent-browser-compatible credential provider
-plugin. The plugin is a local executable that reads one JSON request from stdin
-and writes one JSON response to stdout:
+For external vaults, add an agent-browser-compatible credential provider plugin
+and inspect it before use:
+
+```bash
+pire-browser plugin add agent-browser-plugin-vault
+pire-browser plugin add agent-browser-plugin-captcha --no-manifest --capability command.run --capability captcha.solve
+pire-browser plugin list
+pire-browser plugin show vault
+```
+
+`plugin add` probes an agent-browser plugin manifest when available and writes
+the effective project config. npm package names such as
+`agent-browser-plugin-vault` run through `npx --yes`, GitHub references such as
+`org/agent-browser-plugin-vault` run through `npx --yes github:org/...`, and
+local paths run directly. Use `--no-manifest --capability <name>` for plugins
+that do not expose `plugin.manifest`.
+
+You can also configure the same plugin entries manually. A plugin is a local
+executable that reads one JSON request from stdin and writes one JSON response
+to stdout:
 
 ```json
 {
@@ -765,8 +782,6 @@ Then resolve credentials for one login without saving them in the local auth
 vault:
 
 ```bash
-pire-browser plugin list
-pire-browser plugin show vault
 pire-browser auth login app --credential-provider vault --item "My App" --url https://example.com/login
 pire-browser snapshot -i
 ```
@@ -1060,7 +1075,7 @@ pire-browser --config ./ci-config.json open https://example.com
 PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com
 ```
 
-Defaults are loaded from `~/.pire-browser/config.json`, `./pire-browser.json`, `PIRE_BROWSER_CONFIG`, and explicit `--config`, in that order. CLI flags override config defaults. Agent-browser-compatible aliases `~/.agent-browser/config.json`, `./agent-browser.json`, and `AGENT_BROWSER_CONFIG` are also accepted for existing installs.
+Defaults are loaded from `~/.pire-browser/config.json`, `./pire-browser.json`, `PIRE_BROWSER_CONFIG`, and explicit `--config`, in that order. CLI flags override config defaults. Agent-browser-compatible aliases `~/.agent-browser/config.json`, `./agent-browser.json`, and `AGENT_BROWSER_CONFIG` are also accepted for existing installs. Use `pire-browser plugin add <package-or-repo>` to create or update plugin config entries without hand-editing JSON.
 
 For editor autocomplete:
 

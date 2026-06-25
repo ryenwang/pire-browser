@@ -173,6 +173,14 @@ pub enum LocalCommand {
         name: String,
         json: bool,
     },
+    PluginAdd {
+        reference: String,
+        name: Option<String>,
+        capabilities: Vec<String>,
+        no_manifest: bool,
+        global: bool,
+        json: bool,
+    },
     PluginRun {
         name: String,
         capability: String,
@@ -1353,6 +1361,70 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 }
                 return Ok(LocalCommand::PluginShow {
                     name,
+                    json: json_output,
+                });
+            }
+            "add" => {
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                let Some(reference) = args.first().cloned() else {
+                    bail!("invalid_args: plugin add requires <package-or-repo>");
+                };
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                let mut name = None;
+                let mut capabilities = Vec::new();
+                let mut no_manifest = false;
+                let mut global = false;
+                let mut i = 0;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--json" => {
+                            json_output = true;
+                            i += 1;
+                        }
+                        "--name" => {
+                            i += 1;
+                            let Some(value) = args.get(i) else {
+                                bail!("invalid_args: plugin add --name requires a value");
+                            };
+                            if value.trim().is_empty() {
+                                bail!("invalid_args: plugin add --name cannot be empty");
+                            }
+                            name = Some(value.clone());
+                            i += 1;
+                        }
+                        "--capability" => {
+                            i += 1;
+                            let Some(value) = args.get(i) else {
+                                bail!("invalid_args: plugin add --capability requires a value");
+                            };
+                            if value.trim().is_empty() {
+                                bail!("invalid_args: plugin add --capability cannot be empty");
+                            }
+                            capabilities.push(value.clone());
+                            i += 1;
+                        }
+                        "--no-manifest" => {
+                            no_manifest = true;
+                            i += 1;
+                        }
+                        "--global" => {
+                            global = true;
+                            i += 1;
+                        }
+                        other if other.starts_with('-') => {
+                            bail!("unsupported plugin add option: {other}");
+                        }
+                        other => bail!("unsupported plugin add argument: {other}"),
+                    }
+                }
+                return Ok(LocalCommand::PluginAdd {
+                    reference,
+                    name,
+                    capabilities,
+                    no_manifest,
+                    global,
                     json: json_output,
                 });
             }
@@ -2865,6 +2937,8 @@ Common commands:
   auth login app                  Open a saved login form and submit it
   auth login app --credential-provider vault --item "My App"
                                   Resolve credentials through a configured plugin
+  plugin add agent-browser-plugin-captcha
+                                  Add a plugin to project config
   plugin list                     List configured agent-browser protocol plugins
   plugin show vault               Show one configured plugin without running it
   plugin run captcha captcha.solve --payload '{"siteKey":"abc"}'
@@ -2977,7 +3051,8 @@ Supported camelCase defaults include json, profile, sessionName, session, state,
 noAllowedDomains, actionPolicy, confirmActions, confirmInteractive,
 allowFileAccess, headed, headless, colorScheme, proxy, proxyBypass,
 downloadPath, maxOutput, contentBoundaries, engine, provider, model, and
-plugins. `plugins` is used for credential-provider integrations but does not
+plugins. `plugins` configures credential-provider and command/custom
+integrations; `plugin add` can write entries, but configured plugins do not
 synthesize CLI flags. CLI flags override config defaults. Unknown keys are
 ignored. `headless: true`, `--headless`, PIRE_BROWSER_HEADLESS=1, and
 AGENT_BROWSER_HEADLESS=1 make newly launched managed Firefox sessions run
@@ -3730,17 +3805,20 @@ login. Passwords are not printed by list/show output. Use --password-stdin to
 avoid putting the password in shell history. The vault uses AES-256-GCM with
 PIRE_BROWSER_AUTH_ENCRYPTION_KEY, PIRE_BROWSER_ENCRYPTION_KEY,
 AGENT_BROWSER_ENCRYPTION_KEY, or an auto-generated local key file.
-Credential-provider plugins use the agent-browser plugin protocol. Configure
-`plugins` with name, command, args, and capability credential.read in
-pire-browser.json / agent-browser.json, or set AGENT_BROWSER_PLUGINS to the same
-JSON array. The plugin receives credential.resolve and must return credential
-with username, password, url, and optional usernameSelector/passwordSelector/
-submitSelector. Plugin stderr and plugin error text are suppressed for this core
-login path to reduce accidental secret exposure.
+Credential-provider plugins use the agent-browser plugin protocol. Add them
+with `pire-browser plugin add`, configure `plugins` with name, command, args,
+and capability credential.read in pire-browser.json / agent-browser.json, or set
+AGENT_BROWSER_PLUGINS to the same JSON array. The plugin receives
+credential.resolve and must return credential with username, password, url, and
+optional usernameSelector/passwordSelector/submitSelector. Plugin stderr and
+plugin error text are suppressed for this core login path to reduce accidental
+secret exposure.
 "##;
 
 const PLUGIN_HELP: &str = r##"
 Usage:
+  pire-browser plugin add <package-or-repo> [--name <name>] [--global] [--json]
+  pire-browser plugin add <package-or-repo> --no-manifest --capability <name>... [--json]
   pire-browser plugin list [--json]
   pire-browser plugin show <name> [--json]
   pire-browser plugin run <name> <capability> [--payload <json>] [--json]
@@ -3749,6 +3827,14 @@ Lists, inspects, or explicitly runs configured agent-browser protocol plugins.
 Plugin entries come from the `plugins` array in pire-browser config files or
 from PIRE_BROWSER_PLUGINS / AGENT_BROWSER_PLUGINS. Use list/show before choosing
 a plugin.
+
+`plugin add` follows agent-browser's add flow. It probes the plugin manifest,
+then writes the effective project config (`pire-browser.json` when present,
+otherwise `agent-browser.json`) or `--global` config. npm-style references such
+as `agent-browser-plugin-captcha` and `@company/agent-browser-plugin-vault` run
+through `npx --yes`; GitHub references such as `org/agent-browser-plugin-cloud`
+run through `npx --yes github:org/agent-browser-plugin-cloud`; local paths run
+directly. Use `--no-manifest --capability <name>` when a plugin has no manifest.
 
 `credential.read` providers run through `auth login --credential-provider`.
 `plugin run` executes plugins that declare `command.run` and the requested
@@ -5792,6 +5878,63 @@ mod tests {
         );
         assert_eq!(
             parse_cli_args(&s(&[
+                "plugin",
+                "add",
+                "agent-browser-plugin-captcha",
+                "--json"
+            ]))
+            .unwrap(),
+            LocalCommand::PluginAdd {
+                reference: "agent-browser-plugin-captcha".to_string(),
+                name: None,
+                capabilities: vec![],
+                no_manifest: false,
+                global: false,
+                json: true
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "plugin",
+                "add",
+                "@company/agent-browser-plugin-vault",
+                "--name",
+                "vault",
+                "--global"
+            ]))
+            .unwrap(),
+            LocalCommand::PluginAdd {
+                reference: "@company/agent-browser-plugin-vault".to_string(),
+                name: Some("vault".to_string()),
+                capabilities: vec![],
+                no_manifest: false,
+                global: true,
+                json: false
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "plugins",
+                "add",
+                "org/agent-browser-plugin-cloud-browser",
+                "--no-manifest",
+                "--capability",
+                "command.run",
+                "--capability",
+                "cloud.launch"
+            ]))
+            .unwrap(),
+            LocalCommand::PluginAdd {
+                reference: "org/agent-browser-plugin-cloud-browser".to_string(),
+                name: None,
+                capabilities: s(&["command.run", "cloud.launch"]),
+                no_manifest: true,
+                global: false,
+                json: false
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&[
                 "--confirm-actions",
                 "plugin:captcha:captcha.solve",
                 "plugin",
@@ -5827,7 +5970,21 @@ mod tests {
             }
         );
         assert!(parse_cli_args(&s(&["plugin", "show"])).is_err());
-        assert!(parse_cli_args(&s(&["plugin", "add", "agent-browser-plugin-vault"])).is_err());
+        assert!(parse_cli_args(&s(&["plugin", "add"])).is_err());
+        assert!(parse_cli_args(&s(&[
+            "plugin",
+            "add",
+            "agent-browser-plugin-vault",
+            "--name"
+        ]))
+        .is_err());
+        assert!(parse_cli_args(&s(&[
+            "plugin",
+            "add",
+            "agent-browser-plugin-vault",
+            "--capability"
+        ]))
+        .is_err());
         assert!(parse_cli_args(&s(&["plugin", "run", "vault"])).is_err());
         assert!(parse_cli_args(&s(&["plugin", "run", "vault", "x", "--payload"])).is_err());
         assert!(parse_cli_args(&s(&["plugin", "run", "vault", "x", "--payload", "{"])).is_err());
@@ -6360,6 +6517,7 @@ mod tests {
         assert!(text.contains("--allow-file-access open file:///path/to/page.html"));
         assert!(text.contains("auth login"));
         assert!(text.contains("auth login app --credential-provider vault"));
+        assert!(text.contains("plugin add agent-browser-plugin-captcha"));
         assert!(text.contains("plugin list"));
         assert!(text.contains("plugin show vault"));
         assert!(text.contains("plugin run captcha captcha.solve"));
@@ -6394,6 +6552,10 @@ mod tests {
         assert!(help_text(Some("auth"))
             .unwrap()
             .contains("credential-provider"));
+        assert!(help_text(Some("plugin"))
+            .unwrap()
+            .contains("plugin add <package-or-repo>"));
+        assert!(help_text(Some("plugin")).unwrap().contains("--no-manifest"));
         assert!(help_text(Some("plugin"))
             .unwrap()
             .contains("plugin show <name>"));

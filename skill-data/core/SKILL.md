@@ -573,6 +573,8 @@ Prefer `--password-stdin` over `--password` when saving credentials so the passw
 Use a configured credential-provider plugin when the user keeps credentials in an external vault:
 
 ```bash
+pire-browser plugin add agent-browser-plugin-vault
+pire-browser plugin add agent-browser-plugin-captcha --no-manifest --capability command.run --capability captcha.solve
 pire-browser plugin list
 pire-browser plugin show vault
 pire-browser auth login app --credential-provider vault --item "My App" --url https://example.com/login
@@ -580,9 +582,12 @@ pire-browser snapshot -i --compact
 ```
 
 Credential providers use the agent-browser plugin protocol with capability
-`credential.read`; configure them in `pire-browser.json` / `agent-browser.json`
-under `plugins`, or set `AGENT_BROWSER_PLUGINS` / `PIRE_BROWSER_PLUGINS` to the
-same JSON array. Use CLI `plugin list` / `plugin show <name>` to inspect
+`credential.read`; add them with `plugin add`, configure them manually in
+`pire-browser.json` / `agent-browser.json` under `plugins`, or set
+`AGENT_BROWSER_PLUGINS` / `PIRE_BROWSER_PLUGINS` to the same JSON array.
+`plugin add` probes an agent-browser plugin manifest when available; use
+`--no-manifest --capability <name>` for plugins that do not expose
+`plugin.manifest`. Use CLI `plugin list` / `plugin show <name>` to inspect
 configured plugins before running one. Use `auth login --credential-provider`
 for `credential.read` providers. Use `plugin run <name> <capability> --payload
 <json>` for plugins that declare `command.run` plus a custom capability:
