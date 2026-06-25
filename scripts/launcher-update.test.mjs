@@ -19,6 +19,23 @@ afterEach(() => {
 });
 
 describe("launcher update UX", () => {
+  it("serves launcher-owned help without invoking native commands", () => {
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+    expect(main(["upgrade", "--help"])).toBe(0);
+    expect(logs.pop()).toContain("pire-browser upgrade [--json]");
+
+    expect(main(["update", "--help"])).toBe(0);
+    expect(logs.pop()).toContain("pire-browser update check [--json]");
+
+    expect(main(["skills", "--help"])).toBe(0);
+    expect(logs.pop()).toContain("pire-browser skills get core [--json]");
+
+    expect(main(["skill", "help"])).toBe(0);
+    expect(logs.pop()).toContain("AGENT_BROWSER_SKILLS_DIR");
+  });
+
   it("serves agent-browser-style skills get core from the JS launcher before native resolution", () => {
     const logs = [];
     vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));

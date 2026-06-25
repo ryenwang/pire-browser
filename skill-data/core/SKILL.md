@@ -768,6 +768,9 @@ pire-browser --help
 pire-browser open --help
 pire-browser read --help
 pire-browser snapshot --help
+pire-browser upgrade --help
+pire-browser update --help
+pire-browser skills --help
 pire-browser mcp --tools core
 pire-browser mcp --tools core,network
 pire-browser mcp --tools all

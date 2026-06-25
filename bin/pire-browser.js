@@ -19,12 +19,58 @@ import { resolveNativeBinary, rootDir, rootPackageJson } from "../scripts/platfo
 const root = rootDir();
 const packageJson = rootPackageJson(root);
 
+const LAUNCHER_UPDATE_HELP = `
+Usage:
+  pire-browser update check [--json]
+  pire-browser update apply [--json]
+  pire-browser update configure --mode off|notify|patch
+
+Checks or applies package updates through the npm/Pi JavaScript launcher. Update
+checks are observational; apply mutates only global npm or Pi-managed installs.
+Local project installs are notify-only so lockfiles and node_modules are not
+changed unexpectedly. Background update checks never block browser commands.
+`;
+
+const LAUNCHER_UPGRADE_HELP = `
+Usage:
+  pire-browser upgrade [--json]
+
+Agent-browser-style foreground upgrade path for installed npm/Pi packages. It
+checks the npm registry, then applies the newest available pire-browser release
+when the install is global npm or Pi-managed and no managed Firefox session is
+active. Use lower-level \`pire-browser update check\`, \`update apply\`, and
+\`update configure --mode off|notify|patch\` for explicit update management.
+`;
+
+const LAUNCHER_SKILLS_HELP = `
+Usage:
+  pire-browser skills list [--json]
+  pire-browser skills get core [--json]
+  pire-browser skills get --all [--json]
+  pire-browser skills cat core [--json]
+  pire-browser skills path [core] [--json]
+
+Serves version-matched agent guidance from the installed package before native
+binary resolution. \`skills get\` is the agent-browser-style spelling, \`skills
+cat\` is the lower-level compatibility spelling, and \`skill\` is accepted as a
+root alias. Set PIRE_BROWSER_SKILLS_DIR or AGENT_BROWSER_SKILLS_DIR to override
+the skill directory during local development.
+`;
+
 export function main(args = process.argv.slice(2)) {
   if (args[0] === "update") {
+    if (wantsLauncherHelp(args.slice(1))) {
+      console.log(LAUNCHER_UPDATE_HELP.trim());
+      return 0;
+    }
     return handleUpdate(args.slice(1));
   }
 
   if (args[0] === "upgrade") {
+    if (wantsLauncherHelp(args.slice(1))) {
+      console.log(LAUNCHER_UPGRADE_HELP.trim());
+      return 0;
+    }
     return handleUpgrade(args.slice(1));
   }
 
@@ -117,6 +163,10 @@ export function handleLauncherSkills(args, options = {}) {
   if (!["skills", "skill"].includes(args[0])) return null;
 
   const skillArgs = args.slice(1);
+  if (wantsLauncherHelp(skillArgs)) {
+    output(LAUNCHER_SKILLS_HELP.trim());
+    return 0;
+  }
   const json = removeFlag(skillArgs, "--json");
   const subcommand = skillArgs.shift() ?? "list";
   if (subcommand === "list") {
@@ -305,6 +355,12 @@ function normalizeSkillText(text) {
 
 function successEnvelope(data) {
   return JSON.stringify({ success: true, data, warnings: [] }, null, 2);
+}
+
+function wantsLauncherHelp(args) {
+  return args.length === 0
+    ? false
+    : args.some((arg) => arg === "--help" || arg === "-h") || args[0] === "help";
 }
 
 function handleUpdate(updateArgs) {

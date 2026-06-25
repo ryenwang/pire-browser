@@ -1219,7 +1219,7 @@ Managed Firefox sessions start on demand and can be reused by session id, sessio
 ### Just ask the agent
 
 ```text
-Use pire-browser to test the login flow. Run pire-browser --help to see available commands.
+Use pire-browser to test the login flow. Run pire-browser --help or pire-browser <command> --help to see available commands.
 ```
 
 ### AI Coding Assistants (recommended)
@@ -1236,6 +1236,10 @@ The installed npm package also serves the bundled core skill:
 pire-browser skills get core
 pire-browser skills path core
 ```
+
+Launcher-served commands such as `skills`, `update`, and `upgrade` support
+`--help` before native binary resolution, so agents can still get install/update
+guidance when an optional native package is missing or stale.
 
 Agent hosts that support MCP can use the typed stdio server:
 
