@@ -145,7 +145,7 @@ Use `--json` when another tool or agent needs structured output.
 ### Core Commands
 
 ```bash
-pire-browser open                    # Launch managed Firefox if needed
+pire-browser open                    # Launch/reuse Firefox without navigating
 pire-browser open <url>              # Launch + navigate to URL (aliases: goto, navigate)
 pire-browser read [url]              # Agent-friendly text; URL reads do not launch Firefox
 pire-browser click <sel>             # Click element
@@ -528,11 +528,12 @@ pire-browser pushstate <url>
 Some flows need state or init scripts before first navigation. Launch a managed session, stage state, then navigate:
 
 ```bash
-pire-browser launch
-pire-browser --session-name review open about:blank
+pire-browser --session-name review open
 pire-browser --session-name review state load ./.pire-state/app.json
-pire-browser --session-name review open https://app.example.com/dashboard
+pire-browser --session-name review navigate https://app.example.com/dashboard
 ```
+
+`pire-browser open` with no URL launches or reuses a managed Firefox session without navigating, matching agent-browser's pre-navigation setup loop. Use lower-level `launch` only for diagnostics.
 
 ### React / Web Vitals
 
@@ -1266,6 +1267,8 @@ Core workflow:
 2. `pire-browser snapshot -i` - Get interactive elements with refs (`@e1`, `@e2`)
 3. `pire-browser click '@e1'` / `fill '@e2' "text"` - Interact using refs
 4. Re-snapshot after page changes
+
+For pre-navigation setup, run `pire-browser open` first, stage state/cookies/init scripts, then run `pire-browser navigate <url>`.
 ```
 
 ## Integrations

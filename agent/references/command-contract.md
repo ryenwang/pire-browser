@@ -43,6 +43,7 @@ Skill commands use:
 
 Browser commands may auto-launch a managed Firefox session when safe. Read the returned output before deciding the next step.
 
+- Use `pire-browser open` with no URL to launch or reuse a managed Firefox session before staging state, cookies, routes, or init scripts; then use `navigate <url>` for the first destination.
 - Use `pire-browser vitals [url]` for best-effort page performance diagnostics: TTFB, FCP, LCP, CLS, INP, DOMContentLoaded, load, readyState, and captured hydration warnings.
 - If `vitals` reports unavailable metrics, treat that as a Firefox/WebExtension API limitation instead of inventing estimates.
 - Use `pire-browser trace start`, `trace status`, and `trace stop [output.json]` for a Firefox QA evidence bundle with console, page-error, network/HAR metadata, vitals, compact snapshot, and screenshot evidence. Do not describe it as a Chrome DevTools performance trace or CPU profile.

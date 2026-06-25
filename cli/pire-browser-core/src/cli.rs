@@ -2679,6 +2679,7 @@ Common commands:
   chat "open example.com and summarize it"
                                   Natural-language browser control via AI Gateway
   --config ./ci-config.json open <url>
+  open                            Launch/reuse Firefox without navigating
   open <url> [--label <name>]      Open a URL, auto-launching Firefox if needed
   open <url> --headers '{"Authorization":"Bearer token"}'
   --proxy http://proxy.example:8080 open <url>
@@ -2865,6 +2866,7 @@ ignored.
 
 const OPEN_HELP: &str = r##"
 Usage:
+  pire-browser open
   pire-browser open <url> [--label <name>] [--new|--new-tab]
   pire-browser open <url> --headers '{"Authorization":"Bearer token"}'
   pire-browser --proxy http://proxy.example:8080 open <url>
@@ -2875,7 +2877,10 @@ Usage:
   pire-browser goto <url>
   pire-browser navigate <url>
 
-Opens a page in the default session, auto-launching managed Firefox when needed.
+Opens or reuses the default managed Firefox session. With no URL, `open`
+launches Firefox without navigating, matching agent-browser pre-navigation
+setup recipes. With a URL, it opens a page in the default session,
+auto-launching managed Firefox when needed.
 `--new` and `--new-tab` open a new tab in the current managed Firefox window;
 for a separate Firefox window, run `pire-browser window new` first, then open
 the URL.
@@ -4862,6 +4867,23 @@ mod tests {
     }
 
     #[test]
+    fn parses_bare_open_as_remote_launch_command() {
+        let parsed = parse_cli_args(&s(&["open"])).unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["open"])
+            }
+        );
+    }
+
+    #[test]
     fn accepts_json_after_command() {
         let parsed = parse_cli_args(&s(&["snapshot", "--json"])).unwrap();
         assert_eq!(
@@ -6051,6 +6073,8 @@ mod tests {
     #[test]
     fn help_text_includes_ref_quoting_guidance() {
         let text = help_text(None).unwrap();
+        assert!(text
+            .contains("open                            Launch/reuse Firefox without navigating"));
         assert!(text.contains("click '@e4'"));
         assert!(text.contains("tap '@e4'"));
         assert!(text.contains("dblclick '@e4'"));
@@ -6143,6 +6167,12 @@ mod tests {
         assert!(help_text(Some("state"))
             .unwrap()
             .contains("--state ./.pire-state"));
+        assert!(help_text(Some("open"))
+            .unwrap()
+            .contains("pire-browser open"));
+        assert!(help_text(Some("open"))
+            .unwrap()
+            .contains("launches Firefox without navigating"));
         assert!(help_text(Some("open"))
             .unwrap()
             .contains("[--new|--new-tab]"));

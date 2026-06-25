@@ -2,7 +2,7 @@ import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, tabl
 
 const commandsBlocks = [
   h2("Core", "core"),
-  code(`pire-browser open                    # Launch managed Firefox if needed
+  code(`pire-browser open                    # Launch/reuse Firefox without navigating
 pire-browser open <url>              # Navigate to a URL
 pire-browser goto <url>              # Alias for navigation
 pire-browser navigate <url>          # Alias for navigation
@@ -166,7 +166,7 @@ pire-browser --executable-path /path/to/firefox open https://example.com
 pire-browser launch --url https://example.com
 PIRE_BROWSER_FIREFOX_PATH=/path/to/firefox pire-browser launch
 PIRE_BROWSER_EXTENSION_MODE=xpi pire-browser launch`),
-  p("For lower-level launch, <code>--profile</code> is a command option after <code>launch</code>: use <code>pire-browser launch --profile Work</code>. For normal agent workflows, prefer <code>pire-browser --profile Work open &lt;url&gt;</code> or <code>pire-browser open &lt;url&gt;</code>."),
+  p("For lower-level launch, <code>--profile</code> is a command option after <code>launch</code>: use <code>pire-browser launch --profile Work</code>. For normal agent workflows, prefer <code>pire-browser open</code> for pre-navigation setup, <code>pire-browser --profile Work open &lt;url&gt;</code>, or <code>pire-browser open &lt;url&gt;</code>."),
 
   h2("Cookies & storage", "cookies-storage"),
   code(`pire-browser cookies
@@ -394,10 +394,9 @@ pire-browser goto https://example.com
 pire-browser navigate https://example.com`),
 
   h2("Pre-navigation setup", "pre-navigation-setup"),
-  code(`pire-browser launch
-pire-browser --session-name review open about:blank
+  code(`pire-browser --session-name review open
 pire-browser --session-name review state load ./.pire-state/app.json
-pire-browser --session-name review open https://app.example.com/dashboard`),
+pire-browser --session-name review navigate https://app.example.com/dashboard`),
 
   h2("React / Web Vitals", "react-web-vitals"),
   code(`pire-browser open --enable react-devtools https://app.example.com

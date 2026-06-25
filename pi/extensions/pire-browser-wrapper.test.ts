@@ -48,9 +48,9 @@ describe("pire-browser Pi wrapper", () => {
 
   it("keeps inline prompt guidance compact and points to installed skill content", () => {
     const tool = registerTool();
-    expect(tool.promptSnippet).toContain("pire-browser skills cat core");
+    expect(tool.promptSnippet).toContain("pire-browser skills get core");
     expect(tool.promptGuidelines).toContain(
-      "Run `pire-browser skills cat core` for quickstart recipes and command guidance."
+      "Run `pire-browser skills get core` for quickstart recipes; use `pire-browser open` with no URL to launch or reuse Firefox before staging state, cookies, routes, or init scripts."
     );
     expect(tool.promptGuidelines).toContain(
       "Inspect with `pire-browser snapshot -i --compact` before page actions, use fresh quoted refs such as `click '@e4'`, and use `get`/`is` for targeted verification."

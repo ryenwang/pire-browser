@@ -10,6 +10,7 @@ Use `pire-browser` when the user asks you to inspect or control Firefox. Do not 
 ## Quick Start
 
 ```bash
+pire-browser open
 pire-browser open https://example.com
 pire-browser snapshot -i
 pire-browser fill '@e2' "hello@example.com"
@@ -26,7 +27,7 @@ retrying the original ref.
 
 ## Core Loop
 
-1. Open or select the page.
+1. Open or select the page. Use `pire-browser open` with no URL when you need to launch/reuse Firefox before staging state, cookies, routes, or init scripts.
 2. Inspect with `pire-browser snapshot -i`.
 3. Act with refs or semantic find commands.
 4. Wait only when page state needs time to settle.

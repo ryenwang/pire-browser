@@ -1227,8 +1227,10 @@ describe("command shape parity", () => {
 
   it("allows bare open while keeping bare goto and navigate invalid", () => {
     const body = background();
+    expect(body).toContain('if (!url) {');
     expect(body).toContain('if (command !== "open")');
     expect(body).toContain("`${command} requires <url>`");
+    expect(body).toContain("const tab = await targetTab();");
     expect(body).toContain("Browser open in ${tab.agentId}");
     expect(body).toContain('args.includes("--new-tab")');
     expect(body).toContain("isInspectableTab(current)");
