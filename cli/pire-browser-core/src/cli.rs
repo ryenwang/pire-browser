@@ -3923,6 +3923,7 @@ Usage:
   pire-browser skills list [--json]
   pire-browser skills cat core [--json]
   pire-browser skills get core [--full] [--json]
+  pire-browser skills get dogfood [--full] [--json]
   pire-browser skills get --all [--json]
   pire-browser skills path [core] [--json]
 
@@ -5593,6 +5594,13 @@ mod tests {
             }
         );
         assert_eq!(
+            parse_cli_args(&s(&["skills", "get", "dogfood", "--json"])).unwrap(),
+            LocalCommand::SkillsCat {
+                name: "dogfood".to_string(),
+                json: true
+            }
+        );
+        assert_eq!(
             parse_cli_args(&s(&["skills", "get", "--all", "--json"])).unwrap(),
             LocalCommand::SkillsCatAll { json: true }
         );
@@ -6509,6 +6517,9 @@ mod tests {
         assert!(help_text(Some("skills"))
             .unwrap()
             .contains("skills get core"));
+        assert!(help_text(Some("skills"))
+            .unwrap()
+            .contains("skills get dogfood"));
         assert!(help_text(Some("skills"))
             .unwrap()
             .contains("skills path [core]"));

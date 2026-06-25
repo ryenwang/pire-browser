@@ -46,6 +46,7 @@ const LAUNCHER_SKILLS_HELP = `
 Usage:
   pire-browser skills list [--json]
   pire-browser skills get core [--json]
+  pire-browser skills get dogfood [--json]
   pire-browser skills get --all [--json]
   pire-browser skills cat core [--json]
   pire-browser skills path [core] [--json]

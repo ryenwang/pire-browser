@@ -5,10 +5,33 @@ use std::path::{Path, PathBuf};
 
 pub const CORE_SKILL_NAME: &str = "core";
 pub const CORE_SKILL_DESCRIPTION: &str = "Core pire-browser workflow for safe Firefox automation.";
+pub const DOGFOOD_SKILL_NAME: &str = "dogfood";
+pub const DOGFOOD_SKILL_DESCRIPTION: &str =
+    "Systematic exploratory QA for web apps using pire-browser evidence.";
 pub const AGENT_BROWSER_SKILLS_DIR_ENV: &str = "AGENT_BROWSER_SKILLS_DIR";
 pub const PIRE_BROWSER_SKILLS_DIR_ENV: &str = "PIRE_BROWSER_SKILLS_DIR";
 
 const CORE_SKILL_RAW: &str = include_str!("../../../skill-data/core/SKILL.md");
+const DOGFOOD_SKILL_RAW: &str = include_str!("../../../skill-data/dogfood/SKILL.md");
+
+struct EmbeddedSkill {
+    name: &'static str,
+    description: &'static str,
+    raw: &'static str,
+}
+
+const EMBEDDED_SKILLS: &[EmbeddedSkill] = &[
+    EmbeddedSkill {
+        name: CORE_SKILL_NAME,
+        description: CORE_SKILL_DESCRIPTION,
+        raw: CORE_SKILL_RAW,
+    },
+    EmbeddedSkill {
+        name: DOGFOOD_SKILL_NAME,
+        description: DOGFOOD_SKILL_DESCRIPTION,
+        raw: DOGFOOD_SKILL_RAW,
+    },
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SkillSummary {
@@ -39,10 +62,13 @@ pub fn list_skills() -> Vec<SkillSummary> {
 }
 
 fn embedded_skills() -> Vec<SkillSummary> {
-    vec![SkillSummary {
-        name: CORE_SKILL_NAME.to_string(),
-        description: CORE_SKILL_DESCRIPTION.to_string(),
-    }]
+    EMBEDDED_SKILLS
+        .iter()
+        .map(|skill| SkillSummary {
+            name: skill.name.to_string(),
+            description: skill.description.to_string(),
+        })
+        .collect()
 }
 
 pub fn skill_content(name: &str) -> Option<SkillContent> {
@@ -76,13 +102,11 @@ fn skill_path_from_dir(root: &Path, name: &str) -> Option<SkillPath> {
 }
 
 fn embedded_skill_content(name: &str) -> Option<SkillContent> {
-    if name != CORE_SKILL_NAME {
-        return None;
-    }
+    let skill = EMBEDDED_SKILLS.iter().find(|skill| skill.name == name)?;
     Some(SkillContent {
-        name: CORE_SKILL_NAME.to_string(),
-        description: CORE_SKILL_DESCRIPTION.to_string(),
-        content: normalize_skill_text(CORE_SKILL_RAW),
+        name: skill.name.to_string(),
+        description: skill.description.to_string(),
+        content: normalize_skill_text(skill.raw),
     })
 }
 
@@ -176,9 +200,11 @@ mod tests {
     #[test]
     fn lists_core_skill() {
         let skills = list_skills();
-        assert_eq!(skills.len(), 1);
+        assert_eq!(skills.len(), 2);
         assert_eq!(skills[0].name, "core");
         assert!(skills[0].description.contains("Firefox automation"));
+        assert_eq!(skills[1].name, "dogfood");
+        assert!(skills[1].description.contains("exploratory QA"));
     }
 
     #[test]
@@ -240,6 +266,7 @@ mod tests {
         assert!(skill.content.contains("/Applications/Firefox.app"));
         assert!(skill.content.contains("pire-browser skills cat core"));
         assert!(skill.content.contains("pire-browser skills get core"));
+        assert!(skill.content.contains("pire-browser skills get dogfood"));
         assert!(skill.content.contains("pire-browser skills get --all"));
         assert!(skill.content.contains("pire-browser skills path core"));
         assert!(skill
@@ -250,7 +277,20 @@ mod tests {
 
     #[test]
     fn unknown_skill_returns_none() {
-        assert!(skill_content("dogfood").is_none());
+        assert!(skill_content("missing").is_none());
+    }
+
+    #[test]
+    fn dogfood_skill_content_is_embedded_and_normalized() {
+        let skill = skill_content("dogfood").unwrap();
+        assert!(skill.content.starts_with("---\nname: dogfood\n"));
+        assert!(skill.content.contains("pire-browser skills get core"));
+        assert!(skill.content.contains("--session-name dogfood"));
+        assert!(skill
+            .content
+            .contains("record start dogfood-artifacts/recordings"));
+        assert!(skill.content.contains("not native WebM video"));
+        assert!(!skill.content.contains("\r"));
     }
 
     #[test]

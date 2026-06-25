@@ -804,11 +804,15 @@ pire-browser mcp --tools core,network
 pire-browser mcp --tools all
 pire-browser skills list
 pire-browser skills get core
+pire-browser skills get dogfood
 pire-browser skills get --all
 pire-browser skills cat core
 pire-browser skills path core
 ```
 
 Use `--json` when another tool or script needs structured output.
+
+Use `pire-browser skills get dogfood` when the user asks for systematic
+exploratory QA, app review, bug hunting, or dogfooding.
 
 For local skill development, `PIRE_BROWSER_SKILLS_DIR` or the agent-browser-compatible `AGENT_BROWSER_SKILLS_DIR` can point to a directory of `<name>/SKILL.md` files.

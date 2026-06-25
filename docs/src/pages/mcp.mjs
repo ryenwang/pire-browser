@@ -88,7 +88,7 @@ pire-browser mcp --tools all`),
       ["pire_browser_frame_switch / frame_select / frame_main", "Scope snapshots and selector-based actions to an iframe by ref, selector, name, or URL; iframe refs from snapshots can usually be acted on directly. Prefer frame_switch for new MCP clients; frame_select remains compatible."],
       ["pire_browser_window_new", "Open a separate Firefox window."],
       ["pire_browser_close", "Close managed sessions."],
-      ["pire_browser_skills_get_core", "Return version-matched agent guidance."],
+      ["pire_browser_skills_get_core / skills_get_dogfood", "Return version-matched core guidance or exploratory QA/bug-hunt guidance."],
     ]
   ),
   h2("Agent Loop", "agent-loop"),

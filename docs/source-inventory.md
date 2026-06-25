@@ -1,6 +1,6 @@
 # Source Inventory
 
-Last reviewed: 2026-06-05
+Last reviewed: 2026-06-25
 
 This inventory records which public source sets are authoritative for `pire-browser`, which artifacts are generated or runtime-only, and where public ambiguity lives. It is intentionally not a file-by-file listing.
 
@@ -18,7 +18,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 | `pire-browser.schema.json` | Config schema | Authoritative packaged JSON Schema for `pire-browser` config defaults and credential-provider plugin entries; referenced from README and skill examples. |
 | `agent-browser.schema.json` | Legacy config schema alias | Tracked filename alias for existing configs that reference the earlier schema path; mirrors the supported config keys including `plugins`. |
 | `skills/pire-browser/SKILL.md` | Installed skill discovery stub | Small skill entry point that points agents to the version-matched runtime skill command. |
-| `skill-data/core/SKILL.md` | Runtime skill content | Full core skill served by `pire-browser skills cat/get/path core` through Rust `include_str!` and by the JS launcher fallback; `PIRE_BROWSER_SKILLS_DIR` / `AGENT_BROWSER_SKILLS_DIR` can override the runtime skill root for local skill development. Keep version matched to CLI behavior. |
+| `skill-data/core/SKILL.md`, `skill-data/dogfood/SKILL.md` | Runtime skill content | Full core and specialized QA skills served by `pire-browser skills cat/get/path <name>` through Rust `include_str!` and by the JS launcher fallback; `PIRE_BROWSER_SKILLS_DIR` / `AGENT_BROWSER_SKILLS_DIR` can override the runtime skill root for local skill development. Keep version matched to CLI behavior. |
 | `bin/pire-browser.js`, `scripts/platform.mjs`, `scripts/pi-install-migration.mjs`, `scripts/pi-postinstall.mjs` | Public npm launcher/install helpers | Root package launcher, platform resolver, Pi duplicate-source reconciliation helper, and postinstall setup. |
 | `platform-packages/` | Native package metadata | Version-matched scoped optional npm package manifests for each supported OS/architecture. |
 | `docs/src/`, `docs/public/`, `scripts/build-pages-site.mjs` | Public docs site source and generator | Product-facing route registry, one-module-per-route docs content under `docs/src/pages/`, shared block helpers in `docs/src/blocks.mjs`, feature-status labels, search index generation, and static assets for the generated Pages site. |

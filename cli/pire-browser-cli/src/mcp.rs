@@ -182,7 +182,9 @@ fn tool_profile_bits(name: &str) -> u16 {
         }
         "pire_browser_profiles_list" => PROFILE_CORE | PROFILE_STATE | PROFILE_DEBUG,
         "pire_browser_profiles_import" => PROFILE_STATE | PROFILE_DEBUG,
-        "pire_browser_skills_get_core" => PROFILE_CORE | PROFILE_STATE,
+        "pire_browser_skills_get_core" | "pire_browser_skills_get_dogfood" => {
+            PROFILE_CORE | PROFILE_STATE
+        }
         "pire_browser_status" => PROFILE_CORE | PROFILE_DEBUG,
         "pire_browser_launch"
         | "pire_browser_batch"
@@ -445,7 +447,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open/goto/navigate, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open, pire_browser_goto, or pire_browser_navigate for normal launch/navigation; use enableReactDevtools on those tools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop/restart for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed HTTP polling live preview; it is not full WebSocket frame streaming yet. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when request/response waits, network diagnostics, cookies/storage/auth/state, Firefox profile import, debugging, tab labels/frames/dialogs/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open/goto/navigate, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, pire_browser_skills_get_core, and pire_browser_skills_get_dogfood. Use pire_browser_skills_get_dogfood for systematic exploratory QA, app review, or bug hunts. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open, pire_browser_goto, or pire_browser_navigate for normal launch/navigation; use enableReactDevtools on those tools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop/restart for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed HTTP polling live preview; it is not full WebSocket frame streaming yet. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when request/response waits, network diagnostics, cookies/storage/auth/state, Firefox profile import, debugging, tab labels/frames/dialogs/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -1870,9 +1872,17 @@ fn tool_command_args(
             args.push("get".to_string());
             args.push("core".to_string());
         }
+        (_, "pire_browser_skills_get_dogfood") => {
+            args.push("skills".to_string());
+            args.push("get".to_string());
+            args.push("dogfood".to_string());
+        }
         (_, other) => return Err(format!("unknown pire-browser MCP tool `{other}`")),
     }
-    if !matches!(name, "pire_browser_skills_get_core") {
+    if !matches!(
+        name,
+        "pire_browser_skills_get_core" | "pire_browser_skills_get_dogfood"
+    ) {
         args.insert(0, "--json".to_string());
     }
     if !matches!(
@@ -4191,6 +4201,13 @@ fn core_tools() -> Vec<Value> {
             tool_schema(vec![], &[]),
             true,
         ),
+        tool(
+            "pire_browser_skills_get_dogfood",
+            "Get dogfood skill",
+            "Return version-matched exploratory QA and bug-hunt guidance for using pire-browser.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
     ]
 }
 
@@ -4226,6 +4243,7 @@ fn is_open_world_tool(name: &str) -> bool {
             | "pire_browser_profiles_list"
             | "pire_browser_profiles_import"
             | "pire_browser_skills_get_core"
+            | "pire_browser_skills_get_dogfood"
     )
 }
 
@@ -4696,6 +4714,9 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_skills_get_core"));
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_skills_get_dogfood"));
         assert!(!tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_network_route"));
@@ -5082,6 +5103,7 @@ mod tests {
             "pire_browser_profiles_list",
             "pire_browser_profiles_import",
             "pire_browser_skills_get_core",
+            "pire_browser_skills_get_dogfood",
         ] {
             let tool = tool_named(&tools, name);
             assert_eq!(tool["annotations"]["openWorldHint"], false, "{name}");
@@ -5097,6 +5119,10 @@ mod tests {
         );
         assert_eq!(
             tool_named(&tools, "pire_browser_skills_get_core")["annotations"]["readOnlyHint"],
+            true
+        );
+        assert_eq!(
+            tool_named(&tools, "pire_browser_skills_get_dogfood")["annotations"]["readOnlyHint"],
             true
         );
     }
@@ -5302,6 +5328,22 @@ mod tests {
 
     #[test]
     fn maps_tool_arguments_to_cli_args() {
+        let args = tool_command_args(
+            "pire_browser_skills_get_core",
+            &json!({}),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["skills", "get", "core"]);
+
+        let args = tool_command_args(
+            "pire_browser_skills_get_dogfood",
+            &json!({}),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["skills", "get", "dogfood"]);
+
         let args =
             tool_command_args("pire_browser_launch", &json!({}), McpToolsProfile::Core).unwrap();
         assert_eq!(args, vec!["--json", "launch"]);

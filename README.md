@@ -607,13 +607,14 @@ pire-browser doctor --json
 pire-browser skills list
 pire-browser skills list --json
 pire-browser skills get core
+pire-browser skills get dogfood
 pire-browser skills get core --json
 pire-browser skills get --all --json
 pire-browser skills cat core
 pire-browser skills path core
 ```
 
-Installed agents should use the bundled skill command for version-matched guidance instead of relying on stale copied instructions. `skills get` is an agent-browser-style alias for `skills cat`; `skills get --all` returns all bundled skill content, and `skills path [name]` prints the installed skill directory. Skill commands are served by the JS launcher when possible, so agents can still load setup and repair guidance if the native binary is missing or stale. For local skill development, set `PIRE_BROWSER_SKILLS_DIR` or the agent-browser-compatible `AGENT_BROWSER_SKILLS_DIR` to a directory of `<name>/SKILL.md` files. The package also ships compact routing context under `agent/`.
+Installed agents should use the bundled skill command for version-matched guidance instead of relying on stale copied instructions. Start with `core` for general browser automation and use `dogfood` for systematic exploratory QA/bug hunts. `skills get` is an agent-browser-style alias for `skills cat`; `skills get --all` returns all bundled skill content, and `skills path [name]` prints the installed skill directory. Skill commands are served by the JS launcher when possible, so agents can still load setup and repair guidance if the native binary is missing or stale. For local skill development, set `PIRE_BROWSER_SKILLS_DIR` or the agent-browser-compatible `AGENT_BROWSER_SKILLS_DIR` to a directory of `<name>/SKILL.md` files. The package also ships compact routing context under `agent/`.
 
 ### MCP Server
 
@@ -1252,10 +1253,11 @@ Install the skill so the agent can load version-matched runtime guidance:
 npx skills add ryenwang/pire-browser
 ```
 
-The installed npm package also serves the bundled core skill:
+The installed npm package also serves bundled runtime skills:
 
 ```bash
 pire-browser skills get core
+pire-browser skills get dogfood
 pire-browser skills path core
 ```
 

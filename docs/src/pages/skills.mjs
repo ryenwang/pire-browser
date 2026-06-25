@@ -9,6 +9,7 @@ const skillsBlocks = [
   code(`pire-browser skills list
 pire-browser skills list --json
 pire-browser skills get core
+pire-browser skills get dogfood
 pire-browser skills get core --json
 pire-browser skills get --all --json
 pire-browser skills cat core
@@ -18,9 +19,12 @@ pire-browser skills --help`),
   h2("How It Works", "how-it-works"),
   p("The repository skill is intentionally thin and stable. Actual usage instructions, command references, workflows, and safety notes live in <code>skill-data/</code> and are served by the CLI. For local skill development, set <code>PIRE_BROWSER_SKILLS_DIR</code> or the agent-browser-compatible <code>AGENT_BROWSER_SKILLS_DIR</code> to a directory of <code>&lt;name&gt;/SKILL.md</code> files."),
   h2("Available Skills", "available-skills"),
-  table(["Skill", "Purpose"], [["core", "Core Firefox browser automation: navigation, snapshots, forms, screenshots, data extraction, sessions, authentication, state, guardrails, and the command reference."]]),
+  table(["Skill", "Purpose"], [
+    ["core", "Core Firefox browser automation: navigation, snapshots, forms, screenshots, data extraction, sessions, authentication, state, guardrails, and the command reference."],
+    ["dogfood", "Systematic exploratory QA and bug hunts with screenshots, snapshot verification, and screenshot-sequence recording evidence."],
+  ]),
   h2("Source", "source"),
-  p("The <code>skills/</code> directory holds the discovery stub that skill installers use. The <code>skill-data/</code> directory holds runtime skill content served by <code>pire-browser skills get core</code> or <code>pire-browser skills cat core</code>."),
+  p("The <code>skills/</code> directory holds the discovery stub that skill installers use. The <code>skill-data/</code> directory holds runtime skill content served by commands such as <code>pire-browser skills get core</code>, <code>pire-browser skills get dogfood</code>, or <code>pire-browser skills cat core</code>."),
 ];
 
 export default page({

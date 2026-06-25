@@ -31,6 +31,8 @@ describe("launcher update UX", () => {
 
     expect(main(["skills", "--help"])).toBe(0);
     expect(logs.pop()).toContain("pire-browser skills get core [--json]");
+    expect(main(["skills", "--help"])).toBe(0);
+    expect(logs.pop()).toContain("pire-browser skills get dogfood [--json]");
 
     expect(main(["skill", "help"])).toBe(0);
     expect(logs.pop()).toContain("AGENT_BROWSER_SKILLS_DIR");
@@ -70,9 +72,32 @@ describe("launcher update UX", () => {
           {
             name: "core",
           },
+          {
+            name: "dogfood",
+          },
         ],
       },
     });
+  });
+
+  it("serves agent-browser-style dogfood skill from the JS launcher", () => {
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+    expect(main(["skills", "get", "dogfood", "--json"])).toBe(0);
+
+    const body = JSON.parse(logs.join("\n"));
+    expect(body).toMatchObject({
+      success: true,
+      data: {
+        skill: {
+          name: "dogfood",
+        },
+      },
+    });
+    expect(body.data.skill.content).toContain("--session-name dogfood");
+    expect(body.data.skill.content).toContain("not native WebM video");
+    expect(body.data.skill.content).not.toContain("\r");
   });
 
   it("serves skills path and honors the agent-browser skills directory override", () => {
