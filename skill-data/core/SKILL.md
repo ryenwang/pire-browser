@@ -54,6 +54,8 @@ pire-browser find text "Save" --exact
 ```
 
 Use `--exact` when nearby text would otherwise create substring matches.
+Use `click '<link-ref>' --new-tab` or `click '<link-ref>' --new` only when a
+link target with an `href` should open in a new tab.
 
 Use focused keyboard commands when the page behavior depends on key events:
 
@@ -616,6 +618,7 @@ page state before reporting success.
 Open tabs and windows:
 
 ```bash
+pire-browser click '<link-ref>' --new-tab
 pire-browser tab new https://example.com
 pire-browser tabs list
 pire-browser window new

@@ -19,6 +19,7 @@ Use this folder when you are operating an installed `pire-browser` package. It i
 - Use `pire-browser read <url>` for docs/articles when interaction refs are not needed; use bare `pire-browser read` for rendered active-tab text. Use bare `pire-browser read --llms index|full`, `read --require-md`, `read --raw`, or `read --timeout <ms>` when the active tab URL should drive an HTTP docs fetch.
 - Inspect with `pire-browser snapshot -i` before acting on a page.
 - Treat snapshot refs as short lived. Use fresh refs after navigation, DOM changes, dialogs, downloads, uploads, or errors.
+- Use `pire-browser click <link-ref> --new-tab` or MCP `pire_browser_click` with `newTab: true` only when a link target with an `href` should open in a new tab.
 - Do not claim success until `pire-browser` output confirms it.
 - If output returns `confirm <id>`, ask the user before running it.
 - Treat state files as secret-bearing. They are plaintext by default; when `PIRE_BROWSER_ENCRYPTION_KEY` or `AGENT_BROWSER_ENCRYPTION_KEY` is set, save/load encrypted state with that key and never print it.

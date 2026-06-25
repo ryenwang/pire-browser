@@ -168,7 +168,7 @@ Use `--json` when another tool or agent needs structured output.
 pire-browser open                    # Launch/reuse Firefox without navigating
 pire-browser open <url>              # Launch + navigate to URL (aliases: goto, navigate)
 pire-browser read [url]              # Agent-friendly text; URL reads do not launch Firefox
-pire-browser click <sel>             # Click element
+pire-browser click <sel> [--new-tab] # Click element; new-tab requires link href
 pire-browser tap <sel>               # Best-effort tap alias for click
 pire-browser dblclick <sel>          # Double-click element
 pire-browser fill <sel> <text>       # Clear and fill
@@ -216,6 +216,8 @@ current page focus. Click or focus the intended control first, then verify with
 not native touch input or mobile browser chrome emulation. `swipe` maps touch
 direction to page scroll (`swipe up` scrolls down); use `scroll` when you want
 direct scroll direction.
+Use `click <link-ref> --new-tab` or `click <link-ref> --new` when a link target
+should open in a new tab.
 
 PDF capture is available as an image-backed visual evidence file. Natural-language chat is available through `pire-browser chat` and the dashboard AI Chat panel when `AI_GATEWAY_API_KEY` is set; both run the same bounded command-plan loop through the normal CLI command paths. CDP connect is not implemented in the current Firefox backend. `stream enable/status/disable` provides an agent-browser-style control surface for a dashboard-backed WebSocket screenshot stream with basic mouse/keyboard/touch-shaped input events; native WebM video and Chrome DevTools screencast output remain unavailable.
 

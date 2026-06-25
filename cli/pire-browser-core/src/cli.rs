@@ -3261,8 +3261,10 @@ const CLICK_HELP: &str = r##"
 Usage:
   pire-browser click '@e4'
   pire-browser click "#submit"
+  pire-browser click '@link-ref' --new-tab
 
-Clicks a ref or selector. If a ref is stale, rerun snapshot -i or find.
+Clicks a ref or selector. Use `--new-tab` or `--new` with link targets when
+the click should open a new tab. If a ref is stale, rerun snapshot -i or find.
 "##;
 
 const TAP_HELP: &str = r##"
@@ -6862,6 +6864,10 @@ mod tests {
         assert!(help_text(Some("find"))
             .unwrap()
             .contains("find text \"Save\" --exact"));
+        assert!(help_text(Some("click"))
+            .unwrap()
+            .contains("click '@link-ref' --new-tab"));
+        assert!(help_text(Some("click")).unwrap().contains("Use `--new-tab` or `--new`"));
         assert!(help_text(Some("dblclick"))
             .unwrap()
             .contains("pire-browser dblclick '@e4'"));

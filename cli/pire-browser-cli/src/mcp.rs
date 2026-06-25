@@ -746,6 +746,9 @@ fn tool_command_args(
         (_, "pire_browser_click") => {
             args.push("click".to_string());
             args.push(required_string(object, "selector")?);
+            if optional_bool(object, "newTab")? {
+                args.push("--new-tab".to_string());
+            }
         }
         (_, "pire_browser_tap") => {
             args.push("tap".to_string());
@@ -2686,8 +2689,14 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_click",
             "Click",
-            "Click a ref or selector from the current page.",
-            tool_schema(vec![("selector", string_prop("Ref or selector to click."))], &["selector"]),
+            "Click a ref or selector from the current page. Set newTab for link targets that should open in a new tab.",
+            tool_schema(
+                vec![
+                    ("selector", string_prop("Ref or selector to click.")),
+                    ("newTab", bool_prop("Open a link target in a new tab.")),
+                ],
+                &["selector"],
+            ),
             false,
         ),
         tool(
@@ -7368,6 +7377,14 @@ mod tests {
         let error =
             tool_command_args("pire_browser_click", &json!({}), McpToolsProfile::Core).unwrap_err();
         assert!(error.contains("selector is required"));
+
+        let args = tool_command_args(
+            "pire_browser_click",
+            &json!({ "selector": "@e2", "newTab": true }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "click", "@e2", "--new-tab"]);
 
         let error =
             tool_command_args("pire_browser_tap", &json!({}), McpToolsProfile::Core).unwrap_err();

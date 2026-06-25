@@ -2186,7 +2186,7 @@ async function clickCommand(args: string[]) {
   if ("error" in locator) return locator;
   const tab = await targetTab();
   const frameId = targetFrameIdForTab(tab.tabId, locator.frameId);
-  if (args.includes("--new-tab")) return clickNewTab(locator.locator, frameId);
+  if (args.includes("--new-tab") || args.includes("--new")) return clickNewTab(locator.locator, frameId);
   return clickLocator(locator.locator, frameId);
 }
 

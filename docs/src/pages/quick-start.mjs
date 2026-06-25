@@ -25,6 +25,7 @@ pire-browser read https://example.com/docs   # Read docs/articles without launch
 pire-browser read                            # Read rendered text from the active tab
 pire-browser snapshot -i                 # Get interactive elements with refs
 pire-browser click '@e2'                 # Click by ref
+pire-browser click '@link-ref' --new-tab # Open a link target in a new tab
 pire-browser fill '@e3' "test@example.com" # Fill input by ref
 pire-browser press Enter                 # Press a key at current focus
 pire-browser keyboard type "hello"       # Type at current focus

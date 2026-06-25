@@ -1219,11 +1219,11 @@ describe("command shape parity", () => {
     expect(body).toContain('return openCommand(rest, command || "open", params);');
   });
 
-  it("supports click --new-tab for link targets", () => {
+  it("supports click --new-tab and --new for link targets", () => {
     const body = background();
     const contentBody = content();
     expect(body).toContain("const frameId = targetFrameIdForTab(tab.tabId, locator.frameId);");
-    expect(body).toContain('if (args.includes("--new-tab")) return clickNewTab(locator.locator, frameId);');
+    expect(body).toContain('if (args.includes("--new-tab") || args.includes("--new")) return clickNewTab(locator.locator, frameId);');
     expect(body).toContain('type: "click_new_tab"');
     expect(body).toContain("browser.tabs.create({ url: url.href, active: true })");
     expect(body).toContain("markControlledPage(rememberTab(loadedTab))");

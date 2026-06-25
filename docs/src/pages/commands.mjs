@@ -7,7 +7,7 @@ pire-browser open <url>              # Navigate to a URL
 pire-browser goto <url>              # Alias for navigation
 pire-browser navigate <url>          # Alias for navigation
 pire-browser read [url]              # Agent-friendly text; URL reads do not launch Firefox
-pire-browser click <sel>             # Click ref or selector
+pire-browser click <sel> [--new-tab] # Click ref or selector; new-tab requires link href
 pire-browser tap <sel>               # Best-effort tap alias for click
 pire-browser dblclick <sel>          # Double-click ref or selector
 pire-browser fill <sel> <text>       # Clear and fill
@@ -35,7 +35,7 @@ pire-browser eval <js>               # Run JavaScript with policy checks
 pire-browser setcontent '<main><h1>Hello</h1></main>' # Replace page HTML for a repro
 pire-browser close                   # Close targeted session`),
   p("Refs must usually be quoted in PowerShell, for example <code>pire-browser click '@e2'</code>. Re-run <code>snapshot -i</code> after navigation, DOM changes, dialogs, downloads, or failed actions. Use <code>snapshot -i -C</code> when custom clickable cards, menu rows, or cursor-pointer controls are missing from the default snapshot. If a click reports that the target is covered by another element, handle the covering element first, then re-snapshot before retrying."),
-  p("<code>tap</code> uses the same Firefox WebExtension page-level click path as <code>click</code>; it is not native touch input or mobile browser chrome emulation. <code>swipe</code> maps touch direction to page scroll, so <code>swipe up</code> scrolls down. Use <code>scroll</code> when you want direct scroll direction."),
+  p("<code>tap</code> uses the same Firefox WebExtension page-level click path as <code>click</code>; it is not native touch input or mobile browser chrome emulation. Use <code>click &lt;link-ref&gt; --new-tab</code> or <code>click &lt;link-ref&gt; --new</code> when a link target should open in a new tab. <code>swipe</code> maps touch direction to page scroll, so <code>swipe up</code> scrolls down. Use <code>scroll</code> when you want direct scroll direction."),
   p("<code>keyboard type</code>, <code>keyboard inserttext</code>, <code>keydown</code>, and <code>keyup</code> act at the current page focus. Click or focus the intended control first, then verify with <code>get value</code>, <code>snapshot -i</code>, or another targeted check."),
   code(`pire-browser screenshot page.png
 pire-browser screenshot --screenshot-dir ./shots page.png
@@ -125,7 +125,7 @@ pire-browser wait --download [path] [--timeout <ms>]`),
   h2("Mouse", "mouse"),
   statusNote("mouseAndDrag"),
   code(`pire-browser hover <sel>             # Element hover is available
-pire-browser click <sel>             # Element click is available
+pire-browser click <sel> [--new-tab] # Element click is available; new-tab requires link href
 pire-browser tap <sel>               # Best-effort tap alias for click
 pire-browser dblclick <sel>          # Element double-click is available
 pire-browser mouse move 80 80        # Dispatch page mousemove at viewport coords
