@@ -73,7 +73,7 @@ export const featureStatuses = {
   },
   debugging: {
     status: "partial",
-    summary: "`console`, `errors`, `highlight`, Firefox trace QA bundles, screenshot-sequence recording bundles, best-effort `vitals`, best-effort React Fiber tree/inspect/render recording/Suspense, recent redacted command activity, and the local status/session/activity dashboard with live read-only polling viewport preview are available for Firefox workflows; Chrome DevTools inspect proxy, WebSocket viewport streaming, profiler, and native WebM/video recording are not implemented.",
+    summary: "`console`, `errors`, `highlight`, Firefox trace QA bundles, Firefox Performance Timeline profiler bundles, screenshot-sequence recording bundles, best-effort `vitals`, best-effort React Fiber tree/inspect/render recording/Suspense, recent redacted command activity, and the local status/session/activity dashboard with live read-only polling viewport preview are available for Firefox workflows; Chrome DevTools inspect proxy, WebSocket viewport streaming, Chrome CPU profiling, and native WebM/video recording are not implemented.",
     sources: ["README.md", "extension/src/background.ts"],
   },
   dashboard: {
@@ -87,8 +87,8 @@ export const featureStatuses = {
     sources: ["README.md", "skill-data/core/SKILL.md", "extension/src/background.ts"],
   },
   profiler: {
-    status: "not_available",
-    summary: "`trace start` / `trace stop` writes a Firefox QA evidence bundle, but Chrome performance traces and CPU profiler artifacts require a backend that pire-browser does not ship today.",
+    status: "best_effort",
+    summary: "`profiler start` / `profiler stop [output.json]` writes Chrome Trace Event-shaped JSON from Firefox Performance Timeline entries. It is useful timing evidence for navigation, resources, paints, marks, measures, and long entries, but it is not Chrome DevTools CPU sampling or a full renderer timeline.",
     sources: ["README.md", "extension/src/background.ts"],
   },
   proxy: {
@@ -159,7 +159,7 @@ export const commandRootStatus = {
   open: "available",
   pdf: "best_effort",
   press: "available",
-  profiler: "not_available",
+  profiler: "best_effort",
   profiles: "best_effort",
   pushstate: "best_effort",
   react: "partial",

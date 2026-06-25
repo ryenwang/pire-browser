@@ -294,6 +294,9 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_trace_start"
         | "pire_browser_trace_status"
         | "pire_browser_trace_stop"
+        | "pire_browser_profiler_start"
+        | "pire_browser_profiler_status"
+        | "pire_browser_profiler_stop"
         | "pire_browser_record_start"
         | "pire_browser_record_status"
         | "pire_browser_record_stop"
@@ -433,7 +436,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_record_start/status/stop for screenshot-sequence evidence, not native WebM video or live streaming. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade for safe package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, Firefox profile import, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop for screenshot-sequence evidence, not native WebM video or live streaming. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade for safe package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, Firefox profile import, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -1140,6 +1143,27 @@ fn tool_command_args(
         }
         (_, "pire_browser_trace_stop") => {
             args.push("trace".to_string());
+            args.push("stop".to_string());
+            if let Some(path) =
+                optional_string(object, "path")?.or(optional_string(object, "outputPath")?)
+            {
+                args.push(path);
+            }
+        }
+        (_, "pire_browser_profiler_start") => {
+            args.push("profiler".to_string());
+            args.push("start".to_string());
+            if let Some(categories) = optional_string(object, "categories")? {
+                args.push("--categories".to_string());
+                args.push(categories);
+            }
+        }
+        (_, "pire_browser_profiler_status") => {
+            args.push("profiler".to_string());
+            args.push("status".to_string());
+        }
+        (_, "pire_browser_profiler_stop") => {
+            args.push("profiler".to_string());
             args.push("stop".to_string());
             if let Some(path) =
                 optional_string(object, "path")?.or(optional_string(object, "outputPath")?)
@@ -3016,6 +3040,36 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_profiler_start",
+            "Start profiler",
+            "Start Firefox Performance Timeline trace-event profiling for the active tab.",
+            tool_schema(
+                vec![("categories", string_prop("Optional Chrome trace category CSV recorded as metadata only."))],
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_profiler_status",
+            "Profiler status",
+            "Report whether Firefox Performance Timeline profiling is active for the current tab.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
+            "pire_browser_profiler_stop",
+            "Stop profiler",
+            "Stop Firefox Performance Timeline profiling and optionally write Chrome Trace Event-shaped JSON to a path.",
+            tool_schema(
+                vec![
+                    ("path", string_prop("Optional output JSON path.")),
+                    ("outputPath", string_prop("Compatibility alias for path.")),
+                ],
+                &[],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_record_start",
             "Start recording",
             "Start bounded Firefox screenshot-sequence evidence recording for the active tab.",
@@ -4590,6 +4644,15 @@ mod tests {
             .any(|tool| tool["name"] == "pire_browser_trace_stop"));
         assert!(debug
             .iter()
+            .any(|tool| tool["name"] == "pire_browser_profiler_start"));
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_profiler_status"));
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_profiler_stop"));
+        assert!(debug
+            .iter()
             .any(|tool| tool["name"] == "pire_browser_record_start"));
         assert!(debug
             .iter()
@@ -5829,6 +5892,39 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "trace", "stop", "trace.json"]);
+
+        let args = tool_command_args(
+            "pire_browser_profiler_start",
+            &json!({ "categories": "devtools.timeline,v8.execute" }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "profiler",
+                "start",
+                "--categories",
+                "devtools.timeline,v8.execute"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_profiler_status",
+            &json!({}),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "profiler", "status"]);
+
+        let args = tool_command_args(
+            "pire_browser_profiler_stop",
+            &json!({ "outputPath": "profile.json" }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "profiler", "stop", "profile.json"]);
 
         let args = tool_command_args(
             "pire_browser_record_start",

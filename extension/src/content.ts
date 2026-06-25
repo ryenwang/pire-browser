@@ -80,7 +80,19 @@ type VitalsMetric = {
   source: string;
 };
 
+type ProfilerTraceEvent = {
+  name: string;
+  cat: string;
+  ph: "M" | "X";
+  pid: number;
+  tid: number;
+  ts?: number;
+  dur?: number;
+  args?: Record<string, unknown>;
+};
+
 const MAX_PAGE_LOG_RECORDS = 200;
+const MAX_PROFILER_TRACE_EVENTS = 2500;
 const dialogs: DialogRecord[] = [];
 const consoleRecords: ConsoleRecord[] = [];
 const pageErrorRecords: PageErrorRecord[] = [];
@@ -161,6 +173,7 @@ browser.runtime.onMessage.addListener((message: any) => {
   if (message.type === "wait_fn") return waitForFunction(String(message.expression ?? ""), Number(message.timeout ?? 10_000));
   if (message.type === "debug_logs") return Promise.resolve(debugLogs(String(message.kind ?? "console"), Boolean(message.clear)));
   if (message.type === "vitals") return Promise.resolve(pageVitals());
+  if (message.type === "profiler_snapshot") return Promise.resolve(profilerSnapshot(Number(message.startedAt ?? 0)));
   if (message.type === "react_tree") return Promise.resolve(reactTree(message.selector, message.maxDepth));
   if (message.type === "react_inspect") return Promise.resolve(reactInspect(String(message.target ?? ""), message.locator));
   if (message.type === "react_renders") return Promise.resolve(reactRenders(String(message.action ?? "")));
@@ -1879,6 +1892,178 @@ function pageVitals() {
       },
     ],
     dialogs: drainDialogs(),
+  };
+}
+
+function profilerSnapshot(startedAt: number) {
+  const capturedAt = Date.now();
+  const startMs = Number.isFinite(startedAt) && startedAt > 0 ? startedAt : 0;
+  const entries = performanceEntriesSince(startMs);
+  const cappedEntries = entries.slice(-MAX_PROFILER_TRACE_EVENTS);
+  const traceEvents = [
+    ...profilerMetadataEvents(),
+    ...cappedEntries.map(profilerTraceEventForEntry),
+  ];
+  const summary = profilerSummary(entries, traceEvents.length, cappedEntries.length);
+  return {
+    text: `Collected ${traceEvents.length} Firefox Performance Timeline trace event${traceEvents.length === 1 ? "" : "s"} for ${location.href}`,
+    url: location.href,
+    title: document.title,
+    startedAt: startMs,
+    capturedAt,
+    timeOrigin: performance.timeOrigin,
+    entryCount: entries.length,
+    capped: entries.length > cappedEntries.length,
+    summary,
+    traceEvents,
+    warnings: [profilerBestEffortWarning()],
+    dialogs: drainDialogs(),
+  };
+}
+
+function performanceEntriesSince(startedAt: number) {
+  return performance
+    .getEntries()
+    .filter((entry) => entryEndEpochMs(entry) >= startedAt)
+    .sort((left, right) => left.startTime - right.startTime);
+}
+
+function profilerMetadataEvents(): ProfilerTraceEvent[] {
+  return [
+    {
+      name: "process_name",
+      cat: "__metadata",
+      ph: "M",
+      pid: 1,
+      tid: 0,
+      args: { name: "Firefox" },
+    },
+    {
+      name: "thread_name",
+      cat: "__metadata",
+      ph: "M",
+      pid: 1,
+      tid: 1,
+      args: { name: "Performance Timeline" },
+    },
+  ];
+}
+
+function profilerTraceEventForEntry(entry: PerformanceEntry): ProfilerTraceEvent {
+  const startEpochMs = performance.timeOrigin + entry.startTime;
+  return {
+    name: profilerEntryName(entry),
+    cat: `firefox.performance.${entry.entryType || "entry"}`,
+    ph: "X",
+    ts: Math.max(0, Math.round(startEpochMs * 1000)),
+    dur: Math.max(0, Math.round((entry.duration || 0) * 1000)),
+    pid: 1,
+    tid: 1,
+    args: profilerEntryArgs(entry),
+  };
+}
+
+function profilerEntryName(entry: PerformanceEntry) {
+  const name = entry.name || entry.entryType || "PerformanceEntry";
+  if (entry.entryType === "resource") {
+    try {
+      const url = new URL(name, location.href);
+      return url.pathname.split("/").filter(Boolean).pop() || url.hostname || "resource";
+    } catch {
+      return "resource";
+    }
+  }
+  return name;
+}
+
+function profilerEntryArgs(entry: PerformanceEntry) {
+  const record = entry as any;
+  const args: Record<string, unknown> = {
+    entryType: entry.entryType,
+    name: entry.name,
+    startTime: roundProfilerNumber(entry.startTime),
+    duration: roundProfilerNumber(entry.duration),
+  };
+  for (const key of [
+    "initiatorType",
+    "nextHopProtocol",
+    "renderBlockingStatus",
+    "responseStatus",
+    "transferSize",
+    "encodedBodySize",
+    "decodedBodySize",
+    "workerStart",
+    "redirectStart",
+    "redirectEnd",
+    "fetchStart",
+    "domainLookupStart",
+    "domainLookupEnd",
+    "connectStart",
+    "connectEnd",
+    "requestStart",
+    "responseStart",
+    "responseEnd",
+    "domInteractive",
+    "domContentLoadedEventStart",
+    "domContentLoadedEventEnd",
+    "loadEventStart",
+    "loadEventEnd",
+    "value",
+    "hadRecentInput",
+    "interactionId",
+  ]) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      args[key] = roundProfilerNumber(value);
+    } else if (typeof value === "string" && value) {
+      args[key] = value;
+    } else if (typeof value === "boolean") {
+      args[key] = value;
+    }
+  }
+  return args;
+}
+
+function profilerSummary(entries: PerformanceEntry[], emittedEventCount: number, includedEntryCount: number) {
+  const byType: Record<string, number> = {};
+  for (const entry of entries) byType[entry.entryType] = (byType[entry.entryType] ?? 0) + 1;
+  const resources = entries.filter((entry) => entry.entryType === "resource") as PerformanceEntry[];
+  const longEntries = entries.filter((entry) => entry.duration >= 50);
+  return {
+    entryCount: entries.length,
+    includedEntryCount,
+    emittedEventCount,
+    byType,
+    resourceCount: resources.length,
+    longEntryCount: longEntries.length,
+    longestEntries: longEntries
+      .slice()
+      .sort((left, right) => right.duration - left.duration)
+      .slice(0, 10)
+      .map((entry) => ({
+        name: entry.name,
+        entryType: entry.entryType,
+        startTime: roundProfilerNumber(entry.startTime),
+        duration: roundProfilerNumber(entry.duration),
+      })),
+    readyState: document.readyState,
+  };
+}
+
+function entryEndEpochMs(entry: PerformanceEntry) {
+  return performance.timeOrigin + entry.startTime + Math.max(0, entry.duration || 0);
+}
+
+function roundProfilerNumber(value: number) {
+  return Math.round(value * 1000) / 1000;
+}
+
+function profilerBestEffortWarning() {
+  return {
+    code: "BEST_EFFORT_FIREFOX_GAP",
+    feature: "profiler",
+    message:
+      "Firefox profiler data is collected from Performance Timeline entries exposed to WebExtensions. It is Chrome Trace Event-shaped timing evidence, not a Chrome DevTools CPU profile or sampling profiler.",
   };
 }
 

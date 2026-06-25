@@ -205,22 +205,29 @@ pire-browser errors --clear
 pire-browser trace start
 pire-browser trace status
 pire-browser trace stop trace.json
+pire-browser profiler start
+pire-browser profiler status
+pire-browser profiler stop profile.json
 pire-browser record start
 pire-browser record status
 pire-browser record stop recording-dir
 ```
 
-Use `console`, `errors`, `vitals`, `trace`, and `record` after navigation,
-login, or failed actions when the page looks stuck or broken. `trace start` /
-`trace stop` writes a Firefox QA evidence bundle with console, page-error,
-network/HAR metadata, vitals, compact snapshot, and screenshot evidence; it is
-not a Chrome DevTools performance trace or CPU profile. `record start` /
-`record stop` writes bounded visible-viewport PNG frames plus `recording.json`
-as a screenshot-sequence QA evidence bundle; it is not native WebM video, live
-viewport streaming, or Chrome DevTools screencast output. `vitals` reports best-effort TTFB, FCP,
-LCP, CLS, INP, DOMContentLoaded, load, readyState, and hydration-warning signals
-from Firefox Performance APIs. Unavailable Chrome-specific metrics are reported
-as unavailable. Console and error commands report Firefox WebExtension-captured
+Use `console`, `errors`, `vitals`, `trace`, `profiler`, and `record` after
+navigation, login, or failed actions when the page looks stuck or broken.
+`trace start` / `trace stop` writes a Firefox QA evidence bundle with console,
+page-error, network/HAR metadata, vitals, compact snapshot, and screenshot
+evidence; it is not a Chrome DevTools performance trace or CPU profile.
+`profiler start` / `profiler stop` writes Chrome Trace Event-shaped JSON from
+Firefox Performance Timeline entries for navigation, resource, paint, mark,
+measure, and long-entry timing evidence; it is not Chrome DevTools CPU sampling
+or a full renderer timeline. `record start` / `record stop` writes bounded
+visible-viewport PNG frames plus `recording.json` as a screenshot-sequence QA
+evidence bundle; it is not native WebM video, live viewport streaming, or Chrome
+DevTools screencast output. `vitals` reports best-effort TTFB, FCP, LCP, CLS,
+INP, DOMContentLoaded, load, readyState, and hydration-warning signals from
+Firefox Performance APIs. Unavailable Chrome-specific metrics are reported as
+unavailable. Console and error commands report Firefox WebExtension-captured
 page-world messages and page errors from reachable frames. They do not expose raw
 Chrome CDP console payloads, and they only capture records observed after the
 pire-browser content script loads.
@@ -618,7 +625,7 @@ evidence, eval, status, confirmation follow-up, basic tabs, profile discovery,
 close, and skill guidance. Add comma-separated profiles only when needed:
 `network` for request diagnostics/routes/HAR, `state` for cookies/storage/auth
 and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair, safe
-upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/vitals,
+upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/trace/profiler/record/vitals,
 `tabs` for tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
 helpers including click-equivalent `pire_browser_tap` and touch-direction page-scroll `pire_browser_swipe`. `react` exposes best-effort typed React Fiber tools
 (`pire_browser_react_tree`, `pire_browser_react_inspect`, `pire_browser_react_renders_start`, `pire_browser_react_renders_stop`, `pire_browser_react_suspense`) plus vitals. Use `all`

@@ -259,10 +259,13 @@ pire-browser highlight <sel>
 pire-browser trace start
 pire-browser trace status
 pire-browser trace stop trace.json
+pire-browser profiler start
+pire-browser profiler status
+pire-browser profiler stop profile.json
 pire-browser record start
 pire-browser record status
 pire-browser record stop recording-dir`),
-  p("Console, errors, highlight, trace bundles, and screenshot-sequence recordings are active-tab Firefox diagnostics. <code>trace start</code> / <code>trace stop</code> writes a Firefox QA evidence bundle with console, page-error, network/HAR metadata, vitals, compact snapshot, and screenshot evidence. <code>record start</code> / <code>record stop</code> writes bounded visible-viewport PNG frames plus <code>recording.json</code>. These are not Chrome DevTools performance traces, CPU profiles, native WebM video, or live viewport streams."),
+  p("Console, errors, highlight, trace bundles, profiler bundles, and screenshot-sequence recordings are active-tab Firefox diagnostics. <code>trace start</code> / <code>trace stop</code> writes a Firefox QA evidence bundle with console, page-error, network/HAR metadata, vitals, compact snapshot, and screenshot evidence. <code>profiler start</code> / <code>profiler stop</code> writes Chrome Trace Event-shaped JSON from Firefox Performance Timeline entries. <code>record start</code> / <code>record stop</code> writes bounded visible-viewport PNG frames plus <code>recording.json</code>. These are not Chrome DevTools CPU profiles, native WebM video, or live viewport streams."),
 
   h2("Auth vault", "auth-vault"),
   statusNote("auth"),

@@ -28,6 +28,13 @@ pire-browser snapshot -i
 pire-browser trace status
 pire-browser trace stop trace.json`),
   p("<code>trace start</code> / <code>trace stop</code> records a Firefox QA evidence bundle with WebExtension-observable console messages, page errors, network/HAR metadata, best-effort vitals, compact snapshot text, and screenshot evidence. It is not a Chrome DevTools performance trace, CPU profile, or native WebM video recording."),
+  h2("Profiler bundle", "profiler-bundle"),
+  code(`pire-browser profiler start
+pire-browser open https://app.example.com
+pire-browser click '@e1'
+pire-browser profiler status
+pire-browser profiler stop profile.json`),
+  p("<code>profiler start</code> / <code>profiler stop</code> writes Chrome Trace Event-shaped JSON from Firefox Performance Timeline entries. Use it for navigation, resource, paint, mark, measure, and long-entry timing evidence. It is not Chrome DevTools CPU sampling or a full renderer timeline."),
   h2("Recording bundle", "recording-bundle"),
   code(`pire-browser record start
 pire-browser open https://app.example.com
@@ -42,7 +49,7 @@ pire-browser get html <sel>
 pire-browser eval "document.title"
 pire-browser screenshot debug.png`),
   h2("Unavailable debug tools", "unavailable-debug-tools"),
-  list(["Chrome DevTools inspect proxy", "CPU profiler", "Native WebM video recording", "WebSocket viewport streaming"]),
+  list(["Chrome DevTools inspect proxy", "Chrome CPU sampling profiler", "Native WebM video recording", "WebSocket viewport streaming"]),
 ];
 
 export default page({

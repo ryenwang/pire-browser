@@ -2,22 +2,31 @@ import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, tabl
 
 const profilerBlocks = [
   statusNote("profiler"),
-  h2("Current performance evidence", "current-performance-evidence"),
-  code(`pire-browser wait --selector "#ready" --timeout 10000
-pire-browser wait --load networkidle
-pire-browser trace start
+  h2("Firefox profiler", "firefox-profiler"),
+  code(`pire-browser profiler start
+pire-browser open https://app.example.com
+pire-browser click '@e1'
+pire-browser profiler status
+pire-browser profiler stop profile.json`),
+  p("<code>profiler start</code> / <code>profiler stop [output.json]</code> records best-effort Firefox Performance Timeline evidence for the active tab. The output is Chrome Trace Event-shaped JSON, so timing data can be inspected in trace viewers such as Perfetto."),
+  h2("Categories", "categories"),
+  code(`pire-browser profiler start --categories "devtools.timeline,v8.execute,blink.user_timing"`),
+  p("<code>--categories</code> is accepted for agent-browser command-shape compatibility and is recorded as metadata only. Firefox WebExtensions do not expose Chrome trace categories or JavaScript CPU sampling."),
+  h2("Use with other evidence", "use-with-other-evidence"),
+  code(`pire-browser trace start
+pire-browser profiler start
+pire-browser snapshot -i
+pire-browser profiler stop profile.json
 pire-browser trace stop trace.json
-pire-browser record start
-pire-browser record stop recording-dir
-pire-browser screenshot page.png
-pire-browser snapshot -i --compact`),
-  p("Use waits, Firefox trace QA bundles, screenshot-sequence recordings, screenshots, and compact snapshots for now. Chrome performance traces and CPU profile artifacts require another backend."),
+pire-browser screenshot page.png`),
+  p("Use profiler bundles for timing evidence, trace bundles for console/page-error/network/vitals/snapshot/screenshot context, and screenshots or screenshot-sequence recordings for visual evidence."),
+  h2("Limits", "limits"),
+  list(["Not a Chrome DevTools CPU profile", "Not a sampling JavaScript profiler", "Not a full renderer timeline", "Captures Performance Timeline entries visible to Firefox content scripts"]),
 ];
 
 export default page({
   path: "/profiler/",
   title: "Profiler",
-  description: "Current performance evidence and future profiler direction.",
-  badge: "Coming soon",
+  description: "Best-effort Firefox performance profiler evidence.",
   blocks: profilerBlocks,
 });

@@ -480,6 +480,9 @@ pire-browser highlight <sel>
 pire-browser trace start
 pire-browser trace status
 pire-browser trace stop trace.json
+pire-browser profiler start
+pire-browser profiler status
+pire-browser profiler stop profile.json
 pire-browser record start
 pire-browser record status
 pire-browser record stop recording-dir
@@ -488,11 +491,15 @@ pire-browser record stop recording-dir
 `trace start` / `trace stop` records a Firefox QA evidence bundle with
 WebExtension-observable console, page-error, network/HAR metadata, vitals,
 compact snapshot, and screenshot evidence. It is not a Chrome DevTools
-performance trace or CPU profile. `record start` / `record stop` records a
-bounded screenshot-sequence evidence bundle for the active tab and writes frame
-PNGs plus `recording.json`. It is not native WebM video, live viewport
-streaming, or Chrome DevTools screencast output. Chrome DevTools inspect proxy
-and CPU profiler are not implemented in the current Firefox backend.
+performance trace or CPU profile. `profiler start` / `profiler stop` writes
+Chrome Trace Event-shaped JSON from Firefox Performance Timeline entries so
+agents can inspect navigation, resource, paint, mark, measure, and long-entry
+timing evidence. It is not Chrome DevTools CPU sampling. `record start` /
+`record stop` records a bounded screenshot-sequence evidence bundle for the
+active tab and writes frame PNGs plus `recording.json`. It is not native WebM
+video, live viewport streaming, or Chrome DevTools screencast output. Chrome
+DevTools inspect proxy and CPU sampling profiler are not implemented in the
+current Firefox backend.
 
 ### Navigation
 
@@ -597,7 +604,49 @@ pire-browser mcp --tools core,state
 pire-browser mcp --tools all
 ```
 
-The stdio MCP server exposes typed tools through agent-browser-style profiles. `core` is the default inspect-before-act workflow: open, snapshot, semantic find, click, tap-as-click, swipe-as-scroll, double-click, hover, focus, select, check/uncheck, scroll/scroll-into-view, fill, type, press, keyboard/mouse basics, typed get/check verification tools (`pire_browser_get_text`, `pire_browser_get_html`, `pire_browser_get_value`, `pire_browser_get_attr`, `pire_browser_get_count`, `pire_browser_get_box`, `pire_browser_get_styles`, `pire_browser_get_url`, `pire_browser_get_title`, `pire_browser_is_visible`, `pire_browser_is_enabled`, and `pire_browser_is_checked`), typed waits (`pire_browser_wait_ms`, `pire_browser_wait_for_selector`, `pire_browser_wait_for_text`, `pire_browser_wait_for_url`, `pire_browser_wait_for_load`, and `pire_browser_wait_for_function`), back/forward/reload and SPA pushstate navigation, init scripts, screenshot, PDF, snapshot/screenshot/URL diffs, eval, status, confirmation follow-up, basic tabs, profile discovery, close, and skill guidance. Generic `pire_browser_get`, `pire_browser_is`, and `pire_browser_wait` remain available for compatibility, but new agents should prefer the typed tools. Agent-browser-style aliases such as `pire_browser_tap`, `pire_browser_swipe`, `pire_browser_dblclick`, `pire_browser_keydown`, `pire_browser_keyup`, `pire_browser_tab_list`, `pire_browser_tab_switch`, `pire_browser_tab_close`, `pire_browser_scroll_into_view`, and `pire_browser_frame_switch` are also available; older `double_click`, `key_down`, `key_up`, `tabs_*`, and `frame_select` names remain compatible. Most browser-command tools accept common typed fields for session/profile targeting, state files, file access, domain allowlists, confirmation/action policies, content boundaries, output limits, proxy settings, and Firefox executable overrides; use those fields instead of `extraArgs` for guardrails. `pire_browser_open` also accepts typed one-shot `headers` and `initScriptPaths` for pre-navigation setup. Prefer `pire_browser_open` for normal launch/navigation; the `debug` profile exposes `pire_browser_launch` as a narrower lower-level launch tool, `pire_browser_install` for explicit native-host setup or repair, `pire_browser_upgrade` for safe package upgrades, and `pire_browser_batch` for short command sequences. Pass `withDeps: true` to `pire_browser_install` only when following an agent-browser-style dependency recipe; it may install Firefox through winget/Chocolatey on Windows or Homebrew on macOS if Firefox is missing, and reports non-Snap/non-Flatpak guidance on Linux. Add comma-separated profiles only when needed: `network`, `state`, `debug`, `tabs`, `mobile`, or `react`; `mobile` includes `pire_browser_tap` as click-equivalent and `pire_browser_swipe` as touch-direction page scroll, not native touch. Use `state` for typed clipboard tools (`pire_browser_clipboard_read`, `pire_browser_clipboard_write`, `pire_browser_clipboard_copy`, and `pire_browser_clipboard_paste`) and `pire_browser_profiles_import` when the user wants existing Firefox login state copied into a managed profile. Use `debug` for lower-level launch, install/repair, upgrade, batch, doctor/activity diagnostics, console/errors/dialogs/highlight/trace/vitals, and session/profile inspection. Use `react` for best-effort typed React Fiber inspection (`pire_browser_react_tree`, `pire_browser_react_inspect`, `pire_browser_react_renders_start`, `pire_browser_react_renders_stop`, `pire_browser_react_suspense`) and vitals. Use `--tools all` for every currently implemented MCP tool. The `pire_browser_tools_profiles` tool describes the available profiles in-band.
+The stdio MCP server exposes typed tools through agent-browser-style profiles.
+`core` is the default inspect-before-act workflow: open, snapshot, semantic
+find, click, tap-as-click, swipe-as-scroll, double-click, hover, focus, select,
+check/uncheck, scroll/scroll-into-view, fill, type, press, keyboard/mouse
+basics, typed get/check verification tools, typed waits, back/forward/reload,
+SPA pushstate navigation, init scripts, screenshots/PDFs/diffs, eval, status,
+confirmation follow-up, basic tabs, profile discovery, close, and skill
+guidance. Generic `pire_browser_get`, `pire_browser_is`, and `pire_browser_wait`
+remain available for compatibility, but new agents should prefer the typed
+tools. Agent-browser-style aliases such as `pire_browser_tap`,
+`pire_browser_swipe`, `pire_browser_dblclick`, `pire_browser_keydown`,
+`pire_browser_keyup`, `pire_browser_tab_list`, `pire_browser_tab_switch`,
+`pire_browser_tab_close`, `pire_browser_scroll_into_view`, and
+`pire_browser_frame_switch` are also available; older `double_click`,
+`key_down`, `key_up`, `tabs_*`, and `frame_select` names remain compatible.
+
+Most browser-command tools accept common typed fields for session/profile
+targeting, state files, file access, domain allowlists, confirmation/action
+policies, content boundaries, output limits, proxy settings, and Firefox
+executable overrides; use those fields instead of `extraArgs` for guardrails.
+`pire_browser_open` also accepts typed one-shot `headers` and `initScriptPaths`
+for pre-navigation setup. Prefer `pire_browser_open` for normal
+launch/navigation; the `debug` profile exposes `pire_browser_launch` as a
+narrower lower-level launch tool, `pire_browser_install` for explicit
+native-host setup or repair, `pire_browser_upgrade` for safe package upgrades,
+and `pire_browser_batch` for short command sequences. Pass `withDeps: true` to
+`pire_browser_install` only when following an agent-browser-style dependency
+recipe; it may install Firefox through winget/Chocolatey on Windows or Homebrew
+on macOS if Firefox is missing, and reports non-Snap/non-Flatpak guidance on
+Linux.
+
+Add comma-separated profiles only when needed: `network`, `state`, `debug`,
+`tabs`, `mobile`, or `react`. Use `state` for typed clipboard tools and
+`pire_browser_profiles_import` when the user wants existing Firefox login state
+copied into a managed profile. Use `debug` for lower-level launch,
+install/repair, upgrade, batch, doctor/activity diagnostics,
+console/errors/dialogs/highlight/trace/profiler/record/vitals, and
+session/profile inspection. Use `react` for best-effort typed React Fiber
+inspection (`pire_browser_react_tree`, `pire_browser_react_inspect`,
+`pire_browser_react_renders_start`, `pire_browser_react_renders_stop`,
+`pire_browser_react_suspense`) and vitals. Use `--tools all` for every currently
+implemented MCP tool. The `pire_browser_tools_profiles` tool describes the
+available profiles in-band.
 
 The MCP tools call the same installed CLI binary, so setup, policies, sessions, profiles, and Firefox runtime behavior stay shared with normal `pire-browser` commands.
 The server defaults to MCP protocol `2025-11-25` and accepts older supported client protocol versions during initialization. Tool discovery is paginated for large profiles. Tool annotations mark local maintenance/context tools such as install, upgrade, status, sessions, profiles, and skills as non-open-world so MCP hosts can present clearer approval prompts.

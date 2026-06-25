@@ -295,6 +295,15 @@ type TraceRecording = {
   title?: string;
 };
 
+type ProfilerRecording = {
+  startedAt: number;
+  tabId: number;
+  agentId: string;
+  url?: string;
+  title?: string;
+  categories?: string;
+};
+
 type VisualRecordingFrame = {
   index: number;
   capturedAt: number;
@@ -372,6 +381,7 @@ const networkRequestLogIdsByTabId = new Map<number, string[]>();
 const lastNetworkActivityAtByTabId = new Map<number, number>();
 const networkHarRecordingStartedAtByTabId = new Map<number, number>();
 const traceRecordingsByTabId = new Map<number, TraceRecording>();
+const profilerRecordingsByTabId = new Map<number, ProfilerRecording>();
 const visualRecordingsByTabId = new Map<number, VisualRecording>();
 const networkRoutes = new Map<string, NetworkRouteRule>();
 const networkRouteMatchesByRequestId = new Map<string, { routeId: string; action: "continue" | "abort" | "mock" }>();
@@ -787,6 +797,11 @@ function actionPolicyCategoryName(args: string[]): string | null {
       if (subcommand === "status") return "get";
       if (subcommand === "stop") return "snapshot";
       return null;
+    case "profiler":
+      if (subcommand === "start") return "state";
+      if (subcommand === "status") return "get";
+      if (subcommand === "stop") return "snapshot";
+      return null;
     case "record":
       if (subcommand === "start") return "state";
       if (subcommand === "status" || !subcommand) return "get";
@@ -871,7 +886,6 @@ function notAvailableActionPolicyRoot(command: string) {
     "connect",
     "dashboard",
     "install",
-    "profiler",
     "profiles",
     "stream",
     "upgrade",
@@ -997,6 +1011,7 @@ function commandNeedsActivePageDomainCheck(args: string[]) {
       "set",
       "device",
       "trace",
+      "profiler",
       "record",
       "vitals",
       "react",
@@ -1139,6 +1154,8 @@ async function executeCommand(
       return reactCommand(rest);
     case "trace":
       return traceCommand(rest);
+    case "profiler":
+      return profilerCommand(rest);
     case "record":
       return recordCommand(rest);
     case "addinitscript":
@@ -1153,7 +1170,6 @@ async function executeCommand(
     case "upgrade":
     case "stream":
     case "dashboard":
-    case "profiler":
     case "confirm":
     case "deny":
     case "session":
@@ -4164,6 +4180,202 @@ function traceFirefoxWarning() {
   );
 }
 
+async function profilerCommand(args: string[]) {
+  const mode = profilerMode(args);
+  const commandArgs = profilerCommandArgs(args, mode);
+
+  if (mode === "start") {
+    const parsed = parseProfilerStartArgs(profilerFilteredArgs(commandArgs));
+    if ("error" in parsed) return parsed;
+    const tab = await targetTab();
+    const recording: ProfilerRecording = {
+      startedAt: Date.now(),
+      tabId: tab.tabId,
+      agentId: tab.agentId,
+      url: tab.url,
+      title: tab.title,
+      categories: parsed.categories,
+    };
+    profilerRecordingsByTabId.set(tab.tabId, recording);
+    return {
+      text: `Started Firefox profiler in ${tab.agentId}`,
+      profilerRecording: profilerRecordingStatus(tab, recording),
+      warnings: profilerWarnings(recording),
+    };
+  }
+
+  const tab = await targetTab();
+  const recording = profilerRecordingsByTabId.get(tab.tabId);
+  if (mode === "status") {
+    const parsed = parseProfilerStatusArgs(profilerFilteredArgs(commandArgs));
+    if ("error" in parsed) return parsed;
+    return {
+      text: recording ? `Firefox profiler active in ${tab.agentId}` : `No Firefox profiler active in ${tab.agentId}`,
+      profilerRecording: profilerRecordingStatus(tab, recording),
+      warnings: profilerWarnings(recording),
+    };
+  }
+
+  const parsed = parseProfilerStopArgs(profilerFilteredArgs(commandArgs));
+  if ("error" in parsed) return parsed;
+  if (!recording) {
+    return {
+      error: {
+        code: "invalid_state",
+        message: "No profiler is active for the current tab. Run `profiler start` before `profiler stop`.",
+      },
+    };
+  }
+
+  const stoppedAt = Date.now();
+  const profile = await profilerProfile(tab, recording, stoppedAt);
+  profilerRecordingsByTabId.delete(tab.tabId);
+  return {
+    text: parsed.path
+      ? `Prepared Firefox profiler profile with ${profile.traceEvents.length} trace event${profile.traceEvents.length === 1 ? "" : "s"} for ${parsed.path}`
+      : JSON.stringify(profile, null, 2),
+    profile,
+    path: parsed.path,
+    profilerRecording: {
+      active: false,
+      startedAt: recording.startedAt,
+      stoppedAt,
+      durationMs: stoppedAt - recording.startedAt,
+      tabId: tab.tabId,
+      agentId: tab.agentId,
+    },
+    warnings: profilerWarnings(recording),
+  };
+}
+
+function profilerMode(args: string[]): "start" | "status" | "stop" {
+  if (args[0] === "start") return "start";
+  if (args[0] === "stop") return "stop";
+  return "status";
+}
+
+function profilerCommandArgs(args: string[], mode: "start" | "status" | "stop") {
+  return mode === "status" && args[0] !== "status" ? args : args.slice(1);
+}
+
+function profilerFilteredArgs(args: string[]) {
+  return args.filter((arg) => arg !== "--json");
+}
+
+function parseProfilerStartArgs(args: string[]): { categories?: string } | CommandErrorResult {
+  let categories: string | undefined;
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--categories") {
+      const value = args[++index];
+      if (!value || value.startsWith("--")) {
+        return { error: { code: "invalid_args", message: "profiler start --categories requires a comma-separated value" } };
+      }
+      categories = value;
+      continue;
+    }
+    return { error: { code: "invalid_args", message: `profiler start does not support argument: ${arg}` } };
+  }
+  return { categories };
+}
+
+function parseProfilerStatusArgs(args: string[]): Record<string, never> | CommandErrorResult {
+  if (args.length) return { error: { code: "invalid_args", message: "profiler status does not accept arguments" } };
+  return {};
+}
+
+function parseProfilerStopArgs(args: string[]): { path?: string } | CommandErrorResult {
+  let path: string | undefined;
+  for (const arg of args) {
+    if (arg.startsWith("--")) return { error: { code: "invalid_args", message: `profiler stop does not support argument: ${arg}` } };
+    if (path) return { error: { code: "invalid_args", message: `profiler stop unexpected argument: ${arg}` } };
+    path = arg;
+  }
+  return { path };
+}
+
+function profilerRecordingStatus(tab: TabRecord, recording: ProfilerRecording | undefined) {
+  const now = Date.now();
+  return {
+    active: Boolean(recording),
+    startedAt: recording?.startedAt,
+    durationMs: recording ? now - recording.startedAt : undefined,
+    tabId: tab.tabId,
+    agentId: tab.agentId,
+    url: tab.url,
+    title: tab.title,
+    categories: recording?.categories,
+    chromeCpuProfile: false,
+  };
+}
+
+async function profilerProfile(tab: TabRecord, recording: ProfilerRecording, stoppedAt: number) {
+  const snapshot = await profilerSnapshotSection(tab, recording.startedAt);
+  const traceEvents = Array.isArray((snapshot as any).traceEvents) ? (snapshot as any).traceEvents : [];
+  return {
+    schemaVersion: 1,
+    kind: "pire-browser-firefox-profiler",
+    source: "firefox-performance-api",
+    traceFormat: "chrome-trace-event",
+    startedAt: recording.startedAt,
+    stoppedAt,
+    durationMs: stoppedAt - recording.startedAt,
+    categories: recording.categories,
+    tab: {
+      tabId: tab.tabId,
+      agentId: tab.agentId,
+      startUrl: recording.url,
+      startTitle: recording.title,
+      url: tab.url,
+      title: tab.title,
+    },
+    traceEvents,
+    summary: (snapshot as any).summary,
+    capture: snapshot,
+    metadata: {
+      clockDomain: "unix-epoch-microseconds",
+      source: "Firefox Performance Timeline",
+      chromeCpuProfile: false,
+    },
+    warnings: profilerWarnings(recording),
+  };
+}
+
+async function profilerSnapshotSection(tab: TabRecord, startedAt: number) {
+  try {
+    const response = await sendFrame(tab.tabId, 0, { type: "profiler_snapshot", startedAt });
+    const result = normalizeContentResponse(response);
+    return "error" in result ? { error: result.error, traceEvents: [] } : result;
+  } catch (error) {
+    return {
+      error: {
+        code: "profiler_capture_failed",
+        message: error instanceof Error ? error.message : String(error),
+      },
+      traceEvents: [],
+    };
+  }
+}
+
+function profilerWarnings(recording?: ProfilerRecording) {
+  return recording?.categories
+    ? [
+        profilerFirefoxWarning(),
+        bestEffortWarning(
+          "profiler",
+          "Firefox profiler accepts --categories for agent-browser command-shape compatibility, but Chrome trace categories are recorded as metadata only."
+        ),
+      ]
+    : [profilerFirefoxWarning()];
+}
+
+function profilerFirefoxWarning() {
+  return bestEffortWarning(
+    "profiler",
+    "Firefox profiler emits Chrome Trace Event-shaped timing data from Performance Timeline entries exposed to WebExtensions. It is not a Chrome DevTools CPU profile or sampling profiler."
+  );
+}
+
 async function recordCommand(args: string[]) {
   const mode = recordMode(args);
   const commandArgs = recordCommandArgs(args, mode);
@@ -6866,6 +7078,7 @@ function clearNetworkStateForTab(tabId: number) {
   }
   networkHarRecordingStartedAtByTabId.delete(tabId);
   traceRecordingsByTabId.delete(tabId);
+  profilerRecordingsByTabId.delete(tabId);
   stopVisualRecording(visualRecordingsByTabId.get(tabId), "tab_closed");
   visualRecordingsByTabId.delete(tabId);
   networkRequestLogIdsByTabId.delete(tabId);

@@ -2275,6 +2275,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "storage" => STORAGE_HELP,
         "network" => NETWORK_HELP,
         "trace" => TRACE_HELP,
+        "profiler" => PROFILER_HELP,
         "record" => RECORD_HELP,
         "vitals" => VITALS_HELP,
         "react" => REACT_HELP,
@@ -2375,6 +2376,8 @@ Common commands:
   network route "**/api/**" --body '{}' Mock or block active-tab requests
   trace start                     Start a Firefox QA evidence bundle
   trace stop trace.json           Stop and write trace bundle JSON
+  profiler start                  Start Firefox performance profiling
+  profiler stop profile.json      Stop and write trace-event JSON
   record start                    Start screenshot-sequence recording
   record stop recording-dir       Stop and write frame evidence
   vitals [url]                    Measure best-effort Web Vitals for a page
@@ -2959,6 +2962,24 @@ messages, page errors, network request metadata/HAR, best-effort vitals,
 compact snapshot text, and screenshot evidence.
 
 This is not a Chrome DevTools performance trace, CPU profile, or video capture.
+"##;
+
+const PROFILER_HELP: &str = r##"
+Usage:
+  pire-browser profiler start [--categories <csv>] [--json]
+  pire-browser profiler status [--json]
+  pire-browser profiler stop [output.json] [--json]
+
+Records best-effort Firefox Performance Timeline evidence for the active tab.
+`profiler start` marks the beginning of the window, `profiler status` reports
+whether profiling is active, and `profiler stop` writes Chrome Trace
+Event-shaped JSON that can be inspected by trace viewers such as Perfetto. If no
+output path is provided, a generated temp JSON path is used.
+
+`--categories` is accepted for agent-browser command-shape compatibility and is
+recorded as metadata only. Firefox does not expose Chrome trace categories,
+sampling JavaScript CPU profiles, or DevTools timeline internals to WebExtension
+content scripts. This is not a Chrome DevTools CPU profile or sampling profiler.
 "##;
 
 const RECORD_HELP: &str = r##"
@@ -5535,6 +5556,13 @@ mod tests {
             .unwrap()
             .contains("not a Chrome DevTools performance trace"));
         assert!(help_text(None).unwrap().contains("trace start"));
+        assert!(help_text(Some("profiler"))
+            .unwrap()
+            .contains("pire-browser profiler stop [output.json]"));
+        assert!(help_text(Some("profiler"))
+            .unwrap()
+            .contains("not a Chrome DevTools CPU profile"));
+        assert!(help_text(None).unwrap().contains("profiler start"));
         assert!(help_text(Some("record"))
             .unwrap()
             .contains("pire-browser record stop [output-dir]"));

@@ -91,7 +91,7 @@ use uuid::Uuid;
 use crate::mcp::{run_mcp_server, McpToolsProfile};
 use crate::read::{read_url, ReadUrlOptions};
 
-const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &["connect", "profiler", "stream", "upgrade"];
+const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &["connect", "stream", "upgrade"];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg(windows)]
 const DASHBOARD_DETACHED_PROCESS: u32 = 0x0000_0008;
@@ -959,6 +959,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             let mut result = response.result.unwrap_or_else(|| json!({ "text": "ok" }));
             maybe_write_network_har(&args, &mut result)?;
             maybe_write_trace_bundle(&args, &mut result)?;
+            maybe_write_profiler_profile(&args, &mut result)?;
             maybe_write_recording_manifest(&args, &mut result)?;
             append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
             append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
@@ -1235,6 +1236,59 @@ fn default_trace_output_path(args: &[String]) -> Option<String> {
     Some(
         std::env::temp_dir()
             .join(format!("pire-browser-trace-{}.json", Uuid::new_v4()))
+            .to_string_lossy()
+            .to_string(),
+    )
+}
+
+fn maybe_write_profiler_profile(args: &[String], result: &mut Value) -> Result<()> {
+    let Some(profile) = result.get("profile") else {
+        return Ok(());
+    };
+    let Some(path) = profiler_output_path(args).or_else(|| default_profiler_output_path(args))
+    else {
+        return Ok(());
+    };
+    if let Some(parent) = Path::new(&path)
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create profiler output directory {}",
+                parent.display()
+            )
+        })?;
+    }
+    let body = serde_json::to_string_pretty(profile)?;
+    fs::write(&path, body).with_context(|| format!("failed to write profiler output {}", path))?;
+    result["path"] = json!(path);
+    result["profilePath"] = json!(path);
+    result["text"] = json!(format!("Wrote Firefox profiler profile to {}", path));
+    Ok(())
+}
+
+fn profiler_output_path(args: &[String]) -> Option<String> {
+    if args.first().map(String::as_str) != Some("profiler")
+        || args.get(1).map(String::as_str) != Some("stop")
+    {
+        return None;
+    }
+    first_positional_arg(&args[2..], &[])
+}
+
+fn default_profiler_output_path(args: &[String]) -> Option<String> {
+    if args.first().map(String::as_str) != Some("profiler")
+        || args.get(1).map(String::as_str) != Some("stop")
+    {
+        return None;
+    }
+    if profiler_output_path(args).is_some() {
+        return None;
+    }
+    Some(
+        std::env::temp_dir()
+            .join(format!("pire-browser-profiler-{}.json", Uuid::new_v4()))
             .to_string_lossy()
             .to_string(),
     )
@@ -9376,6 +9430,7 @@ mod tests {
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"tap"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"swipe"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"device"));
+        assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"profiler"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"record"));
     }
 
@@ -9437,6 +9492,42 @@ mod tests {
         assert_eq!(trace_output_path(&s(&["trace", "status"])), None);
         assert!(default_trace_output_path(&s(&["trace", "stop"])).is_some());
         assert!(default_trace_output_path(&s(&["trace", "stop", "trace.json"])).is_none());
+    }
+
+    #[test]
+    fn profiler_output_path_parses_stop_path() {
+        assert_eq!(
+            profiler_output_path(&s(&["profiler", "stop", "profile.json"])),
+            Some("profile.json".to_string())
+        );
+        assert_eq!(profiler_output_path(&s(&["profiler", "status"])), None);
+        assert!(default_profiler_output_path(&s(&["profiler", "stop"])).is_some());
+        assert!(default_profiler_output_path(&s(&[
+            "profiler",
+            "stop",
+            "profile.json"
+        ]))
+        .is_none());
+    }
+
+    #[test]
+    fn writes_profiler_profile_for_profiler_stop() {
+        let path =
+            std::env::temp_dir().join(format!("pire-browser-profiler-test-{}.json", Uuid::new_v4()));
+        let mut result = json!({
+            "profile": {
+                "schemaVersion": 1,
+                "traceEvents": []
+            }
+        });
+        maybe_write_profiler_profile(
+            &s(&["profiler", "stop", path.to_string_lossy().as_ref()]),
+            &mut result,
+        )
+        .unwrap();
+        assert!(path.exists());
+        assert_eq!(result["profilePath"], json!(path.to_string_lossy().to_string()));
+        let _ = fs::remove_file(path);
     }
 
     #[test]

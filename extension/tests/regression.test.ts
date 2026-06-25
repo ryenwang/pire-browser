@@ -1180,6 +1180,33 @@ describe("command shape parity", () => {
     expect(body).toContain("It is not a Chrome DevTools performance trace or CPU profile.");
   });
 
+  it("supports Firefox Performance Timeline profiler evidence", () => {
+    const body = background();
+    expect(body).toContain('case "profiler":');
+    expect(body).toContain("return profilerCommand(rest);");
+    expect(body).toContain("const profilerRecordingsByTabId = new Map");
+    expect(body).toContain("async function profilerCommand");
+    expect(body).toContain('if (args[0] === "start") return "start";');
+    expect(body).toContain('if (args[0] === "stop") return "stop";');
+    expect(body).toContain("Started Firefox profiler");
+    expect(body).toContain("No profiler is active for the current tab");
+    expect(body).toContain("async function profilerProfile");
+    expect(body).toContain('kind: "pire-browser-firefox-profiler"');
+    expect(body).toContain('source: "firefox-performance-api"');
+    expect(body).toContain('traceFormat: "chrome-trace-event"');
+    expect(body).toContain('type: "profiler_snapshot"');
+    expect(body).toContain("profilerRecordingsByTabId.delete(tabId)");
+    expect(body).toContain("not a Chrome DevTools CPU profile");
+
+    const contentBody = content();
+    expect(contentBody).toContain('if (message.type === "profiler_snapshot")');
+    expect(contentBody).toContain("function profilerSnapshot");
+    expect(contentBody).toContain(".getEntries()");
+    expect(contentBody).toContain("function profilerTraceEventForEntry");
+    expect(contentBody).toContain("MAX_PROFILER_TRACE_EVENTS");
+    expect(contentBody).toContain("Chrome Trace Event-shaped timing evidence");
+  });
+
   it("supports Firefox screenshot-sequence recording evidence bundles", () => {
     const body = background();
     expect(body).toContain('case "record":');
