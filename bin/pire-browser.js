@@ -143,6 +143,16 @@ export function handleLauncherSkills(args, options = {}) {
     }
     return outputSkillsCat(name, json, output, error);
   }
+  if (subcommand === "path") {
+    const name = skillArgs.shift() ?? "core";
+    if (name.startsWith("-")) {
+      return outputSkillsError(`unsupported skills path option: ${name}`, json, output, error);
+    }
+    if (skillArgs.length > 0) {
+      return outputSkillsError(`unsupported skills path option: ${skillArgs[0]}`, json, output, error);
+    }
+    return outputSkillsPath(name, json, output, error);
+  }
   if (subcommand.startsWith("-")) {
     return outputSkillsError(`unsupported skills option: ${subcommand}`, json, output, error);
   }
@@ -176,6 +186,18 @@ function outputSkillsCatAll(json, output) {
   return 0;
 }
 
+function outputSkillsPath(name, json, output, error) {
+  const path = launcherSkillPath(name);
+  if (!path) {
+    const available = launcherSkills().map((item) => item.name).join(", ");
+    return outputSkillsError(`unknown skill: No skill named \`${name}\`. Available skills: ${available}.`, json, output, error);
+  }
+  const skill = launcherSkillContent(name);
+  if (json) output(successEnvelope({ skill: { name, description: skill?.description ?? "", path } }));
+  else output(path);
+  return 0;
+}
+
 function outputSkillsError(message, json, output, error) {
   const cleanMessage = message.replace(/^invalid_args: /, "");
   if (json) {
@@ -200,13 +222,20 @@ function outputSkillsError(message, json, output, error) {
 }
 
 function launcherSkills() {
-  const skill = launcherSkillContent("core");
-  return [{ name: "core", description: skill?.description ?? "Core pire-browser workflow for safe Firefox automation." }];
+  const names = launcherSkillNames();
+  const skills = names
+    .map((name) => launcherSkillContent(name))
+    .filter(Boolean)
+    .map((skill) => ({ name: skill.name, description: skill.description }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  if (skills.length > 0) return skills;
+  if (launcherSkillsRootIsOverride()) return [];
+  return [{ name: "core", description: "Core pire-browser workflow for safe Firefox automation." }];
 }
 
 function launcherSkillContent(name) {
   if (!/^[A-Za-z0-9_.-]+$/.test(name)) return null;
-  const path = join(root, "skill-data", name, "SKILL.md");
+  const path = launcherSkillFile(name);
   if (!existsSync(path)) return null;
   const content = normalizeSkillText(readFileSync(path, "utf8"));
   const frontmatter = skillFrontmatter(content);
@@ -216,6 +245,40 @@ function launcherSkillContent(name) {
     description: frontmatter.description,
     content,
   };
+}
+
+function launcherSkillPath(name) {
+  if (!launcherSkillContent(name)) return null;
+  return dirname(launcherSkillFile(name));
+}
+
+function launcherSkillFile(name) {
+  return join(launcherSkillsRoot(), name, "SKILL.md");
+}
+
+function launcherSkillsRoot(env = process.env) {
+  return nonEmptyEnv(env.PIRE_BROWSER_SKILLS_DIR) ?? nonEmptyEnv(env.AGENT_BROWSER_SKILLS_DIR) ?? join(root, "skill-data");
+}
+
+function launcherSkillsRootIsOverride(env = process.env) {
+  return Boolean(nonEmptyEnv(env.PIRE_BROWSER_SKILLS_DIR) ?? nonEmptyEnv(env.AGENT_BROWSER_SKILLS_DIR));
+}
+
+function nonEmptyEnv(value) {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function launcherSkillNames() {
+  const skillRoot = launcherSkillsRoot();
+  try {
+    return readdirSync(skillRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .filter((name) => /^[A-Za-z0-9_.-]+$/.test(name))
+      .filter((name) => existsSync(join(skillRoot, name, "SKILL.md")));
+  } catch {
+    return [];
+  }
 }
 
 function skillFrontmatter(content) {

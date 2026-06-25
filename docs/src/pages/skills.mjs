@@ -11,10 +11,11 @@ pire-browser skills list --json
 pire-browser skills cat core
 pire-browser skills cat core --json
 pire-browser skills get core
-pire-browser skills get --all --json`),
-  p("<code>skills get</code> is an agent-browser-style alias for <code>skills cat</code>. Agents retrieve skill content at runtime, so instructions match the installed package version instead of going stale. The JS launcher serves these skill commands when possible, which keeps setup and repair guidance available even if the native binary is missing or stale."),
+pire-browser skills get --all --json
+pire-browser skills path core`),
+  p("<code>skills get</code> is an agent-browser-style alias for <code>skills cat</code>. <code>skills path [name]</code> prints the installed skill directory when the skill is filesystem-backed. Agents retrieve skill content at runtime, so instructions match the installed package version instead of going stale. The JS launcher serves these skill commands when possible, which keeps setup and repair guidance available even if the native binary is missing or stale."),
   h2("How It Works", "how-it-works"),
-  p("The repository skill is intentionally thin and stable. Actual usage instructions, command references, workflows, and safety notes live in <code>skill-data/</code> and are served by the CLI."),
+  p("The repository skill is intentionally thin and stable. Actual usage instructions, command references, workflows, and safety notes live in <code>skill-data/</code> and are served by the CLI. For local skill development, set <code>PIRE_BROWSER_SKILLS_DIR</code> or the agent-browser-compatible <code>AGENT_BROWSER_SKILLS_DIR</code> to a directory of <code>&lt;name&gt;/SKILL.md</code> files."),
   h2("Available Skills", "available-skills"),
   table(["Skill", "Purpose"], [["core", "Core Firefox browser automation: navigation, snapshots, forms, screenshots, data extraction, sessions, authentication, state, guardrails, and the command reference."]]),
   h2("Source", "source"),

@@ -23,6 +23,14 @@ pub struct SkillContent {
     pub content: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SkillPath {
+    pub name: String,
+    pub description: String,
+    pub path: String,
+    pub source: String,
+}
+
 pub fn list_skills() -> Vec<SkillSummary> {
     if let Some(dir) = skills_dir_override_from_env() {
         return list_skills_from_dir(&dir);
@@ -42,6 +50,29 @@ pub fn skill_content(name: &str) -> Option<SkillContent> {
         return skill_content_from_dir(&dir, name);
     }
     embedded_skill_content(name)
+}
+
+pub fn skill_path(name: &str) -> Option<SkillPath> {
+    if let Some(dir) = skills_dir_override_from_env() {
+        return skill_path_from_dir(&dir, name);
+    }
+    let content = embedded_skill_content(name)?;
+    Some(SkillPath {
+        name: content.name,
+        description: content.description,
+        path: format!("embedded:{name}"),
+        source: "embedded".to_string(),
+    })
+}
+
+fn skill_path_from_dir(root: &Path, name: &str) -> Option<SkillPath> {
+    let content = skill_content_from_dir(root, name)?;
+    Some(SkillPath {
+        name: content.name,
+        description: content.description,
+        path: root.join(name).to_string_lossy().to_string(),
+        source: "filesystem".to_string(),
+    })
 }
 
 fn embedded_skill_content(name: &str) -> Option<SkillContent> {
@@ -206,6 +237,7 @@ mod tests {
         assert!(skill.content.contains("pire-browser skills cat core"));
         assert!(skill.content.contains("pire-browser skills get core"));
         assert!(skill.content.contains("pire-browser skills get --all"));
+        assert!(skill.content.contains("pire-browser skills path core"));
         assert!(skill
             .content
             .contains("Do not inspect installed source code"));
@@ -244,6 +276,9 @@ mod tests {
         let content = skill_content_from_dir(root.path(), "custom").unwrap();
         assert_eq!(content.name, "custom");
         assert!(content.content.contains("# Custom"));
+        let path = skill_path_from_dir(root.path(), "custom").unwrap();
+        assert_eq!(path.source, "filesystem");
+        assert_eq!(path.path, root.path().join("custom").to_string_lossy().to_string());
     }
 
     #[test]

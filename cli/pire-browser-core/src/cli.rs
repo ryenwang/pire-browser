@@ -162,6 +162,10 @@ pub enum LocalCommand {
     SkillsCatAll {
         json: bool,
     },
+    SkillsPath {
+        name: String,
+        json: bool,
+    },
     Chat {
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
@@ -1079,6 +1083,25 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                     bail!("unsupported skills {verb} option: {extra}");
                 }
                 return Ok(LocalCommand::SkillsCat {
+                    name,
+                    json: json_output,
+                });
+            }
+            "path" => {
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                if let Some(option) = args.first().filter(|arg| arg.starts_with('-')) {
+                    bail!("unsupported skills path option: {option}");
+                }
+                let name = args.first().cloned().unwrap_or_else(|| "core".to_string());
+                if !args.is_empty() {
+                    args.remove(0);
+                }
+                remove_json_flags(&mut args, &mut json_output);
+                if let Some(extra) = args.first() {
+                    bail!("unsupported skills path option: {extra}");
+                }
+                return Ok(LocalCommand::SkillsPath {
                     name,
                     json: json_output,
                 });
@@ -3679,11 +3702,14 @@ Usage:
   pire-browser skills cat core [--json]
   pire-browser skills get core [--full] [--json]
   pire-browser skills get --all [--json]
+  pire-browser skills path [core] [--json]
 
 Lists or prints installed agent skill guidance. `get` is an agent-browser-style
 alias for `cat`; `--full` is accepted for compatibility because bundled skill
-content is self-contained. The `skill` root is accepted as a compatibility alias,
-but public docs prefer `skills`.
+content is self-contained. `path` prints the installed skill directory when the
+skill is filesystem-backed; native embedded skills report an `embedded:<name>`
+source. The `skill` root is accepted as a compatibility alias, but public docs
+prefer `skills`.
 "##;
 
 pub fn build_command_request(args: Vec<String>) -> RpcRequest {
@@ -5174,7 +5200,22 @@ mod tests {
             parse_cli_args(&s(&["skill", "cat", "--all"])).unwrap(),
             LocalCommand::SkillsCatAll { json: false }
         );
+        assert_eq!(
+            parse_cli_args(&s(&["skills", "path"])).unwrap(),
+            LocalCommand::SkillsPath {
+                name: "core".to_string(),
+                json: false
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["skills", "path", "core", "--json"])).unwrap(),
+            LocalCommand::SkillsPath {
+                name: "core".to_string(),
+                json: true
+            }
+        );
         assert!(parse_cli_args(&s(&["skills", "cat"])).is_err());
+        assert!(parse_cli_args(&s(&["skills", "path", "--bad"])).is_err());
         assert!(parse_cli_args(&s(&["skills", "show", "core"])).is_err());
     }
 
@@ -6038,6 +6079,9 @@ mod tests {
         assert!(help_text(Some("skills"))
             .unwrap()
             .contains("skills get core"));
+        assert!(help_text(Some("skills"))
+            .unwrap()
+            .contains("skills path [core]"));
         assert!(help_text(Some("session"))
             .unwrap()
             .contains("session attach"));

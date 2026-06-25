@@ -775,8 +775,9 @@ pire-browser skills list
 pire-browser skills cat core
 pire-browser skills get core
 pire-browser skills get --all
+pire-browser skills path core
 ```
 
 Use `--json` when another tool or script needs structured output.
 
-For local skill development, `PIRE_BROWSER_SKILLS_DIR` can point to a directory of `<name>/SKILL.md` files.
+For local skill development, `PIRE_BROWSER_SKILLS_DIR` or the agent-browser-compatible `AGENT_BROWSER_SKILLS_DIR` can point to a directory of `<name>/SKILL.md` files.

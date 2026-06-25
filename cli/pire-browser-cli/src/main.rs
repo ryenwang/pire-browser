@@ -61,7 +61,7 @@ use pire_browser_core::session::{
     SessionInfo,
 };
 use pire_browser_core::setup::{setup, setup_result_text, setup_with_deps, SetupResult};
-use pire_browser_core::skills::{list_skills, skill_content};
+use pire_browser_core::skills::{list_skills, skill_content, skill_path};
 use pire_browser_core::state_file::{
     display_url_without_query_or_fragment, read_state_file_summary, read_state_file_with_metadata,
     state_from_extension_export, sweep_expired_state_receipts, validate_state_inspection_receipt,
@@ -312,6 +312,9 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         }
         LocalCommand::SkillsCatAll { json } => {
             handle_skills_cat_all(json)?;
+        }
+        LocalCommand::SkillsPath { name, json } => {
+            handle_skills_path(&name, json)?;
         }
         LocalCommand::Chat {
             json,
@@ -2206,6 +2209,38 @@ fn handle_skills_cat_all(json_output: bool) -> Result<()> {
             print!("{}", skill.content);
         }
         io::stdout().flush()?;
+    }
+    Ok(())
+}
+
+fn handle_skills_path(name: &str, json_output: bool) -> Result<()> {
+    let Some(skill) = skill_path(name) else {
+        let available = list_skills()
+            .into_iter()
+            .map(|skill| skill.name)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let message = format!(
+            "unknown skill: No skill named `{}`. Available skills: {}.",
+            redact_text(name),
+            available
+        );
+        if json_output {
+            let error = pire_browser_core::protocol::RpcError {
+                code: "unsupported_command".to_string(),
+                message,
+                data: None,
+            };
+            print_json_error_with_warning_values(&error, &[], &[])?;
+        } else {
+            eprintln!("unsupported_command: {message}");
+        }
+        std::process::exit(exit_code_for_error("unsupported_command"));
+    };
+    if json_output {
+        println!("{}", format_cli_result(&json!({ "skill": skill }), true)?);
+    } else {
+        println!("{}", skill.path);
     }
     Ok(())
 }

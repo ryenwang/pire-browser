@@ -1,11 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { classifyUpdate, formatUpdatePlain, main } from "../bin/pire-browser.js";
 
 const originalOffline = process.env.PI_OFFLINE;
+const originalPireSkillsDir = process.env.PIRE_BROWSER_SKILLS_DIR;
+const originalAgentSkillsDir = process.env.AGENT_BROWSER_SKILLS_DIR;
 
 afterEach(() => {
   if (originalOffline === undefined) delete process.env.PI_OFFLINE;
   else process.env.PI_OFFLINE = originalOffline;
+  if (originalPireSkillsDir === undefined) delete process.env.PIRE_BROWSER_SKILLS_DIR;
+  else process.env.PIRE_BROWSER_SKILLS_DIR = originalPireSkillsDir;
+  if (originalAgentSkillsDir === undefined) delete process.env.AGENT_BROWSER_SKILLS_DIR;
+  else process.env.AGENT_BROWSER_SKILLS_DIR = originalAgentSkillsDir;
   vi.restoreAllMocks();
 });
 
@@ -49,6 +58,40 @@ describe("launcher update UX", () => {
     });
   });
 
+  it("serves skills path and honors the agent-browser skills directory override", () => {
+    const root = join(tmpdir(), `pire-skills-${process.pid}-${Date.now()}`);
+    const skillDir = join(root, "custom");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      "---\nname: custom\ndescription: Custom launcher skill.\n---\n\n# Custom\n"
+    );
+    process.env.AGENT_BROWSER_SKILLS_DIR = root;
+    delete process.env.PIRE_BROWSER_SKILLS_DIR;
+
+    try {
+      const logs = [];
+      vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+      expect(main(["skills", "list", "--json"])).toBe(0);
+      expect(JSON.parse(logs.pop())).toMatchObject({
+        success: true,
+        data: { skills: [{ name: "custom", description: "Custom launcher skill." }] },
+      });
+
+      expect(main(["skills", "path", "custom", "--json"])).toBe(0);
+      expect(JSON.parse(logs.pop())).toMatchObject({
+        success: true,
+        data: { skill: { name: "custom", path: skillDir } },
+      });
+
+      expect(main(["skills", "get", "custom", "--json"])).toBe(0);
+      expect(JSON.parse(logs.pop()).data.skill.content).toContain("# Custom");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("reports invalid launcher-served skills requests without invoking native commands", () => {
     const logs = [];
     vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
@@ -59,6 +102,15 @@ describe("launcher update UX", () => {
       success: false,
       error: {
         code: "unsupported_command",
+      },
+    });
+
+    logs.length = 0;
+    expect(main(["skills", "path", "--bad", "--json"])).toBe(1);
+    expect(JSON.parse(logs.join("\n"))).toMatchObject({
+      success: false,
+      error: {
+        message: "unsupported skills path option: --bad",
       },
     });
   });
