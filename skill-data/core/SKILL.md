@@ -354,9 +354,11 @@ normal behavior. Firefox route mocking uses WebExtension interception, so treat
 it as QA/debug control rather than full CDP response capture. Use `network har start`
 before a flow and `network har stop <path>` afterward when you need a
 portable request timeline artifact. `network har <path>` also exports the
-current recent request log directly. HAR output is metadata-only: redacted
-request/response headers may be included, but bodies, cookies, and raw header
-secrets are not captured.
+current recent request log directly. Network detail and HAR output may include
+redacted request/response headers plus redacted/truncated outgoing request
+bodies when Firefox exposes them. Use that request-body preview to debug API
+submissions and form posts, but do not treat it as full response-body capture:
+response bodies, cookies, and raw header/body secrets are not captured.
 
 Set a responsive viewport before QA screenshots:
 

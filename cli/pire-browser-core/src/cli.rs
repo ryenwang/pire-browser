@@ -2495,7 +2495,7 @@ Common commands:
   cookies                         Show active URL cookies
   storage local [key]             Read active-origin localStorage
   network requests                Show recent page network requests
-  network har network.har         Export recent request metadata as HAR
+  network har network.har         Export recent request data as HAR
   network route "**/api/**" --body '{}' Mock or block active-tab requests
   trace start                     Start a Firefox QA evidence bundle
   trace stop trace.json           Stop and write trace bundle JSON
@@ -3048,8 +3048,9 @@ Route rules are active-tab scoped. They can mark pass-through requests, abort
 matching requests, or mock with a simple body redirect. Use `network unroute`
 before returning to normal behavior. `network har start` and `network har stop`
 match agent-browser's recording loop; `network har [path]` exports currently
-captured records directly. HAR output is metadata-only from WebExtension request
-records; request/response headers are redacted, and bodies/cookies are not
+captured records directly. HAR output is built from Firefox WebExtension
+records; request/response headers and captured outgoing request bodies are
+redacted/truncated, while response bodies, cookies, and raw secrets are not
 captured.
 Full CDP-style response control is not supported on the Firefox WebExtension
 backend.
@@ -5806,7 +5807,7 @@ mod tests {
             .contains("network har stop [output.har]"));
         assert!(help_text(Some("network"))
             .unwrap()
-            .contains("request/response headers are redacted"));
+            .contains("captured outgoing request bodies are"));
         assert!(help_text(Some("network"))
             .unwrap()
             .contains("network route <pattern> --body"));

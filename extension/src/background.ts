@@ -230,6 +230,24 @@ type NetworkHeaderRecord = {
   redacted?: boolean;
 };
 
+type NetworkBodyField = {
+  name: string;
+  value: string;
+  redacted?: boolean;
+  truncated?: boolean;
+};
+
+type NetworkBodyRecord = {
+  kind: "formData" | "raw" | "error";
+  text?: string;
+  fields?: NetworkBodyField[];
+  size?: number;
+  truncated?: boolean;
+  redacted?: boolean;
+  encoding?: string;
+  error?: string;
+};
+
 type BasicCredentialRule = {
   username: string;
   password: string;
@@ -263,6 +281,7 @@ type NetworkActivityRecord = {
   fromCache?: boolean;
   requestHeaders?: NetworkHeaderRecord[];
   responseHeaders?: NetworkHeaderRecord[];
+  requestBody?: NetworkBodyRecord;
   error?: string;
   frameId?: number;
   parentFrameId?: number;
@@ -347,6 +366,9 @@ const TAB_READY_POLL_INTERVAL_MS = 100;
 const NETWORK_IDLE_QUIET_MS = 500;
 const NETWORK_IDLE_POLL_INTERVAL_MS = 50;
 const MAX_NETWORK_RECORDS_PER_TAB = 300;
+const MAX_NETWORK_BODY_TEXT_LENGTH = 4000;
+const MAX_NETWORK_BODY_FIELD_VALUE_LENGTH = 1000;
+const MAX_NETWORK_BODY_FIELDS = 50;
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const DOWNLOAD_RECENT_MS = 60_000;
 const DOWNLOAD_POLL_INTERVAL_MS = 200;
@@ -5084,7 +5106,7 @@ function networkHarCommandArgs(args: string[], mode: "export" | "start" | "stop"
 function networkHarMetadataWarning() {
   return bestEffortWarning(
     "network har",
-    "HAR export is built from Firefox WebExtension request metadata. Request/response headers are redacted; cookies and response bodies are not captured."
+    "HAR export is built from Firefox WebExtension request metadata. Request/response headers and captured request bodies are redacted; cookies, response bodies, and raw secrets are not captured."
   );
 }
 
@@ -5234,6 +5256,10 @@ function publicNetworkRecord(record: NetworkActivityRecord) {
     durationMs: record.durationMs,
     requestHeaders: record.requestHeaders ?? [],
     responseHeaders: record.responseHeaders ?? [],
+    requestBody: record.requestBody,
+    requestBodySize: record.requestBody?.size,
+    responseBodySize: responseContentLength(record.responseHeaders),
+    responseMimeType: responseContentType(record.responseHeaders),
     routeId: record.routeId,
     routeAction: record.routeAction,
   };
@@ -5264,6 +5290,7 @@ function formatNetworkDetail(record: ReturnType<typeof publicNetworkRecord>) {
     record.error ? `Error: ${record.error}` : "",
     typeof record.durationMs === "number" ? `Duration: ${record.durationMs}ms` : "",
     formatNetworkHeaders("Request headers", record.requestHeaders),
+    formatNetworkRequestBody(record.requestBody),
     formatNetworkHeaders("Response headers", record.responseHeaders),
   ].filter(Boolean).join("\n");
 }
@@ -5271,6 +5298,22 @@ function formatNetworkDetail(record: ReturnType<typeof publicNetworkRecord>) {
 function formatNetworkHeaders(label: string, headers: NetworkHeaderRecord[] | undefined) {
   if (!headers?.length) return "";
   return `${label}:\n${headers.map((header) => `  ${header.name}: ${header.value}`).join("\n")}`;
+}
+
+function formatNetworkRequestBody(body: NetworkBodyRecord | undefined) {
+  if (!body) return "";
+  const suffix = [
+    typeof body.size === "number" ? `${body.size} bytes` : "",
+    body.redacted ? "redacted" : "",
+    body.truncated ? "truncated" : "",
+  ].filter(Boolean).join(", ");
+  const label = `Request body (${body.kind}${suffix ? `, ${suffix}` : ""})`;
+  if (body.kind === "error") return `${label}: ${body.error ?? "unavailable"}`;
+  if (body.fields?.length) {
+    return `${label}:\n${body.fields.map((field) => `  ${field.name}: ${field.value}`).join("\n")}`;
+  }
+  if (body.text) return `${label}:\n  ${body.text}`;
+  return `${label}: captured without displayable text`;
 }
 
 function networkHarForRecords(records: ReturnType<typeof publicNetworkRecord>[], tab: TabRecord, options: { startedAt?: number } = {}) {
@@ -5281,7 +5324,7 @@ function networkHarForRecords(records: ReturnType<typeof publicNetworkRecord>[],
       creator: {
         name: "pire-browser",
         version: browser.runtime.getManifest().version,
-        comment: "Firefox WebExtension metadata export; request/response headers are redacted and bodies are not captured.",
+        comment: "Firefox WebExtension export; request/response headers are redacted, request bodies are redacted/truncated when Firefox exposes them, and response bodies are not captured.",
       },
       browser: {
         name: "Firefox",
@@ -5320,7 +5363,8 @@ function networkHarEntry(record: ReturnType<typeof publicNetworkRecord>, tab: Ta
       headers: harHeaders(record.requestHeaders),
       queryString: harQueryString(record.url),
       headersSize: -1,
-      bodySize: -1,
+      bodySize: typeof record.requestBodySize === "number" ? record.requestBodySize : -1,
+      ...(record.requestBody ? { postData: harPostData(record) } : {}),
     },
     response: {
       status,
@@ -5329,12 +5373,12 @@ function networkHarEntry(record: ReturnType<typeof publicNetworkRecord>, tab: Ta
       cookies: [],
       headers: harHeaders(record.responseHeaders),
       content: {
-        size: -1,
-        mimeType: "x-unknown",
+        size: typeof record.responseBodySize === "number" ? record.responseBodySize : -1,
+        mimeType: record.responseMimeType ?? "x-unknown",
       },
       redirectURL: "",
       headersSize: -1,
-      bodySize: -1,
+      bodySize: typeof record.responseBodySize === "number" ? record.responseBodySize : -1,
       _error: record.error,
       _fromCache: record.fromCache,
     },
@@ -5362,12 +5406,52 @@ function networkHarEntry(record: ReturnType<typeof publicNetworkRecord>, tab: Ta
   };
 }
 
+function harPostData(record: ReturnType<typeof publicNetworkRecord>) {
+  const body = record.requestBody;
+  const postData: Record<string, unknown> = {
+    mimeType: requestContentType(record.requestHeaders),
+    text: body?.text ?? "",
+  };
+  if (body?.fields?.length) {
+    postData.params = body.fields.map((field) => ({
+      name: field.name,
+      value: field.value,
+      ...(field.redacted ? { _redacted: true } : {}),
+      ...(field.truncated ? { _truncated: true } : {}),
+    }));
+  }
+  if (body?.encoding) postData._encoding = body.encoding;
+  if (body?.redacted) postData._redacted = true;
+  if (body?.truncated) postData._truncated = true;
+  if (body?.error) postData._error = body.error;
+  return postData;
+}
+
 function harHeaders(headers?: NetworkHeaderRecord[]) {
   return (headers ?? []).map((header) => ({
     name: header.name,
     value: header.value,
     ...(header.redacted ? { _redacted: true } : {}),
   }));
+}
+
+function responseContentLength(headers?: NetworkHeaderRecord[]) {
+  const value = networkHeaderValueByName(headers, "content-length");
+  const parsed = value === undefined ? NaN : Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function responseContentType(headers?: NetworkHeaderRecord[]) {
+  return networkHeaderValueByName(headers, "content-type")?.split(";")[0]?.trim() || undefined;
+}
+
+function requestContentType(headers?: NetworkHeaderRecord[]) {
+  return networkHeaderValueByName(headers, "content-type") || "application/octet-stream";
+}
+
+function networkHeaderValueByName(headers: NetworkHeaderRecord[] | undefined, name: string) {
+  const lower = name.toLowerCase();
+  return headers?.find((header) => header.name.toLowerCase() === lower)?.value;
 }
 
 function harStatusText(record: ReturnType<typeof publicNetworkRecord>) {
@@ -6953,10 +7037,18 @@ function registerNetworkRouteListener() {
 
 function registerNetworkActivityListeners() {
   if (!browser.webRequest?.onBeforeRequest?.addListener) return;
-  browser.webRequest.onBeforeRequest.addListener(
-    trackNetworkRequestStart,
-    { urls: ["<all_urls>"] }
-  );
+  try {
+    browser.webRequest.onBeforeRequest.addListener(
+      trackNetworkRequestStart,
+      { urls: ["<all_urls>"] },
+      ["requestBody"]
+    );
+  } catch {
+    browser.webRequest.onBeforeRequest.addListener(
+      trackNetworkRequestStart,
+      { urls: ["<all_urls>"] }
+    );
+  }
   browser.webRequest.onBeforeSendHeaders?.addListener?.(
     trackNetworkRequestHeaders,
     { urls: ["<all_urls>"] },
@@ -6983,6 +7075,7 @@ function trackNetworkRequestStart(details: any) {
   const requestId = String(details.requestId ?? `${tabId}:${Date.now()}:${Math.random()}`);
   const now = Date.now();
   const routeMatch = networkRouteMatchesByRequestId.get(requestId);
+  const requestBody = captureNetworkRequestBody(details);
   const record: NetworkActivityRecord = {
     requestId,
     tabId,
@@ -6997,6 +7090,7 @@ function trackNetworkRequestStart(details: any) {
     active: true,
     routeId: routeMatch?.routeId,
     routeAction: routeMatch?.action,
+    requestBody,
   };
   networkRequestsById.set(requestId, record);
   rememberNetworkRecord(tabId, requestId);
@@ -7071,6 +7165,208 @@ function rememberNetworkHeaders(details: any, field: "requestHeaders" | "respons
   networkRequestsById.set(requestId, current);
   rememberNetworkRecord(tabId, requestId);
   lastNetworkActivityAtByTabId.set(tabId, now);
+}
+
+function captureNetworkRequestBody(details: any): NetworkBodyRecord | undefined {
+  const requestBody = details?.requestBody;
+  if (!requestBody || typeof requestBody !== "object") return undefined;
+  if (typeof requestBody.error === "string") {
+    return { kind: "error", error: truncate(requestBody.error, 500) };
+  }
+  if (requestBody.formData && typeof requestBody.formData === "object") {
+    return captureNetworkFormData(requestBody.formData);
+  }
+  if (Array.isArray(requestBody.raw)) {
+    return captureRawNetworkBody(requestBody.raw);
+  }
+  return undefined;
+}
+
+function captureNetworkFormData(formData: Record<string, unknown>): NetworkBodyRecord {
+  const fields: NetworkBodyField[] = [];
+  let size = 0;
+  let truncated = false;
+  let redacted = false;
+  for (const [name, rawValue] of Object.entries(formData)) {
+    const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+    for (const value of values) {
+      const text = typeof value === "string" ? value : value == null ? "" : String(value);
+      size += utf8ByteLength(text);
+      const sensitive = isSensitiveNetworkBodyName(name);
+      const display = sensitive ? { value: "[REDACTED]", truncated: false } : truncateNetworkBodyValue(text, MAX_NETWORK_BODY_FIELD_VALUE_LENGTH);
+      fields.push({
+        name,
+        value: display.value,
+        ...(sensitive ? { redacted: true } : {}),
+        ...(display.truncated ? { truncated: true } : {}),
+      });
+      redacted = redacted || sensitive;
+      truncated = truncated || display.truncated;
+      if (fields.length >= MAX_NETWORK_BODY_FIELDS) {
+        truncated = true;
+        break;
+      }
+    }
+    if (fields.length >= MAX_NETWORK_BODY_FIELDS) break;
+  }
+  const text = truncateNetworkBodyValue(fields.map((field) => `${field.name}=${field.value}`).join("&"), MAX_NETWORK_BODY_TEXT_LENGTH);
+  return {
+    kind: "formData",
+    fields,
+    text: text.value,
+    size,
+    ...(redacted ? { redacted: true } : {}),
+    ...(truncated || text.truncated ? { truncated: true } : {}),
+  };
+}
+
+function captureRawNetworkBody(rawParts: any[]): NetworkBodyRecord | undefined {
+  let size = 0;
+  let text = "";
+  let hasFile = false;
+  let decodedTruncated = false;
+  const decoder = new TextDecoder("utf-8");
+  for (const part of rawParts) {
+    if (part?.file) {
+      hasFile = true;
+      continue;
+    }
+    const bytes = networkUploadBytes(part?.bytes);
+    if (!bytes) continue;
+    size += bytes.byteLength;
+    if (text.length <= MAX_NETWORK_BODY_TEXT_LENGTH) {
+      const remaining = Math.max(0, (MAX_NETWORK_BODY_TEXT_LENGTH + 256 - text.length) * 4);
+      const displayBytes = remaining > 0 && bytes.byteLength > remaining ? bytes.slice(0, remaining) : bytes;
+      decodedTruncated = decodedTruncated || displayBytes.byteLength < bytes.byteLength;
+      text += decoder.decode(displayBytes, { stream: true });
+    } else {
+      decodedTruncated = true;
+    }
+  }
+  text += decoder.decode();
+  if (!text && hasFile) {
+    return {
+      kind: "raw",
+      text: "[file upload body omitted]",
+      ...(size ? { size } : {}),
+      redacted: true,
+    };
+  }
+  if (!text) return size ? { kind: "raw", size } : undefined;
+  const sanitized = sanitizeNetworkBodyText(text);
+  const display = truncateNetworkBodyValue(sanitized.text, MAX_NETWORK_BODY_TEXT_LENGTH);
+  return {
+    kind: "raw",
+    text: display.value,
+    size,
+    encoding: "utf-8",
+    ...(sanitized.redacted || hasFile ? { redacted: true } : {}),
+    ...(display.truncated || decodedTruncated || hasFile ? { truncated: true } : {}),
+  };
+}
+
+function networkUploadBytes(bytes: any): Uint8Array | null {
+  if (!bytes) return null;
+  if (bytes instanceof Uint8Array) return bytes;
+  if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes);
+  if (ArrayBuffer.isView(bytes)) return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (Array.isArray(bytes)) return new Uint8Array(bytes);
+  return null;
+}
+
+function sanitizeNetworkBodyText(text: string): { text: string; redacted?: boolean } {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      const redacted = { value: false };
+      const sanitized = redactSensitiveJsonValue(JSON.parse(text), undefined, redacted);
+      return { text: JSON.stringify(sanitized), ...(redacted.value ? { redacted: true } : {}) };
+    } catch {
+      // Fall through to URL-encoded handling.
+    }
+  }
+  if (looksLikeUrlEncodedBody(text)) {
+    try {
+      const params = new URLSearchParams(text);
+      const output = new URLSearchParams();
+      let redacted = false;
+      params.forEach((value, name) => {
+        if (isSensitiveNetworkBodyName(name)) {
+          output.append(name, "[REDACTED]");
+          redacted = true;
+        } else {
+          output.append(name, value);
+        }
+      });
+      return { text: output.toString(), ...(redacted ? { redacted: true } : {}) };
+    } catch {
+      // Fall through to coarse sensitive-marker handling.
+    }
+  }
+  if (containsSensitiveNetworkBodyMarker(text)) {
+    return { text: "[REDACTED body contained sensitive-looking fields]", redacted: true };
+  }
+  return { text };
+}
+
+function redactSensitiveJsonValue(value: unknown, key: string | undefined, redacted: { value: boolean }): unknown {
+  if (key && isSensitiveNetworkBodyName(key)) {
+    redacted.value = true;
+    return "[REDACTED]";
+  }
+  if (Array.isArray(value)) return value.map((item) => redactSensitiveJsonValue(item, undefined, redacted));
+  if (value && typeof value === "object") {
+    const output: Record<string, unknown> = {};
+    for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+      output[childKey] = redactSensitiveJsonValue(childValue, childKey, redacted);
+    }
+    return output;
+  }
+  return value;
+}
+
+function looksLikeUrlEncodedBody(text: string) {
+  return /^[^=&\s]+=[\s\S]*/.test(text) && text.includes("=");
+}
+
+function containsSensitiveNetworkBodyMarker(text: string) {
+  return /["']?(?:password|passwd|pwd|token|secret|credential|session|cookie|csrf|xsrf|jwt|api[_-]?key)["']?\s*[:=]/i.test(text);
+}
+
+function truncateNetworkBodyValue(value: string, max: number) {
+  const truncated = value.length > max;
+  return { value: truncate(value, max), truncated };
+}
+
+function utf8ByteLength(value: string) {
+  try {
+    return new TextEncoder().encode(value).byteLength;
+  } catch {
+    return value.length;
+  }
+}
+
+function isSensitiveNetworkBodyName(name: string) {
+  const lower = name.toLowerCase();
+  return (
+    lower === "password" ||
+    lower === "passwd" ||
+    lower === "pwd" ||
+    lower.includes("password") ||
+    lower.includes("passcode") ||
+    lower.includes("token") ||
+    lower.includes("secret") ||
+    lower.includes("auth") ||
+    lower.includes("credential") ||
+    lower.includes("session") ||
+    lower.includes("cookie") ||
+    lower.includes("csrf") ||
+    lower.includes("xsrf") ||
+    lower.includes("jwt") ||
+    lower.includes("api_key") ||
+    lower.includes("api-key") ||
+    lower.includes("apikey")
+  );
 }
 
 function sanitizeNetworkHeaders(rawHeaders: any): NetworkHeaderRecord[] {

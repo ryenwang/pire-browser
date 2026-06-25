@@ -73,7 +73,7 @@ export const featureStatuses = {
   },
   networkControls: {
     status: "partial",
-    summary: "Domain guardrails, extension-applied proxy settings, origin-scoped headers, session-memory HTTP Basic credentials, best-effort offline request blocking, active-tab `wait --load networkidle`, recent request diagnostics with redacted request/response headers, agent-browser-style metadata HAR start/stop, direct HAR export, and best-effort route mock/abort controls are available; response body and raw cookie/header secret inspection are not.",
+    summary: "Domain guardrails, extension-applied proxy settings, origin-scoped headers, session-memory HTTP Basic credentials, best-effort offline request blocking, active-tab `wait --load networkidle`, recent request diagnostics with redacted request/response headers and redacted/truncated outgoing request bodies when Firefox exposes them, agent-browser-style HAR start/stop, direct HAR export, and best-effort route mock/abort controls are available; response body and raw cookie/header/body secret inspection are not.",
     sources: ["README.md", "skill-data/core/SKILL.md", "extension/src/background.ts"],
   },
   debugging: {

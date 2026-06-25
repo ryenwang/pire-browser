@@ -29,6 +29,16 @@ type ConfirmationPolicyErrorForCommand = (
 type CookieImportParser = (payload: string) => { cookies: { name: string; value: string; secure?: boolean }[] } | { error: { message: string } };
 type CookieImportTargetUrl = (activeUrl?: string, domain?: string) => { url: string; host: string } | { error: { message: string } };
 type HeaderSanitizer = (headers: { name: string; value?: string }[]) => { name: string; value: string; redacted?: boolean }[];
+type NetworkBodyCapture = (details: { requestBody?: unknown }) => {
+  kind: string;
+  text?: string;
+  fields?: { name: string; value: string; redacted?: boolean; truncated?: boolean }[];
+  size?: number;
+  truncated?: boolean;
+  redacted?: boolean;
+  encoding?: string;
+  error?: string;
+} | undefined;
 
 function extensionFile(path: string) {
   return readFileSync(resolve(import.meta.dirname, "..", path), "utf8");
@@ -166,6 +176,43 @@ function loadNetworkHeaderSanitizer(): HeaderSanitizer {
   runInNewContext(js, sandbox);
   if (!sandbox.__sanitizeNetworkHeaders) throw new Error("network header sanitizer did not load");
   return sandbox.__sanitizeNetworkHeaders;
+}
+
+function loadNetworkBodyCapture(): NetworkBodyCapture {
+  const body = backgroundSource();
+  const start = body.indexOf("function captureNetworkRequestBody(");
+  const end = body.indexOf("\nfunction sanitizeNetworkHeaders(", start);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  const source = body.slice(start, end);
+  const js = transpileModule(`${source}\nthis.__captureNetworkRequestBody = captureNetworkRequestBody;`, {
+    compilerOptions: { module: ModuleKind.ES2020, target: ScriptTarget.ES2020 },
+  }).outputText;
+  const sandbox: {
+    __captureNetworkRequestBody?: NetworkBodyCapture;
+    truncate: (value: string, max: number) => string;
+    MAX_NETWORK_BODY_TEXT_LENGTH: number;
+    MAX_NETWORK_BODY_FIELD_VALUE_LENGTH: number;
+    MAX_NETWORK_BODY_FIELDS: number;
+    TextDecoder: typeof TextDecoder;
+    TextEncoder: typeof TextEncoder;
+    URLSearchParams: typeof URLSearchParams;
+    ArrayBuffer: typeof ArrayBuffer;
+    Uint8Array: typeof Uint8Array;
+  } = {
+    truncate: (value, max) => (value.length > max ? `${value.slice(0, max - 3)}...` : value),
+    MAX_NETWORK_BODY_TEXT_LENGTH: 4000,
+    MAX_NETWORK_BODY_FIELD_VALUE_LENGTH: 1000,
+    MAX_NETWORK_BODY_FIELDS: 50,
+    TextDecoder,
+    TextEncoder,
+    URLSearchParams,
+    ArrayBuffer,
+    Uint8Array,
+  };
+  runInNewContext(js, sandbox);
+  if (!sandbox.__captureNetworkRequestBody) throw new Error("network body capture did not load");
+  return sandbox.__captureNetworkRequestBody;
 }
 
 describe("compiled MV2 scripts", () => {
@@ -366,6 +413,72 @@ describe("pire-browser command foundations", () => {
       { name: "X-ApiKey", value: "[REDACTED]", redacted: true },
       { name: "X-Request-Id", value: "req_123" },
     ]);
+  });
+
+  it("captures network request bodies with secret redaction and HAR postData metadata", () => {
+    const body = background();
+    const capture = loadNetworkBodyCapture();
+
+    expect(body).toContain('["requestBody"]');
+    expect(body).toContain("const requestBody = captureNetworkRequestBody(details);");
+    expect(body).toContain("requestBody: record.requestBody");
+    expect(body).toContain("requestBodySize: record.requestBody?.size");
+    expect(body).toContain("formatNetworkRequestBody(record.requestBody)");
+    expect(body).toContain("postData: harPostData(record)");
+    expect(body).toContain("request bodies are redacted/truncated when Firefox exposes them");
+    expect(body).toContain("response bodies are not captured");
+
+    const jsonBody = capture({
+      requestBody: {
+        raw: [
+          {
+            bytes: new TextEncoder().encode(JSON.stringify({ username: "riley", password: "secret", token: "abc", nested: { safe: "ok" } })),
+          },
+        ],
+      },
+    });
+    expect(jsonBody).toMatchObject({ kind: "raw", redacted: true, encoding: "utf-8" });
+    expect(jsonBody?.text).toContain('"username":"riley"');
+    expect(jsonBody?.text).toContain('"password":"[REDACTED]"');
+    expect(jsonBody?.text).toContain('"token":"[REDACTED]"');
+    expect(jsonBody?.text).not.toContain("secret");
+    expect(jsonBody?.text).not.toContain("abc");
+
+    const urlEncodedBody = capture({
+      requestBody: {
+        raw: [{ bytes: new TextEncoder().encode("username=riley&password=secret&password=second&mode=test") }],
+      },
+    });
+    expect(urlEncodedBody).toMatchObject({ kind: "raw", redacted: true });
+    expect(urlEncodedBody?.text).toContain("username=riley");
+    expect(urlEncodedBody?.text).toContain("password=%5BREDACTED%5D&password=%5BREDACTED%5D");
+    expect(urlEncodedBody?.text).toContain("mode=test");
+    expect(urlEncodedBody?.text).not.toContain("secret");
+    expect(urlEncodedBody?.text).not.toContain("second");
+
+    const malformedSensitiveBody = capture({
+      requestBody: {
+        raw: [{ bytes: new TextEncoder().encode('{"password": "secret"') }],
+      },
+    });
+    expect(malformedSensitiveBody).toMatchObject({ kind: "raw", redacted: true });
+    expect(malformedSensitiveBody?.text).toBe("[REDACTED body contained sensitive-looking fields]");
+
+    const longValue = "x".repeat(1200);
+    const formBody = capture({
+      requestBody: {
+        formData: {
+          q: ["browser"],
+          password: ["secret"],
+          notes: [longValue],
+        },
+      },
+    });
+    expect(formBody).toMatchObject({ kind: "formData", redacted: true, truncated: true });
+    expect(formBody?.fields).toContainEqual({ name: "q", value: "browser" });
+    expect(formBody?.fields).toContainEqual({ name: "password", value: "[REDACTED]", redacted: true });
+    expect(formBody?.fields?.find((field) => field.name === "notes")).toMatchObject({ truncated: true });
+    expect(formBody?.text).not.toContain("secret");
   });
 
   it("routes keydown and keyup as focused edge events instead of press-compatible warnings", () => {
@@ -1330,7 +1443,7 @@ describe("command shape parity", () => {
     expect(body).toContain("networkRouteMatchesByRequestId.delete(id)");
   });
 
-  it("exports metadata-only HAR files from captured network requests", () => {
+  it("exports HAR files from captured network requests", () => {
     const body = background();
     expect(body).toContain('if (subcommand === "har" || subcommand === "export-har") return networkHarCommand(rest);');
     expect(body).toContain("async function networkHarCommand");
@@ -1344,9 +1457,12 @@ describe("command shape parity", () => {
     expect(body).toContain("function networkHarForRecords");
     expect(body).toContain("function networkHarEntry");
     expect(body).toContain("function harQueryString");
-    expect(body).toContain("Firefox WebExtension metadata export; request/response headers are redacted and bodies are not captured.");
+    expect(body).toContain("Firefox WebExtension export; request/response headers are redacted");
+    expect(body).toContain("request bodies are redacted/truncated when Firefox exposes them");
+    expect(body).toContain("postData: harPostData(record)");
+    expect(body).toContain("content: {");
     expect(body).toContain("HAR export is built from Firefox WebExtension request metadata.");
-    expect(body).toContain("Request/response headers");
+    expect(body).toContain("captured request bodies are redacted");
     expect(body).toContain('"network requires requests|request|route|unroute|har|export-har"');
   });
 
