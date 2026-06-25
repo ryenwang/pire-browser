@@ -111,13 +111,15 @@ pire-browser wait --selector "#done" --timeout 5000
 pire-browser wait --text "Saved"
 pire-browser wait --url "**/dashboard"
 pire-browser wait --fn "window.appReady === true"
-pire-browser wait --download out.txt --timeout 60000`),
+pire-browser wait --download out.txt --timeout 60000
+pire-browser wait --download --timeout 60000`),
   p("<code>wait --fn &lt;expression&gt;</code> polls a page-world JavaScript expression until it is truthy. Prefer short, side-effect-free predicates, then re-run <code>snapshot -i</code> before acting on refs."),
 
   h2("Downloads", "downloads"),
-  code(`pire-browser download <sel> <path> [--timeout <ms>]
+  code(`pire-browser --download-path ./downloads open <url>
+pire-browser download <sel> <path> [--timeout <ms>]
 pire-browser wait --download [path] [--timeout <ms>]`),
-  p("Downloads are staged under local app data before being finalized to the requested path. Unknown MIME/helper-app dialogs can still time out in Firefox."),
+  p("Downloads are staged under local app data before being finalized to the requested path. Use <code>--download-path &lt;dir&gt;</code>, <code>PIRE_BROWSER_DOWNLOAD_PATH</code>, or <code>AGENT_BROWSER_DOWNLOAD_PATH</code> to set the Firefox download directory for newly launched managed sessions. With no explicit output path, <code>wait --download</code> reports the completed Firefox file path. Unknown MIME/helper-app dialogs can still time out in Firefox."),
 
   h2("Mouse", "mouse"),
   statusNote("mouseAndDrag"),

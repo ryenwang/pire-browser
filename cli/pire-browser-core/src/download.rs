@@ -46,6 +46,30 @@ pub fn ensure_profile_download_dir(root: &Path, profile_name: &str) -> Result<Pa
     Ok(path)
 }
 
+pub fn ensure_download_dir(path: &Path) -> Result<PathBuf> {
+    fs::create_dir_all(path).with_context(|| format!("failed to create {}", path.display()))?;
+    let metadata = fs::metadata(path)
+        .with_context(|| format!("failed to inspect download directory {}", path.display()))?;
+    if !metadata.is_dir() {
+        bail!(
+            "invalid_args: download path is not a directory: {}",
+            path.display()
+        );
+    }
+    Ok(path.to_path_buf())
+}
+
+pub fn normalize_download_dir(path: &Path) -> Result<PathBuf> {
+    if path.as_os_str().is_empty() {
+        bail!("invalid_args: --download-path requires a non-empty path");
+    }
+    if path.is_absolute() {
+        return Ok(path.to_path_buf());
+    }
+    let cwd = std::env::current_dir().context("failed to resolve current directory")?;
+    Ok(cwd.join(path))
+}
+
 pub fn sweep_old_downloads(now: u64) -> Result<usize> {
     sweep_old_downloads_in_dir(&downloads_root()?, now)
 }
@@ -320,5 +344,20 @@ mod tests {
             1
         );
         assert!(!old.exists());
+    }
+
+    #[test]
+    fn normalize_download_dir_absolutizes_relative_paths() {
+        let path = normalize_download_dir(Path::new("downloads")).unwrap();
+        assert!(path.is_absolute());
+        assert!(path.ends_with("downloads"));
+    }
+
+    #[test]
+    fn ensure_download_dir_creates_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("downloads");
+        assert_eq!(ensure_download_dir(&path).unwrap(), path);
+        assert!(path.is_dir());
     }
 }

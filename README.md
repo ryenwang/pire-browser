@@ -277,6 +277,8 @@ pire-browser wait "#spinner" --state hidden
 truthy. Use short, side-effect-free predicates such as
 `document.querySelector("#ready")` or `window.appReady === true`, then re-run
 `snapshot -i` before acting on refs.
+Use `--download-path <dir>` or `PIRE_BROWSER_DOWNLOAD_PATH` before launching
+when browser-initiated downloads should land in a known folder.
 
 ### Batch Execution
 
@@ -878,7 +880,8 @@ For editor autocomplete:
   "$schema": "./node_modules/pire-browser/pire-browser.schema.json",
   "json": true,
   "profile": "Work",
-  "allowedDomains": ["app.example.com", "*.example.com"]
+  "allowedDomains": ["app.example.com", "*.example.com"],
+  "downloadPath": "./downloads"
 }
 ```
 
@@ -887,9 +890,13 @@ For editor autocomplete:
 Download commands default to 60000ms:
 
 ```bash
+pire-browser --download-path ./downloads open https://example.com
 pire-browser download '@e4' ./downloads/report.txt --timeout 60000
 pire-browser wait --download ./downloads/report.txt --timeout 60000
+pire-browser wait --download --timeout 60000
 ```
+
+Use `--download-path <dir>`, `PIRE_BROWSER_DOWNLOAD_PATH`, or `AGENT_BROWSER_DOWNLOAD_PATH` to set the Firefox download directory for newly launched managed sessions. Relative download paths resolve from the command's current working directory. With no explicit output path, `wait --download` reports the completed Firefox file path.
 
 Other waits use the current Firefox-backed command behavior for the requested wait type.
 

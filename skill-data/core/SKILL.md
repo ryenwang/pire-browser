@@ -381,6 +381,23 @@ pire-browser screenshot --screenshot-dir screenshots
 
 Use `highlight <target>` with the same refs, selectors, text, and semantic targets you would use for `click` or `fill`. Use `screenshot --full` when the report needs the whole page, `screenshot --annotate` when numbered element evidence is more useful than a single target overlay, and `pdf <path>` when the report needs a portable visual evidence file. `pdf` embeds a screenshot into a one-page image-backed PDF; text is not selectable and print CSS is not applied. `screenshot` with no path writes a generated file under the local `pire-browser/screenshots` data directory and prints the resolved path. `--screenshot-dir <dir>` generates a timestamped filename inside that directory when no filename is provided. Relative screenshot paths resolve from the command's current working directory. These are visual QA helpers; styling is Firefox-specific, so do not rely on pixel-identical annotation behavior across browsers.
 
+Set a default download directory when download location matters:
+
+```bash
+pire-browser --download-path ./downloads open https://example.com
+pire-browser snapshot -i
+pire-browser download '<download-link-ref>' ./downloads/report.csv
+pire-browser wait --download --timeout 60000
+```
+
+Use `--download-path <dir>`, `PIRE_BROWSER_DOWNLOAD_PATH`, or
+`AGENT_BROWSER_DOWNLOAD_PATH` before launching a managed session when
+browser-initiated downloads should land in a known folder. Relative download
+paths resolve from the command's current working directory. Use an explicit
+`download <target> <path>` or `wait --download <path>` output path when the
+final filename must be exact. With no explicit output path, `wait --download`
+reports the completed Firefox file path; verify file type or size when relevant.
+
 Upload local files through file input controls:
 
 ```bash
@@ -527,7 +544,7 @@ pire-browser --config ./ci-config.json open https://example.com
 PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com
 ```
 
-Config files use camelCase keys. Useful defaults include `json`, `profile`, `sessionName`, `allowedDomains`, `confirmActions`, `confirmInteractive`, `allowFileAccess`, `headed`, `headless`, `colorScheme`, `maxOutput`, and `contentBoundaries`. CLI flags override config defaults. Unknown keys are ignored.
+Config files use camelCase keys. Useful defaults include `json`, `profile`, `sessionName`, `allowedDomains`, `confirmActions`, `confirmInteractive`, `allowFileAccess`, `headed`, `headless`, `colorScheme`, `downloadPath`, `maxOutput`, and `contentBoundaries`. CLI flags override config defaults. Unknown keys are ignored.
 
 List and target managed profiles or live sessions:
 
@@ -610,7 +627,7 @@ For MCP guardrails and launch context, prefer typed common fields over
 `extraArgs`: `statePath`, `allowFileAccess`, `allowedDomains`,
 `noAllowedDomains`, `actionPolicy`, `confirmActions`, `confirmInteractive`,
 `contentBoundaries`, `maxOutput`, `proxy`, `proxyBypass`, and
-`executablePath`. Use typed `pire_browser_open.headers` and
+`executablePath`, `downloadPath`. Use typed `pire_browser_open.headers` and
 `pire_browser_open.initScriptPaths` when a navigation needs one-shot request
 headers or pre-navigation init scripts. Prefer `pire_browser_open` for normal
 launch/navigation; use `pire_browser_tap` only when an agent-browser-style tap

@@ -99,6 +99,10 @@
       "type": "string",
       "description": "Browser executable path."
     },
+    "downloadPath": {
+      "type": "string",
+      "description": "Default Firefox download directory for newly launched managed sessions."
+    },
     "engine": {
       "type": "string",
       "description": "Engine selection input."

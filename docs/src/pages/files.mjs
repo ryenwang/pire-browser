@@ -2,8 +2,11 @@ import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, tabl
 
 const filesBlocks = [
   h2("Downloads", "downloads"),
-  code(`pire-browser download '@e4' ./downloads/report.txt
-pire-browser wait --download ./downloads/report.txt --timeout 60000`),
+  code(`pire-browser --download-path ./downloads open https://example.com
+pire-browser download '@e4' ./downloads/report.txt
+pire-browser wait --download ./downloads/report.txt --timeout 60000
+pire-browser wait --download --timeout 60000`),
+  p("Use <code>--download-path &lt;dir&gt;</code>, <code>PIRE_BROWSER_DOWNLOAD_PATH</code>, or <code>AGENT_BROWSER_DOWNLOAD_PATH</code> to set the Firefox download directory for newly launched managed sessions. Relative download paths resolve from the command's current working directory. With no explicit output path, <code>wait --download</code> reports the completed Firefox file path."),
   h2("Uploads", "uploads"),
   code(`pire-browser upload '#file' ./path/to/file.txt
 pire-browser upload '#multi-file' ./one.txt ./two.json --json`),

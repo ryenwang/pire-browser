@@ -40,7 +40,8 @@ use pire_browser_core::domain_policy::{
     DomainPolicyDecision, DomainPolicyWarning,
 };
 use pire_browser_core::download::{
-    display_download_url, finalize_download, sweep_old_downloads, DOWNLOAD_TIMEOUT_MS,
+    display_download_url, finalize_download, normalize_download_dir, sweep_old_downloads,
+    DOWNLOAD_TIMEOUT_MS,
 };
 use pire_browser_core::install_status::{
     collect_install_status, install_status_json, install_status_text, InstallStatusReport,
@@ -190,6 +191,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
     let proxy_config = proxy_config_from_effective_args(&config_result.args)?;
     let output_guards = output_guard_options_from_effective_args(&config_result.args)?;
     let firefox_path_override = firefox_path_override_from_args_and_env(&config_result.args);
+    let download_path_override = download_path_override_from_args_and_env(&config_result.args)?;
     let config_warnings = config_result.warnings;
     let command = parse_cli_args(&config_result.args)?;
     if !defer_config_warnings(&command) {
@@ -488,6 +490,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 Some(PathBuf::from(path)),
                 timeout_ms,
                 firefox_path_override.clone(),
+                download_path_override.clone(),
                 proxy_config.as_ref(),
             )?;
         }
@@ -513,6 +516,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 path.map(PathBuf::from),
                 timeout_ms,
                 firefox_path_override.clone(),
+                download_path_override.clone(),
                 proxy_config.as_ref(),
             )?;
         }
@@ -577,6 +581,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 profile,
                 url,
                 firefox_path,
+                download_dir: download_path_override.clone(),
             })?;
             let mut text = launch_result_text(&result);
             for warning in &domain_decision.warnings {
@@ -922,6 +927,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 json,
                 &ignored_global_flags,
                 firefox_path_override.as_deref(),
+                download_path_override.as_deref(),
             )?;
             if !response.ok {
                 let error = response
@@ -1442,6 +1448,39 @@ fn firefox_path_override_from_args_and_env(raw: &[String]) -> Option<String> {
         .or_else(|| non_empty_env("AGENT_BROWSER_EXECUTABLE_PATH"))
 }
 
+fn download_path_override_from_args_and_env(raw: &[String]) -> Result<Option<PathBuf>> {
+    let Some(value) = download_path_override_from_args(raw)
+        .or_else(|| non_empty_env("PIRE_BROWSER_DOWNLOAD_PATH"))
+        .or_else(|| non_empty_env("AGENT_BROWSER_DOWNLOAD_PATH"))
+    else {
+        return Ok(None);
+    };
+    Ok(Some(normalize_download_dir(Path::new(&value))?))
+}
+
+fn download_path_override_from_args(raw: &[String]) -> Option<String> {
+    let mut i = 0;
+    while i < raw.len() {
+        match raw[i].as_str() {
+            "--download-path" => return raw.get(i + 1).cloned(),
+            flag if is_output_guard_value_global_flag(flag) => i += 2,
+            "--headed" | "--headless" => {
+                i += 1;
+                if raw
+                    .get(i)
+                    .and_then(|value| parse_bool_literal(value))
+                    .is_some()
+                {
+                    i += 1;
+                }
+            }
+            flag if is_output_guard_bool_global_flag(flag) => i += 1,
+            _ => break,
+        }
+    }
+    None
+}
+
 fn firefox_path_override_from_args(raw: &[String]) -> Option<String> {
     let mut i = 0;
     while i < raw.len() {
@@ -1594,6 +1633,7 @@ fn is_output_guard_value_global_flag(flag: &str) -> bool {
             | "--action-policy"
             | "--config"
             | "--executable-path"
+            | "--download-path"
             | "--engine"
             | "--provider"
             | "--proxy"
@@ -3411,7 +3451,7 @@ fn handle_state_shortcut(
     let dispatch_result = match &target {
         SessionTarget::Id(session_id) => send_to_session(Some(session_id), &request),
         SessionTarget::Name(profile_name) => {
-            send_to_named_session(profile_name, &args, &request, &domain_decision, None)
+            send_to_named_session(profile_name, &args, &request, &domain_decision, None, None)
         }
         SessionTarget::Default => match send_to_session(None, &request) {
             Ok(result) => Ok(result),
@@ -3432,6 +3472,7 @@ fn handle_state_shortcut(
                     profile: "Default".to_string(),
                     url: launch_url_for_remote_args(&args),
                     firefox_path: None,
+                    download_dir: None,
                 }) {
                     Ok(result) => result,
                     Err(err) => {
@@ -3726,6 +3767,7 @@ fn handle_download(
     destination: Option<PathBuf>,
     timeout_ms: u64,
     firefox_path_override: Option<String>,
+    download_path_override: Option<PathBuf>,
     proxy_config: Option<&ProxyConfig>,
 ) -> Result<()> {
     let mut public_args = vec![
@@ -3749,6 +3791,7 @@ fn handle_download(
             destination,
         },
         firefox_path_override,
+        download_path_override,
         proxy_config,
     )
 }
@@ -3761,6 +3804,7 @@ fn handle_wait_download(
     destination: Option<PathBuf>,
     timeout_ms: u64,
     firefox_path_override: Option<String>,
+    download_path_override: Option<PathBuf>,
     proxy_config: Option<&ProxyConfig>,
 ) -> Result<()> {
     let mut public_args = vec!["wait".to_string(), "--download".to_string()];
@@ -3779,6 +3823,7 @@ fn handle_wait_download(
             destination,
         },
         firefox_path_override,
+        download_path_override,
         proxy_config,
     )
 }
@@ -3790,6 +3835,7 @@ fn execute_download_command(
     policies: PolicyArgsBundle,
     plan: DownloadCommandPlan,
     firefox_path_override: Option<String>,
+    download_path_override: Option<PathBuf>,
     proxy_config: Option<&ProxyConfig>,
 ) -> Result<()> {
     let domain_decision =
@@ -3845,6 +3891,7 @@ fn execute_download_command(
         &request,
         plan.destination,
         firefox_path_override,
+        download_path_override,
     )
 }
 
@@ -3857,6 +3904,7 @@ fn run_download_dispatch(
     request: &RpcRequest,
     destination: Option<PathBuf>,
     firefox_path_override: Option<String>,
+    download_path_override: Option<PathBuf>,
 ) -> Result<()> {
     if let Err(err) = sweep_old_downloads(now_ms()) {
         exit_with_anyhow_error_with_domain_policy(
@@ -3873,6 +3921,7 @@ fn run_download_dispatch(
         request,
         domain_decision,
         firefox_path_override.as_deref(),
+        download_path_override.as_deref(),
     ) {
         Ok(result) => result,
         Err(err) => {
@@ -4118,6 +4167,7 @@ fn send_download_request(
     request: &RpcRequest,
     domain_decision: &DomainPolicyDecision,
     firefox_path_override: Option<&str>,
+    download_path_override: Option<&Path>,
 ) -> Result<(RpcResponse, String)> {
     match target {
         SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
@@ -4127,6 +4177,7 @@ fn send_download_request(
             request,
             domain_decision,
             firefox_path_override,
+            download_path_override,
         ),
         SessionTarget::Default => match send_to_session(None, request) {
             Ok(result) => Ok(result),
@@ -4136,6 +4187,7 @@ fn send_download_request(
                     profile: "Default".to_string(),
                     url: launch_url_for_remote_args(args),
                     firefox_path: firefox_path_override.map(ToString::to_string),
+                    download_dir: download_path_override.map(Path::to_path_buf),
                 })?;
                 send_to_session(Some(&result.session.session_id), request)
             }
@@ -4389,6 +4441,7 @@ fn execute_confirmed_launch(
         profile,
         url,
         firefox_path,
+        download_dir: None,
     })?;
     println!("{}", launch_result_text(&result));
     Ok(())
@@ -4415,6 +4468,7 @@ fn execute_confirmed_remote(
             &request,
             &domain_decision,
             None,
+            None,
         ),
         SessionTarget::Default => match send_to_session(None, &request) {
             Ok(result) => Ok(result),
@@ -4424,6 +4478,7 @@ fn execute_confirmed_remote(
                     profile: "Default".to_string(),
                     url: launch_url_for_remote_args(&record.args),
                     firefox_path: None,
+                    download_dir: None,
                 })?;
                 send_to_session(None, &request)
             }
@@ -4466,7 +4521,7 @@ fn execute_confirmed_download(
         request_context_with_approval(&record),
     )?;
     let (response, _) =
-        send_download_request(&target, &extension_args, &request, &domain_decision, None)?;
+        send_download_request(&target, &extension_args, &request, &domain_decision, None, None)?;
     let result = response_result_or_exit_with_domain_policy(
         response,
         json_output,
@@ -4913,6 +4968,7 @@ fn launch_state_target(profile: &str, url: &str) -> Result<String> {
         profile: profile.to_string(),
         url: Some(url.to_string()),
         firefox_path: None,
+        download_dir: None,
     })?;
     let session_id = result.session.session_id;
     let open_request = build_command_request(vec!["open".to_string(), url.to_string()]);
@@ -5124,6 +5180,7 @@ fn color_scheme_from_effective_args(args: &[String]) -> Result<Option<String>> {
             | "--action-policy"
             | "--config"
             | "--executable-path"
+            | "--download-path"
             | "--engine"
             | "--provider"
             | "--proxy"
@@ -5465,6 +5522,7 @@ fn handle_auth_login_command(
         json_output,
         ignored_global_flags,
         firefox_path_override,
+        None,
     )?;
     if !response.ok {
         let error = response
@@ -6317,6 +6375,7 @@ fn capture_diff_screenshot_current(
         json_output,
         ignored_global_flags,
         firefox_path_override,
+        None,
     )?;
     if !response.ok {
         let error = response
@@ -6740,6 +6799,7 @@ fn execute_remote_value_with_policies(
         json_output,
         ignored_global_flags,
         firefox_path_override,
+        None,
     )?;
     response_result_or_exit_with_domain_policy(
         response,
@@ -8008,6 +8068,7 @@ fn send_to_named_session(
     request: &RpcRequest,
     domain_policy: &DomainPolicyDecision,
     firefox_path_override: Option<&str>,
+    download_path_override: Option<&Path>,
 ) -> Result<(RpcResponse, String)> {
     validate_profile_name(profile_name)?;
     cleanup_stale_sessions(now_ms())?;
@@ -8034,6 +8095,7 @@ fn send_to_named_session(
         profile: profile_name.to_string(),
         url: launch_url_for_remote_args(args),
         firefox_path: firefox_path_override.map(ToString::to_string),
+        download_dir: download_path_override.map(Path::to_path_buf),
     })?;
     let session_id = result.session.session_id;
     send_to_session(Some(&session_id), request)
@@ -8047,6 +8109,7 @@ fn dispatch_remote_request_or_exit(
     json: bool,
     ignored_global_flags: &[GlobalFlagWarning],
     firefox_path_override: Option<&str>,
+    download_path_override: Option<&Path>,
 ) -> Result<(RpcResponse, String)> {
     let dispatch_result = match target {
         SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
@@ -8056,6 +8119,7 @@ fn dispatch_remote_request_or_exit(
             request,
             domain_decision,
             firefox_path_override,
+            download_path_override,
         ),
         SessionTarget::Default => match send_to_session(None, request) {
             Ok(result) => Ok(result),
@@ -8076,6 +8140,7 @@ fn dispatch_remote_request_or_exit(
                     profile: "Default".to_string(),
                     url: launch_url_for_remote_args(args),
                     firefox_path: firefox_path_override.map(ToString::to_string),
+                    download_dir: download_path_override.map(Path::to_path_buf),
                 }) {
                     Ok(result) => result,
                     Err(err) => {
@@ -8943,6 +9008,23 @@ mod tests {
         );
         assert_eq!(
             firefox_path_override_from_args(&s(&["open", "https://example.com"])),
+            None
+        );
+    }
+
+    #[test]
+    fn download_path_override_parses_global_download_path_flag() {
+        assert_eq!(
+            download_path_override_from_args(&s(&[
+                "--download-path",
+                "downloads",
+                "open",
+                "https://example.com",
+            ])),
+            Some("downloads".to_string())
+        );
+        assert_eq!(
+            download_path_override_from_args(&s(&["open", "https://example.com"])),
             None
         );
     }

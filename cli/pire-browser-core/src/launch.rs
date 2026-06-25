@@ -8,7 +8,9 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::download::{download_user_js_prefs, ensure_profile_download_dir, sweep_old_downloads};
+use crate::download::{
+    download_user_js_prefs, ensure_download_dir, ensure_profile_download_dir, sweep_old_downloads,
+};
 use crate::firefox::{discover_firefox, firefox_discovery_error_message};
 use crate::protocol::EXTENSION_ID;
 use crate::session::{
@@ -22,6 +24,7 @@ pub struct LaunchOptions {
     pub profile: String,
     pub url: Option<String>,
     pub firefox_path: Option<String>,
+    pub download_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -129,7 +132,11 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
         .with_context(|| format!("failed to create {}", profile_path.display()))?;
     fs::create_dir_all(&metadata_dir)
         .with_context(|| format!("failed to create {}", metadata_dir.display()))?;
-    let download_dir = ensure_profile_download_dir(&root, &options.profile)?;
+    let download_dir = if let Some(path) = &options.download_dir {
+        ensure_download_dir(path)?
+    } else {
+        ensure_profile_download_dir(&root, &options.profile)?
+    };
     let _ = sweep_old_downloads(now_ms());
     write_profile_startup_prefs(
         &profile_path,

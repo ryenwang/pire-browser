@@ -11,7 +11,7 @@ pire-browser --config ./ci-config.json open https://example.com
 PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
   p("Defaults are loaded from <code>~/.pire-browser/config.json</code>, <code>./pire-browser.json</code>, <code>PIRE_BROWSER_CONFIG</code>, and explicit <code>--config</code>, in that order. CLI flags override config defaults. Missing auto-discovered files are ignored; malformed auto-discovered files warn and continue. Explicit config paths must exist and contain a JSON object. Legacy config aliases are accepted for existing installs."),
   h2("Supported defaults", "supported-defaults"),
-  p("Supported camelCase defaults include <code>json</code>, <code>profile</code>, <code>sessionName</code>, <code>session</code>, <code>autoConnect</code>, <code>allowedDomains</code>, <code>noAllowedDomains</code>, <code>actionPolicy</code>, <code>confirmActions</code>, <code>confirmInteractive</code>, <code>allowFileAccess</code>, <code>headed</code>, <code>headless</code>, <code>colorScheme</code>, <code>proxy</code>, <code>proxyBypass</code>, <code>maxOutput</code>, <code>contentBoundaries</code>, <code>engine</code>, <code>provider</code>, and <code>model</code>. Unknown keys are ignored so newer config files do not fail older installs."),
+  p("Supported camelCase defaults include <code>json</code>, <code>profile</code>, <code>sessionName</code>, <code>session</code>, <code>autoConnect</code>, <code>allowedDomains</code>, <code>noAllowedDomains</code>, <code>actionPolicy</code>, <code>confirmActions</code>, <code>confirmInteractive</code>, <code>allowFileAccess</code>, <code>headed</code>, <code>headless</code>, <code>colorScheme</code>, <code>proxy</code>, <code>proxyBypass</code>, <code>downloadPath</code>, <code>maxOutput</code>, <code>contentBoundaries</code>, <code>engine</code>, <code>provider</code>, and <code>model</code>. Unknown keys are ignored so newer config files do not fail older installs."),
   code(`{
   "$schema": "./node_modules/pire-browser/pire-browser.schema.json",
   "json": true,
@@ -19,6 +19,7 @@ PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
   "allowedDomains": ["app.example.com", "*.example.com"],
   "proxy": "http://proxy.example:8080",
   "proxyBypass": "localhost,*.internal",
+  "downloadPath": "./downloads",
   "autoConnect": true
 }`, "json"),
   p("The packaged schema lives at <code>pire-browser.schema.json</code> in the repo and <code>./node_modules/pire-browser/pire-browser.schema.json</code> in an installed package."),
@@ -31,6 +32,7 @@ pire-browser --auto-connect state save ./.pire-state/current.json
 pire-browser --allowed-domains "example.com,*.example.com" snapshot -i
 pire-browser --proxy http://proxy.example:8080 open https://example.com
 pire-browser --proxy http://proxy.example:8080 --proxy-bypass "localhost,*.internal" open https://example.com
+pire-browser --download-path ./downloads open https://example.com
 pire-browser --action-policy ./policy.json eval "document.title"
 pire-browser --confirm-actions eval,download eval "document.title"
 pire-browser --executable-path /path/to/firefox open https://example.com`),
@@ -66,6 +68,8 @@ pire-browser set offline off`),
     ["<code>PIRE_BROWSER_ALLOWED_DOMAINS</code>", "Cooperative domain allowlist."],
     ["<code>PIRE_BROWSER_PROXY</code>", "Proxy URL for managed browser bridge commands."],
     ["<code>PIRE_BROWSER_PROXY_BYPASS</code>", "Firefox proxy passthrough hosts."],
+    ["<code>PIRE_BROWSER_DOWNLOAD_PATH</code>", "Default Firefox download directory for newly launched managed sessions."],
+    ["<code>AGENT_BROWSER_DOWNLOAD_PATH</code>", "Agent-browser-compatible alias for the default Firefox download directory."],
     ["<code>PIRE_BROWSER_PROXY_USERNAME</code>", "Proxy authentication username."],
     ["<code>PIRE_BROWSER_PROXY_PASSWORD</code>", "Proxy authentication password."],
     ["<code>AGENT_BROWSER_PROXY*</code>", "Agent-browser-compatible proxy aliases."],

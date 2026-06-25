@@ -2043,6 +2043,7 @@ fn target_args(object: &Map<String, Value>) -> std::result::Result<Vec<String>, 
     }
     push_optional_flag_value(&mut args, object, "proxy", "--proxy")?;
     push_optional_flag_value(&mut args, object, "proxyBypass", "--proxy-bypass")?;
+    push_optional_flag_value(&mut args, object, "downloadPath", "--download-path")?;
     if let Some(max_output) = optional_u64(object, "maxOutput")? {
         args.push("--max-output".to_string());
         args.push(max_output.to_string());
@@ -2089,6 +2090,7 @@ fn reject_launch_unsupported_fields(
         "proxy",
         "proxyBypass",
         "executablePath",
+        "downloadPath",
         "extraArgs",
     ] {
         if object.contains_key(key) {
@@ -4073,6 +4075,10 @@ fn common_properties() -> Map<String, Value> {
     map.insert(
         "proxyBypass".to_string(),
         string_prop("Comma-separated Firefox proxy bypass list."),
+    );
+    map.insert(
+        "downloadPath".to_string(),
+        string_prop("Default Firefox download directory for newly launched managed sessions."),
     );
     map.insert(
         "executablePath".to_string(),

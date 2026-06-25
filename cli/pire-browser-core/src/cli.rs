@@ -322,6 +322,7 @@ const GLOBAL_VALUE_FLAGS: &[&str] = &[
     "--action-policy",
     "--config",
     "--executable-path",
+    "--download-path",
     "--engine",
     "--provider",
     "--proxy",
@@ -693,6 +694,14 @@ fn config_args_from_map(config: &Map<String, Value>, raw: &[String]) -> Vec<Stri
         "executablePath",
         "--executable-path",
         &["--executable-path"],
+    );
+    push_value_config(
+        &mut args,
+        config,
+        raw,
+        "downloadPath",
+        "--download-path",
+        &["--download-path"],
     );
     push_value_config(&mut args, config, raw, "engine", "--engine", &["--engine"]);
     push_value_config(
@@ -2384,6 +2393,8 @@ Common commands:
   removeinitscript init1          Remove a runtime init script
   download '@e4' out.txt          Click a target and save a download
   wait --download out.txt         Wait for a recent/new download and save it
+  --download-path ./downloads open <url>
+                                  Use a default Firefox download directory
   upload '#file' ./fixture.txt    Assign bounded local files to a file input
   auth login app                  Open a saved login form and submit it
   clipboard read                  Read text from the system clipboard
@@ -2471,8 +2482,8 @@ a JSON object.
 Supported camelCase defaults include json, profile, sessionName, session, autoConnect, allowedDomains,
 noAllowedDomains, actionPolicy, confirmActions, confirmInteractive,
 allowFileAccess, headed, headless, colorScheme, proxy, proxyBypass,
-maxOutput, contentBoundaries, engine, provider, and model. CLI flags override
-config defaults. Unknown keys are ignored.
+downloadPath, maxOutput, contentBoundaries, engine, provider, and model. CLI
+flags override config defaults. Unknown keys are ignored.
 "##;
 
 const OPEN_HELP: &str = r##"
@@ -2481,6 +2492,7 @@ Usage:
   pire-browser open <url> --headers '{"Authorization":"Bearer token"}'
   pire-browser --proxy http://proxy.example:8080 open <url>
   pire-browser --proxy http://proxy.example:8080 --proxy-bypass "localhost,*.internal" open <url>
+  pire-browser --download-path ./downloads open <url>
   pire-browser open --init-script <path> <url>
   pire-browser --allow-file-access open file:///path/to/page.html
   pire-browser goto <url>
@@ -3123,6 +3135,10 @@ Usage:
 Clicks a ref/selector to trigger a Firefox download, or waits for a recent/new
 download. The default timeout is 60000ms. Files are staged under the local
 pire-browser data directory before being finalized to the requested path.
+Use global `--download-path <dir>` or `PIRE_BROWSER_DOWNLOAD_PATH=<dir>` to set
+the Firefox download directory for newly launched managed sessions. Relative
+download paths resolve from the CLI current working directory. With no explicit
+wait/download output path, `wait --download` reports the completed Firefox file.
 Unknown MIME/helper-app dialogs can still stall until timeout on Firefox.
 "##;
 
@@ -4522,6 +4538,28 @@ mod tests {
 
     #[test]
     fn parses_download_commands() {
+        let parsed = parse_cli_args(&s(&[
+            "--download-path",
+            "downloads",
+            "wait",
+            "--download",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::WaitDownload {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                path: None,
+                timeout_ms: DOWNLOAD_TIMEOUT_MS,
+            }
+        );
+
         let parsed = parse_cli_args(&s(&[
             "--session-name",
             "work",

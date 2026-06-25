@@ -37,7 +37,7 @@ pire-browser mcp --tools all`),
       ["allowedDomains / noAllowedDomains", "Apply or explicitly bypass domain allowlist checks for the command."],
       ["actionPolicy / confirmActions / confirmInteractive", "Apply action-policy and confirmation guardrails before the command runs."],
       ["contentBoundaries / maxOutput", "Mark page-sourced output boundaries or cap emitted browser command text."],
-      ["proxy / proxyBypass / executablePath", "Configure Firefox proxy settings or the Firefox executable used for auto-launch."],
+      ["proxy / proxyBypass / executablePath / downloadPath", "Configure Firefox proxy settings, the Firefox executable used for auto-launch, or the default Firefox download directory for newly launched managed sessions."],
     ]
   ),
   h2("Tool Surface", "tool-surface"),
