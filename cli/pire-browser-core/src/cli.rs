@@ -3354,8 +3354,9 @@ Alias for setup. Registers the Firefox Native Messaging host for the current
 user. `--firefox-path` accepts the Firefox executable, a directory containing
 the executable, or a macOS Firefox.app bundle. Use `pire-browser doctor` for
 read-only diagnostics. `--with-deps` is accepted for agent-browser-style setup
-recipes and prints platform dependency guidance; it does not run system package
-managers or install Firefox automatically.
+recipes: on Windows it tries winget or Chocolatey when Firefox is missing, on
+macOS it tries Homebrew when Firefox is missing, and on Linux it reports
+non-Snap/non-Flatpak Firefox guidance without running sudo package managers.
 "##;
 
 const UPDATE_HELP: &str = r##"
@@ -3382,7 +3383,8 @@ is a deprecated compatibility alias and is ignored on non-Windows platforms.
 `--firefox-path` accepts the Firefox executable, a directory containing the
 executable, or a macOS Firefox.app bundle. `pire-browser install` is a public
 alias for this setup step. `--with-deps` prints platform dependency guidance
-without invoking system package managers.
+and, on Windows/macOS only, can try the supported userland Firefox installer
+when Firefox is missing.
 "##;
 
 const LAUNCH_HELP: &str = r##"

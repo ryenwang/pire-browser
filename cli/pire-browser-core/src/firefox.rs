@@ -84,15 +84,15 @@ pub fn firefox_discovery_error_message(override_path: Option<&str>) -> String {
 pub fn platform_firefox_install_hint() -> &'static str {
     #[cfg(windows)]
     {
-        r#"On Windows, install Mozilla Firefox or rerun with `pire-browser install --firefox-path "C:\Program Files\Mozilla Firefox\firefox.exe"`."#
+        r#"On Windows, run `pire-browser install --with-deps` to try winget/Chocolatey, install Mozilla Firefox manually, or rerun with `pire-browser install --firefox-path "C:\Program Files\Mozilla Firefox\firefox.exe"`."#
     }
     #[cfg(target_os = "macos")]
     {
-        "On macOS, install Firefox.app or run `brew install --cask firefox`, then rerun with `pire-browser install --firefox-path /Applications/Firefox.app`."
+        "On macOS, run `pire-browser install --with-deps` to try Homebrew, install Firefox.app manually, or rerun with `pire-browser install --firefox-path /Applications/Firefox.app`."
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        "On Linux, use an unrestricted Mozilla or distro Firefox build when possible; Snap/Flatpak Firefox can block Native Messaging. Rerun with `pire-browser install --firefox-path /path/to/firefox`."
+        "On Linux, install an unrestricted Mozilla package/tarball or distro non-Snap Firefox; Snap/Flatpak Firefox can block Native Messaging. Rerun with `pire-browser install --firefox-path /path/to/firefox`."
     }
     #[cfg(not(any(windows, target_os = "macos", unix)))]
     {

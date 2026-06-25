@@ -2355,11 +2355,11 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_install",
             "Install or repair native host",
-            "Register or repair the Firefox Native Messaging host for the current OS user. Debug profile only; mutates local setup. withDeps accepts agent-browser-style recipes and returns platform dependency guidance without running system package managers.",
+            "Register or repair the Firefox Native Messaging host for the current OS user. Debug profile only; mutates local setup. withDeps accepts agent-browser-style recipes and may install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing; Linux reports non-Snap/non-Flatpak Firefox guidance.",
             tool_schema_without_common(
                 vec![
                     ("firefoxPath", string_prop("Optional Firefox executable path.")),
-                    ("withDeps", bool_prop("Accept agent-browser-style --with-deps setup and print platform dependency guidance.")),
+                    ("withDeps", bool_prop("Accept agent-browser-style --with-deps setup, including supported Windows/macOS Firefox dependency install when missing.")),
                 ],
                 &[],
             ),

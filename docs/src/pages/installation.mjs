@@ -5,7 +5,7 @@ const installationBlocks = [
   code(`npm install -g pire-browser
 pire-browser install  # register Firefox Native Messaging`),
   p("This is the fastest option. Commands run through the native Rust CLI and reuse managed Firefox sessions."),
-  p("<code>pire-browser install --with-deps</code> is accepted for agent-browser-style setup recipes and prints platform dependency guidance. It does not run system package managers or install Firefox automatically."),
+  p("<code>pire-browser install --with-deps</code> is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux."),
   h2("Quick start (no install)", "quick-start-no-install"),
   code(`npx pire-browser install   # register Firefox Native Messaging
 npx pire-browser open https://example.com`),
@@ -32,7 +32,7 @@ cd ..`),
   h2("Linux notes", "linux-notes"),
   p("Distro Firefox builds work best. Snap and Flatpak Firefox are detected, but sandboxed Native Messaging may require the WebExtensions portal or a non-sandboxed Mozilla Firefox build."),
   code(`pire-browser install --with-deps`),
-  p("Use the dependency guidance from <code>--with-deps</code>, then install or select an unrestricted Firefox build and rerun <code>pire-browser install</code>."),
+  p("<code>--with-deps</code> does not run Linux package managers because distro defaults can install Snap/Flatpak Firefox. Install an unrestricted Mozilla package/tarball or distro non-Snap Firefox, then rerun <code>pire-browser install --firefox-path &lt;path&gt;</code> if discovery needs help."),
   h2("Updating", "updating"),
   code(`pire-browser upgrade
 pire-browser update check --json
@@ -46,7 +46,7 @@ pire-browser doctor --fix --with-deps
 pire-browser doctor --fix --firefox-path /path/to/firefox
 pire-browser doctor --offline --quick
 pire-browser doctor --json`),
-  p("Doctor checks Firefox discovery, Native Messaging registration, extension build files, profile state, live sessions, PATH hints, and local policy diagnostics. Plain doctor is read-only; <code>doctor --json</code> and <code>install-status --json</code> include <code>nextActions</code> with concrete repair commands, while <code>doctor --fix</code> explicitly reruns native host setup and verifies the follow-up status. <code>--with-deps</code> on install/setup/fix prints dependency guidance without invoking system package managers."),
+  p("Doctor checks Firefox discovery, Native Messaging registration, extension build files, profile state, live sessions, PATH hints, and local policy diagnostics. Plain doctor is read-only; <code>doctor --json</code> and <code>install-status --json</code> include <code>nextActions</code> with concrete repair commands, while <code>doctor --fix</code> explicitly reruns native host setup and verifies the follow-up status. <code>--with-deps</code> on install/setup/fix may install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing; Linux remains guided/manual to avoid Snap/Flatpak Native Messaging failures."),
   h2("Custom Firefox", "custom-firefox"),
   code(`# macOS/Linux
 PIRE_BROWSER_FIREFOX_PATH=/path/to/firefox pire-browser install

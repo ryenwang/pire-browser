@@ -231,7 +231,7 @@ fn install_next_actions(report: &InstallStatusReport) -> Vec<InstallNextAction> 
         actions.push(InstallNextAction::new(
             "install_firefox",
             "Firefox was not discovered, so native host setup and browser launch cannot complete.",
-            Some("pire-browser install --firefox-path <path-to-firefox>"),
+            Some("pire-browser install --with-deps"),
             Some(platform_firefox_install_hint()),
         ));
         return actions;
@@ -698,13 +698,13 @@ mod tests {
             .command
             .as_deref()
             .unwrap()
-            .contains("--firefox-path"));
+            .contains("--with-deps"));
         let json = install_status_json(&report).unwrap();
         assert!(json.contains("\"nextActions\""));
         assert!(json.contains("\"install_firefox\""));
         let text = install_status_text(&report);
         assert!(text.contains("Next actions:"));
-        assert!(text.contains("pire-browser install --firefox-path"));
+        assert!(text.contains("pire-browser install --with-deps"));
     }
 
     #[test]

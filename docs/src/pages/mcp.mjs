@@ -46,7 +46,7 @@ pire-browser mcp --tools all`),
     [
       ["pire_browser_tools_profiles", "Describe MCP profiles and active selection."],
       ["pire_browser_launch", "Debug-profile lower-level managed Firefox launch with launch-specific profile, URL, Firefox path, and policy fields. Prefer open for normal workflows."],
-      ["pire_browser_install", "Debug-profile native-host setup or repair for the current OS user. Use withDeps only for agent-browser-style dependency recipes; it prints dependency guidance without running system package managers."],
+      ["pire_browser_install", "Debug-profile native-host setup or repair for the current OS user. Use withDeps only for agent-browser-style dependency recipes; it may install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when missing, while Linux stays guided/manual."],
       ["pire_browser_upgrade", "Debug-profile package upgrade through the installed npm/Pi launcher. Uses existing safe update rules."],
       ["pire_browser_batch", "Debug-profile typed batch for short command sequences. Commands may be strings or arrays of args; use bail when later commands depend on earlier success."],
       ["pire_browser_open", "Launch Firefox and optionally navigate. Supports typed one-shot headers and initScriptPaths for pre-navigation setup."],
@@ -100,7 +100,7 @@ pire-browser mcp --tools all`),
 9. Use console/errors/dialog/highlight/vitals/network tools when a page is stuck, blocked, or needs evidence.
 10. Use auth tools only with user-approved credentials, then verify login with a fresh snapshot, URL, or page state.
 11. Use cookies/storage/state tools only when needed for user-approved state debugging or auth handoff; cookie import payloads and values may contain secrets.
-12. Use debug-profile pire_browser_install only when the user wants explicit native-host setup or repair; pass withDeps only for dependency guidance. Use pire_browser_upgrade only when the user wants package update.
+12. Use debug-profile pire_browser_install only when the user wants explicit native-host setup or repair; pass withDeps only for agent-browser-style dependency setup. On Windows/macOS it may install Firefox when missing; on Linux it reports non-Snap/non-Flatpak guidance. Use pire_browser_upgrade only when the user wants package update.
 13. Keep pire_browser_status and plain pire_browser_doctor observational.
 14. Use debug-profile pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output.
 15. Call the typed wait tool that matches the condition: wait_ms, wait_for_selector, wait_for_text, wait_for_url, wait_for_load, or wait_for_function. Use pire_browser_wait only for compatibility.
