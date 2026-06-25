@@ -22,7 +22,6 @@ const RESERVED_NOT_AVAILABLE_ROOTS: &[&str] = &[
     "install",
     "profiler",
     "profiles",
-    "record",
     "skill",
     "skills",
     "stream",
@@ -301,6 +300,12 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
         "trace" => match subcommand {
             Some("start") => "state",
             Some("status") => "get",
+            Some("stop") => "snapshot",
+            _ => return CommandPolicyResolution::NotAvailable,
+        },
+        "record" => match subcommand {
+            Some("start") => "state",
+            Some("status") | None => "get",
             Some("stop") => "snapshot",
             _ => return CommandPolicyResolution::NotAvailable,
         },

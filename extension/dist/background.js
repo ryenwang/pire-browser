@@ -39,6 +39,7 @@
     const lastNetworkActivityAtByTabId = new Map();
     const networkHarRecordingStartedAtByTabId = new Map();
     const traceRecordingsByTabId = new Map();
+    const visualRecordingsByTabId = new Map();
     const networkRoutes = new Map();
     const networkRouteMatchesByRequestId = new Map();
     let offlineModeEnabled = false;
@@ -425,6 +426,14 @@
                 if (subcommand === "stop")
                     return "snapshot";
                 return null;
+            case "record":
+                if (subcommand === "start")
+                    return "state";
+                if (subcommand === "status" || !subcommand)
+                    return "get";
+                if (subcommand === "stop")
+                    return "snapshot";
+                return null;
             case "addinitscript":
             case "removeinitscript":
                 return "eval";
@@ -519,7 +528,6 @@
             "install",
             "profiler",
             "profiles",
-            "record",
             "stream",
             "upgrade",
         ].includes(command);
@@ -641,6 +649,7 @@
             "set",
             "device",
             "trace",
+            "record",
             "vitals",
             "react",
         ].includes(command ?? "")) {
@@ -783,6 +792,8 @@
                 return reactCommand(rest);
             case "trace":
                 return traceCommand(rest);
+            case "record":
+                return recordCommand(rest);
             case "addinitscript":
                 return addInitScriptCommand(rest);
             case "removeinitscript":
@@ -796,7 +807,6 @@
             case "stream":
             case "dashboard":
             case "profiler":
-            case "record":
             case "confirm":
             case "deny":
             case "session":
@@ -3339,6 +3349,265 @@
     function traceFirefoxWarning() {
         return bestEffortWarning("trace", "Firefox trace is a pire-browser QA evidence bundle built from WebExtension-observable console, error, network, vitals, snapshot, and screenshot data. It is not a Chrome DevTools performance trace or CPU profile.");
     }
+    async function recordCommand(args) {
+        const mode = recordMode(args);
+        const commandArgs = recordCommandArgs(args, mode);
+        if (mode === "start") {
+            const parsed = parseRecordStartArgs(recordFilteredArgs(commandArgs));
+            if ("error" in parsed)
+                return parsed;
+            const tab = await targetTab();
+            const existing = visualRecordingsByTabId.get(tab.tabId);
+            if (existing)
+                clearVisualRecordingTimer(existing);
+            const recording = {
+                startedAt: Date.now(),
+                tabId: tab.tabId,
+                agentId: tab.agentId,
+                url: tab.url,
+                title: tab.title,
+                intervalMs: parsed.intervalMs,
+                maxFrames: parsed.maxFrames,
+                active: true,
+                frames: [],
+            };
+            visualRecordingsByTabId.set(tab.tabId, recording);
+            await captureRecordingFrame(recording);
+            recording.timer = setInterval(() => void captureRecordingFrame(recording), recording.intervalMs);
+            return {
+                text: `Started screenshot-sequence recording in ${tab.agentId}`,
+                recording: recordingStatus(tab, recording),
+                warnings: [recordFirefoxWarning()],
+            };
+        }
+        if (mode === "status") {
+            const parsed = parseRecordStatusArgs(recordFilteredArgs(commandArgs));
+            if ("error" in parsed)
+                return parsed;
+            const tab = await targetTab();
+            const existing = visualRecordingsByTabId.get(tab.tabId);
+            return {
+                text: existing ? `Recording active in ${tab.agentId} with ${existing.frames.length} frame(s)` : `No recording active in ${tab.agentId}`,
+                recording: recordingStatus(tab, existing),
+                warnings: [recordFirefoxWarning()],
+            };
+        }
+        const parsed = parseRecordStopArgs(recordFilteredArgs(commandArgs));
+        if ("error" in parsed)
+            return parsed;
+        const tab = await targetTab();
+        const existing = visualRecordingsByTabId.get(tab.tabId);
+        if (!existing) {
+            return {
+                error: {
+                    code: "invalid_state",
+                    message: "No recording is active for the current tab. Run `record start` before `record stop`.",
+                },
+            };
+        }
+        clearVisualRecordingTimer(existing);
+        if (!existing.frames.length || existing.active)
+            await captureRecordingFrame(existing);
+        existing.active = false;
+        existing.stoppedReason = existing.stoppedReason ?? "stopped";
+        const stoppedAt = Date.now();
+        const outputDir = parsed.outputDir ?? `pire-browser-recording-${stoppedAt}`;
+        const frames = await materializeRecordingFrames(existing, outputDir);
+        visualRecordingsByTabId.delete(tab.tabId);
+        return {
+            text: `Recorded ${frames.length} frame${frames.length === 1 ? "" : "s"} to ${outputDir}`,
+            recording: {
+                schemaVersion: 1,
+                kind: "pire-browser-firefox-recording",
+                source: "firefox-webextension-screenshot-sequence",
+                outputDir,
+                active: false,
+                startedAt: existing.startedAt,
+                stoppedAt,
+                durationMs: stoppedAt - existing.startedAt,
+                intervalMs: existing.intervalMs,
+                maxFrames: existing.maxFrames,
+                stoppedReason: existing.stoppedReason,
+                frameCount: frames.length,
+                tab: {
+                    tabId: tab.tabId,
+                    agentId: tab.agentId,
+                    startUrl: existing.url,
+                    startTitle: existing.title,
+                    url: tab.url,
+                    title: tab.title,
+                },
+                frames,
+                warnings: [recordFirefoxWarning()],
+            },
+            warnings: [recordFirefoxWarning()],
+        };
+    }
+    function recordMode(args) {
+        if (args[0] === "start")
+            return "start";
+        if (args[0] === "stop")
+            return "stop";
+        return "status";
+    }
+    function recordCommandArgs(args, mode) {
+        return mode === "status" && args[0] !== "status" ? args : args.slice(1);
+    }
+    function recordFilteredArgs(args) {
+        return args.filter((arg) => arg !== "--json");
+    }
+    function parseRecordStatusArgs(args) {
+        if (args.length) {
+            return { error: { code: "invalid_args", message: "record status does not accept arguments" } };
+        }
+        return {};
+    }
+    function parseRecordStartArgs(args) {
+        let intervalMs = 1000;
+        let maxFrames = 60;
+        for (let index = 0; index < args.length; index++) {
+            const arg = args[index];
+            if (arg === "--interval-ms") {
+                const value = args[++index];
+                if (!value || value.startsWith("--"))
+                    return { error: { code: "invalid_args", message: "record start --interval-ms requires a value" } };
+                const parsed = parseBoundedRecordInteger(value, "--interval-ms", 250, 10000);
+                if ("error" in parsed)
+                    return parsed;
+                intervalMs = parsed.value;
+                continue;
+            }
+            if (arg === "--max-frames") {
+                const value = args[++index];
+                if (!value || value.startsWith("--"))
+                    return { error: { code: "invalid_args", message: "record start --max-frames requires a value" } };
+                const parsed = parseBoundedRecordInteger(value, "--max-frames", 1, 120);
+                if ("error" in parsed)
+                    return parsed;
+                maxFrames = parsed.value;
+                continue;
+            }
+            return { error: { code: "invalid_args", message: `record start does not support argument: ${arg}` } };
+        }
+        return { intervalMs, maxFrames };
+    }
+    function parseRecordStopArgs(args) {
+        let outputDir;
+        for (const arg of args) {
+            if (arg.startsWith("--")) {
+                return { error: { code: "invalid_args", message: `record stop does not support argument: ${arg}` } };
+            }
+            if (outputDir) {
+                return { error: { code: "invalid_args", message: `record stop unexpected argument: ${arg}` } };
+            }
+            outputDir = arg;
+        }
+        return { outputDir };
+    }
+    function parseBoundedRecordInteger(value, label, min, max) {
+        const parsed = Number(value);
+        if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+            return { error: { code: "invalid_args", message: `record start ${label} must be an integer from ${min} to ${max}` } };
+        }
+        return { value: parsed };
+    }
+    function recordingStatus(tab, recording) {
+        const now = Date.now();
+        return {
+            active: Boolean(recording?.active),
+            startedAt: recording?.startedAt,
+            durationMs: recording ? now - recording.startedAt : undefined,
+            intervalMs: recording?.intervalMs,
+            maxFrames: recording?.maxFrames,
+            frameCount: recording?.frames.length ?? 0,
+            stoppedReason: recording?.stoppedReason,
+            tabId: tab.tabId,
+            agentId: tab.agentId,
+            url: tab.url,
+            title: tab.title,
+            videoRecording: false,
+            nativeWebM: false,
+        };
+    }
+    async function captureRecordingFrame(recording) {
+        if (!recording.active || recording.capturing)
+            return;
+        if (recording.frames.length >= recording.maxFrames) {
+            stopVisualRecording(recording, "max_frames");
+            return;
+        }
+        recording.capturing = true;
+        const capturedAt = Date.now();
+        const frame = {
+            index: recording.frames.length + 1,
+            capturedAt,
+            elapsedMs: capturedAt - recording.startedAt,
+            tabId: recording.tabId,
+        };
+        try {
+            const tab = await browser.tabs.get(recording.tabId);
+            frame.windowId = tab.windowId;
+            frame.url = tab.url;
+            frame.title = tab.title;
+            if (typeof tab.windowId !== "number")
+                throw new Error("tab has no window id");
+            frame.dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+        }
+        catch (error) {
+            frame.error = {
+                code: "record_frame_failed",
+                message: error instanceof Error ? error.message : String(error),
+            };
+        }
+        finally {
+            recording.frames.push(frame);
+            recording.capturing = false;
+            if (recording.frames.length >= recording.maxFrames)
+                stopVisualRecording(recording, "max_frames");
+        }
+    }
+    function stopVisualRecording(recording, reason) {
+        if (!recording)
+            return;
+        recording.active = false;
+        recording.stoppedReason = reason;
+        clearVisualRecordingTimer(recording);
+    }
+    function clearVisualRecordingTimer(recording) {
+        if (recording?.timer !== undefined) {
+            clearInterval(recording.timer);
+            recording.timer = undefined;
+        }
+    }
+    async function materializeRecordingFrames(recording, outputDir) {
+        const frames = [];
+        for (const frame of recording.frames) {
+            const publicFrame = {
+                index: frame.index,
+                capturedAt: frame.capturedAt,
+                elapsedMs: frame.elapsedMs,
+                tabId: frame.tabId,
+                windowId: frame.windowId,
+                url: frame.url,
+                title: frame.title,
+            };
+            if (frame.error)
+                publicFrame.error = frame.error;
+            if (frame.dataUrl) {
+                publicFrame.screenshot = await sendScreenshotChunks(frame.dataUrl);
+                publicFrame.screenshotPath = recordingFramePath(outputDir, frame.index);
+            }
+            frames.push(publicFrame);
+        }
+        return frames;
+    }
+    function recordingFramePath(outputDir, index) {
+        const cleanDir = outputDir.replace(/[\\/]+$/, "");
+        return `${cleanDir}/frame-${String(index).padStart(4, "0")}.png`;
+    }
+    function recordFirefoxWarning() {
+        return bestEffortWarning("record", "Firefox record is a screenshot-sequence QA evidence bundle. It is not native WebM video, live viewport streaming, or Chrome DevTools screencast output.");
+    }
     async function vitalsCommand(args, _domainPolicy) {
         const parsed = parseVitalsArgs(args);
         if ("error" in parsed)
@@ -5629,6 +5898,8 @@
         }
         networkHarRecordingStartedAtByTabId.delete(tabId);
         traceRecordingsByTabId.delete(tabId);
+        stopVisualRecording(visualRecordingsByTabId.get(tabId), "tab_closed");
+        visualRecordingsByTabId.delete(tabId);
         networkRequestLogIdsByTabId.delete(tabId);
         networkRequestIdsByTabId.delete(tabId);
         lastNetworkActivityAtByTabId.delete(tabId);

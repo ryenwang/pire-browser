@@ -475,14 +475,19 @@ pire-browser highlight <sel>
 pire-browser trace start
 pire-browser trace status
 pire-browser trace stop trace.json
+pire-browser record start
+pire-browser record status
+pire-browser record stop recording-dir
 ```
 
 `trace start` / `trace stop` records a Firefox QA evidence bundle with
 WebExtension-observable console, page-error, network/HAR metadata, vitals,
 compact snapshot, and screenshot evidence. It is not a Chrome DevTools
-performance trace, CPU profile, or video recording. Chrome DevTools inspect
-proxy, CPU profiler, and video recording are not implemented in the current
-Firefox backend.
+performance trace or CPU profile. `record start` / `record stop` records a
+bounded screenshot-sequence evidence bundle for the active tab and writes frame
+PNGs plus `recording.json`. It is not native WebM video, live viewport
+streaming, or Chrome DevTools screencast output. Chrome DevTools inspect proxy
+and CPU profiler are not implemented in the current Firefox backend.
 
 ### Navigation
 
@@ -819,11 +824,13 @@ pire-browser activity list
 pire-browser activity list --limit 50 --json
 ```
 
-The dashboard does not provide live viewport WebSocket streaming or video
-recording yet. Use screenshots and diagnostics commands for visual evidence,
-page-state verification, and scriptable observability:
+The dashboard does not provide live viewport WebSocket streaming. Use
+screenshots, screenshot-sequence recording, and diagnostics commands for visual
+evidence, page-state verification, and scriptable observability:
 
 ```bash
+pire-browser record start
+pire-browser record stop recording-dir
 pire-browser status
 pire-browser status --json
 pire-browser session list --json
@@ -978,15 +985,22 @@ Chrome DevTools Protocol mode is not available. `pire-browser` commands are medi
 # pire-browser --cdp 9222 snapshot
 ```
 
-## Streaming (Browser Preview)
+## Streaming And Recording
 
-Runtime WebSocket viewport streaming is not available. Use screenshots and status output for observable workflows:
+Runtime WebSocket viewport streaming is not available. Use screenshots,
+screenshot-sequence recording, and status output for observable workflows:
 
 ```bash
 pire-browser screenshot page.png
+pire-browser record start
+pire-browser record stop recording-dir
 pire-browser status --json
 pire-browser session list --json
 ```
+
+`record start` captures bounded visible-viewport PNG frames from the active
+Firefox tab. `record stop [output-dir]` writes the frames plus `recording.json`.
+This is useful QA evidence, not native WebM video or live viewport streaming.
 
 ## Architecture
 

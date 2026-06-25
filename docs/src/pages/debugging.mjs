@@ -27,7 +27,14 @@ pire-browser open https://app.example.com
 pire-browser snapshot -i
 pire-browser trace status
 pire-browser trace stop trace.json`),
-  p("<code>trace start</code> / <code>trace stop</code> records a Firefox QA evidence bundle with WebExtension-observable console messages, page errors, network/HAR metadata, best-effort vitals, compact snapshot text, and screenshot evidence. It is not a Chrome DevTools performance trace, CPU profile, or video recording."),
+  p("<code>trace start</code> / <code>trace stop</code> records a Firefox QA evidence bundle with WebExtension-observable console messages, page errors, network/HAR metadata, best-effort vitals, compact snapshot text, and screenshot evidence. It is not a Chrome DevTools performance trace, CPU profile, or native WebM video recording."),
+  h2("Recording bundle", "recording-bundle"),
+  code(`pire-browser record start
+pire-browser open https://app.example.com
+pire-browser snapshot -i
+pire-browser record status
+pire-browser record stop recording-dir`),
+  p("<code>record start</code> / <code>record stop</code> records bounded visible-viewport PNG frames for the active Firefox tab and writes frame files plus <code>recording.json</code>. It is a screenshot-sequence QA evidence bundle, not native WebM video, live viewport streaming, or Chrome DevTools screencast output."),
   h2("Current debug alternatives", "current-debug-alternatives"),
   code(`pire-browser snapshot -i
 pire-browser get text <sel>
@@ -35,7 +42,7 @@ pire-browser get html <sel>
 pire-browser eval "document.title"
 pire-browser screenshot debug.png`),
   h2("Unavailable debug tools", "unavailable-debug-tools"),
-  list(["Chrome DevTools inspect proxy", "CPU profiler", "Video recording"]),
+  list(["Chrome DevTools inspect proxy", "CPU profiler", "Native WebM video recording", "Live viewport streaming"]),
 ];
 
 export default page({

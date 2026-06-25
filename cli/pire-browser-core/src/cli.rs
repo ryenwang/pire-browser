@@ -2164,6 +2164,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "storage" => STORAGE_HELP,
         "network" => NETWORK_HELP,
         "trace" => TRACE_HELP,
+        "record" => RECORD_HELP,
         "vitals" => VITALS_HELP,
         "react" => REACT_HELP,
         "highlight" => HIGHLIGHT_HELP,
@@ -2254,6 +2255,8 @@ Common commands:
   network route "**/api/**" --body '{}' Mock or block active-tab requests
   trace start                     Start a Firefox QA evidence bundle
   trace stop trace.json           Stop and write trace bundle JSON
+  record start                    Start screenshot-sequence recording
+  record stop recording-dir       Stop and write frame evidence
   vitals [url]                    Measure best-effort Web Vitals for a page
   open --enable react-devtools <url>
                                   Open a React app with agent-browser-style opt-in
@@ -2760,6 +2763,22 @@ messages, page errors, network request metadata/HAR, best-effort vitals,
 compact snapshot text, and screenshot evidence.
 
 This is not a Chrome DevTools performance trace, CPU profile, or video capture.
+"##;
+
+const RECORD_HELP: &str = r##"
+Usage:
+  pire-browser record start [--interval-ms 1000] [--max-frames 60] [--json]
+  pire-browser record status [--json]
+  pire-browser record stop [output-dir] [--json]
+
+Records a bounded Firefox screenshot-sequence evidence bundle for the active
+tab. `record start` begins capturing visible viewport PNG frames,
+`record status` reports the active frame count, and `record stop` writes frame
+images plus `recording.json` under the output directory. If no output directory
+is provided, a generated `pire-browser-recording-<timestamp>` directory is used.
+
+This is not native WebM video, live viewport streaming, or Chrome DevTools
+screencast output.
 "##;
 
 const REACT_HELP: &str = r##"
@@ -5187,6 +5206,13 @@ mod tests {
             .unwrap()
             .contains("not a Chrome DevTools performance trace"));
         assert!(help_text(None).unwrap().contains("trace start"));
+        assert!(help_text(Some("record"))
+            .unwrap()
+            .contains("pire-browser record stop [output-dir]"));
+        assert!(help_text(Some("record"))
+            .unwrap()
+            .contains("not native WebM video"));
+        assert!(help_text(None).unwrap().contains("record start"));
         assert!(help_text(Some("vitals"))
             .unwrap()
             .contains("pire-browser vitals https://example.com"));

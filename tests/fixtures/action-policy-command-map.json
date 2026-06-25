@@ -310,6 +310,36 @@
       "reason": "Firefox QA evidence bundle recording, not Chrome DevTools trace"
     },
     {
+      "root": "record",
+      "subcommand": "start",
+      "signature": "record start [--interval-ms <ms>] [--max-frames <n>]",
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream",
+      "reason": "Firefox screenshot-sequence evidence bundle, not native WebM video"
+    },
+    {
+      "root": "record",
+      "subcommand": "status",
+      "signature": "record status",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream",
+      "reason": "Firefox screenshot-sequence evidence bundle, not native WebM video"
+    },
+    {
+      "root": "record",
+      "subcommand": "stop",
+      "signature": "record stop [output-dir]",
+      "category": "snapshot",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream",
+      "reason": "Firefox screenshot-sequence evidence bundle, not native WebM video"
+    },
+    {
       "root": "vitals",
       "signature": "vitals [url]",
       "category": "get",

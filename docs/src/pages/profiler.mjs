@@ -7,9 +7,11 @@ const profilerBlocks = [
 pire-browser wait --load networkidle
 pire-browser trace start
 pire-browser trace stop trace.json
+pire-browser record start
+pire-browser record stop recording-dir
 pire-browser screenshot page.png
 pire-browser snapshot -i --compact`),
-  p("Use waits, Firefox trace QA bundles, screenshots, and compact snapshots for now. Chrome performance traces and CPU profile artifacts require another backend."),
+  p("Use waits, Firefox trace QA bundles, screenshot-sequence recordings, screenshots, and compact snapshots for now. Chrome performance traces and CPU profile artifacts require another backend."),
 ];
 
 export default page({

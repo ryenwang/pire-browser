@@ -240,7 +240,8 @@ pire-browser snapshot -i`),
   h2("Streaming", "streaming"),
   code(`# Streaming is not available in the current Firefox backend.
 pire-browser stream status
-# Runtime WebSocket viewport streaming is not available in the current Firefox backend.`, "bash", { notAvailable: true }),
+# Runtime WebSocket viewport streaming is not available in the current Firefox backend.
+# Use record start/stop when a screenshot-sequence evidence bundle is enough.`, "bash", { notAvailable: true }),
 
   h2("Debug", "debug"),
   statusNote("debugging"),
@@ -252,8 +253,11 @@ pire-browser errors --clear
 pire-browser highlight <sel>
 pire-browser trace start
 pire-browser trace status
-pire-browser trace stop trace.json`),
-  p("Console, errors, highlight, and trace bundles are active-tab Firefox diagnostics. <code>trace start</code> / <code>trace stop</code> writes a Firefox QA evidence bundle with console, page-error, network/HAR metadata, vitals, compact snapshot, and screenshot evidence. It is not a Chrome DevTools performance trace, CPU profile, or video recording."),
+pire-browser trace stop trace.json
+pire-browser record start
+pire-browser record status
+pire-browser record stop recording-dir`),
+  p("Console, errors, highlight, trace bundles, and screenshot-sequence recordings are active-tab Firefox diagnostics. <code>trace start</code> / <code>trace stop</code> writes a Firefox QA evidence bundle with console, page-error, network/HAR metadata, vitals, compact snapshot, and screenshot evidence. <code>record start</code> / <code>record stop</code> writes bounded visible-viewport PNG frames plus <code>recording.json</code>. These are not Chrome DevTools performance traces, CPU profiles, native WebM video, or live viewport streams."),
 
   h2("Auth vault", "auth-vault"),
   statusNote("auth"),
@@ -325,7 +329,7 @@ pire-browser dashboard start
 pire-browser dashboard start --port 4848
 pire-browser dashboard start --port 0 --json
 pire-browser activity list --json`),
-  p("Starts a foreground localhost status dashboard. It shows install health, live sessions, managed profiles, recent redacted command activity, and capability notes. Press <code>Ctrl+C</code> in the terminal to stop it. Live viewport streaming is still not available in the Firefox backend."),
+  p("Starts a foreground localhost status dashboard. It shows install health, live sessions, managed profiles, recent redacted command activity, and capability notes. Press <code>Ctrl+C</code> in the terminal to stop it. Live viewport streaming is still not available in the Firefox backend; use <code>record start</code> / <code>record stop</code> for screenshot-sequence evidence."),
 
   h2("Doctor", "doctor"),
   code(`pire-browser doctor

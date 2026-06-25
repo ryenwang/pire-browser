@@ -14,11 +14,13 @@ pire-browser status --json
 pire-browser session list --json
 pire-browser profiles --json
 pire-browser activity list --json
+pire-browser record start
+pire-browser record stop recording-dir
 pire-browser doctor --json
 pire-browser --auto-connect state save ./.pire-state/current.json`),
   p("Use the dashboard for a live local summary, and use the CLI commands above when scripts or agents need structured output. Activity is a bounded command log with secret-bearing arguments redacted; verify page success with snapshots, screenshots, URL checks, or other page state."),
   h2("Limits", "limits"),
-  p("This is not the full agent-browser live viewport dashboard yet. Runtime WebSocket viewport streaming, dashboard-created sessions, and video recording remain future work in the Firefox backend."),
+  p("This is not the full agent-browser live viewport dashboard yet. Runtime WebSocket viewport streaming and dashboard-created sessions remain future work in the Firefox backend. Use <code>record start</code> / <code>record stop</code> for screenshot-sequence recording; native WebM/video recording is not implemented."),
 ];
 
 export default page({

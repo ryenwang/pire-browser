@@ -196,13 +196,19 @@ pire-browser errors --clear
 pire-browser trace start
 pire-browser trace status
 pire-browser trace stop trace.json
+pire-browser record start
+pire-browser record status
+pire-browser record stop recording-dir
 ```
 
-Use `console`, `errors`, `vitals`, and `trace` after navigation, login, or failed actions
-when the page looks stuck or broken. `trace start` / `trace stop` writes a Firefox
-QA evidence bundle with console, page-error, network/HAR metadata, vitals,
-compact snapshot, and screenshot evidence; it is not a Chrome DevTools
-performance trace or CPU profile. `vitals` reports best-effort TTFB, FCP,
+Use `console`, `errors`, `vitals`, `trace`, and `record` after navigation,
+login, or failed actions when the page looks stuck or broken. `trace start` /
+`trace stop` writes a Firefox QA evidence bundle with console, page-error,
+network/HAR metadata, vitals, compact snapshot, and screenshot evidence; it is
+not a Chrome DevTools performance trace or CPU profile. `record start` /
+`record stop` writes bounded visible-viewport PNG frames plus `recording.json`
+as a screenshot-sequence QA evidence bundle; it is not native WebM video, live
+viewport streaming, or Chrome DevTools screencast output. `vitals` reports best-effort TTFB, FCP,
 LCP, CLS, INP, DOMContentLoaded, load, readyState, and hydration-warning signals
 from Firefox Performance APIs. Unavailable Chrome-specific metrics are reported
 as unavailable. Console and error commands report Firefox WebExtension-captured
@@ -245,10 +251,11 @@ activity feed, and capability notes. For scripts, use:
 pire-browser activity list --json
 ```
 
-Activity shows what commands ran; it does not prove page success. It does not
-provide live viewport WebSocket streaming or video recording yet, so keep using
-`snapshot -i`, `screenshot`, `status`, and `doctor` as the primary
-machine-readable evidence path.
+Activity shows what commands ran; it does not prove page success. The dashboard
+does not provide live viewport WebSocket streaming, so keep using `snapshot -i`,
+`screenshot`, `record start` / `record stop`, `status`, and `doctor` as the
+primary machine-readable evidence path. `record` is screenshot-sequence
+evidence, not native WebM video.
 
 Handle page JavaScript dialogs when warnings mention `PAGE_DIALOG`:
 

@@ -183,6 +183,8 @@ mod tests {
         assert!(skill.content.contains("pire-browser set offline"));
         assert!(skill.content.contains("pire-browser vitals"));
         assert!(skill.content.contains("pire-browser trace start"));
+        assert!(skill.content.contains("pire-browser record start"));
+        assert!(skill.content.contains("screenshot-sequence QA evidence bundle"));
         assert!(skill.content.contains("QA evidence bundle"));
         assert!(skill
             .content

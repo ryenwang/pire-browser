@@ -915,6 +915,9 @@ describe("pire-browser command foundations", () => {
       ["trace", "start"],
       ["trace", "status"],
       ["trace", "stop"],
+      ["record", "start"],
+      ["record", "status"],
+      ["record", "stop"],
       ["vitals"],
       ["vitals", "https://example.com"],
       ["react", "tree"],
@@ -1149,6 +1152,24 @@ describe("command shape parity", () => {
     expect(body).toContain("screenshotCommand([])");
     expect(body).toContain("traceRecordingsByTabId.delete(tabId)");
     expect(body).toContain("It is not a Chrome DevTools performance trace or CPU profile.");
+  });
+
+  it("supports Firefox screenshot-sequence recording evidence bundles", () => {
+    const body = background();
+    expect(body).toContain('case "record":');
+    expect(body).toContain("return recordCommand(rest);");
+    expect(body).toContain("const visualRecordingsByTabId = new Map");
+    expect(body).toContain("async function recordCommand");
+    expect(body).toContain('if (args[0] === "start") return "start";');
+    expect(body).toContain('if (args[0] === "stop") return "stop";');
+    expect(body).toContain("Started screenshot-sequence recording");
+    expect(body).toContain("No recording is active for the current tab");
+    expect(body).toContain("async function captureRecordingFrame");
+    expect(body).toContain("browser.tabs.captureVisibleTab(tab.windowId, { format: \"png\" })");
+    expect(body).toContain('kind: "pire-browser-firefox-recording"');
+    expect(body).toContain("recordingFramePath(outputDir, frame.index)");
+    expect(body).toContain("not native WebM video");
+    expect(body).toContain("visualRecordingsByTabId.delete(tabId)");
   });
 
   it("supports best-effort React tree and inspect diagnostics", () => {

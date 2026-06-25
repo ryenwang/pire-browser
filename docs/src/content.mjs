@@ -41,7 +41,7 @@ export const navGroups = [
       { title: "Network", path: "/network/" },
       { title: "CDP Mode", path: "/cdp-mode/" },
       { title: "Streaming", path: "/streaming/" },
-      { title: "Video Recording", path: "/recording/" },
+      { title: "Recording", path: "/recording/" },
       { title: "Debugging", path: "/debugging/" },
       { title: "Profiler", path: "/profiler/" },
       { title: "React & Web Vitals", path: "/react/" },

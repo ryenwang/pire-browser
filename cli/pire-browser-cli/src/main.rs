@@ -83,7 +83,7 @@ use crate::mcp::{run_mcp_server, McpToolsProfile};
 use crate::read::{read_url, ReadUrlOptions};
 
 const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] =
-    &["connect", "profiler", "record", "stream", "upgrade"];
+    &["connect", "profiler", "stream", "upgrade"];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 struct PolicyArgsBundle {
@@ -870,6 +870,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             let mut result = response.result.unwrap_or_else(|| json!({ "text": "ok" }));
             maybe_write_network_har(&args, &mut result)?;
             maybe_write_trace_bundle(&args, &mut result)?;
+            maybe_write_recording_manifest(&args, &mut result)?;
             append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
             append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
             apply_output_guards(&mut result, &output_guards, json);
@@ -1145,6 +1146,37 @@ fn default_trace_output_path(args: &[String]) -> Option<String> {
             .to_string_lossy()
             .to_string(),
     )
+}
+
+fn maybe_write_recording_manifest(args: &[String], result: &mut Value) -> Result<()> {
+    if args.first().map(String::as_str) != Some("record")
+        || args.get(1).map(String::as_str) != Some("stop")
+    {
+        return Ok(());
+    }
+    let Some(recording) = result.get("recording") else {
+        return Ok(());
+    };
+    let Some(output_dir) = recording.get("outputDir").and_then(|value| value.as_str()) else {
+        return Ok(());
+    };
+    let manifest_path = Path::new(output_dir).join("recording.json");
+    if let Some(parent) = manifest_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create recording output directory {}",
+                parent.display()
+            )
+        })?;
+    }
+    let body = serde_json::to_string_pretty(recording)?;
+    fs::write(&manifest_path, body)
+        .with_context(|| format!("failed to write recording manifest {}", manifest_path.display()))?;
+    result["recordingPath"] = json!(manifest_path.to_string_lossy().to_string());
+    Ok(())
 }
 
 fn print_config_warnings(warnings: &[ConfigWarning]) {
@@ -2139,6 +2171,7 @@ fn dashboard_capabilities_value() -> Value {
         "statusDashboard": true,
         "liveViewport": false,
         "webSocketStreaming": false,
+        "screenshotSequenceRecording": true,
         "videoRecording": false,
         "activityFeed": true
     })
@@ -2204,7 +2237,7 @@ fn dashboard_index_html() -> String {
       </div>
       <div class="panel">
         <h2>Capability Notes</h2>
-        <p class="note">This dashboard shows setup status, live sessions, managed profiles, and a bounded redacted command activity feed. Live viewport streaming and video recording are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>status</code>, and <code>doctor</code> for evidence today.</p>
+        <p class="note">This dashboard shows setup status, live sessions, managed profiles, and a bounded redacted command activity feed. Live viewport streaming and native WebM video recording are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>record start</code> / <code>record stop</code>, <code>status</code>, and <code>doctor</code> for evidence today.</p>
       </div>
     </section>
   </main>
@@ -7076,6 +7109,7 @@ fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
                 | "download"
                 | "vitals"
                 | "trace"
+                | "record"
                 | "react"
                 | "addinitscript"
                 | "removeinitscript"
@@ -7124,6 +7158,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "errors"
             | "network"
             | "trace"
+            | "record"
             | "tab"
             | "tabs"
             | "back"
@@ -7983,6 +8018,7 @@ mod tests {
         ])));
         assert!(can_auto_launch_for_remote_args(&s(&["vitals"])));
         assert!(can_auto_launch_for_remote_args(&s(&["trace", "start"])));
+        assert!(can_auto_launch_for_remote_args(&s(&["record", "start"])));
         assert!(!can_auto_launch_for_remote_args(&s(&["close"])));
         assert!(!can_auto_launch_for_remote_args(&s(&["unknown"])));
     }
@@ -8104,6 +8140,7 @@ mod tests {
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"tap"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"swipe"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"device"));
+        assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"record"));
     }
 
     #[test]
@@ -8139,6 +8176,7 @@ mod tests {
             "diff",
             "vitals",
             "trace",
+            "record",
             "react",
             "pdf",
             "addinitscript",
@@ -8163,6 +8201,26 @@ mod tests {
         assert_eq!(trace_output_path(&s(&["trace", "status"])), None);
         assert!(default_trace_output_path(&s(&["trace", "stop"])).is_some());
         assert!(default_trace_output_path(&s(&["trace", "stop", "trace.json"])).is_none());
+    }
+
+    #[test]
+    fn writes_recording_manifest_for_record_stop() {
+        let dir = std::env::temp_dir().join(format!(
+            "pire-browser-recording-test-{}",
+            Uuid::new_v4()
+        ));
+        let mut result = json!({
+            "recording": {
+                "schemaVersion": 1,
+                "outputDir": dir.to_string_lossy(),
+                "frames": []
+            }
+        });
+        maybe_write_recording_manifest(&s(&["record", "stop"]), &mut result).unwrap();
+        let path = dir.join("recording.json");
+        assert!(path.exists());
+        assert_eq!(result["recordingPath"], json!(path.to_string_lossy().to_string()));
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

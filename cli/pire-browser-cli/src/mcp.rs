@@ -149,7 +149,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "debug",
             bits: PROFILE_DEBUG,
-            description: "Lower-level launch and batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, Firefox trace bundles, best-effort vitals, diffs, status, sessions/profiles, confirmation follow-up, and close.",
+            description: "Lower-level launch and batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, Firefox trace and recording bundles, best-effort vitals, diffs, status, sessions/profiles, confirmation follow-up, and close.",
         },
         McpProfileDescriptor {
             name: "tabs",
@@ -293,6 +293,9 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_trace_start"
         | "pire_browser_trace_status"
         | "pire_browser_trace_stop"
+        | "pire_browser_record_start"
+        | "pire_browser_record_status"
+        | "pire_browser_record_stop"
         | "pire_browser_vitals" => PROFILE_DEBUG | PROFILE_REACT,
         "pire_browser_react_tree" | "pire_browser_react_inspect" => PROFILE_REACT,
         "pire_browser_dialog_status"
@@ -425,7 +428,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade for safe package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_record_start/status/stop for screenshot-sequence evidence, not native WebM video or live streaming. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade for safe package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -1137,6 +1140,31 @@ fn tool_command_args(
                 optional_string(object, "path")?.or(optional_string(object, "outputPath")?)
             {
                 args.push(path);
+            }
+        }
+        (_, "pire_browser_record_start") => {
+            args.push("record".to_string());
+            args.push("start".to_string());
+            if let Some(interval_ms) = optional_u64(object, "intervalMs")? {
+                args.push("--interval-ms".to_string());
+                args.push(interval_ms.to_string());
+            }
+            if let Some(max_frames) = optional_u64(object, "maxFrames")? {
+                args.push("--max-frames".to_string());
+                args.push(max_frames.to_string());
+            }
+        }
+        (_, "pire_browser_record_status") => {
+            args.push("record".to_string());
+            args.push("status".to_string());
+        }
+        (_, "pire_browser_record_stop") => {
+            args.push("record".to_string());
+            args.push("stop".to_string());
+            if let Some(output_dir) =
+                optional_string(object, "outputDir")?.or(optional_string(object, "path")?)
+            {
+                args.push(output_dir);
             }
         }
         (_, "pire_browser_react_tree") => {
@@ -2954,6 +2982,39 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_record_start",
+            "Start recording",
+            "Start bounded Firefox screenshot-sequence evidence recording for the active tab.",
+            tool_schema(
+                vec![
+                    ("intervalMs", number_prop("Frame interval in milliseconds, from 250 to 10000.")),
+                    ("maxFrames", number_prop("Maximum frame count, from 1 to 120.")),
+                ],
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_record_status",
+            "Recording status",
+            "Report active screenshot-sequence recording status for the current tab.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
+            "pire_browser_record_stop",
+            "Stop recording",
+            "Stop screenshot-sequence evidence recording and optionally write frames under an output directory.",
+            tool_schema(
+                vec![
+                    ("outputDir", string_prop("Optional output directory for frame PNGs and recording.json.")),
+                    ("path", string_prop("Compatibility alias for outputDir.")),
+                ],
+                &[],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_react_tree",
             "React tree",
             "Show the active page's best-effort React component tree from Firefox Fiber data.",
@@ -4443,6 +4504,15 @@ mod tests {
             .any(|tool| tool["name"] == "pire_browser_trace_stop"));
         assert!(debug
             .iter()
+            .any(|tool| tool["name"] == "pire_browser_record_start"));
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_record_status"));
+        assert!(debug
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_record_stop"));
+        assert!(debug
+            .iter()
             .any(|tool| tool["name"] == "pire_browser_session_list"));
         assert!(debug
             .iter()
@@ -5657,6 +5727,38 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "trace", "stop", "trace.json"]);
+
+        let args = tool_command_args(
+            "pire_browser_record_start",
+            &json!({ "intervalMs": 500, "maxFrames": 5 }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "record",
+                "start",
+                "--interval-ms",
+                "500",
+                "--max-frames",
+                "5"
+            ]
+        );
+
+        let args =
+            tool_command_args("pire_browser_record_status", &json!({}), McpToolsProfile::Debug)
+                .unwrap();
+        assert_eq!(args, vec!["--json", "record", "status"]);
+
+        let args = tool_command_args(
+            "pire_browser_record_stop",
+            &json!({ "outputDir": "recording" }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "record", "stop", "recording"]);
 
         let args = tool_command_args(
             "pire_browser_react_tree",

@@ -73,6 +73,27 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "record start maps to state",
+      "args": ["record", "start"],
+      "policy": { "default": "deny", "allow": ["state"] },
+      "expectedCategory": "state",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "record status maps to get",
+      "args": ["record", "status"],
+      "policy": { "default": "deny", "allow": ["get"] },
+      "expectedCategory": "get",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "record stop maps to snapshot",
+      "args": ["record", "stop", "recording"],
+      "policy": { "default": "deny", "allow": ["snapshot"] },
+      "expectedCategory": "snapshot",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "vitals maps to get",
       "args": ["vitals"],
       "policy": { "default": "deny", "allow": ["get"] },
