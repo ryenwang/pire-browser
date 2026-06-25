@@ -3986,7 +3986,8 @@ profile that fits the task. `core` is the default inspect-before-act workflow:
 open/goto/navigate, inspect, interact, typed get/check state, semantic find, typed waits, navigation
 helpers, screenshots/PDFs, diffs, eval/evaluate, status, tab list/new/switch/close, profiles, close, and
 installed skill guidance. Add comma-separated profiles when needed: `network`,
-`state`, `debug`, `tabs`, `mobile`, or `react`. The `debug` profile includes
+`state`, `debug`, `tabs`, `mobile`, or `react`. The `state` profile includes
+auth/state tools, plugin discovery, clipboard helpers, and profile import. The `debug` profile includes
 lower-level launch, install/repair, user-requested package upgrade, typed batch, doctor/activity
 diagnostics, console/errors, dialogs, highlight, trace/profiler/record evidence,
 and vitals. Agent-browser-style action/tab/frame aliases are available alongside

@@ -665,9 +665,11 @@ Add comma-separated profiles only when needed: `network`, `state`, `debug`,
 `tabs`, `mobile`, or `react`. Use `network` for typed request/response waits
 such as `pire_browser_network_wait_for_request` and
 `pire_browser_network_wait_for_response` plus request diagnostics, routes, and
-HAR. Use `state` for typed clipboard tools and
+HAR. Use `state` for typed clipboard tools, configured plugin discovery through
+`pire_browser_plugin_list` / `pire_browser_plugin_show`, and
 `pire_browser_profiles_import` when the user wants existing Firefox login state
-copied into a managed profile. Use `debug` for lower-level launch,
+copied into a managed profile. Use plugin discovery before calling
+`pire_browser_auth_login` with `credentialProvider`, `item`, and `url`. Use `debug` for lower-level launch,
 install/repair, upgrade, batch, doctor/activity diagnostics,
 console/errors/dialogs/highlight/trace/profiler/record/stream/vitals, and
 session/profile inspection. Use `react` for best-effort typed React Fiber
@@ -678,7 +680,7 @@ implemented MCP tool. The `pire_browser_tools_profiles` tool describes the
 available profiles in-band.
 
 The MCP tools call the same installed CLI binary, so setup, policies, sessions, profiles, and Firefox runtime behavior stay shared with normal `pire-browser` commands.
-The server defaults to MCP protocol `2025-11-25` and accepts older supported client protocol versions during initialization. Tool discovery is paginated for large profiles. Tool annotations mark local maintenance/context tools such as install, upgrade, status, sessions, profiles, and skills as non-open-world so MCP hosts can present clearer approval prompts.
+The server defaults to MCP protocol `2025-11-25` and accepts older supported client protocol versions during initialization. Tool discovery is paginated for large profiles. Tool annotations mark local maintenance/context tools such as install, upgrade, status, sessions, profiles, plugin discovery, and skills as non-open-world so MCP hosts can present clearer approval prompts.
 
 ## Authentication
 
@@ -779,7 +781,10 @@ user approval gate should run before the provider is invoked. `plugin list` and
 `plugin show <name>` are read-only agent-browser-style discovery commands; they
 report configured capabilities and clearly mark non-credential capabilities such
 as `browser.provider`, `launch.mutate`, and `command.run` as discoverable but not
-executed by the Firefox backend yet. Do not claim login success until a fresh
+executed by the Firefox backend yet. In MCP, add the `state` profile and call
+`pire_browser_plugin_list` / `pire_browser_plugin_show` before choosing a
+provider for `pire_browser_auth_login` with `credentialProvider`, `item`, and
+`url`. Do not claim login success until a fresh
 snapshot, URL, or page state confirms it.
 
 ### Proxy authentication

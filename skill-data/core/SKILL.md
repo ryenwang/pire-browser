@@ -579,7 +579,7 @@ pire-browser auth login app --credential-provider vault --item "My App" --url ht
 pire-browser snapshot -i --compact
 ```
 
-Credential providers use the agent-browser plugin protocol with capability `credential.read`; configure them in `pire-browser.json` / `agent-browser.json` under `plugins`, or set `AGENT_BROWSER_PLUGINS` / `PIRE_BROWSER_PLUGINS` to the same JSON array. Use `plugin list` / `plugin show <name>` to inspect configured plugins without running them. These commands report configured capabilities and mark non-credential capabilities such as `browser.provider`, `launch.mutate`, and `command.run` as discoverable but not executed by the Firefox backend yet. Do not put vault tokens or passwords in plugin args. Use `--confirm-actions plugin:vault:credential.read` when provider access should require approval before the plugin runs. When using MCP, only call `pire_browser_auth_save` with user-approved credentials; use `pire_browser_auth_login` with `credentialProvider` and `item` for configured vault providers. Always verify login with a fresh snapshot, URL, or page state before reporting success.
+Credential providers use the agent-browser plugin protocol with capability `credential.read`; configure them in `pire-browser.json` / `agent-browser.json` under `plugins`, or set `AGENT_BROWSER_PLUGINS` / `PIRE_BROWSER_PLUGINS` to the same JSON array. Use CLI `plugin list` / `plugin show <name>` to inspect configured plugins without running them. These commands report configured capabilities and mark non-credential capabilities such as `browser.provider`, `launch.mutate`, and `command.run` as discoverable but not executed by the Firefox backend yet. Do not put vault tokens or passwords in plugin args. Use `--confirm-actions plugin:vault:credential.read` when provider access should require approval before the plugin runs. When using MCP, add the `state` profile and inspect providers with `pire_browser_plugin_list` / `pire_browser_plugin_show` before `pire_browser_auth_login`; only call `pire_browser_auth_save` with user-approved credentials, and use `pire_browser_auth_login` with `credentialProvider`, `item`, and `url` for configured vault providers. Always verify login with a fresh snapshot, URL, or page state before reporting success.
 
 Open tabs and windows:
 
@@ -697,8 +697,8 @@ inspect-before-act workflow: open/goto/navigate, snapshot, semantic find, intera
 typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff
 evidence, eval/evaluate, status, confirmation follow-up, tab list/new/switch/close, profile discovery,
 close, and skill guidance. Add comma-separated profiles only when needed:
-`network` for request/response waits, request diagnostics, routes, and HAR, `state` for cookies/storage/auth
-and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair,
+`network` for request/response waits, request diagnostics, routes, and HAR, `state` for cookies/storage/auth,
+configured plugin discovery, and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair,
 user-requested package upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/trace/profiler/record/stream/vitals,
 `tabs` for tab labels, frames, dialogs, and separate windows, and `mobile` for viewport/device/geo/media/mouse
 helpers including click-equivalent `pire_browser_tap` and touch-direction page-scroll `pire_browser_swipe`. `react` exposes best-effort typed React Fiber tools
@@ -708,7 +708,7 @@ only when the host can tolerate the full tool surface. The
 The MCP server defaults to protocol `2025-11-25` and accepts older supported
 client protocol versions during initialization. Tool discovery is paginated for
 large profiles. Tool annotations mark local maintenance/context tools such as
-install, upgrade, status, sessions, profiles, and skills as non-open-world so
+install, upgrade, status, sessions, profiles, plugin discovery, and skills as non-open-world so
 hosts can show clearer approval prompts.
 
 For MCP guardrails and launch context, prefer typed common fields over

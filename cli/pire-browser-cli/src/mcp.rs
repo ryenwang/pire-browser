@@ -144,7 +144,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "state",
             bits: PROFILE_STATE,
-            description: "Cookies, storage, auth helpers, plaintext or opt-in encrypted state files, sessions, profiles including Firefox profile import, downloads/uploads, clipboard, and skills.",
+            description: "Cookies, storage, auth helpers, configured plugin discovery, plaintext or opt-in encrypted state files, sessions, profiles including Firefox profile import, downloads/uploads, clipboard, and skills.",
         },
         McpProfileDescriptor {
             name: "debug",
@@ -185,6 +185,7 @@ fn tool_profile_bits(name: &str) -> u16 {
         "pire_browser_skills_get_core" | "pire_browser_skills_get_dogfood" => {
             PROFILE_CORE | PROFILE_STATE
         }
+        "pire_browser_plugin_list" | "pire_browser_plugin_show" => PROFILE_STATE,
         "pire_browser_status" => PROFILE_CORE | PROFILE_DEBUG,
         "pire_browser_launch"
         | "pire_browser_batch"
@@ -447,7 +448,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open/goto/navigate, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, pire_browser_skills_get_core, and pire_browser_skills_get_dogfood. Use pire_browser_skills_get_dogfood for systematic exploratory QA, app review, or bug hunts. Use typed headless for CI-style runs where a tool may launch a new managed Firefox session, or headed to force the visible default; existing live sessions keep their current mode. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open, pire_browser_goto, or pire_browser_navigate for normal launch/navigation; use enableReactDevtools on those tools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop/restart for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed WebSocket screenshot streaming with basic remote input; it is not native WebM video or Chrome DevTools screencast output. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when request/response waits, network diagnostics, cookies/storage/auth/state, Firefox profile import, debugging, tab labels/frames/dialogs/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open/goto/navigate, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, pire_browser_skills_get_core, and pire_browser_skills_get_dogfood. Use pire_browser_skills_get_dogfood for systematic exploratory QA, app review, or bug hunts. Use typed headless for CI-style runs where a tool may launch a new managed Firefox session, or headed to force the visible default; existing live sessions keep their current mode. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open, pire_browser_goto, or pire_browser_navigate for normal launch/navigation; use enableReactDevtools on those tools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop/restart for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed WebSocket screenshot streaming with basic remote input; it is not native WebM video or Chrome DevTools screencast output. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when request/response waits, network diagnostics, cookies/storage/auth/state, configured plugin discovery before credential-provider login, Firefox profile import, debugging, tab labels/frames/dialogs/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -634,7 +635,10 @@ fn tool_command_args(
         .ok_or_else(|| "tool arguments must be an object".to_string())?;
     let mut args = match name {
         "pire_browser_launch" => launch_prefix_args(object)?,
-        "pire_browser_install" | "pire_browser_upgrade" => Vec::new(),
+        "pire_browser_install"
+        | "pire_browser_upgrade"
+        | "pire_browser_plugin_list"
+        | "pire_browser_plugin_show" => Vec::new(),
         _ => target_args(object)?,
     };
     match (profile, name) {
@@ -1597,6 +1601,17 @@ fn tool_command_args(
                 args.push(target);
             }
         }
+        (_, "pire_browser_plugin_list") => {
+            reject_unsupported_fields(object, "pire_browser_plugin_list", &[])?;
+            args.push("plugin".to_string());
+            args.push("list".to_string());
+        }
+        (_, "pire_browser_plugin_show") => {
+            reject_unsupported_fields(object, "pire_browser_plugin_show", &["name"])?;
+            args.push("plugin".to_string());
+            args.push("show".to_string());
+            args.push(required_string(object, "name")?);
+        }
         (_, "pire_browser_auth_save") => {
             args.push("auth".to_string());
             args.push("save".to_string());
@@ -1887,7 +1902,11 @@ fn tool_command_args(
     }
     if !matches!(
         name,
-        "pire_browser_batch" | "pire_browser_install" | "pire_browser_upgrade"
+        "pire_browser_batch"
+            | "pire_browser_install"
+            | "pire_browser_upgrade"
+            | "pire_browser_plugin_list"
+            | "pire_browser_plugin_show"
     ) {
         args.extend(optional_string_array(object, "extraArgs")?);
     }
@@ -3824,6 +3843,20 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_plugin_list",
+            "List plugins",
+            "List configured agent-browser protocol plugins without running them.",
+            tool_schema_without_common(vec![], &[]),
+            true,
+        ),
+        tool(
+            "pire_browser_plugin_show",
+            "Show plugin",
+            "Show one configured agent-browser protocol plugin and its declared capabilities without running it.",
+            tool_schema_without_common(vec![("name", string_prop("Plugin name."))], &["name"]),
+            true,
+        ),
+        tool(
             "pire_browser_auth_save",
             "Save auth profile",
             "Save a selector-driven auth profile in the encrypted local auth vault. Password is sensitive; shell users should prefer auth save --password-stdin.",
@@ -4256,6 +4289,8 @@ fn is_open_world_tool(name: &str) -> bool {
             | "pire_browser_activity_list"
             | "pire_browser_install"
             | "pire_browser_upgrade"
+            | "pire_browser_plugin_list"
+            | "pire_browser_plugin_show"
             | "pire_browser_session_list"
             | "pire_browser_session_attach"
             | "pire_browser_session_cleanup"
@@ -4935,6 +4970,29 @@ mod tests {
             .as_object()
             .unwrap()
             .is_empty());
+        let state_tools = mcp_tools(McpToolsProfile::State);
+        let plugin_list = state_tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_plugin_list")
+            .unwrap();
+        assert!(plugin_list["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .is_empty());
+        let plugin_show = state_tools
+            .iter()
+            .find(|tool| tool["name"] == "pire_browser_plugin_show")
+            .unwrap();
+        assert_eq!(
+            plugin_show["inputSchema"]["properties"]["name"]["type"],
+            "string"
+        );
+        assert_eq!(plugin_show["inputSchema"]["required"], json!(["name"]));
+        assert!(plugin_show["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .get("session")
+            .is_none());
     }
 
     #[test]
@@ -4957,6 +5015,12 @@ mod tests {
         assert!(state
             .iter()
             .any(|tool| tool["name"] == "pire_browser_auth_login"));
+        assert!(state
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_plugin_list"));
+        assert!(state
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_plugin_show"));
         assert!(state
             .iter()
             .any(|tool| tool["name"] == "pire_browser_clipboard"));
@@ -5142,6 +5206,8 @@ mod tests {
             "pire_browser_activity_list",
             "pire_browser_install",
             "pire_browser_upgrade",
+            "pire_browser_plugin_list",
+            "pire_browser_plugin_show",
             "pire_browser_session_list",
             "pire_browser_session_attach",
             "pire_browser_session_cleanup",
@@ -5168,6 +5234,14 @@ mod tests {
         );
         assert_eq!(
             tool_named(&tools, "pire_browser_skills_get_dogfood")["annotations"]["readOnlyHint"],
+            true
+        );
+        assert_eq!(
+            tool_named(&tools, "pire_browser_plugin_list")["annotations"]["readOnlyHint"],
+            true
+        );
+        assert_eq!(
+            tool_named(&tools, "pire_browser_plugin_show")["annotations"]["readOnlyHint"],
             true
         );
     }
@@ -6882,6 +6956,22 @@ mod tests {
         assert_eq!(args, vec!["--json", "auth", "list"]);
 
         let args = tool_command_args(
+            "pire_browser_plugin_list",
+            &json!({}),
+            McpToolsProfile::State,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "plugin", "list"]);
+
+        let args = tool_command_args(
+            "pire_browser_plugin_show",
+            &json!({ "name": "vault" }),
+            McpToolsProfile::State,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "plugin", "show", "vault"]);
+
+        let args = tool_command_args(
             "pire_browser_auth_show",
             &json!({ "name": "app" }),
             McpToolsProfile::Core,
@@ -7625,6 +7715,30 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("sessionName is not supported by pire_browser_upgrade"));
+
+        let error = tool_command_args(
+            "pire_browser_plugin_list",
+            &json!({ "sessionName": "qa" }),
+            McpToolsProfile::State,
+        )
+        .unwrap_err();
+        assert!(error.contains("sessionName is not supported by pire_browser_plugin_list"));
+
+        let error = tool_command_args(
+            "pire_browser_plugin_show",
+            &json!({ "extraArgs": ["vault"] }),
+            McpToolsProfile::State,
+        )
+        .unwrap_err();
+        assert!(error.contains("extraArgs is not supported by pire_browser_plugin_show"));
+
+        let error = tool_command_args(
+            "pire_browser_plugin_show",
+            &json!({}),
+            McpToolsProfile::State,
+        )
+        .unwrap_err();
+        assert!(error.contains("name is required"));
 
         let error = tool_command_args(
             "pire_browser_doctor",
