@@ -1357,6 +1357,11 @@ describe("command shape parity", () => {
     expect(body).toContain("async function authCommand");
     expect(body).toContain("async function authSaveCommand");
     expect(body).toContain("async function authLoginCommand");
+    expect(body).toContain("async function authLoginInlineCommand");
+    expect(body).toContain("async function performAuthLogin");
+    expect(body).toContain('subcommand === "login-inline"');
+    expect(body).toContain('subcommand === "login" || subcommand === "login-inline"');
+    expect(body).toContain("Logged in with auth profile ${profile.name}");
     expect(body).toContain('AUTH_STORAGE_KEY = "pireBrowserAuthProfiles"');
     expect(body).toContain('"--username-selector"');
     expect(body).toContain('"--password-selector"');
@@ -1364,7 +1369,8 @@ describe("command shape parity", () => {
     expect(body).toContain("auth save --password-stdin must be expanded by the CLI");
     expect(body).not.toContain("auth save --password-stdin is not implemented");
     expect(body).toContain("authStorageWarning()");
-    expect(body).toContain("not a full encrypted auth vault");
+    expect(body).toContain("Legacy extension-storage auth profiles live in the managed Firefox profile");
+    expect(body).toContain("encrypted local auth vault");
 
     const publicProfileBlock = body.match(/function publicAuthProfile[\s\S]*?function authStorageWarning/)?.[0] ?? "";
     expect(publicProfileBlock).toContain("username: profile.username");

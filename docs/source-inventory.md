@@ -9,7 +9,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 | Source set | Role | Notes |
 | --- | --- | --- |
 | `cli/Cargo.toml`, `cli/Cargo.lock` | Rust workspace | Workspace root for the CLI, core library, and Native Messaging host. Run Rust commands from `cli/`, for example `cd cli && cargo test -q`. |
-| `cli/pire-browser-core/` | Core Rust implementation | CLI parsing, launch/session lifecycle, IPC, setup/status, state, policy guardrails, Firefox integration, and shared protocol behavior. |
+| `cli/pire-browser-core/` | Core Rust implementation | CLI parsing, launch/session lifecycle, IPC, setup/status, encrypted auth vault, state, policy guardrails, Firefox integration, and shared protocol behavior. |
 | `cli/pire-browser-cli/` | User-facing executable | CLI entrypoint, command/error presentation over the core crate, and the stdio MCP server. |
 | `cli/pire-browser-host/` | Native Messaging host | Firefox extension bridge to the Rust core and per-user CLI IPC. |
 | `extension/src/` | Firefox WebExtension source | Browser-side command handling, DOM inspection/actions, dialogs, refs, frames, and screenshot capture. |
@@ -42,7 +42,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 | `bin/<platform>-<arch>/` | Generated platform binaries | Local/CI build output copied from `cli/target/...` by platform packaging scripts; ignored and regenerated. |
 | Public root npm package contents | Curated distribution surface | `package.json#files` should include the JS launcher, Pi extension runtime, extension assets, `agent/`, `skills/`, `skill-data/`, root `pire-browser.schema.json`, legacy `agent-browser.schema.json`, required postinstall scripts, `LICENSE`, and `README.md`; it should exclude `docs/`, repository test fixtures, `site/`, `cli/`, and native binary directories. |
 | Public platform npm package contents | Curated native distribution surface | Each optional package should include only its native binary pair, README, LICENSE, and package metadata. |
-| `.pire-state/`, OS app-data `pire-browser/` directories | Local runtime state | Sessions, profiles, cookies, confirmations, downloads, uploads, policies, bounded redacted activity logs, dashboard state/log files, and update cache are not portable source. |
+| `.pire-state/`, OS app-data `pire-browser/` directories | Local runtime state | Sessions, profiles, encrypted auth vault/key files, cookies, confirmations, downloads, uploads, policies, bounded redacted activity logs, dashboard state/log files, and update cache are not portable source. |
 | Root logs, screenshots, recording bundles, and CSV captures | Runtime/background artifacts | Manual-session outputs, `record stop` screenshot-sequence evidence directories, and local diagnostics are not authoritative implementation source. |
 
 ## Conflicts Or Ambiguities

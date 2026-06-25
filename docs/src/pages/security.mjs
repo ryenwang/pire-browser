@@ -24,6 +24,8 @@ pire-browser confirm c_8f3a1234
 pire-browser deny c_8f3a1234`),
   h2("State files", "state-files"),
   p("State files may contain cookies or Web Storage secrets. They are plaintext by default for compatibility. Set <code>PIRE_BROWSER_ENCRYPTION_KEY</code> or the agent-browser-compatible <code>AGENT_BROWSER_ENCRYPTION_KEY</code> to a 64-character hex AES-256 key to write and load AES-256-GCM encrypted state files. Prefer <code>.pire-state/</code>, which this project gitignores, keep the key out of logs and shell history, and use <code>state inspect --record</code> before loading sensitive state."),
+  h2("Auth vault", "auth-vault"),
+  p("<code>auth save</code> stores selector-driven username/password profiles in a local AES-256-GCM encrypted auth vault under the OS app-data directory. The key comes from <code>PIRE_BROWSER_AUTH_ENCRYPTION_KEY</code>, <code>PIRE_BROWSER_ENCRYPTION_KEY</code>, <code>AGENT_BROWSER_ENCRYPTION_KEY</code>, or an auto-generated local key file. <code>auth list</code> and <code>auth show</code> never print passwords; <code>auth login</code> decrypts locally and sends a one-shot profile payload to the managed Firefox extension."),
 ];
 
 export default page({

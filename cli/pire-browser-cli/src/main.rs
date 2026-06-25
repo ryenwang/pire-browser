@@ -15,6 +15,9 @@ use pire_browser_core::activity::{
     ActivityEvent,
 };
 use pire_browser_core::auth_handoff::{auth_handoff_text, collect_default_auth_handoff};
+use pire_browser_core::auth_vault::{
+    auth_vault_value, AuthProfileInput, AuthSelectors, AuthVault, PublicAuthProfile,
+};
 use pire_browser_core::cli::{
     apply_config_defaults, build_command_request, format_cli_result, help_text, parse_cli_args,
     ConfigWarning, DashboardAction, GlobalFlagWarning, LocalCommand, ReadActiveUrlOptions,
@@ -728,6 +731,20 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 }
                 std::process::exit(exit_code_for_error("unsupported_command"));
             }
+            if is_local_auth_vault_command(&args) {
+                let mut result = match handle_auth_vault_local_command(&args) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                        unreachable!();
+                    }
+                };
+                append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
+                apply_output_guards(&mut result, &output_guards, json);
+                println!("{}", format_cli_result(&result, json)?);
+                print_config_warnings(&config_warnings);
+                return Ok(());
+            }
             let domain_decision =
                 resolve_domain_policy_or_exit(&domain_policy, json, &ignored_global_flags)?;
             let diff_url_options = diff_url_options(&args)?;
@@ -840,6 +857,38 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                     color_scheme.as_deref(),
                     proxy_config.as_ref(),
                 )?;
+                append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
+                append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
+                apply_output_guards(&mut result, &output_guards, json);
+                println!("{}", format_cli_result(&result, json)?);
+                print_config_warnings(&config_warnings);
+                return Ok(());
+            }
+            if is_auth_login_command(&args) {
+                let mut result = match handle_auth_login_command(
+                    &target,
+                    &args,
+                    json,
+                    &ignored_global_flags,
+                    &domain_decision,
+                    &action_decision,
+                    &confirmation_decision,
+                    interactively_approved,
+                    firefox_path_override.as_deref(),
+                    color_scheme.as_deref(),
+                    proxy_config.as_ref(),
+                ) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        exit_with_anyhow_error_with_domain_policy(
+                            err,
+                            json,
+                            &ignored_global_flags,
+                            &domain_decision.warnings,
+                        )?;
+                        unreachable!();
+                    }
+                };
                 append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
                 append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
                 apply_output_guards(&mut result, &output_guards, json);
@@ -5231,6 +5280,265 @@ fn build_command_request_with_captured_policies(
     Ok(request)
 }
 
+fn is_local_auth_vault_command(args: &[String]) -> bool {
+    if args.first().map(String::as_str) != Some("auth") {
+        return false;
+    }
+    matches!(
+        args.get(1).map(String::as_str),
+        None | Some("save" | "list" | "show" | "delete")
+    )
+}
+
+fn is_auth_login_command(args: &[String]) -> bool {
+    matches!(
+        (
+            args.first().map(String::as_str),
+            args.get(1).map(String::as_str)
+        ),
+        (Some("auth"), Some("login"))
+    )
+}
+
+fn handle_auth_vault_local_command(args: &[String]) -> Result<Value> {
+    match args.get(1).map(String::as_str).unwrap_or("list") {
+        "save" => handle_auth_vault_save(args),
+        "list" => handle_auth_vault_list(args),
+        "show" => handle_auth_vault_show(args),
+        "delete" => handle_auth_vault_delete(args),
+        _ => bail!("unsupported_command: auth requires save|login|list|show|delete"),
+    }
+}
+
+fn handle_auth_vault_save(args: &[String]) -> Result<Value> {
+    let input = parse_auth_save_input(args)?;
+    let mut vault = AuthVault::load()?;
+    let profile = vault.save_profile(input)?;
+    let mut value = auth_profile_result_value(
+        format!("Saved auth profile {}", profile.name),
+        "profile",
+        &profile,
+        &vault,
+    )?;
+    value["storage"] = json!("encrypted-auth-vault");
+    Ok(value)
+}
+
+fn handle_auth_vault_list(args: &[String]) -> Result<Value> {
+    reject_extra_auth_args(args, 2, "auth list")?;
+    let vault = AuthVault::load()?;
+    let profiles = vault.public_profiles();
+    let rows = profiles
+        .iter()
+        .map(|profile| format!("{} {}", profile.name, profile.url))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Ok(json!({
+        "text": if rows.is_empty() { "No auth profiles saved".to_string() } else { rows },
+        "profiles": profiles,
+        "vault": auth_vault_value(&vault.info()),
+        "storage": "encrypted-auth-vault",
+    }))
+}
+
+fn handle_auth_vault_show(args: &[String]) -> Result<Value> {
+    let name = auth_profile_name_arg(args, 2, "auth show requires <name>")?;
+    reject_extra_auth_args(args, 3, "auth show")?;
+    let vault = AuthVault::load()?;
+    let profile = vault.public_profile(name)?;
+    auth_profile_result_value(
+        format!("{} {}", profile.name, profile.url),
+        "profile",
+        &profile,
+        &vault,
+    )
+}
+
+fn handle_auth_vault_delete(args: &[String]) -> Result<Value> {
+    let name = auth_profile_name_arg(args, 2, "auth delete requires <name>")?;
+    reject_extra_auth_args(args, 3, "auth delete")?;
+    let mut vault = AuthVault::load()?;
+    let deleted = vault.delete_profile(name)?;
+    Ok(json!({
+        "text": if deleted {
+            format!("Deleted auth profile {name}")
+        } else {
+            format!("No auth profile found: {name}")
+        },
+        "deleted": deleted,
+        "name": name,
+        "vault": auth_vault_value(&vault.info()),
+        "storage": "encrypted-auth-vault",
+    }))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_auth_login_command(
+    target: &SessionTarget,
+    args: &[String],
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    interactively_approved: bool,
+    firefox_path_override: Option<&str>,
+    color_scheme: Option<&str>,
+    proxy_config: Option<&ProxyConfig>,
+) -> Result<Value> {
+    let name = auth_profile_name_arg(args, 2, "auth login requires <name>")?;
+    reject_extra_auth_args(args, 3, "auth login")?;
+    let vault = AuthVault::load()?;
+    let profile = vault.profile(name)?;
+    ensure_url_allowed(domain_decision, &profile.url)?;
+    let inline_payload = serde_json::to_string(&profile)?;
+    let inline_args = vec![
+        "auth".to_string(),
+        "login-inline".to_string(),
+        inline_payload,
+    ];
+    let mut request = build_command_request_with_policies(
+        inline_args,
+        domain_decision,
+        action_decision,
+        confirmation_decision,
+        interactively_approved,
+    )?;
+    attach_color_scheme(&mut request, color_scheme)?;
+    attach_proxy_config(&mut request, proxy_config)?;
+    let (response, _) = dispatch_remote_request_or_exit(
+        target,
+        args,
+        &request,
+        domain_decision,
+        json_output,
+        ignored_global_flags,
+        firefox_path_override,
+    )?;
+    if !response.ok {
+        let error = response
+            .error
+            .unwrap_or(pire_browser_core::protocol::RpcError {
+                code: "unknown_error".into(),
+                message: "unknown extension error".into(),
+                data: None,
+            });
+        bail!("{}: {}", error.code, error.message);
+    }
+    let mut result = response.result.unwrap_or_else(|| {
+        json!({
+            "text": format!("Logged in with auth profile {name}"),
+        })
+    });
+    if let Some(object) = result.as_object_mut() {
+        object.insert("vault".to_string(), auth_vault_value(&vault.info()));
+        object.insert("storage".to_string(), json!("encrypted-auth-vault"));
+    }
+    Ok(result)
+}
+
+fn auth_profile_result_value(
+    text: String,
+    field: &str,
+    profile: &PublicAuthProfile,
+    vault: &AuthVault,
+) -> Result<Value> {
+    let mut value = json!({
+        "text": text,
+        "vault": auth_vault_value(&vault.info()),
+        "storage": "encrypted-auth-vault",
+    });
+    if let Some(object) = value.as_object_mut() {
+        object.insert(field.to_string(), serde_json::to_value(profile)?);
+    }
+    Ok(value)
+}
+
+fn parse_auth_save_input(args: &[String]) -> Result<AuthProfileInput> {
+    let name = auth_profile_name_arg(args, 2, "auth save requires <name>")?;
+    let mut url = None;
+    let mut username = None;
+    let mut password = None;
+    let mut username_selector = None;
+    let mut password_selector = None;
+    let mut submit_selector = None;
+    let mut index = 3;
+    while index < args.len() {
+        let flag = args[index].as_str();
+        if flag == "--password-stdin" {
+            bail!(
+                "invalid_args: auth save --password-stdin must be expanded by the CLI before vault storage"
+            );
+        }
+        if !is_auth_save_option(flag) {
+            bail!("invalid_args: unsupported auth save option: {flag}");
+        }
+        let Some(value) = args.get(index + 1) else {
+            bail!("invalid_args: {flag} requires a value");
+        };
+        if is_auth_save_option(value) {
+            bail!("invalid_args: {flag} requires a value");
+        }
+        match flag {
+            "--url" => url = Some(value.clone()),
+            "--username" => username = Some(value.clone()),
+            "--password" => password = Some(value.clone()),
+            "--username-selector" => username_selector = Some(value.clone()),
+            "--password-selector" => password_selector = Some(value.clone()),
+            "--submit-selector" => submit_selector = Some(value.clone()),
+            _ => unreachable!(),
+        }
+        index += 2;
+    }
+    let defaults = AuthSelectors::default();
+    Ok(AuthProfileInput {
+        name: name.to_string(),
+        url: url.ok_or_else(|| anyhow::anyhow!("invalid_args: auth save requires --url <url>"))?,
+        username: username
+            .ok_or_else(|| anyhow::anyhow!("invalid_args: auth save requires --username <user>"))?,
+        password: password
+            .ok_or_else(|| anyhow::anyhow!("invalid_args: auth save requires --password <pass>"))?,
+        selectors: AuthSelectors {
+            username: username_selector.unwrap_or(defaults.username),
+            password: password_selector.unwrap_or(defaults.password),
+            submit: submit_selector.unwrap_or(defaults.submit),
+        },
+    })
+}
+
+fn is_auth_save_option(value: &str) -> bool {
+    matches!(
+        value,
+        "--url"
+            | "--username"
+            | "--password"
+            | "--password-stdin"
+            | "--username-selector"
+            | "--password-selector"
+            | "--submit-selector"
+    )
+}
+
+fn auth_profile_name_arg<'a>(args: &'a [String], index: usize, message: &str) -> Result<&'a str> {
+    let Some(name) = args.get(index).map(String::as_str) else {
+        bail!("invalid_args: {message}");
+    };
+    if name.starts_with("--") {
+        bail!("invalid_args: {message}");
+    }
+    Ok(name)
+}
+
+fn reject_extra_auth_args(args: &[String], allowed_len: usize, command: &str) -> Result<()> {
+    if args.len() > allowed_len {
+        bail!(
+            "invalid_args: {command} received unexpected argument `{}`",
+            args[allowed_len]
+        );
+    }
+    Ok(())
+}
+
 fn prepare_auth_password_stdin(args: &mut Vec<String>) -> Result<()> {
     if !auth_save_uses_password_stdin(args) {
         return Ok(());
@@ -9404,6 +9712,69 @@ mod tests {
             "--password-stdin",
         ]);
         assert!(rewrite_auth_password_stdin(&mut duplicate, "two".to_string()).is_err());
+    }
+
+    #[test]
+    fn parses_auth_save_for_encrypted_vault_storage() {
+        let input = parse_auth_save_input(&s(&[
+            "auth",
+            "save",
+            "fixture",
+            "--url",
+            "https://example.com/login",
+            "--username",
+            "user",
+            "--password",
+            "secret",
+            "--username-selector",
+            "#email",
+        ]))
+        .unwrap();
+        assert_eq!(input.name, "fixture");
+        assert_eq!(input.url, "https://example.com/login");
+        assert_eq!(input.username, "user");
+        assert_eq!(input.password, "secret");
+        assert_eq!(input.selectors.username, "#email");
+        assert!(input
+            .selectors
+            .password
+            .contains("input[type=\"password\"]"));
+        assert!(is_local_auth_vault_command(&s(&[
+            "auth", "save", "fixture"
+        ])));
+        assert!(is_local_auth_vault_command(&s(&["auth", "list"])));
+        assert!(!is_local_auth_vault_command(&s(&[
+            "auth", "login", "fixture"
+        ])));
+        assert!(is_auth_login_command(&s(&["auth", "login", "fixture"])));
+    }
+
+    #[test]
+    fn auth_profile_result_envelope_does_not_print_passwords() {
+        let profile = PublicAuthProfile {
+            name: "fixture".to_string(),
+            url: "https://example.com/login".to_string(),
+            username: "user".to_string(),
+            selectors: AuthSelectors::default(),
+            created_at: 1,
+            updated_at: 2,
+        };
+        let vault = pire_browser_core::auth_vault::AuthVaultInfo {
+            path: PathBuf::from("auth-vault.json"),
+            key_source: "file".to_string(),
+            encrypted: true,
+            profile_count: 1,
+        };
+        let value = json!({
+            "text": "Saved auth profile fixture",
+            "profile": profile,
+            "vault": auth_vault_value(&vault),
+            "storage": "encrypted-auth-vault",
+        });
+        let formatted = format_cli_result(&value, true).unwrap();
+        assert!(formatted.contains("encrypted-auth-vault"));
+        assert!(formatted.contains("user"));
+        assert!(!formatted.contains("secret"));
     }
 
     #[test]

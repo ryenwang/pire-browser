@@ -94,8 +94,8 @@ type AuthProfile = {
   username: string;
   password: string;
   selectors: AuthSelectors;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: string | number;
+  updatedAt: string | number;
 };
 
 type NativeEvent = {
@@ -833,7 +833,7 @@ function actionPolicyCategoryName(args: string[]): string | null {
     case "auth":
       if (subcommand === "save" || subcommand === "delete") return "state";
       if (subcommand === "list" || subcommand === "show") return "get";
-      if (subcommand === "login") return "fill";
+      if (subcommand === "login" || subcommand === "login-inline") return "fill";
       return null;
     case "state":
       if (subcommand === "save" || subcommand === "load") return "state";
@@ -5302,6 +5302,7 @@ async function authCommand(args: string[], domainPolicy: DomainPolicyContext | n
   const [subcommand, name, ...rest] = args;
   if (subcommand === "save") return authSaveCommand(name, rest);
   if (subcommand === "login") return authLoginCommand(name, domainPolicy);
+  if (subcommand === "login-inline") return authLoginInlineCommand(args.slice(1).join(" "), domainPolicy);
   if (subcommand === "list" || !subcommand) return authListCommand();
   if (subcommand === "show") return authShowCommand(name);
   if (subcommand === "delete") return authDeleteCommand(name);
@@ -5338,6 +5339,28 @@ async function authLoginCommand(name: string | undefined, domainPolicy: DomainPo
   const profiles = await authProfiles();
   const profile = profiles[name];
   if (!profile) return { error: { code: "not_found", message: `No auth profile found: ${name}` } };
+  return performAuthLogin(profile, domainPolicy, true);
+}
+
+async function authLoginInlineCommand(payload: string, domainPolicy: DomainPolicyContext | null) {
+  if (!payload) return { error: { code: "InvalidArgumentError", message: "auth login-inline requires a profile payload" } };
+  let profile: unknown;
+  try {
+    profile = JSON.parse(payload);
+  } catch {
+    return { error: { code: "InvalidArgumentError", message: "auth login-inline profile payload must be JSON" } };
+  }
+  if (!isAuthProfile(profile)) {
+    return { error: { code: "InvalidArgumentError", message: "auth login-inline profile payload is invalid" } };
+  }
+  return performAuthLogin(profile, domainPolicy, false);
+}
+
+async function performAuthLogin(
+  profile: AuthProfile,
+  domainPolicy: DomainPolicyContext | null,
+  includeStorageWarning: boolean,
+) {
   if (domainPolicy?.enabled) {
     const domainError = domainPolicyErrorForUrl(profile.url, domainPolicy);
     if (domainError) return { error: domainError };
@@ -5352,7 +5375,7 @@ async function authLoginCommand(name: string | undefined, domainPolicy: DomainPo
   const submit = await clickLocator(selectorToLocator(profile.selectors.submit));
   if ("error" in submit) return submit;
   return {
-    text: `Logged in with auth profile ${name}`,
+    text: `Logged in with auth profile ${profile.name}`,
     profile: publicAuthProfile(profile),
     results: {
       open: resultSummary(opened),
@@ -5360,7 +5383,7 @@ async function authLoginCommand(name: string | undefined, domainPolicy: DomainPo
       password: resultSummary(password),
       submit: resultSummary(submit),
     },
-    warnings: mergeWarnings((opened as any).warnings, authStorageWarning()),
+    warnings: mergeWarnings((opened as any).warnings, includeStorageWarning ? authStorageWarning() : []),
   };
 }
 
@@ -5495,7 +5518,7 @@ function publicAuthProfile(profile: AuthProfile) {
 function authStorageWarning() {
   return bestEffortWarning(
     "auth",
-    "pire-browser auth profiles are stored in the managed Firefox profile extension storage, not a full encrypted auth vault."
+    "Legacy extension-storage auth profiles live in the managed Firefox profile. Use the normal CLI `auth save` / `auth login` path for the encrypted local auth vault."
   );
 }
 

@@ -272,7 +272,8 @@ pire-browser auth show app
 pire-browser auth delete app
 # set credentials covers session-only HTTP Basic auth.
 # --password-stdin avoids putting saved auth passwords in shell history.
-# Encrypted auth vault storage and credential-provider plugins are not available yet`),
+# Auth profiles are stored in the encrypted local auth vault.
+# Credential-provider plugins are not available yet`),
 
   h2("Confirmation", "confirmation"),
   code(`pire-browser --confirm-actions eval eval "document.title"

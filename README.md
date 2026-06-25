@@ -603,6 +603,7 @@ The server defaults to MCP protocol `2025-11-25` and accepts older supported cli
 - Use managed Firefox profiles for normal browser login state.
 - Use `auth save --password-stdin` when saving a selector-driven auth helper to avoid shell history.
 - Use `state save` and `state load` for active-origin cookies and Web Storage.
+- Auth profiles are stored in a local AES-256-GCM encrypted auth vault.
 - Set `PIRE_BROWSER_ENCRYPTION_KEY` or `AGENT_BROWSER_ENCRYPTION_KEY` to a 64-character hex key when saved state files should be encrypted.
 - Do not commit `.pire-state/` files.
 
@@ -638,8 +639,8 @@ auth vault.
 
 ### Selector-driven auth helper
 
-For simple username/password forms, save a best-effort profile-local auth helper
-and reuse it later:
+For simple username/password forms, save a best-effort encrypted auth-vault
+profile and reuse it later:
 
 ```bash
 echo "secret" | pire-browser auth save app --url https://example.com/login --username user --password-stdin --username-selector "#email" --password-selector "#password" --submit-selector "button[type=submit]"
@@ -648,9 +649,14 @@ pire-browser snapshot -i
 ```
 
 `--password-stdin` is the recommended save path because it avoids putting the
-password in shell history. Auth profiles are stored in the managed Firefox
-extension's local storage and are not a full encrypted vault. Do not claim login
-success until a fresh snapshot, URL, or page state confirms it.
+password in shell history. Auth profiles are stored in an AES-256-GCM encrypted
+local vault under the OS app-data directory. The vault key comes from
+`PIRE_BROWSER_AUTH_ENCRYPTION_KEY`, `PIRE_BROWSER_ENCRYPTION_KEY`, the
+agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY`, or an auto-generated
+local key file. `auth list` and `auth show` do not print passwords; `auth login`
+decrypts locally and sends a one-shot profile payload to the Firefox extension.
+Credential-provider plugins are not implemented yet. Do not claim login success
+until a fresh snapshot, URL, or page state confirms it.
 
 ### Proxy authentication
 

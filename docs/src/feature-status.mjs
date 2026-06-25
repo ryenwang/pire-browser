@@ -63,8 +63,8 @@ export const featureStatuses = {
   },
   auth: {
     status: "partial",
-    summary: "`auth save/login/list/show/delete` provide a local Firefox-profile auth helper, including CLI-expanded `auth save --password-stdin`; encrypted vault storage and credential-provider plugins are not available yet.",
-    sources: ["README.md", "skill-data/core/SKILL.md", "extension/src/background.ts"],
+    summary: "`auth save/login/list/show/delete` provide a built-in AES-256-GCM encrypted local auth vault with CLI-expanded `auth save --password-stdin`; `auth login` decrypts locally and sends a one-shot profile payload to Firefox. Credential-provider plugins are not available yet.",
+    sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/auth_vault.rs", "extension/src/background.ts"],
   },
   networkControls: {
     status: "partial",

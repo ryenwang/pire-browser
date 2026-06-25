@@ -3096,11 +3096,12 @@ Usage:
   pire-browser auth show <name>
   pire-browser auth delete <name>
 
-Stores a best-effort local auth profile in the managed Firefox profile, then
-opens the URL, fills username/password selectors, and clicks the submit selector
-on login. Passwords are not printed by list/show output. Use --password-stdin
-to avoid putting the password in shell history. This is not a full encrypted
-auth vault.
+Stores a best-effort local auth profile in an encrypted auth vault, then opens
+the URL, fills username/password selectors, and clicks the submit selector on
+login. Passwords are not printed by list/show output. Use --password-stdin to
+avoid putting the password in shell history. The vault uses AES-256-GCM with
+PIRE_BROWSER_AUTH_ENCRYPTION_KEY, PIRE_BROWSER_ENCRYPTION_KEY,
+AGENT_BROWSER_ENCRYPTION_KEY, or an auto-generated local key file.
 "##;
 
 const STATE_HELP: &str = r##"

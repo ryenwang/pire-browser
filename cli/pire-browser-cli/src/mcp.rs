@@ -3489,7 +3489,7 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_auth_save",
             "Save auth profile",
-            "Save a selector-driven auth profile in the managed Firefox profile. Password is sensitive; shell users should prefer auth save --password-stdin.",
+            "Save a selector-driven auth profile in the encrypted local auth vault. Password is sensitive; shell users should prefer auth save --password-stdin.",
             tool_schema(
                 vec![
                     ("name", string_prop("Auth profile name.")),
@@ -3507,7 +3507,7 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_auth_login",
             "Run auth login",
-            "Open a saved auth profile URL, fill configured selectors, and submit the form.",
+            "Decrypt a saved auth profile locally, open its URL, fill configured selectors, and submit the form.",
             tool_schema(vec![("name", string_prop("Auth profile name."))], &["name"]),
             false,
         ),

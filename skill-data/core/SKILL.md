@@ -480,7 +480,7 @@ pire-browser auth login app
 pire-browser snapshot -i --compact
 ```
 
-Prefer `--password-stdin` over `--password` when saving credentials so the password is not placed in shell history. When using MCP, only call `pire_browser_auth_save` with user-approved credentials; use `pire_browser_auth_login`, then verify with a fresh snapshot, URL, or page state before reporting success. This is a best-effort Firefox profile-local auth path, not a full encrypted auth vault or credential-provider plugin flow.
+Prefer `--password-stdin` over `--password` when saving credentials so the password is not placed in shell history. Saved auth profiles live in the local AES-256-GCM encrypted auth vault. The vault key comes from `PIRE_BROWSER_AUTH_ENCRYPTION_KEY`, `PIRE_BROWSER_ENCRYPTION_KEY`, `AGENT_BROWSER_ENCRYPTION_KEY`, or an auto-generated local key file. `auth list` and `auth show` do not print passwords; `auth login` decrypts locally and sends a one-shot profile payload to Firefox. When using MCP, only call `pire_browser_auth_save` with user-approved credentials; use `pire_browser_auth_login`, then verify with a fresh snapshot, URL, or page state before reporting success. Credential-provider plugin flows are not implemented yet.
 
 Open tabs and windows:
 
