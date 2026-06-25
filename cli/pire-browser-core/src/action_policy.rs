@@ -335,7 +335,11 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
             }
         }
         "network" => match subcommand {
-            None | Some("requests") | Some("request") => {
+            None
+            | Some("requests")
+            | Some("request")
+            | Some("wait-for-request")
+            | Some("wait-for-response") => {
                 if args.iter().any(|arg| arg == "--clear") {
                     "state"
                 } else {
@@ -950,6 +954,8 @@ mod tests {
             vec!["network", "requests"],
             vec!["network", "requests", "--clear"],
             vec!["network", "request", "1"],
+            vec!["network", "wait-for-request", "**/api/**"],
+            vec!["network", "wait-for-response", "**/api/**"],
             vec!["network", "route", "*", "--abort"],
             vec!["tab"],
             vec!["tabs"],

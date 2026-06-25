@@ -10,13 +10,13 @@ pire-browser mcp --tools core,network
 pire-browser mcp --tools core,state
 pire-browser mcp --tools core,react
 pire-browser mcp --tools all`),
-  p("Use the smallest MCP profile that fits the task. <code>core</code> is the default inspect-before-act workflow. Add comma-separated profiles only when a workflow needs more surface, such as <code>core,network</code> for request diagnostics, <code>core,state</code> for cookies, storage, auth, and state files, or <code>core,react</code> for React Fiber inspection. The <code>pire_browser_tools_profiles</code> tool describes available profiles in-band."),
+  p("Use the smallest MCP profile that fits the task. <code>core</code> is the default inspect-before-act workflow. Add comma-separated profiles only when a workflow needs more surface, such as <code>core,network</code> for request/response waits and diagnostics, <code>core,state</code> for cookies, storage, auth, and state files, or <code>core,react</code> for React Fiber inspection. The <code>pire_browser_tools_profiles</code> tool describes available profiles in-band."),
   h2("Profiles", "profiles"),
   table(
     ["Profile", "Purpose"],
     [
       ["core", "Open/goto/navigate, read, inspect, semantic find, interact, typed get/check verification, typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff evidence, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, and skill guidance."],
-      ["network", "Headers, credentials, offline toggle, network request inspection with redacted headers, safe outgoing request-body previews, bounded text-like response previews, HAR export, and route/unroute controls."],
+      ["network", "Headers, credentials, offline toggle, request/response waits, network request inspection with redacted headers, safe outgoing request-body previews, bounded text-like response previews, HAR export, and route/unroute controls."],
       ["state", "Cookies, storage, encrypted auth vault helpers, plaintext or opt-in encrypted state files, sessions, profiles including Firefox profile import, downloads/uploads, typed clipboard tools, and skills."],
       ["debug", "Lower-level launch, explicit install/repair, user-requested package upgrade, batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, Firefox trace bundles, screenshot-sequence recording bundles, dashboard-backed stream preview controls, best-effort vitals, diffs, status, sessions/profiles, and close."],
       ["tabs", "Broader tab/window workflows: compatible tabs_* aliases, tab labels, iframe selection, JavaScript dialogs, windows, and close."],
@@ -74,7 +74,7 @@ pire-browser mcp --tools all`),
       ["pire_browser_doctor / activity_list", "Run install diagnostics or inspect recent redacted command activity."],
       ["pire_browser_set_viewport / pire_browser_device / pire_browser_set_device / pire_browser_set_geo / pire_browser_set_headers / pire_browser_set_credentials / pire_browser_set_media / pire_browser_set_offline", "Apply Firefox-backed settings and best-effort emulation controls. Prefer pire_browser_device for agent-browser-style device presets; set_device remains compatible."],
       ["pire_browser_cookies_* / pire_browser_storage_*", "Read, set, clear, or import active URL cookies and active-origin Web Storage."],
-      ["pire_browser_network_requests / request / har_* / route / unroute", "Inspect active-tab network metadata with redacted request/response headers, redacted/truncated outgoing request bodies, and bounded text-like response previews when Firefox exposes them, record/export HAR, and register best-effort routes."],
+      ["pire_browser_network_requests / request / wait_for_request / wait_for_response / har_* / route / unroute", "Inspect active-tab network metadata, wait for matching requests/responses, record/export HAR, and register best-effort routes. Network output may include redacted request/response headers, redacted/truncated outgoing request bodies, and bounded text-like response previews when Firefox exposes them."],
       ["pire_browser_auth_save / pire_browser_auth_login / pire_browser_auth_list / pire_browser_auth_show / pire_browser_auth_delete", "Save and reuse selector-driven encrypted auth-vault profiles without printing passwords in list/show output, or pass credentialProvider/item/url to resolve a one-shot login through a configured credential.read plugin."],
       ["pire_browser_state_*", "Save, load, list, show, inspect, rename, clear, or clean active-origin state files. Files are plaintext by default and AES-256-GCM encrypted when a state encryption key is set."],
       ["pire_browser_session_* / profiles_list / profiles_import", "Inspect live sessions and managed Firefox profiles, or copy an existing Firefox profile into managed pire-browser state."],

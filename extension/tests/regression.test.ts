@@ -1120,6 +1120,12 @@ describe("pire-browser command foundations", () => {
       ["eval", "document.title"],
       ["addinitscript", "window.__flag=true"],
       ["removeinitscript", "init1"],
+      ["network"],
+      ["network", "requests"],
+      ["network", "request", "req_1"],
+      ["network", "wait-for-request", "**/api/**"],
+      ["network", "wait-for-response", "**/api/**"],
+      ["network", "route", "*", "--abort"],
       ["tab"],
       ["tabs"],
       ["back"],
@@ -1500,6 +1506,23 @@ describe("command shape parity", () => {
     expect(body).toContain("networkRouteMatchesByRequestId.delete(id)");
   });
 
+  it("waits for matching network requests and responses", () => {
+    const body = background();
+    expect(body).toContain('if (subcommand === "wait-for-request") return networkWaitCommand("request", rest);');
+    expect(body).toContain('if (subcommand === "wait-for-response") return networkWaitCommand("response", rest);');
+    expect(body).toContain("async function networkWaitCommand");
+    expect(body).toContain("function parseNetworkWaitArgs");
+    expect(body).toContain("function networkWaitRecordMatches");
+    expect(body).toContain("function formatNetworkWaitResult");
+    expect(body).toContain("network wait-for-request does not support --status; use wait-for-response");
+    expect(body).toContain('mode === "response" && (record.active || record.error || typeof record.statusCode !== "number")');
+    expect(body).toContain("networkRecordMatches(record, {");
+    expect(body).toContain("Timed out waiting for network ${mode} matching ${parsed.pattern} after ${parsed.timeout}ms");
+    expect(body).toContain("wait-for-request|wait-for-response");
+    expect(body).toContain('"network-request"');
+    expect(body).toContain('"network-response"');
+  });
+
   it("exports HAR files from captured network requests", () => {
     const body = background();
     expect(body).toContain('if (subcommand === "har" || subcommand === "export-har") return networkHarCommand(rest);');
@@ -1522,7 +1545,7 @@ describe("command shape parity", () => {
     expect(body).toContain("content.text = record.responseBody.text");
     expect(body).toContain("HAR export is built from Firefox WebExtension request metadata.");
     expect(body).toContain("captured request bodies, and bounded text-like response previews are redacted/truncated");
-    expect(body).toContain('"network requires requests|request|route|unroute|har|export-har"');
+    expect(body).toContain('"network requires requests|request|wait-for-request|wait-for-response|route|unroute|har|export-har"');
   });
 
   it("routes mouse commands through page-dispatched best-effort events", () => {

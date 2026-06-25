@@ -385,6 +385,8 @@ pire-browser network requests --type xhr,fetch
 pire-browser network requests --method POST
 pire-browser network requests --status 2xx
 pire-browser network request <requestId>
+pire-browser network wait-for-request "**/api/**" --method POST --timeout 10000
+pire-browser network wait-for-response "**/api/**" --status 2xx --timeout 10000
 pire-browser network har start
 pire-browser network har stop network.har
 pire-browser network har
@@ -395,7 +397,7 @@ pire-browser network unroute "*"
 pire-browser network requests --clear
 ```
 
-The network surface is Firefox-backed: cooperative domain allowlists, extension-applied proxy settings, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics, agent-browser-style `network har start` / `network har stop`, direct HAR export, and best-effort active-tab route interception. `network request <requestId>` and HAR export include redacted request/response headers, redacted/truncated outgoing request bodies, and bounded redacted text-like response previews when Firefox exposes them; cookie values, binary bodies, and raw secrets are not captured.
+The network surface is Firefox-backed: cooperative domain allowlists, extension-applied proxy settings, origin-scoped request headers, active-tab network-idle waiting, request/response waits, recent request diagnostics, agent-browser-style `network har start` / `network har stop`, direct HAR export, and best-effort active-tab route interception. Use `network wait-for-request` before or immediately after an action when you need to prove an API call started; use `network wait-for-response` when verification should wait for the matching HTTP response. `network request <requestId>`, network waits, and HAR export include redacted request/response headers, redacted/truncated outgoing request bodies, and bounded redacted text-like response previews when Firefox exposes them; cookie values, binary bodies, and raw secrets are not captured.
 
 ### Tabs & Windows
 
@@ -651,7 +653,10 @@ on macOS if Firefox is missing, and reports non-Snap/non-Flatpak guidance on
 Linux.
 
 Add comma-separated profiles only when needed: `network`, `state`, `debug`,
-`tabs`, `mobile`, or `react`. Use `state` for typed clipboard tools and
+`tabs`, `mobile`, or `react`. Use `network` for typed request/response waits
+such as `pire_browser_network_wait_for_request` and
+`pire_browser_network_wait_for_response` plus request diagnostics, routes, and
+HAR. Use `state` for typed clipboard tools and
 `pire_browser_profiles_import` when the user wants existing Firefox login state
 copied into a managed profile. Use `debug` for lower-level launch,
 install/repair, upgrade, batch, doctor/activity diagnostics,

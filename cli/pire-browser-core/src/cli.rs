@@ -2718,6 +2718,7 @@ Common commands:
   cookies                         Show active URL cookies
   storage local [key]             Read active-origin localStorage
   network requests                Show recent page network requests
+  network wait-for-response "**/api/**" Wait for matching API response
   network har network.har         Export recent request data as HAR
   network route "**/api/**" --body '{}' Mock or block active-tab requests
   trace start                     Start a Firefox QA evidence bundle
@@ -3258,6 +3259,8 @@ Usage:
   pire-browser network requests --filter <pattern> [--type xhr,fetch] [--method POST] [--status 2xx]
   pire-browser network requests --clear [--json]
   pire-browser network request <requestId> [--json]
+  pire-browser network wait-for-request <pattern> [--type xhr,fetch] [--method POST] [--timeout 10000] [--json]
+  pire-browser network wait-for-response <pattern> [--type xhr,fetch] [--method POST] [--status 2xx] [--timeout 10000] [--json]
   pire-browser network har start [--json]
   pire-browser network har stop [output.har] [--json]
   pire-browser network har [path] [--filter <pattern>] [--json]
@@ -3271,6 +3274,9 @@ Shows recent network requests captured from the active Firefox tab through the
 WebExtension `webRequest` API. `network` is an alias for `network requests`.
 Filters are best-effort: URL substring/glob, resource
 type, HTTP method, and status (`200`, `2xx`, or `400-499`).
+Use `network wait-for-request` before an action when you need to prove a request
+started, and `network wait-for-response` when you need the matching HTTP
+response before verification.
 
 Route rules are active-tab scoped. They can mark pass-through requests, abort
 matching requests, or mock with a simple body redirect. Use `network unroute`
@@ -6099,6 +6105,7 @@ mod tests {
         assert!(text.contains("cookies"));
         assert!(text.contains("storage local [key]"));
         assert!(text.contains("network requests"));
+        assert!(text.contains("network wait-for-response"));
         assert!(text.contains("network route"));
         assert!(text.contains("network har"));
         assert!(text.contains("stream enable [--port 4848]"));
@@ -6242,6 +6249,12 @@ mod tests {
         assert!(help_text(Some("network"))
             .unwrap()
             .contains("network request <requestId>"));
+        assert!(help_text(Some("network"))
+            .unwrap()
+            .contains("network wait-for-request <pattern>"));
+        assert!(help_text(Some("network"))
+            .unwrap()
+            .contains("network wait-for-response <pattern>"));
         assert!(help_text(Some("network")).unwrap().contains("network har"));
         assert!(help_text(Some("network"))
             .unwrap()

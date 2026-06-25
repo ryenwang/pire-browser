@@ -206,6 +206,20 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "network wait for request maps to get",
+      "args": ["network", "wait-for-request", "**/api/**"],
+      "policy": { "default": "deny", "allow": ["get"] },
+      "expectedCategory": "get",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "network wait for response maps to get",
+      "args": ["network", "wait-for-response", "**/api/**", "--status", "2xx"],
+      "policy": { "default": "deny", "allow": ["get"] },
+      "expectedCategory": "get",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "swipe maps to scroll",
       "args": ["swipe", "up", "500"],
       "policy": { "default": "deny", "allow": ["scroll"] },

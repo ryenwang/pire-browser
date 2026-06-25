@@ -807,6 +807,7 @@ function actionPolicyCategoryName(args: string[]): string | null {
     case "network":
       if (subcommand === "requests") return args.includes("--clear") ? "state" : "get";
       if (subcommand === "request") return "get";
+      if (subcommand === "wait-for-request" || subcommand === "wait-for-response") return "get";
       if (!subcommand) return "get";
       return "network";
     case "snapshot":
@@ -4896,10 +4897,12 @@ async function networkCommand(args: string[]) {
     return networkRequestsCommand(subcommand?.startsWith("--") ? args : rest);
   }
   if (subcommand === "request") return networkRequestDetailCommand(rest);
+  if (subcommand === "wait-for-request") return networkWaitCommand("request", rest);
+  if (subcommand === "wait-for-response") return networkWaitCommand("response", rest);
   if (subcommand === "route") return networkRouteCommand(rest);
   if (subcommand === "unroute") return networkUnrouteCommand(rest);
   if (subcommand === "har" || subcommand === "export-har") return networkHarCommand(rest);
-  return { error: { code: "invalid_args", message: "network requires requests|request|route|unroute|har|export-har" } };
+  return { error: { code: "invalid_args", message: "network requires requests|request|wait-for-request|wait-for-response|route|unroute|har|export-har" } };
 }
 
 async function networkRouteCommand(args: string[]) {
@@ -5034,6 +5037,113 @@ async function networkRequestsCommand(args: string[]) {
     requests: records,
     count: records.length,
   };
+}
+
+async function networkWaitCommand(mode: "request" | "response", args: string[]) {
+  const tab = await targetTab();
+  const parsed = parseNetworkWaitArgs(mode, args);
+  if ("error" in parsed) return parsed;
+  const startedAt = Date.now();
+  const deadline = startedAt + parsed.timeout;
+  while (Date.now() <= deadline) {
+    const record = networkRecordsForTab(tab.tabId).find((candidate) => networkWaitRecordMatches(candidate, parsed, mode));
+    if (record) {
+      const request = publicNetworkRecord(record);
+      return {
+        text: formatNetworkWaitResult(mode, request),
+        request,
+        wait: {
+          kind: mode === "request" ? "network-request" : "network-response",
+          pattern: parsed.pattern,
+          timeout: parsed.timeout,
+          elapsedMs: Math.max(0, Date.now() - startedAt),
+        },
+      };
+    }
+    await delay(NETWORK_IDLE_POLL_INTERVAL_MS);
+  }
+  return {
+    error: {
+      code: "timeout",
+      message: `Timed out waiting for network ${mode} matching ${parsed.pattern} after ${parsed.timeout}ms`,
+      data: {
+        pattern: parsed.pattern,
+        timeout: parsed.timeout,
+        type: parsed.typeFilter,
+        method: parsed.methodFilter,
+        status: parsed.statusFilter,
+      },
+    },
+  };
+}
+
+function parseNetworkWaitArgs(
+  mode: "request" | "response",
+  args: string[]
+):
+  | { pattern: string; timeout: number; typeFilter?: string; methodFilter?: string; statusFilter?: string }
+  | { error: RpcResponse["error"] } {
+  const valueFlags = new Set(["--timeout", "--type", "--method", "--status"]);
+  const pattern = firstPositionalArg(args, Array.from(valueFlags));
+  if (!pattern) {
+    return {
+      error: {
+        code: "invalid_args",
+        message: `network wait-for-${mode} requires <url-pattern>`,
+      },
+    };
+  }
+  const timeoutResult = parseTimeoutOption(args, 10000);
+  if ("error" in timeoutResult) return { error: timeoutResult.error };
+  if (mode === "request" && valueAfter(args, "--status") !== undefined) {
+    return { error: { code: "invalid_args", message: "network wait-for-request does not support --status; use wait-for-response" } };
+  }
+  let positionalCount = 0;
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (valueFlags.has(arg)) {
+      const value = args[index + 1];
+      if (!value || value.startsWith("--")) {
+        return { error: { code: "invalid_args", message: `${arg} requires a value` } };
+      }
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--")) {
+      return { error: { code: "invalid_args", message: `network wait-for-${mode} does not support argument: ${arg}` } };
+    }
+    positionalCount += 1;
+    if (positionalCount > 1) {
+      return { error: { code: "invalid_args", message: `network wait-for-${mode} unexpected argument: ${arg}` } };
+    }
+  }
+  return {
+    pattern,
+    timeout: timeoutResult.ms,
+    typeFilter: valueAfter(args, "--type"),
+    methodFilter: valueAfter(args, "--method"),
+    statusFilter: mode === "response" ? valueAfter(args, "--status") : undefined,
+  };
+}
+
+function networkWaitRecordMatches(
+  record: NetworkActivityRecord,
+  filters: { pattern: string; typeFilter?: string; methodFilter?: string; statusFilter?: string },
+  mode: "request" | "response"
+) {
+  if (mode === "response" && (record.active || record.error || typeof record.statusCode !== "number")) return false;
+  return networkRecordMatches(record, {
+    filter: filters.pattern,
+    typeFilter: filters.typeFilter,
+    methodFilter: filters.methodFilter,
+    statusFilter: filters.statusFilter,
+  });
+}
+
+function formatNetworkWaitResult(mode: "request" | "response", record: ReturnType<typeof publicNetworkRecord>) {
+  const method = record.method ?? "GET";
+  const status = mode === "response" ? ` ${record.statusCode}` : "";
+  return `Matched network ${mode} ${record.requestId}${status} ${method} ${truncate(record.url ?? "", 180)}`;
 }
 
 async function networkHarCommand(args: string[]) {

@@ -982,6 +982,24 @@
     },
     {
       "root": "network",
+      "subcommand": "wait-for-request",
+      "signature": "network wait-for-request <pattern>",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "pire-extension"
+    },
+    {
+      "root": "network",
+      "subcommand": "wait-for-response",
+      "signature": "network wait-for-response <pattern>",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "pire-extension"
+    },
+    {
+      "root": "network",
       "signature": "network <subcommand>",
       "category": "network",
       "implementationStatus": "reserved",

@@ -221,6 +221,9 @@ mod tests {
         assert!(skill
             .content
             .contains("pire-browser open https://api.example.com --headers"));
+        assert!(skill
+            .content
+            .contains("pire-browser network wait-for-response"));
         assert!(skill.content.contains("pire-browser batch --bail"));
         assert!(skill.content.contains("pire-browser auth login"));
         assert!(skill.content.contains("pire-browser tab new"));

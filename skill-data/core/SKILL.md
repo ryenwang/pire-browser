@@ -337,6 +337,8 @@ pire-browser network requests
 pire-browser network requests --filter /api/
 pire-browser network requests --type xhr,fetch --status 2xx
 pire-browser network request <requestId>
+pire-browser network wait-for-request "**/api/**" --method POST --timeout 10000
+pire-browser network wait-for-response "**/api/**" --status 2xx --timeout 10000
 pire-browser network har start
 pire-browser network har stop network.har
 pire-browser network har
@@ -349,7 +351,10 @@ pire-browser network requests --clear
 
 Use `network requests` after navigation or failed app actions to see recent
 active-tab requests. Filters support URL substring/glob, resource type, method,
-and status. Use `network route` before triggering a fetch/load when you need a
+and status. Use `network wait-for-request` around clicks/forms when you need to
+prove an API call started, and `network wait-for-response` when the next
+snapshot/get should wait for a matching HTTP response. Use `network route`
+before triggering a fetch/load when you need a
 best-effort active-tab mock or block, then `network unroute` before returning to
 normal behavior. Firefox route mocking uses WebExtension interception, so treat
 it as QA/debug control rather than full CDP response capture. Use `network har start`
@@ -669,7 +674,7 @@ inspect-before-act workflow: open/goto/navigate, snapshot, semantic find, intera
 typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff
 evidence, eval/evaluate, status, confirmation follow-up, tab list/new/switch/close, profile discovery,
 close, and skill guidance. Add comma-separated profiles only when needed:
-`network` for request diagnostics/routes/HAR, `state` for cookies/storage/auth
+`network` for request/response waits, request diagnostics, routes, and HAR, `state` for cookies/storage/auth
 and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair,
 user-requested package upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/trace/profiler/record/stream/vitals,
 `tabs` for tab labels, frames, dialogs, and separate windows, and `mobile` for viewport/device/geo/media/mouse

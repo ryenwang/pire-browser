@@ -259,6 +259,8 @@ fn tool_profile_bits(name: &str) -> u16 {
         "pire_browser_set_offline" => PROFILE_NETWORK | PROFILE_MOBILE,
         "pire_browser_network_requests"
         | "pire_browser_network_request"
+        | "pire_browser_network_wait_for_request"
+        | "pire_browser_network_wait_for_response"
         | "pire_browser_network_har_start"
         | "pire_browser_network_har_stop"
         | "pire_browser_network_har_export"
@@ -441,7 +443,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open/goto/navigate, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open, pire_browser_goto, or pire_browser_navigate for normal launch/navigation; use enableReactDevtools on those tools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed HTTP polling live preview; it is not full WebSocket frame streaming yet. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, Firefox profile import, debugging, tab labels/frames/dialogs/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open/goto/navigate, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open, pire_browser_goto, or pire_browser_navigate for normal launch/navigation; use enableReactDevtools on those tools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed HTTP polling live preview; it is not full WebSocket frame streaming yet. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when request/response waits, network diagnostics, cookies/storage/auth/state, Firefox profile import, debugging, tab labels/frames/dialogs/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -1498,6 +1500,23 @@ fn tool_command_args(
             args.push("network".to_string());
             args.push("request".to_string());
             args.push(required_string(object, "requestId")?);
+        }
+        (_, "pire_browser_network_wait_for_request") => {
+            args.push("network".to_string());
+            args.push("wait-for-request".to_string());
+            args.push(required_string(object, "pattern")?);
+            push_optional_flag_value(&mut args, object, "resourceType", "--type")?;
+            push_optional_flag_value(&mut args, object, "method", "--method")?;
+            push_wait_timeout_arg(&mut args, object)?;
+        }
+        (_, "pire_browser_network_wait_for_response") => {
+            args.push("network".to_string());
+            args.push("wait-for-response".to_string());
+            args.push(required_string(object, "pattern")?);
+            push_optional_flag_value(&mut args, object, "resourceType", "--type")?;
+            push_optional_flag_value(&mut args, object, "method", "--method")?;
+            push_optional_flag_value(&mut args, object, "status", "--status")?;
+            push_wait_timeout_arg(&mut args, object)?;
         }
         (_, "pire_browser_network_har_start") => {
             args.push("network".to_string());
@@ -3642,6 +3661,37 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_network_wait_for_request",
+            "Wait for network request",
+            "Wait until the active tab starts a matching network request, then return the recorded request metadata.",
+            tool_schema(
+                vec![
+                    ("pattern", string_prop("URL substring or glob pattern.")),
+                    ("resourceType", string_prop("Optional resource type filter such as xhr,fetch.")),
+                    ("method", string_prop("Optional HTTP method filter such as POST.")),
+                    ("waitTimeoutMs", number_prop("Maximum wait time in milliseconds.")),
+                ],
+                &["pattern"],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_network_wait_for_response",
+            "Wait for network response",
+            "Wait until the active tab completes a matching HTTP response, then return the recorded request/response metadata.",
+            tool_schema(
+                vec![
+                    ("pattern", string_prop("URL substring or glob pattern.")),
+                    ("resourceType", string_prop("Optional resource type filter such as xhr,fetch.")),
+                    ("method", string_prop("Optional HTTP method filter such as POST.")),
+                    ("status", string_prop("Optional status filter such as 200, 2xx, or 400-499.")),
+                    ("waitTimeoutMs", number_prop("Maximum wait time in milliseconds.")),
+                ],
+                &["pattern"],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_network_har_start",
             "Start HAR recording",
             "Start active-tab HAR recording with redacted headers, safe request-body previews, and bounded response previews.",
@@ -4764,6 +4814,12 @@ mod tests {
         assert!(network
             .iter()
             .any(|tool| tool["name"] == "pire_browser_network_route"));
+        assert!(network
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_network_wait_for_request"));
+        assert!(network
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_network_wait_for_response"));
         assert!(!network
             .iter()
             .any(|tool| tool["name"] == "pire_browser_click"));
@@ -6436,6 +6492,57 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "network", "request", "req_123"]);
+
+        let args = tool_command_args(
+            "pire_browser_network_wait_for_request",
+            &json!({
+                "pattern": "**/api/login**",
+                "resourceType": "xhr,fetch",
+                "method": "POST",
+                "waitTimeoutMs": 7000
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "network",
+                "wait-for-request",
+                "**/api/login**",
+                "--type",
+                "xhr,fetch",
+                "--method",
+                "POST",
+                "--timeout",
+                "7000"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_network_wait_for_response",
+            &json!({
+                "pattern": "**/api/login**",
+                "status": "2xx",
+                "waitTimeoutMs": 9000
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "network",
+                "wait-for-response",
+                "**/api/login**",
+                "--status",
+                "2xx",
+                "--timeout",
+                "9000"
+            ]
+        );
 
         let args = tool_command_args(
             "pire_browser_network_har_start",
