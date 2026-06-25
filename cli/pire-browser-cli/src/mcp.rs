@@ -690,6 +690,9 @@ fn tool_command_args(
             if optional_bool(object, "compact")? {
                 args.push("-c".to_string());
             }
+            if optional_bool(object, "cursorInteractive")? {
+                args.push("-C".to_string());
+            }
             if optional_bool(object, "urls")? {
                 args.push("-u".to_string());
             }
@@ -2348,6 +2351,7 @@ fn core_tools() -> Vec<Value> {
                 vec![
                     ("interactive", bool_prop("Include refs. Defaults to true.")),
                     ("compact", bool_prop("Reduce low-value structural noise.")),
+                    ("cursorInteractive", bool_prop("Include visible cursor-pointer or inline onclick elements with refs.")),
                     ("urls", bool_prop("Include href URLs for links.")),
                     ("depth", number_prop("Limit snapshot depth.")),
                     ("selector", string_prop("Scope snapshot to a CSS selector.")),
@@ -4972,6 +4976,7 @@ mod tests {
             &json!({
                 "sessionName": "review",
                 "compact": true,
+                "cursorInteractive": true,
                 "urls": true,
                 "selector": "#main",
                 "depth": 3
@@ -4988,6 +4993,7 @@ mod tests {
                 "snapshot",
                 "-i",
                 "-c",
+                "-C",
                 "-u",
                 "-d",
                 "3",

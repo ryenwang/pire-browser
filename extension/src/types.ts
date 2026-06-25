@@ -48,6 +48,7 @@ export type ElementSnapshot = {
   depth?: number;
   disabled: boolean;
   visible: boolean;
+  cursorInteractive?: boolean;
   bounds: { x: number; y: number; width: number; height: number };
   locator: Locator;
 };

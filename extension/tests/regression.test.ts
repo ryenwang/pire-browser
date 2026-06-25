@@ -1086,17 +1086,22 @@ describe("command shape parity", () => {
     expect(body).toContain('arg === "-s" || arg === "--scope" || arg === "--selector"');
     expect(body).toContain('arg === "-d" || arg === "--depth"');
     expect(body).toContain('"--compact"');
+    expect(body).toContain('"--cursor-interactive"');
     expect(body).toContain('"--urls"');
     expect(body).toContain("function parseSnapshotDepth");
     expect(body).toContain("function compactSnapshotFrames");
+    expect(body).toContain("element.cursorInteractive");
     expect(body).toContain("No element matched snapshot scope");
-    expect(body).toContain('{ type: "snapshot", selector, depth }');
+    expect(body).toContain('{ type: "snapshot", selector, depth, cursorInteractive }');
 
     const contentBody = content();
-    expect(contentBody).toContain("snapshotFrame(message.selector, message.depth)");
+    expect(contentBody).toContain("snapshotFrame(message.selector, message.depth, Boolean(message.cursorInteractive))");
     expect(contentBody).toContain("function snapshotRoot");
     expect(contentBody).toContain("function elementDepthWithinRoot");
     expect(contentBody).toContain("function hrefFor");
+    expect(contentBody).toContain("function cursorInteractiveElements");
+    expect(contentBody).toContain("function isCursorInteractiveElement");
+    expect(contentBody).toContain("getComputedStyle(element).cursor === \"pointer\"");
   });
 
   it("supports best-effort web vitals diagnostics", () => {

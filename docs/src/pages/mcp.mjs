@@ -51,7 +51,7 @@ pire-browser mcp --tools all`),
       ["pire_browser_batch", "Debug-profile typed batch for short command sequences. Commands may be strings or arrays of args; use bail when later commands depend on earlier success."],
       ["pire_browser_open", "Launch Firefox and optionally navigate. Supports typed one-shot headers and initScriptPaths for pre-navigation setup."],
       ["pire_browser_read", "Read agent-friendly URL text without launching Firefox, or rendered text from the active tab."],
-      ["pire_browser_snapshot", "Inspect the page and return refs."],
+      ["pire_browser_snapshot", "Inspect the page and return refs. Use compact for noisy pages and cursorInteractive for visible cursor-pointer or inline onclick controls."],
       ["pire_browser_find", "Find by role, label, text, placeholder, alt text, title, test id, first, last, or nth; optionally act on the single match."],
       ["pire_browser_click / tap / dblclick / double_click / fill / type / press", "Perform page interactions. tap is a click-equivalent alias, not native touch input. Prefer the agent-browser-style dblclick spelling for new MCP clients; double_click remains compatible."],
       ["pire_browser_keyboard_type / keydown / keyup / key_down / key_up", "Type or dispatch key edges at the current focus. Prefer keydown/keyup for new MCP clients; key_down/key_up remain compatible."],
@@ -91,7 +91,7 @@ pire-browser mcp --tools all`),
   h2("Agent Loop", "agent-loop"),
   code(`1. Call pire_browser_open with a URL. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics.
 2. Use pire_browser_read for docs/articles when interaction refs are not needed.
-3. Call pire_browser_snapshot with compact=true, or use pire_browser_find when labels/roles are clear.
+3. Call pire_browser_snapshot with compact=true for noisy pages, cursorInteractive=true for custom clickable controls missing from the default snapshot, or use pire_browser_find when labels/roles are clear.
 4. Use fresh refs or semantic find locators in click/double-click/fill/type/press/select/check/scroll/drag/mouse/download/upload tools.
 5. Use typed get/check tools for targeted verification when you already have a fresh target: get_text, get_value, get_attr, get_url, get_title, is_visible, is_enabled, or is_checked. Use pire_browser_get and pire_browser_is only for compatibility.
 6. Use frame_select when a snapshot shows an iframe you need to work inside; run frame_main before returning to outer-page controls.

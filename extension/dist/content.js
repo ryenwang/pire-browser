@@ -36,7 +36,7 @@
         if (message.type === "dialog_control")
             return Promise.resolve(configureNextDialog(message.action, message.text));
         if (message.type === "snapshot")
-            return Promise.resolve(snapshotFrame(message.selector, message.depth));
+            return Promise.resolve(snapshotFrame(message.selector, message.depth, Boolean(message.cursorInteractive)));
         if (message.type === "find")
             return Promise.resolve(findElements(message.locator));
         if (message.type === "frame_target")
@@ -244,7 +244,7 @@
             // Restricted pages can reject script injection; commands will continue without dialog capture.
         }
     }
-    function snapshotFrame(selector, depth) {
+    function snapshotFrame(selector, depth, includeCursorInteractive = false) {
         const root = snapshotRoot(selector);
         const drained = drainDialogs();
         if ("error" in root) {
@@ -258,9 +258,9 @@
             };
         }
         const maxDepth = typeof depth === "number" && Number.isFinite(depth) ? depth : undefined;
-        const elements = candidateElements(root.root)
+        const elements = candidateElements(root.root, includeCursorInteractive)
             .filter((element) => maxDepth === undefined || elementDepthWithinRoot(element, root.root) <= maxDepth)
-            .map((element) => toSnapshot(element, root.root))
+            .map((element) => toSnapshot(element, root.root, includeCursorInteractive))
             .filter((item) => item.visible);
         return {
             frameId: 0,
@@ -1429,7 +1429,7 @@
                 return elementsByHandle.get(locator.handle) === element || matchesLocator(element, locator.fallback);
         }
     }
-    function candidateElements(root = document) {
+    function candidateElements(root = document, includeCursorInteractive = false) {
         const selector = [
             "a[href]",
             "button",
@@ -1454,15 +1454,66 @@
             if (root instanceof Element && safeMatches(root, selector))
                 out.push(root);
             out.push(...Array.from(root.querySelectorAll(selector)));
+            if (includeCursorInteractive) {
+                out.push(...cursorInteractiveElements(root));
+            }
             for (const element of Array.from(root.querySelectorAll("*"))) {
                 const shadow = element.shadowRoot;
-                if (shadow)
+                if (shadow) {
                     out.push(...Array.from(shadow.querySelectorAll(selector)));
+                    if (includeCursorInteractive)
+                        out.push(...cursorInteractiveElements(shadow));
+                }
             }
         }
         return unique(out);
     }
-    function toSnapshot(element, root = document) {
+    function cursorInteractiveElements(root) {
+        const candidates = [];
+        if (root instanceof Element && isCursorInteractiveElement(root))
+            candidates.push(root);
+        for (const element of Array.from(root.querySelectorAll("*"))) {
+            if (isCursorInteractiveElement(element))
+                candidates.push(element);
+        }
+        return candidates;
+    }
+    function isCursorInteractiveElement(element) {
+        if (!(element instanceof HTMLElement))
+            return false;
+        if (!isVisible(element))
+            return false;
+        const explicitHandler = hasInlineClickHandler(element);
+        const cursorPointer = getComputedStyle(element).cursor === "pointer";
+        if (!explicitHandler && !cursorPointer)
+            return false;
+        if (!explicitHandler && cursorPointer && hasCursorInteractiveAncestor(element))
+            return false;
+        const text = clean(element.textContent ?? "");
+        return Boolean(accessibleName(element) || text || attr(element, "data-testid") || attr(element, "data-test") || attr(element, "title"));
+    }
+    function hasInlineClickHandler(element) {
+        if (attr(element, "onclick"))
+            return true;
+        try {
+            return typeof pageObject(element).onclick === "function";
+        }
+        catch {
+            return false;
+        }
+    }
+    function hasCursorInteractiveAncestor(element) {
+        let parent = element.parentElement;
+        while (parent) {
+            if (hasInlineClickHandler(parent))
+                return true;
+            if (parent instanceof HTMLElement && getComputedStyle(parent).cursor === "pointer")
+                return true;
+            parent = parent.parentElement;
+        }
+        return false;
+    }
+    function toSnapshot(element, root = document, includeCursorInteractive = false) {
         const rect = element.getBoundingClientRect();
         const role = inferRole(element);
         const name = accessibleName(element);
@@ -1483,6 +1534,7 @@
             depth: elementDepthWithinRoot(element, root),
             disabled: isDisabled(element),
             visible: isVisible(element),
+            cursorInteractive: includeCursorInteractive && isCursorInteractiveElement(element) ? true : undefined,
             bounds: {
                 x: Math.round(rect.x),
                 y: Math.round(rect.y),

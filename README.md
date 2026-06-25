@@ -110,6 +110,7 @@ Alpine/musl Linux is not part of the beta.
 ```bash
 pire-browser open https://example.com
 pire-browser snapshot -i                    # Get accessibility tree with refs
+pire-browser snapshot -i -C                 # Include cursor-pointer controls
 pire-browser click '@e2'                    # Click by ref from snapshot
 pire-browser fill '@e3' "test@example.com"  # Fill by ref
 pire-browser press Enter                    # Press a key at current focus
@@ -725,6 +726,7 @@ pire-browser --confirm-actions eval,download eval "document.title"
 ```bash
 pire-browser snapshot -i
 pire-browser snapshot -i --compact
+pire-browser snapshot -i --cursor-interactive
 pire-browser snapshot -i --urls
 pire-browser snapshot -i -d 5
 pire-browser snapshot -s "#main"
@@ -733,6 +735,7 @@ pire-browser snapshot --json
 ```
 
 Refs are short lived. Re-run `snapshot -i` after navigation, reloads, DOM changes, dialogs, downloads, uploads, or failed actions.
+Use `-C`/`--cursor-interactive` when a page uses clickable `div`s, custom controls, or cursor-pointer elements that are missing from the default accessibility-oriented snapshot.
 
 ## Annotated Screenshots
 

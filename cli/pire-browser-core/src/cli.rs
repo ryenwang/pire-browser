@@ -2420,9 +2420,10 @@ narrows emitted lines to matches plus heading context.
 const SNAPSHOT_HELP: &str = r##"
 Usage:
   pire-browser snapshot -i
+  pire-browser snapshot -i -C
   pire-browser snapshot -i -c
   pire-browser snapshot -d 3
-  pire-browser snapshot -i -c -d 5
+  pire-browser snapshot -i -c -C -d 5
   pire-browser snapshot -i -u
   pire-browser snapshot -s "#main"
   pire-browser snapshot --selector "#main"
@@ -2430,9 +2431,11 @@ Usage:
 
 Prints a page snapshot with refs such as @e1. `-i` keeps the output ref-oriented
 for interaction. `-c`/`--compact` suppresses low-value generic elements,
-`-d`/`--depth` limits DOM depth in the Firefox snapshot model, `-u`/`--urls`
-includes link URLs, and `-s`/`--selector` scopes to a CSS selector. Use quoted
-refs in PowerShell, for example: pire-browser click '@e1'.
+`-C`/`--cursor-interactive` includes visible cursor-pointer or inline onclick
+elements such as clickable divs, `-d`/`--depth` limits DOM depth in the Firefox
+snapshot model, `-u`/`--urls` includes link URLs, and `-s`/`--selector` scopes
+to a CSS selector. Use quoted refs in PowerShell, for example:
+pire-browser click '@e1'.
 "##;
 
 const PDF_HELP: &str = r##"
@@ -5077,10 +5080,16 @@ mod tests {
             .contains("snapshot -i -c"));
         assert!(help_text(Some("snapshot"))
             .unwrap()
+            .contains("snapshot -i -C"));
+        assert!(help_text(Some("snapshot"))
+            .unwrap()
             .contains("snapshot -d 3"));
         assert!(help_text(Some("snapshot"))
             .unwrap()
-            .contains("snapshot -i -c -d 5"));
+            .contains("snapshot -i -c -C -d 5"));
+        assert!(help_text(Some("snapshot"))
+            .unwrap()
+            .contains("--cursor-interactive"));
         assert!(help_text(Some("snapshot")).unwrap().contains("-s"));
         assert!(help_text(Some("pdf"))
             .unwrap()

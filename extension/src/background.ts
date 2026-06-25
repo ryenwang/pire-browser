@@ -104,6 +104,7 @@ type ElementSnapshot = {
   depth?: number;
   disabled: boolean;
   visible: boolean;
+  cursorInteractive?: boolean;
   bounds: { x: number; y: number; width: number; height: number };
   locator: Locator;
 };
@@ -1473,7 +1474,13 @@ async function snapshotCommand(args: string[]) {
   const tab = await targetTab();
   const options = parseSnapshotOptions(args);
   if ("error" in options) return options;
-  const frames = await snapshotTab(tab.tabId, options.selector, options.depth, selectedFrameIdForTab(tab.tabId));
+  const frames = await snapshotTab(
+    tab.tabId,
+    options.selector,
+    options.depth,
+    selectedFrameIdForTab(tab.tabId),
+    options.cursorInteractive
+  );
   if (options.selector && !frames.some((frame) => frame.elements.length > 0)) {
     return { error: { code: "not_found", message: `No element matched snapshot scope: ${options.selector}` } };
   }
@@ -1568,7 +1575,7 @@ async function diffSnapshotCommand(args: string[], params: Record<string, any>) 
 
 function invalidDiffSnapshotArgs(args: string[]) {
   const valueFlags = new Set(["--baseline", "--selector", "--scope", "-s", "--depth", "-d"]);
-  const boolFlags = new Set(["-i", "--interactive", "-c", "--compact", "-u", "--urls", "--json"]);
+  const boolFlags = new Set(["-i", "--interactive", "-c", "--compact", "-C", "--cursor-interactive", "-u", "--urls", "--json"]);
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
     if (valueFlags.has(arg)) {
@@ -1661,6 +1668,7 @@ function compactDiffContext(lines: string[], contextSize: number) {
 type SnapshotOptions = {
   interactive: boolean;
   compact: boolean;
+  cursorInteractive: boolean;
   urls: boolean;
   selector?: string;
   depth?: number;
@@ -1692,7 +1700,7 @@ function parseSnapshotOptions(args: string[]): SnapshotOptions | { error: RpcRes
       depth = parsed.depth;
       continue;
     }
-    if (["-i", "--interactive", "-c", "--compact", "-u", "--urls", "--json"].includes(arg)) continue;
+    if (["-i", "--interactive", "-c", "--compact", "-C", "--cursor-interactive", "-u", "--urls", "--json"].includes(arg)) continue;
     if (arg.startsWith("-")) {
       return { error: { code: "invalid_args", message: `Unsupported snapshot option: ${arg}` } };
     }
@@ -1700,6 +1708,7 @@ function parseSnapshotOptions(args: string[]): SnapshotOptions | { error: RpcRes
   return {
     interactive: args.includes("-i") || args.includes("--interactive"),
     compact: args.includes("-c") || args.includes("--compact"),
+    cursorInteractive: args.includes("-C") || args.includes("--cursor-interactive"),
     urls: args.includes("-u") || args.includes("--urls"),
     selector,
     depth,
@@ -1733,6 +1742,7 @@ function compactSnapshotFrames(frames: FrameSnapshot[]): FrameSnapshot[] {
 
 function isInteractiveSnapshotElement(element: ElementSnapshot) {
   if (isActionableRole(element.role)) return true;
+  if (element.cursorInteractive) return Boolean(element.name || element.text || element.testid);
   if (["heading", "iframe", "tab", "menuitem"].includes(element.role)) return Boolean(element.name || element.text);
   if (element.testid || element.label || element.placeholder) return element.role !== "generic";
   return false;
@@ -5194,12 +5204,18 @@ function statusResult() {
   };
 }
 
-async function snapshotTab(tabId: number, selector?: string, depth?: number, frameId?: number): Promise<FrameSnapshot[]> {
+async function snapshotTab(
+  tabId: number,
+  selector?: string,
+  depth?: number,
+  frameId?: number,
+  cursorInteractive = false
+): Promise<FrameSnapshot[]> {
   const frames = await framesForScope(tabId, frameId);
   const out: FrameSnapshot[] = [];
   for (const frame of frames) {
     try {
-      const snapshot = await sendFrame(tabId, frame.frameId, { type: "snapshot", selector, depth });
+      const snapshot = await sendFrame(tabId, frame.frameId, { type: "snapshot", selector, depth, cursorInteractive });
       out.push({ ...snapshot, frameId: frame.frameId });
     } catch (error) {
       out.push({
