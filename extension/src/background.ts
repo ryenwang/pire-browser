@@ -840,6 +840,7 @@ function actionPolicyCategoryName(args: string[]): string | null {
       return "eval";
     case "scroll":
     case "scrollintoview":
+    case "scrollinto":
     case "swipe":
       return "scroll";
     case "mouse":
@@ -903,7 +904,7 @@ function findActionPolicyCategory(args: string[]) {
   if (action === "click" || action === "dblclick") return "click";
   if (["fill", "type", "select", "check", "uncheck"].includes(action)) return "fill";
   if (["text", "html", "value", "attr", "box", "styles"].includes(action)) return "get";
-  if (action === "scroll" || action === "scrollintoview") return "scroll";
+  if (action === "scroll" || action === "scrollintoview" || action === "scrollinto") return "scroll";
   if (["press", "key", "hover", "focus"].includes(action)) return "interact";
   if (action === "eval") return "eval";
   return "interact";
@@ -1017,6 +1018,7 @@ function commandNeedsActivePageDomainCheck(args: string[]) {
       "uncheck",
       "scroll",
       "scrollintoview",
+      "scrollinto",
       "swipe",
       "mouse",
       "drag",
@@ -1116,6 +1118,8 @@ async function executeCommand(
     case "highlight":
     case "scrollintoview":
       return targetActionCommand(command, rest);
+    case "scrollinto":
+      return targetActionCommand("scrollintoview", rest);
     case "select":
       return targetActionCommand("select", rest);
     case "check":
@@ -2211,18 +2215,19 @@ async function targetActionCommand(action: string, args: string[]) {
 }
 
 async function actOnFind(locator: Locator, action: string, text = "") {
+  const canonicalAction = action === "scrollinto" ? "scrollintoview" : action;
   const tab = await targetTab();
   const frames = await findInTab(tab.tabId, locator, selectedFrameIdForTab(tab.tabId));
   const matches = frames.flatMap((frame) => frame.elements.map(() => frame.frameId));
   if (matches.length === 0) return { error: { code: "not_found", message: "No element matched locator" } };
   if (matches.length > 1) return { error: { code: "ambiguous_locator", message: `${matches.length} elements matched locator` } };
-  if (action === "click") return clickLocator(locator, matches[0]);
-  if (action === "fill") return fillLocator(locator, text, matches[0]);
-  if (["text", "html", "value", "attr", "box", "styles"].includes(action)) {
-    const response = await sendFrame(tab.tabId, matches[0], { type: "get", locator, property: action, attribute: text }, { staleOnFrameRoutingError: true });
+  if (canonicalAction === "click") return clickLocator(locator, matches[0]);
+  if (canonicalAction === "fill") return fillLocator(locator, text, matches[0]);
+  if (["text", "html", "value", "attr", "box", "styles"].includes(canonicalAction)) {
+    const response = await sendFrame(tab.tabId, matches[0], { type: "get", locator, property: canonicalAction, attribute: text }, { staleOnFrameRoutingError: true });
     return normalizeContentResponse(response);
   }
-  const response = await sendFrame(tab.tabId, matches[0], { type: action, locator, text, value: text, property: action }, { staleOnFrameRoutingError: true });
+  const response = await sendFrame(tab.tabId, matches[0], { type: canonicalAction, locator, text, value: text, property: canonicalAction }, { staleOnFrameRoutingError: true });
   return normalizeContentResponse(response);
 }
 

@@ -182,6 +182,7 @@ export const commandRootStatus = {
   removeinitscript: "best_effort",
   screenshot: "available",
   scroll: "available",
+  scrollinto: "available",
   scrollintoview: "available",
   select: "available",
   session: "available",

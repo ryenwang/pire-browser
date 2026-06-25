@@ -2100,9 +2100,10 @@ fn push_find_action(
             | "styles"
             | "highlight"
             | "scrollintoview"
+            | "scrollinto"
     );
     if !needs_value && !allows_no_value {
-        return Err("action must be click, dblclick, fill, type, hover, focus, select, check, uncheck, text, html, value, attr, box, styles, highlight, or scrollintoview".to_string());
+        return Err("action must be click, dblclick, fill, type, hover, focus, select, check, uncheck, text, html, value, attr, box, styles, highlight, scrollintoview, or scrollinto".to_string());
     }
     let value = optional_string(object, "value")?;
     args.push(action.clone());
@@ -2675,7 +2676,7 @@ fn core_tools() -> Vec<Value> {
                     ("nth", number_prop("Zero-based index when kind is nth.")),
                     (
                         "action",
-                        string_prop("Optional action: click, dblclick, fill, type, hover, focus, select, check, uncheck, text, html, value, attr, box, styles, highlight, or scrollintoview."),
+                        string_prop("Optional action: click, dblclick, fill, type, hover, focus, select, check, uncheck, text, html, value, attr, box, styles, highlight, scrollintoview, or scrollinto."),
                     ),
                     (
                         "value",

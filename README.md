@@ -184,7 +184,7 @@ pire-browser select <sel> <val>      # Select dropdown option
 pire-browser check <sel>             # Check checkbox
 pire-browser uncheck <sel>           # Uncheck checkbox
 pire-browser scroll <dir> [px]       # Scroll page or container
-pire-browser scrollintoview <sel>    # Scroll element into view
+pire-browser scrollintoview <sel>    # Scroll element into view; alias: scrollinto
 pire-browser swipe up [px]           # Best-effort mobile swipe as page scroll
 pire-browser drag <src> <dst>        # Drag and drop with page-level events
 pire-browser upload <sel> <files>    # Upload files to inputs or dropzones

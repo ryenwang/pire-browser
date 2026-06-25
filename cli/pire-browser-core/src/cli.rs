@@ -599,6 +599,7 @@ fn command_allows_state_default(raw: &[String]) -> bool {
             | "uncheck"
             | "scroll"
             | "scrollintoview"
+            | "scrollinto"
             | "wait"
             | "screenshot"
             | "pdf"

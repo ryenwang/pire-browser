@@ -504,6 +504,15 @@
       "source": "upstream"
     },
     {
+      "root": "scrollinto",
+      "signature": "scrollinto <target>",
+      "category": "scroll",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream",
+      "reason": "compatibility alias for scrollintoview"
+    },
+    {
       "root": "swipe",
       "signature": "swipe <direction> [amount]",
       "category": "scroll",

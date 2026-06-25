@@ -80,7 +80,8 @@ alias for `click <target>`; it is not native touch input or mobile browser
 emulation. Use `swipe <direction> [pixels]` only as a best-effort mobile helper
 that maps touch direction to page scroll (`swipe up` scrolls down); use
 `scroll` for direct scroll direction and `scrollintoview <target>` when you
-already know the element you need.
+already know the element you need. `scrollinto <target>` is the short
+compatibility alias.
 
 ```bash
 pire-browser snapshot -i
@@ -553,14 +554,14 @@ pire-browser mouse wheel 400
 pire-browser tap '<target-ref>'
 pire-browser swipe up 500
 pire-browser scroll down 500 --selector "#panel"
-pire-browser scrollintoview '<target-ref>'
+pire-browser scrollintoview '<target-ref>'  # alias: scrollinto
 pire-browser drag '<source-ref>' '<target-ref>'
 ```
 
-Mouse, hover, tap, swipe, scroll, scrollintoview, and drag commands are Firefox
-WebExtension paths. They dispatch page events, not native OS cursor movement,
-native touch input, or browser-chrome drag state. `hover` cannot force native
-`:hover` state on every page, so verify with page state afterwards.
+Mouse, hover, tap, swipe, scroll, scrollintoview/scrollinto, and drag commands
+are Firefox WebExtension paths. They dispatch page events, not native OS cursor
+movement, native touch input, or browser-chrome drag state. `hover` cannot force
+native `:hover` state on every page, so verify with page state afterwards.
 
 Save and reuse a simple login form profile:
 
