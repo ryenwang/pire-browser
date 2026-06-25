@@ -361,10 +361,14 @@ pire-browser --session-name review state load ./.pire-state/app.json
 pire-browser --session-name review open https://app.example.com/dashboard`),
 
   h2("React / Web Vitals", "react-web-vitals"),
-  code(`pire-browser vitals
+  code(`pire-browser open --enable react-devtools https://app.example.com
+pire-browser react tree
+pire-browser react tree --selector "#root" --depth 3
+pire-browser react inspect r1
+pire-browser react inspect '@e1'
+pire-browser vitals
 pire-browser vitals https://app.example.com/dashboard
 pire-browser vitals --json
-# React DevTools commands are not available yet.
 pire-browser snapshot -i
 pire-browser get text <sel>
 pire-browser screenshot page.png`),

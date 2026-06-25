@@ -73,7 +73,7 @@ export const featureStatuses = {
   },
   debugging: {
     status: "partial",
-    summary: "`console`, `errors`, `highlight`, best-effort `vitals`, recent redacted command activity, and the local status/session/activity dashboard are available for Firefox workflows; trace capture, DevTools inspect proxy, live viewport streaming, profiler, React DevTools introspection, and video recording commands are not implemented.",
+    summary: "`console`, `errors`, `highlight`, best-effort `vitals`, best-effort React Fiber tree/inspect, recent redacted command activity, and the local status/session/activity dashboard are available for Firefox workflows; trace capture, DevTools inspect proxy, live viewport streaming, profiler, React render profiling/Suspense detail, and video recording commands are not implemented.",
     sources: ["README.md", "extension/src/background.ts"],
   },
   dashboard: {
@@ -162,7 +162,7 @@ export const commandRootStatus = {
   profiler: "not_available",
   profiles: "best_effort",
   pushstate: "best_effort",
-  react: "not_available",
+  react: "partial",
   read: "available",
   record: "not_available",
   reload: "available",

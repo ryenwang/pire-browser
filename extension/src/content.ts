@@ -160,6 +160,8 @@ browser.runtime.onMessage.addListener((message: any) => {
   if (message.type === "wait_fn") return waitForFunction(String(message.expression ?? ""), Number(message.timeout ?? 10_000));
   if (message.type === "debug_logs") return Promise.resolve(debugLogs(String(message.kind ?? "console"), Boolean(message.clear)));
   if (message.type === "vitals") return Promise.resolve(pageVitals());
+  if (message.type === "react_tree") return Promise.resolve(reactTree(message.selector, message.maxDepth));
+  if (message.type === "react_inspect") return Promise.resolve(reactInspect(String(message.target ?? ""), message.locator));
   if (message.type === "eval") return Promise.resolve(evalScript(String(message.script ?? "")));
   if (message.type === "pushstate") return pushStateNavigation(String(message.url ?? ""));
   return undefined;
@@ -1828,6 +1830,377 @@ function pageVitals() {
     ],
     dialogs: drainDialogs(),
   };
+}
+
+type ReactFiber = {
+  tag?: number;
+  key?: unknown;
+  type?: any;
+  elementType?: any;
+  return?: ReactFiber | null;
+  child?: ReactFiber | null;
+  sibling?: ReactFiber | null;
+  stateNode?: unknown;
+  memoizedProps?: unknown;
+  memoizedState?: any;
+  _debugSource?: unknown;
+  _debugOwner?: ReactFiber | null;
+};
+
+type ReactComponentNode = {
+  id: string;
+  fiber: ReactFiber;
+  name: string;
+  parent?: ReactComponentNode;
+  children: ReactComponentNode[];
+  domElement?: Element;
+  order: number;
+  depth: number;
+};
+
+function reactTree(selector?: unknown, maxDepth?: unknown) {
+  const result = collectReactComponents(selector);
+  if ("error" in result) return { ...result, dialogs: drainDialogs() };
+  const limit = typeof maxDepth === "number" && Number.isFinite(maxDepth) ? Math.max(0, Math.floor(maxDepth)) : undefined;
+  const visible = result.nodes.filter((node) => limit === undefined || node.depth <= limit);
+  const lines = [`React tree for ${location.href} (best effort)`];
+  for (const node of visible) {
+    const indent = "  ".repeat(Math.min(8, node.depth));
+    lines.push(`${indent}${node.id} ${reactNodeSummary(node)}`);
+  }
+  if (visible.length === 0) lines.push("No React components matched the requested depth.");
+  return {
+    text: lines.join("\n"),
+    url: location.href,
+    title: document.title,
+    components: visible.map(publicReactNode),
+    componentCount: result.nodes.length,
+    devtoolsHookPresent: result.devtoolsHookPresent,
+    warnings: [reactBestEffortWarning()],
+    dialogs: drainDialogs(),
+  };
+}
+
+function reactInspect(target: string, locator?: Locator) {
+  if (!target && !locator) {
+    return {
+      error: { code: "invalid_args", message: "react inspect requires a fiber id, ref, or CSS selector" },
+      dialogs: drainDialogs(),
+    };
+  }
+
+  const result = collectReactComponents(undefined);
+  if ("error" in result) return { ...result, dialogs: drainDialogs() };
+  let node: ReactComponentNode | undefined;
+  if (/^r\d+$/i.test(target)) {
+    node = result.nodes.find((candidate) => candidate.id.toLowerCase() === target.toLowerCase());
+  } else {
+    const element = locator ? resolveOne(locator) : elementForCssTarget(target);
+    if ("error" in element) return element;
+    const fiber = nearestCompositeReactFiber(reactFiberForElement(element.element));
+    if (fiber) node = result.nodes.find((candidate) => candidate.fiber === fiber);
+  }
+
+  if (!node) {
+    return {
+      error: {
+        code: "not_found",
+        message: `No React component matched ${target || "target"}. Rerun react tree after DOM changes and use a fresh rN id.`,
+      },
+      dialogs: drainDialogs(),
+    };
+  }
+
+  const details = inspectReactNode(node);
+  return {
+    text: formatReactInspectText(details),
+    ...details,
+    devtoolsHookPresent: result.devtoolsHookPresent,
+    warnings: [reactBestEffortWarning()],
+    dialogs: drainDialogs(),
+  };
+}
+
+function collectReactComponents(selector?: unknown):
+  | { nodes: ReactComponentNode[]; devtoolsHookPresent: boolean }
+  | { error: { code: string; message: string } } {
+  const root = snapshotRoot(selector);
+  if ("error" in root) return { error: { code: "not_found", message: root.error } };
+
+  const fibers = new Set<ReactFiber>();
+  const fiberOrder = new Map<ReactFiber, number>();
+  const domByFiber = new Map<ReactFiber, Element>();
+  let order = 0;
+  for (const element of reactCandidateElements(root.root)) {
+    const fiber = reactFiberForElement(element);
+    let current = fiber;
+    while (current) {
+      if (isReactComponentFiber(current)) {
+        if (!fiberOrder.has(current)) fiberOrder.set(current, order++);
+        fibers.add(current);
+        if (!domByFiber.has(current)) domByFiber.set(current, element);
+      }
+      current = current.return ?? null;
+    }
+  }
+
+  if (fibers.size === 0) {
+    return {
+      error: {
+        code: "ReactNotFound",
+        message:
+          "No React Fiber data was found in the current page. Open a React app, wait for it to render, then retry. This Firefox backend uses best-effort Fiber expandos and does not install the full React DevTools hook.",
+      },
+    };
+  }
+
+  const nodes: ReactComponentNode[] = Array.from(fibers)
+    .sort((left, right) => (fiberOrder.get(left) ?? 0) - (fiberOrder.get(right) ?? 0))
+    .map((fiber, index): ReactComponentNode => ({
+      id: `r${index + 1}`,
+      fiber,
+      name: reactFiberDisplayName(fiber),
+      children: [] as ReactComponentNode[],
+      domElement: domByFiber.get(fiber),
+      order: fiberOrder.get(fiber) ?? index,
+      depth: 0,
+    }));
+  const nodeByFiber = new Map(nodes.map((node) => [node.fiber, node]));
+  for (const node of nodes) {
+    let parentFiber = node.fiber.return ?? null;
+    while (parentFiber && !nodeByFiber.has(parentFiber)) parentFiber = parentFiber.return ?? null;
+    const parent = parentFiber ? nodeByFiber.get(parentFiber) : undefined;
+    if (parent && parent !== node) {
+      node.parent = parent;
+      parent.children.push(node);
+    }
+  }
+  const roots = nodes.filter((node) => !node.parent).sort(compareReactNodes);
+  const ordered: ReactComponentNode[] = [];
+  const visit = (node: ReactComponentNode, depth: number) => {
+    node.depth = depth;
+    ordered.push(node);
+    node.children.sort(compareReactNodes).forEach((child) => visit(child, depth + 1));
+  };
+  roots.forEach((node) => visit(node, 0));
+  ordered.forEach((node, index) => (node.id = `r${index + 1}`));
+  return { nodes: ordered, devtoolsHookPresent: reactDevtoolsHookPresent() };
+}
+
+function reactCandidateElements(root: ParentNode): Element[] {
+  const base = root instanceof Document ? root.documentElement : root instanceof Element ? root : null;
+  if (!base) return [];
+  return [base, ...Array.from(root.querySelectorAll("*"))];
+}
+
+function reactFiberForElement(element: Element | null): ReactFiber | null {
+  let current: Element | null = element;
+  while (current) {
+    const pageNode = pageObject(current);
+    const keys = safeObjectKeys(pageNode);
+    const key = keys.find((candidate) => candidate.startsWith("__reactFiber$") || candidate.startsWith("__reactInternalInstance$"));
+    if (key) {
+      try {
+        const fiber = pageNode[key] as ReactFiber | null;
+        if (fiber && typeof fiber === "object") return fiber;
+      } catch {
+        // Cross-compartment wrappers can reject property reads.
+      }
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+function nearestCompositeReactFiber(fiber: ReactFiber | null): ReactFiber | null {
+  let current = fiber;
+  while (current) {
+    if (isReactComponentFiber(current)) return current;
+    current = current.return ?? null;
+  }
+  return null;
+}
+
+function isReactComponentFiber(fiber: ReactFiber) {
+  const type = fiber.elementType ?? fiber.type;
+  if (!type || typeof type === "string") return false;
+  if (typeof type === "function") return true;
+  if (typeof type === "object") return Boolean(type.displayName || type.render || type.type);
+  return false;
+}
+
+function reactFiberDisplayName(fiber: ReactFiber): string {
+  return reactTypeName(fiber.elementType ?? fiber.type) || reactTypeName(fiber.type) || "Anonymous";
+}
+
+function reactTypeName(type: any): string {
+  if (!type) return "";
+  if (typeof type === "string") return type;
+  if (typeof type === "function") return type.displayName || type.name || "Anonymous";
+  if (typeof type === "object") {
+    if (typeof type.displayName === "string" && type.displayName) return type.displayName;
+    if (type.render) return reactTypeName(type.render) || "ForwardRef";
+    if (type.type) return reactTypeName(type.type);
+  }
+  return "";
+}
+
+function compareReactNodes(left: ReactComponentNode, right: ReactComponentNode) {
+  return left.order - right.order || left.name.localeCompare(right.name);
+}
+
+function reactNodeSummary(node: ReactComponentNode) {
+  const props = objectKeysPreview(node.fiber.memoizedProps);
+  const state = reactHooks(node.fiber).length ? " hooks" : node.fiber.memoizedState != null ? " state" : "";
+  const propsText = props ? ` props{${props}}` : "";
+  return `${node.name}${propsText}${state}`;
+}
+
+function publicReactNode(node: ReactComponentNode) {
+  return {
+    id: node.id,
+    name: node.name,
+    parentId: node.parent?.id ?? null,
+    depth: node.depth,
+    props: objectKeysPreview(node.fiber.memoizedProps),
+    hasState: node.fiber.memoizedState != null,
+    hookCount: reactHooks(node.fiber).length,
+    selector: node.domElement ? shortSelectorFor(node.domElement) : null,
+  };
+}
+
+function inspectReactNode(node: ReactComponentNode) {
+  return {
+    id: node.id,
+    name: node.name,
+    parentId: node.parent?.id ?? null,
+    children: node.children.map((child) => ({ id: child.id, name: child.name })),
+    props: previewReactValue(node.fiber.memoizedProps),
+    state: previewReactValue(node.fiber.memoizedState),
+    hooks: reactHooks(node.fiber),
+    source: reactSource(node.fiber),
+    selector: node.domElement ? shortSelectorFor(node.domElement) : null,
+  };
+}
+
+function formatReactInspectText(details: ReturnType<typeof inspectReactNode>) {
+  const lines = [`${details.id} ${details.name}`];
+  if (details.parentId) lines.push(`Parent: ${details.parentId}`);
+  if (details.children.length) lines.push(`Children: ${details.children.map((child) => `${child.id} ${child.name}`).join(", ")}`);
+  if (details.selector) lines.push(`Nearest DOM: ${details.selector}`);
+  lines.push(`Props: ${valueToText(details.props)}`);
+  lines.push(`State: ${valueToText(details.state)}`);
+  lines.push(`Hooks: ${details.hooks.length ? valueToText(details.hooks) : "[]"}`);
+  if (details.source) lines.push(`Source: ${valueToText(details.source)}`);
+  return lines.join("\n");
+}
+
+function reactHooks(fiber: ReactFiber) {
+  const hooks = [];
+  let current = fiber.memoizedState;
+  let index = 0;
+  const seen = new WeakSet<object>();
+  while (current && typeof current === "object" && index < 20 && !seen.has(current)) {
+    seen.add(current);
+    hooks.push({
+      index,
+      state: previewReactValue(current.memoizedState),
+    });
+    current = current.next;
+    index += 1;
+  }
+  return hooks;
+}
+
+function reactSource(fiber: ReactFiber) {
+  const source = fiber._debugSource;
+  if (!source || typeof source !== "object") return null;
+  const record = source as Record<string, unknown>;
+  return {
+    fileName: typeof record.fileName === "string" ? record.fileName : undefined,
+    lineNumber: typeof record.lineNumber === "number" ? record.lineNumber : undefined,
+    columnNumber: typeof record.columnNumber === "number" ? record.columnNumber : undefined,
+  };
+}
+
+function elementForCssTarget(target: string): { element: Element } | { error: Record<string, string>; dialogs: DialogRecord[] } {
+  try {
+    const element = document.querySelector(target);
+    if (!element) return { error: { code: "not_found", message: `No element matched selector: ${target}` }, dialogs: drainDialogs() };
+    return { element };
+  } catch (error) {
+    return {
+      error: {
+        code: "invalid_args",
+        message: error instanceof Error ? error.message : `Invalid selector: ${target}`,
+      },
+      dialogs: drainDialogs(),
+    };
+  }
+}
+
+function objectKeysPreview(value: unknown) {
+  if (!value || typeof value !== "object") return "";
+  return safeObjectKeys(value)
+    .filter((key) => key !== "children")
+    .slice(0, 8)
+    .join(", ");
+}
+
+function previewReactValue(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
+  if (value === undefined) return null;
+  if (value === null || ["string", "number", "boolean"].includes(typeof value)) return value;
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "function") return `[Function ${(value as Function).name || "anonymous"}]`;
+  if (value instanceof Node) return `[DOM ${value.nodeName.toLowerCase()}]`;
+  if (typeof value !== "object") return String(value);
+  if (seen.has(value)) return "[Circular]";
+  if (depth >= 3) return Array.isArray(value) ? `[Array(${value.length})]` : "[Object]";
+  seen.add(value);
+  if (Array.isArray(value)) return value.slice(0, 20).map((item) => previewReactValue(item, depth + 1, seen));
+  const out: Record<string, unknown> = {};
+  for (const key of safeObjectKeys(value).slice(0, 20)) {
+    try {
+      out[key] = previewReactValue((value as Record<string, unknown>)[key], depth + 1, seen);
+    } catch {
+      out[key] = "[unreadable]";
+    }
+  }
+  return out;
+}
+
+function shortSelectorFor(element: Element) {
+  const id = attr(element, "id");
+  if (id) return `#${cssEscape(id)}`;
+  const testid = attr(element, "data-testid") || attr(element, "data-test");
+  if (testid) return `[data-testid="${cssEscape(testid)}"]`;
+  const tag = element.tagName.toLowerCase();
+  const className = typeof element.className === "string" ? element.className.split(/\s+/).filter(Boolean)[0] : "";
+  return className ? `${tag}.${cssEscape(className)}` : tag;
+}
+
+function reactDevtoolsHookPresent() {
+  const pageWindow = pageObject(window) as Record<string, unknown>;
+  return Boolean(pageWindow.__REACT_DEVTOOLS_GLOBAL_HOOK__);
+}
+
+function reactBestEffortWarning() {
+  return bestEffortWarning(
+    "react",
+    "React commands use best-effort Firefox Fiber introspection. Full React DevTools hook features such as render profiling and Suspense details are not implemented."
+  );
+}
+
+function pageObject<T>(value: T): any {
+  return ((value as unknown as { wrappedJSObject?: unknown }).wrappedJSObject ?? value) as any;
+}
+
+function safeObjectKeys(value: unknown): string[] {
+  try {
+    return Object.keys(value as object);
+  } catch {
+    return [];
+  }
 }
 
 function timingMetric(

@@ -66,6 +66,20 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "react tree maps to get",
+      "args": ["react", "tree"],
+      "policy": { "default": "deny", "allow": ["get"] },
+      "expectedCategory": "get",
+      "expectedDecision": "allow"
+    },
+    {
+      "name": "react inspect maps to get",
+      "args": ["react", "inspect", "r1"],
+      "policy": { "default": "deny", "allow": ["get"] },
+      "expectedCategory": "get",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "diff snapshot maps to snapshot",
       "args": ["diff", "snapshot"],
       "policy": { "default": "deny", "allow": ["snapshot"] },

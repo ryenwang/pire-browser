@@ -288,6 +288,26 @@
       "source": "upstream"
     },
     {
+      "root": "react",
+      "subcommand": "tree",
+      "signature": "react tree",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream",
+      "reason": "best-effort Firefox Fiber introspection, not full React DevTools"
+    },
+    {
+      "root": "react",
+      "subcommand": "inspect",
+      "signature": "react inspect <fiberId|target>",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream",
+      "reason": "best-effort Firefox Fiber introspection, not full React DevTools"
+    },
+    {
       "root": "set",
       "subcommand": "viewport",
       "signature": "set viewport <w> <h> [scale]",

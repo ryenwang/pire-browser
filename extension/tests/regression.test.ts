@@ -910,6 +910,8 @@ describe("pire-browser command foundations", () => {
       ["screenshot"],
       ["vitals"],
       ["vitals", "https://example.com"],
+      ["react", "tree"],
+      ["react", "inspect", "r1"],
       ["get", "title"],
       ["is", "visible", "@e1"],
       ["eval", "document.title"],
@@ -1044,7 +1046,7 @@ describe("command shape parity", () => {
 
   it("supports best-effort open init scripts before navigation", () => {
     const body = background();
-    expect(body).toContain('firstPositionalArg(args, ["--label", "--init-script", "--headers"])');
+    expect(body).toContain('firstPositionalArg(args, ["--label", "--init-script", "--headers", "--enable"])');
     expect(body).toContain("parseInitScripts(params.initScripts)");
     expect(body).toContain("async function registerInitScripts");
     expect(body).toContain("browser.contentScripts.register");
@@ -1057,7 +1059,7 @@ describe("command shape parity", () => {
     expect(body).toContain("bestEffortWarning(");
     expect(body).toContain('"open --init-script"');
     expect(body).toContain("Firefox WebExtension init scripts are best effort");
-    expect(body).toContain('firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers"])');
+    expect(body).toContain('firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers", "--enable"])');
   });
 
   it("supports best-effort runtime init script registration and removal", () => {
@@ -1115,6 +1117,31 @@ describe("command shape parity", () => {
     expect(contentBody).toContain('"layout-shift"');
     expect(contentBody).toContain('"event"');
     expect(contentBody).toContain("function hydrationSummary");
+  });
+
+  it("supports best-effort React tree and inspect diagnostics", () => {
+    const body = background();
+    expect(body).toContain('case "react":');
+    expect(body).toContain("return reactCommand(rest);");
+    expect(body).toContain("async function reactCommand");
+    expect(body).toContain('type: "react_tree"');
+    expect(body).toContain('type: "react_inspect"');
+    expect(body).toContain("parseReactTreeArgs");
+    expect(body).toContain("parseReactInspectArgs");
+    expect(body).toContain('firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers", "--enable"])');
+    expect(body).toContain("open --enable react-devtools is accepted");
+    expect(body).toContain('subcommand === "renders" || subcommand === "suspense"');
+
+    const contentBody = content();
+    expect(contentBody).toContain('message.type === "react_tree"');
+    expect(contentBody).toContain('message.type === "react_inspect"');
+    expect(contentBody).toContain("function collectReactComponents");
+    expect(contentBody).toContain("__reactFiber$");
+    expect(contentBody).toContain("__reactInternalInstance$");
+    expect(contentBody).toContain("function reactFiberDisplayName");
+    expect(contentBody).toContain("function reactHooks");
+    expect(contentBody).toContain("ReactNotFound");
+    expect(contentBody).toContain("best-effort Firefox Fiber introspection");
   });
 
   it("supports text-based snapshot diffs", () => {

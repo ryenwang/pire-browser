@@ -204,6 +204,24 @@ page-world messages and page errors from reachable frames. They do not expose ra
 Chrome CDP console payloads, and they only capture records observed after the
 pire-browser content script loads.
 
+Inspect React component structure when debugging a React app:
+
+```bash
+pire-browser open --enable react-devtools https://app.example.com
+pire-browser react tree
+pire-browser react tree --selector "#root" --depth 3
+pire-browser react inspect r1
+pire-browser react inspect '@e1'
+```
+
+`react tree` and `react inspect` mirror agent-browser's command shape through
+best-effort Firefox Fiber data attached to DOM nodes. `open --enable
+react-devtools` is accepted for compatibility and reports that pire-browser does
+not install the full React DevTools hook. Re-run `react tree` after navigation,
+route changes, or large DOM updates before using an `rN` id. Render recording
+and Suspense detail commands are not implemented yet; use snapshots, targeted
+get/is checks, console/errors, and vitals for supporting evidence.
+
 Start the local dashboard when a human or agent needs a quick view of setup,
 live sessions, managed profiles, and recent command activity:
 
@@ -524,10 +542,10 @@ close, and skill guidance. Add comma-separated profiles only when needed:
 and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair, safe
 upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/vitals,
 `tabs` for tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
-helpers including click-equivalent `pire_browser_tap` and touch-direction page-scroll `pire_browser_swipe`. `react` is accepted for compatibility but currently has no React
-DevTools introspection tools. Use `all` only when the host can tolerate the full
-tool surface. The `pire_browser_tools_profiles` MCP tool returns this profile
-list in-band.
+helpers including click-equivalent `pire_browser_tap` and touch-direction page-scroll `pire_browser_swipe`. `react` exposes best-effort typed React Fiber tools
+(`pire_browser_react_tree`, `pire_browser_react_inspect`) plus vitals. Use `all`
+only when the host can tolerate the full tool surface. The
+`pire_browser_tools_profiles` MCP tool returns this profile list in-band.
 The MCP server defaults to protocol `2025-11-25` and accepts older supported
 client protocol versions during initialization. Tool discovery is paginated for
 large profiles. Tool annotations mark local maintenance/context tools such as

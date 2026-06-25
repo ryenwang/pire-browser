@@ -396,6 +396,8 @@
                 return "snapshot";
             case "vitals":
                 return firstPositionalArg(args.slice(1), []) ? "navigate" : "get";
+            case "react":
+                return subcommand === "tree" || subcommand === "inspect" ? "get" : null;
             case "network":
                 if (subcommand === "requests")
                     return args.includes("--clear") ? "state" : "get";
@@ -507,7 +509,6 @@
             "install",
             "profiler",
             "profiles",
-            "react",
             "record",
             "stream",
             "trace",
@@ -517,7 +518,7 @@
     function domainPolicyDestinationUrl(args) {
         const [command, subcommand, ...rest] = args;
         if (["open", "goto", "navigate"].includes(command ?? "")) {
-            return firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers"]);
+            return firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers", "--enable"]);
         }
         if ((command === "tab" || command === "tabs") && subcommand === "new") {
             return firstPositionalArg(rest, ["--label"]);
@@ -630,6 +631,7 @@
             "upload",
             "set",
             "vitals",
+            "react",
         ].includes(command ?? "")) {
             return true;
         }
@@ -766,6 +768,8 @@
                 return networkCommand(rest);
             case "vitals":
                 return vitalsCommand(rest, domainPolicy);
+            case "react":
+                return reactCommand(rest);
             case "addinitscript":
                 return addInitScriptCommand(rest);
             case "removeinitscript":
@@ -783,7 +787,6 @@
             case "deny":
             case "session":
             case "profiles":
-            case "react":
             case "pdf":
             case "connect":
             case "device":
@@ -803,7 +806,10 @@
         }
     }
     async function openCommand(args, command = "open", params = {}) {
-        const url = firstPositionalArg(args, ["--label", "--init-script", "--headers"]);
+        const url = firstPositionalArg(args, ["--label", "--init-script", "--headers", "--enable"]);
+        const enableOption = parseOpenEnableOption(args);
+        if ("error" in enableOption)
+            return enableOption;
         const initScripts = parseInitScripts(params.initScripts);
         if ("error" in initScripts)
             return initScripts;
@@ -835,6 +841,9 @@
         const previousUrl = active?.url;
         let tab;
         const warnings = mergeWarnings(params.proxyWarnings, registered.warnings);
+        if (enableOption.reactDevtools) {
+            warnings.push(bestEffortWarning("react", "open --enable react-devtools is accepted for agent-browser command-shape compatibility. The Firefox backend uses best-effort Fiber introspection and does not install the full React DevTools hook."));
+        }
         try {
             const existingFileTab = isFileUrl(url) ? await existingTabForUrl(url, active) : null;
             tab = existingFileTab
@@ -875,6 +884,19 @@
             proxy: params.appliedProxy,
             warnings,
         };
+    }
+    function parseOpenEnableOption(args) {
+        const inline = args.find((arg) => arg.startsWith("--enable="));
+        const value = inline ? inline.slice("--enable=".length) : valueAfter(args, "--enable");
+        if (!inline && args.includes("--enable") && (!value || value.startsWith("--"))) {
+            return { error: { code: "invalid_args", message: "open --enable requires a feature name such as react-devtools" } };
+        }
+        if (!value)
+            return { reactDevtools: false };
+        if (value !== "react-devtools") {
+            return { error: { code: "invalid_args", message: `Unsupported open --enable feature: ${value}` } };
+        }
+        return { reactDevtools: true };
     }
     async function existingTabForUrl(url, preferred) {
         if (sameNavigationUrl(preferred?.url, url) && typeof preferred?.id === "number")
@@ -3167,6 +3189,99 @@
             url = arg;
         }
         return { url };
+    }
+    async function reactCommand(args) {
+        const [subcommand, ...rest] = args;
+        if (!subcommand || subcommand === "tree") {
+            const parsed = parseReactTreeArgs(rest);
+            if ("error" in parsed)
+                return parsed;
+            const tab = await targetTab();
+            const response = await sendFrame(tab.tabId, targetFrameIdForTab(tab.tabId), { type: "react_tree", selector: parsed.selector, maxDepth: parsed.maxDepth }, { staleOnFrameRoutingError: true });
+            const result = normalizeContentResponse(response);
+            return "error" in result ? result : { ...result, tab };
+        }
+        if (subcommand === "inspect") {
+            const parsed = parseReactInspectArgs(rest);
+            if ("error" in parsed)
+                return parsed;
+            const tab = await targetTab();
+            const response = await sendFrame(tab.tabId, targetFrameIdForTab(tab.tabId, parsed.frameId), { type: "react_inspect", target: parsed.target, locator: parsed.locator }, { staleOnFrameRoutingError: true });
+            const result = normalizeContentResponse(response);
+            return "error" in result ? result : { ...result, tab };
+        }
+        if (subcommand === "renders" || subcommand === "suspense") {
+            return notAvailable(`react ${subcommand}`, `react ${subcommand} requires full React DevTools integration and is not supported by the Firefox WebExtension backend yet.`);
+        }
+        return { error: { code: "invalid_args", message: "react requires tree or inspect <fiberId|target>" } };
+    }
+    function parseReactTreeArgs(args) {
+        let selector;
+        let maxDepth;
+        for (let index = 0; index < args.length; index++) {
+            const arg = args[index];
+            if (arg === "--json")
+                continue;
+            if (arg === "-s" || arg === "--selector" || arg === "--scope") {
+                selector = args[index + 1];
+                if (!selector || selector.startsWith("-")) {
+                    return { error: { code: "invalid_args", message: `${arg} requires a CSS selector` } };
+                }
+                index += 1;
+                continue;
+            }
+            if (arg === "-d" || arg === "--depth" || arg === "--max-depth") {
+                const parsed = parseReactDepth(args[index + 1], arg);
+                if ("error" in parsed)
+                    return parsed;
+                maxDepth = parsed.depth;
+                index += 1;
+                continue;
+            }
+            if (arg.startsWith("--depth=")) {
+                const parsed = parseReactDepth(arg.slice("--depth=".length), "--depth");
+                if ("error" in parsed)
+                    return parsed;
+                maxDepth = parsed.depth;
+                continue;
+            }
+            if (arg.startsWith("--max-depth=")) {
+                const parsed = parseReactDepth(arg.slice("--max-depth=".length), "--max-depth");
+                if ("error" in parsed)
+                    return parsed;
+                maxDepth = parsed.depth;
+                continue;
+            }
+            if (arg.startsWith("-")) {
+                return { error: { code: "invalid_args", message: `Unsupported react tree option: ${arg}` } };
+            }
+            return { error: { code: "invalid_args", message: `Unexpected react tree argument: ${arg}` } };
+        }
+        return { selector, maxDepth };
+    }
+    function parseReactDepth(value, flag) {
+        if (!value || value.startsWith("-")) {
+            return { error: { code: "invalid_args", message: `${flag} requires a non-negative integer depth` } };
+        }
+        const depth = Number(value);
+        if (!Number.isInteger(depth) || depth < 0) {
+            return { error: { code: "invalid_args", message: `${flag} requires a non-negative integer depth` } };
+        }
+        return { depth };
+    }
+    function parseReactInspectArgs(args) {
+        const target = firstPositionalArg(args, ["--selector"]);
+        const selector = valueAfter(args, "--selector");
+        const actualTarget = selector || target;
+        if (!actualTarget) {
+            return { error: { code: "invalid_args", message: "react inspect requires a fiber id, ref, or CSS selector" } };
+        }
+        if (/^r\d+$/i.test(actualTarget))
+            return { target: actualTarget };
+        const locator = locatorFromTarget(actualTarget);
+        if ("error" in locator)
+            return { error: { code: locator.error.code, message: locator.error.message } };
+        return { target: actualTarget, locator: locator.locator, frameId: locator.frameId };
     }
     async function networkCommand(args) {
         const [subcommand, ...rest] = args;

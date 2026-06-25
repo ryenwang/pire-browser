@@ -2164,6 +2164,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "storage" => STORAGE_HELP,
         "network" => NETWORK_HELP,
         "vitals" => VITALS_HELP,
+        "react" => REACT_HELP,
         "highlight" => HIGHLIGHT_HELP,
         "set" => SET_HELP,
         "mouse" => MOUSE_HELP,
@@ -2250,6 +2251,10 @@ Common commands:
   network har network.har         Export recent request metadata as HAR
   network route "**/api/**" --body '{}' Mock or block active-tab requests
   vitals [url]                    Measure best-effort Web Vitals for a page
+  open --enable react-devtools <url>
+                                  Open a React app with agent-browser-style opt-in
+  react tree                      Show best-effort React component tree
+  react inspect r1                Inspect React props, hooks, state, and source
   highlight '#submit'             Draw a visible overlay around a target
   set viewport 1280 720           Approximate the active page viewport
   mouse move 80 80                Dispatch page mouse events at viewport coords
@@ -2734,6 +2739,29 @@ entries may be unavailable in Firefox; unavailable metrics are reported
 explicitly instead of estimated.
 "##;
 
+const REACT_HELP: &str = r##"
+Usage:
+  pire-browser open --enable react-devtools <url>
+  pire-browser react tree
+  pire-browser react tree --selector "#root" --depth 3
+  pire-browser react inspect r1
+  pire-browser react inspect '@e1'
+  pire-browser react inspect '#root button'
+
+Inspects React components in the active Firefox tab. The command names mirror
+agent-browser's React workflow, but the Firefox backend is best-effort: it reads
+React Fiber data attached to DOM nodes and does not install the full React
+DevTools hook. `open --enable react-devtools` is accepted for command-shape
+compatibility and reports that limitation as a warning.
+
+Use `react tree` to get fresh component ids such as r1, then inspect a current
+id with `react inspect r1`. Component ids are derived from the current page tree,
+so rerun `react tree` after navigation, route changes, or large DOM updates.
+`react inspect` also accepts refs from `snapshot -i` or CSS selectors and
+inspects the nearest owning React component. Render recording and Suspense detail
+commands are not implemented yet.
+"##;
+
 const HIGHLIGHT_HELP: &str = r##"
 Usage:
   pire-browser highlight <target> [--json]
@@ -3140,12 +3168,12 @@ installed skill guidance. Add comma-separated profiles when needed: `network`,
 `state`, `debug`, `tabs`, `mobile`, or `react`. The `debug` profile includes
 lower-level launch, install/repair, safe upgrade, typed batch, doctor/activity
 diagnostics, console/errors, dialogs, highlight, and vitals. Agent-browser-style
-action/tab/frame aliases are available alongside older compatible names. `react` is accepted for
-compatibility but currently only returns profile guidance because pire-browser
-does not ship React DevTools introspection. Use `all` for every currently
-implemented MCP tool. The server defaults to MCP protocol 2025-11-25 and
-accepts older supported client protocol versions during initialization. Tool
-discovery is paginated for large profiles.
+action/tab/frame aliases are available alongside older compatible names. The
+`react` profile exposes best-effort Firefox React Fiber tree/inspect tools and
+vitals; render profiling and Suspense detail commands are not implemented yet.
+Use `all` for every currently implemented MCP tool. The server defaults to MCP
+protocol 2025-11-25 and accepts older supported client protocol versions during
+initialization. Tool discovery is paginated for large profiles.
 "##;
 
 const SKILLS_HELP: &str = r##"
@@ -5109,6 +5137,16 @@ mod tests {
             .unwrap()
             .contains("pire-browser vitals https://example.com"));
         assert!(help_text(None).unwrap().contains("vitals [url]"));
+        assert!(help_text(Some("react"))
+            .unwrap()
+            .contains("pire-browser react tree"));
+        assert!(help_text(Some("react"))
+            .unwrap()
+            .contains("pire-browser react inspect r1"));
+        assert!(help_text(Some("react"))
+            .unwrap()
+            .contains("best-effort"));
+        assert!(help_text(None).unwrap().contains("react tree"));
         assert!(help_text(Some("highlight"))
             .unwrap()
             .contains("Draws a visible overlay"));
@@ -5213,7 +5251,7 @@ mod tests {
         assert!(help_text(Some("mcp")).unwrap().contains("semantic find"));
         assert!(help_text(Some("mcp")).unwrap().contains("2025-11-25"));
         assert!(help_text(Some("mcp")).unwrap().contains("paginated"));
-        assert!(help_text(Some("mcp")).unwrap().contains("React DevTools"));
+        assert!(help_text(Some("mcp")).unwrap().contains("React Fiber"));
         assert!(help_text(Some("cookies"))
             .unwrap()
             .contains("cookies set <name> <value>"));

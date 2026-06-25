@@ -20,7 +20,7 @@ pire-browser mcp --tools all`),
       ["debug", "Lower-level launch, explicit install/repair, safe upgrade, batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, best-effort vitals, diffs, status, sessions/profiles, and close."],
       ["tabs", "Back/forward/reload, tab list/new/select/label/close, iframe selection, JavaScript dialogs, windows, and close."],
       ["mobile", "Viewport, device preset, geolocation, media/offline settings, keyboard, tap-as-click, swipe-as-scroll, mouse, scroll, and screenshot helpers."],
-      ["react", "Compatibility profile only; React DevTools introspection is not shipped by the Firefox backend. Use debug for vitals and core/tabs for pushstate."],
+      ["react", "Best-effort Firefox React Fiber tree/inspect tools plus vitals. Render profiling and Suspense detail commands are not implemented yet."],
       ["all", "Every currently implemented pire-browser MCP tool."],
     ]
   ),

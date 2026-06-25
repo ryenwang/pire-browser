@@ -83,7 +83,7 @@ use crate::mcp::{run_mcp_server, McpToolsProfile};
 use crate::read::{read_url, ReadUrlOptions};
 
 const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &[
-    "connect", "device", "profiler", "react", "record", "stream", "trace", "upgrade",
+    "connect", "device", "profiler", "record", "stream", "trace", "upgrade",
 ];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -7025,6 +7025,7 @@ fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
                 | "auth"
                 | "download"
                 | "vitals"
+                | "react"
                 | "addinitscript"
                 | "removeinitscript"
         )
@@ -7090,6 +7091,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "download"
             | "upload"
             | "vitals"
+            | "react"
             | "addinitscript"
             | "removeinitscript"
             | "session"
@@ -7120,6 +7122,7 @@ fn command_suggestions(command: &str) -> Vec<String> {
         "network",
         "highlight",
         "vitals",
+        "react",
         "pdf",
         "mouse",
         "drag",
@@ -7180,7 +7183,7 @@ fn launch_url_for_remote_args(args: &[String]) -> Option<String> {
     }
     match args.first().map(String::as_str) {
         Some("open" | "goto" | "navigate") => {
-            first_positional_arg(&args[1..], &["--label", "--init-script"])
+            first_positional_arg(&args[1..], &["--label", "--init-script", "--enable"])
         }
         Some("vitals") => first_positional_arg(&args[1..], &[]),
         Some("batch") => batch_launch_url(args),
@@ -7294,7 +7297,7 @@ fn simple_open_url_for_auto_launch_response(args: &[String]) -> Option<String> {
     }) {
         return None;
     }
-    first_positional_arg(&args[1..], &[])
+    first_positional_arg(&args[1..], &["--enable"])
 }
 
 fn same_url_for_cli(left: &str, right: &str) -> bool {
@@ -7315,7 +7318,7 @@ fn batch_launch_url(args: &[String]) -> Option<String> {
 fn navigation_url_for_remote_args(args: &[String]) -> Option<String> {
     match args.first().map(String::as_str) {
         Some("open" | "goto" | "navigate") => {
-            first_positional_arg(&args[1..], &["--label", "--init-script"])
+            first_positional_arg(&args[1..], &["--label", "--init-script", "--enable"])
         }
         Some("tab" | "tabs") if args.get(1).map(String::as_str) == Some("new") => {
             first_positional_arg(&args[2..], &["--label"])
@@ -8076,6 +8079,7 @@ mod tests {
             "upload",
             "diff",
             "vitals",
+            "react",
             "pdf",
             "addinitscript",
             "removeinitscript",
@@ -8251,6 +8255,24 @@ mod tests {
         );
         assert_eq!(
             launch_url_for_remote_args(&s(&["vitals", "--json", "https://example.com"])),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            launch_url_for_remote_args(&s(&[
+                "open",
+                "--enable",
+                "react-devtools",
+                "https://example.com"
+            ])),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            navigation_url_for_remote_args(&s(&[
+                "open",
+                "--enable",
+                "react-devtools",
+                "https://example.com"
+            ])),
             Some("https://example.com".to_string())
         );
         assert_eq!(

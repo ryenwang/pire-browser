@@ -1,23 +1,30 @@
-import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, table, unavailable } from "../blocks.mjs";
+import { code, h2, p, page } from "../blocks.mjs";
 
 const reactBlocks = [
+  h2("React Fiber Inspection", "react-fiber-inspection"),
+  code(`pire-browser open --enable react-devtools https://app.example.com
+pire-browser react tree
+pire-browser react tree --selector "#root" --depth 3
+pire-browser react inspect r1
+pire-browser react inspect '@e1'`),
+  p("<code>react tree</code> and <code>react inspect</code> mirror agent-browser's React command shape using best-effort Firefox Fiber data attached to DOM nodes. Run <code>react tree</code> after route changes or large DOM updates before reusing an <code>rN</code> component id."),
+  p("<code>open --enable react-devtools</code> is accepted for command-shape compatibility and reports a warning: the Firefox backend does not install the full React DevTools hook. Render profiling and Suspense detail commands are not implemented yet."),
   h2("Web Vitals", "web-vitals"),
   code(`pire-browser vitals
 pire-browser vitals https://app.example.com/dashboard
 pire-browser vitals --json`),
   p("<code>vitals</code> reports best-effort page performance signals from Firefox Performance APIs: TTFB, FCP, LCP, CLS, INP, DOMContentLoaded, load, readyState, and captured hydration warnings. Browser-specific signals that Firefox does not expose are reported as unavailable."),
-  unavailable("React DevTools commands"),
   h2("Current app inspection", "current-app-inspection"),
   code(`pire-browser snapshot -i
 pire-browser get text <sel>
 pire-browser eval "document.querySelector('#root')?.textContent"`),
-  p("Framework-aware React tree, Suspense, and render profiling commands are not implemented in the Firefox extension backend."),
+  p("Use snapshots and targeted reads alongside React inspection when the page does not expose Fiber data or when you need DOM-level evidence."),
 ];
 
 export default page({
   path: "/react/",
   title: "React & Web Vitals",
-  description: "Best-effort Web Vitals and current app inspection workflows.",
+  description: "Best-effort React Fiber, Web Vitals, and current app inspection workflows.",
   badge: "Partial",
   blocks: reactBlocks,
 });

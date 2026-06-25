@@ -164,7 +164,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "react",
             bits: PROFILE_REACT,
-            description: "Reserved compatibility profile. pire-browser does not currently ship React DevTools introspection tools; use debug for vitals and core/tabs for pushstate.",
+            description: "Best-effort Firefox React Fiber tree and inspect tools, plus Web Vitals. Render profiling and Suspense details require full React DevTools integration and are not implemented yet.",
         },
         McpProfileDescriptor {
             name: "all",
@@ -290,7 +290,8 @@ fn tool_profile_bits(name: &str) -> u16 {
         "pire_browser_console"
         | "pire_browser_errors"
         | "pire_browser_highlight"
-        | "pire_browser_vitals" => PROFILE_DEBUG,
+        | "pire_browser_vitals" => PROFILE_DEBUG | PROFILE_REACT,
+        "pire_browser_react_tree" | "pire_browser_react_inspect" => PROFILE_REACT,
         "pire_browser_dialog_status"
         | "pire_browser_dialog_accept"
         | "pire_browser_dialog_dismiss" => PROFILE_DEBUG | PROFILE_TABS,
@@ -1113,6 +1114,23 @@ fn tool_command_args(
             if let Some(url) = optional_string(object, "url")? {
                 args.push(url);
             }
+        }
+        (_, "pire_browser_react_tree") => {
+            args.push("react".to_string());
+            args.push("tree".to_string());
+            if let Some(selector) = optional_string(object, "selector")? {
+                args.push("--selector".to_string());
+                args.push(selector);
+            }
+            if let Some(depth) = optional_u64(object, "depth")? {
+                args.push("--depth".to_string());
+                args.push(depth.to_string());
+            }
+        }
+        (_, "pire_browser_react_inspect") => {
+            args.push("react".to_string());
+            args.push("inspect".to_string());
+            args.push(required_string(object, "target")?);
         }
         (_, "pire_browser_download") => {
             args.push("download".to_string());
@@ -2880,6 +2898,26 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_react_tree",
+            "React tree",
+            "Show the active page's best-effort React component tree from Firefox Fiber data.",
+            tool_schema(
+                vec![
+                    ("selector", string_prop("Optional CSS selector to scope React component discovery.")),
+                    ("depth", number_prop("Optional component tree depth limit.")),
+                ],
+                &[],
+            ),
+            true,
+        ),
+        tool(
+            "pire_browser_react_inspect",
+            "React inspect",
+            "Inspect a React component by rN id from react tree, snapshot ref, or CSS selector.",
+            tool_schema(vec![("target", string_prop("React rN id, snapshot ref, or CSS selector."))], &["target"]),
+            true,
+        ),
+        tool(
             "pire_browser_download",
             "Download",
             "Click a target to trigger a Firefox download and save it to a path.",
@@ -4389,8 +4427,15 @@ mod tests {
             .any(|tool| tool["name"] == "pire_browser_upgrade"));
 
         let react = mcp_tools(McpToolsProfile::React);
-        assert_eq!(react.len(), 1);
-        assert_eq!(react[0]["name"], TOOLS_PROFILES_TOOL);
+        assert!(react
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_react_tree"));
+        assert!(react
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_react_inspect"));
+        assert!(react
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_vitals"));
     }
 
     #[test]
@@ -5517,6 +5562,25 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "vitals", "https://example.com"]);
+
+        let args = tool_command_args(
+            "pire_browser_react_tree",
+            &json!({ "selector": "#root", "depth": 3 }),
+            McpToolsProfile::React,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec!["--json", "react", "tree", "--selector", "#root", "--depth", "3"]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_react_inspect",
+            &json!({ "target": "r1" }),
+            McpToolsProfile::React,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "react", "inspect", "r1"]);
 
         let args = tool_command_args(
             "pire_browser_set_viewport",
