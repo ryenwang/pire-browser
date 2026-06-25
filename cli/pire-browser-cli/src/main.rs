@@ -8965,8 +8965,11 @@ fn local_not_available_result(
     if !is_documented_not_available_command(command)? {
         return Ok(None);
     }
-    let message =
-        format!("This command is not supported by the Firefox WebExtension backend yet: {command}");
+    let message = if command == "upgrade" {
+        "`upgrade` is handled by the npm/Pi JavaScript launcher because it updates the installed package. Run `pire-browser upgrade` from an npm/Pi install, or run `node bin/pire-browser.js upgrade` from the package.".to_string()
+    } else {
+        format!("This command is not supported by the Firefox WebExtension backend yet: {command}")
+    };
     Ok(Some(not_available_result(
         command,
         &message,
@@ -10513,6 +10516,12 @@ mod tests {
             .unwrap();
         assert!(result.contains("NotAvailableError"));
         assert!(result.contains("not supported"));
+
+        let upgrade = local_not_available_result(&s(&["upgrade"]), false, &[])
+            .unwrap()
+            .unwrap();
+        assert!(upgrade.contains("JavaScript launcher"));
+        assert!(upgrade.contains("node bin/pire-browser.js upgrade"));
     }
 
     #[test]

@@ -3510,11 +3510,11 @@ Usage:
   pire-browser update apply [--json]
   pire-browser update configure --mode off|notify|patch
 
-`upgrade` is the agent-browser-style installed-package alias. In npm/Pi installs,
-the JavaScript launcher runs an update check, then applies a safe package update
-using the existing update rules. Patch auto-update is allowed only for global npm
-installs or confirmed Pi-managed installs, and only when no managed Firefox
-session is active. Local project installs and minor/major updates notify only.
+`upgrade` is the agent-browser-style foreground update path. In npm/Pi installs,
+the JavaScript launcher checks npm, then updates global npm or Pi-managed
+installs to the latest package when no managed Firefox session is active. Local
+project installs print the exact npm install command to run in that project.
+Background auto-update and lower-level `update apply` stay patch-only.
 "##;
 
 const SETUP_HELP: &str = r##"
@@ -3577,7 +3577,7 @@ open, inspect, interact, typed get/check state, semantic find, typed waits, navi
 helpers, screenshots/PDFs, diffs, eval, status, basic tabs, profiles, close, and
 installed skill guidance. Add comma-separated profiles when needed: `network`,
 `state`, `debug`, `tabs`, `mobile`, or `react`. The `debug` profile includes
-lower-level launch, install/repair, safe upgrade, typed batch, doctor/activity
+lower-level launch, install/repair, user-requested package upgrade, typed batch, doctor/activity
 diagnostics, console/errors, dialogs, highlight, trace/profiler/record evidence,
 and vitals. Agent-browser-style action/tab/frame aliases are available alongside
 older compatible names. The `react` profile exposes best-effort Firefox React

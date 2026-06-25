@@ -18,33 +18,36 @@ import { resolveNativeBinary, rootDir, rootPackageJson } from "../scripts/platfo
 
 const root = rootDir();
 const packageJson = rootPackageJson(root);
-const args = process.argv.slice(2);
 
-if (args[0] === "update") {
-  const status = handleUpdate(args.slice(1));
-  process.exit(status);
+export function main(args = process.argv.slice(2)) {
+  if (args[0] === "update") {
+    return handleUpdate(args.slice(1));
+  }
+
+  if (args[0] === "upgrade") {
+    return handleUpgrade(args.slice(1));
+  }
+
+  maybeStartBackgroundUpdateCheck(args);
+  const resolved = resolveNativeBinary({ root });
+  if (!resolved.ok) {
+    console.error(`pire-browser: ${resolved.reason}`);
+    return 1;
+  }
+
+  const result = runNative(resolved.path, args);
+  maybeStartBackgroundPatchApply(args);
+  if (result.error) {
+    console.error(`pire-browser: failed to run ${resolved.path}: ${result.error.message}`);
+    return 1;
+  }
+  if (result.signal) process.kill(process.pid, result.signal);
+  return result.status ?? 1;
 }
 
-if (args[0] === "upgrade") {
-  const status = handleUpgrade(args.slice(1));
-  process.exit(status);
+if (isMain()) {
+  process.exit(main(process.argv.slice(2)));
 }
-
-maybeStartBackgroundUpdateCheck(args);
-const resolved = resolveNativeBinary({ root });
-if (!resolved.ok) {
-  console.error(`pire-browser: ${resolved.reason}`);
-  process.exit(1);
-}
-
-const result = runNative(resolved.path, args);
-maybeStartBackgroundPatchApply(args);
-if (result.error) {
-  console.error(`pire-browser: failed to run ${resolved.path}: ${result.error.message}`);
-  process.exit(1);
-}
-if (result.signal) process.kill(process.pid, result.signal);
-process.exit(result.status ?? 1);
 
 function nativeEnv() {
   const env = { ...process.env };
@@ -122,9 +125,28 @@ function handleUpgrade(upgradeArgs) {
   if (upgradeArgs.length > 0) {
     return outputUpdateError(`unsupported upgrade option: ${upgradeArgs[0]}`, json, false);
   }
-  const checkStatus = checkUpdate({ json: false, background: false, silent: true });
-  if (checkStatus !== 0) return checkStatus;
-  return applyUpdate({ json, background: false });
+  const update = getUpdateRecommendation({ background: false });
+  if (update.kind === "offline") {
+    return outputUpdateResult("offline", "offline mode is enabled", json, false, 0, { operation: "upgrade", update });
+  }
+  if (update.kind === "unknown") {
+    return outputUpdateResult(
+      "unknown",
+      "could not check the npm registry",
+      json,
+      false,
+      1,
+      {
+        operation: "upgrade",
+        update,
+        nextAction: "Check network access or run `pire-browser update check --json` for details.",
+      }
+    );
+  }
+  if (!update.available) {
+    return outputUpdateResult("current", "already current", json, false, 0, { operation: "upgrade", update });
+  }
+  return applyUpdate({ json, background: false, update, allowAnySemver: true, upgrade: true, operation: "upgrade" });
 }
 
 function configureUpdate(updateArgs, json) {
@@ -148,46 +170,64 @@ function configureUpdate(updateArgs, json) {
 }
 
 function checkUpdate({ json, background, silent = false }) {
-  const currentVersion = packageJson.version;
-  if (isOfflineEnv()) {
-    const update = {
-      checkedAt: Date.now(),
-      available: false,
-      kind: "offline",
-      currentVersion,
-      latestVersion: null,
-      offline: true,
-    };
-    if (!background && !silent) outputUpdate({ update }, json);
-    return 0;
-  }
-  const latest = npmViewLatest(background ? 3_000 : 15_000);
-  const checkedAt = Date.now();
-  const recommendation = latest
-    ? classifyUpdate(currentVersion, latest)
-    : { available: false, kind: "unknown", currentVersion, latestVersion: null };
-  const cache = { checkedAt, ...recommendation };
-  writeJson(cachePath(), cache);
-  if (!background && !silent) outputUpdate({ update: cache }, json);
+  const update = getUpdateRecommendation({ background });
+  if (!background && !silent) outputUpdate({ update }, json);
   return 0;
 }
 
-function applyUpdate({ json, background, backgroundWorker = false, delayMs = 0 }) {
-  if (isOfflineEnv()) return outputUpdateResult("offline", "offline mode is enabled", json, background);
+function applyUpdate({
+  json,
+  background,
+  backgroundWorker = false,
+  delayMs = 0,
+  update = null,
+  allowAnySemver = false,
+  upgrade = false,
+  operation = "update",
+}) {
+  if (isOfflineEnv()) return outputUpdateResult("offline", "offline mode is enabled", json, background, 0, { operation });
   const config = readUpdateConfig();
   if (config.mode === "off") return outputUpdateResult("disabled", "update mode is off", json, background);
-  const cache = readJson(cachePath()) ?? {};
+  const cache = update ?? readJson(cachePath()) ?? {};
   if (!cache.available) {
     const message = cache.kind === "none" ? "already current" : "no cached update is available";
-    return outputUpdateResult("current", message, json, background);
+    return outputUpdateResult("current", message, json, background, 0, { operation, update: cache });
   }
-  if (cache.kind !== "patch") return outputUpdateResult("notify", "minor and major updates are notify-only", json, background);
+  if (cache.kind !== "patch" && !allowAnySemver) {
+    return outputUpdateResult(
+      "notify",
+      "minor and major updates require an explicit upgrade",
+      json,
+      background,
+      0,
+      { operation, update: cache, nextAction: "Run `pire-browser upgrade` to update to the latest version." }
+    );
+  }
   const installKind = detectInstallKind();
   if (!["global", "pi"].includes(installKind.kind)) {
-    return outputUpdateResult("notify", "local project installs are notify-only", json, background);
+    return outputUpdateResult(
+      "notify",
+      "local project installs are notify-only",
+      json,
+      background,
+      0,
+      { operation, update: cache, install: installKind, nextAction: localInstallUpgradeHint(cache.latestVersion) }
+    );
   }
   if (hasActiveManagedSession()) {
-    return outputUpdateResult("deferred", "managed Firefox sessions are active", json, background);
+    return outputUpdateResult(
+      "deferred",
+      "managed Firefox sessions are active",
+      json,
+      background,
+      0,
+      {
+        operation,
+        update: cache,
+        install: installKind,
+        nextAction: "Close managed Firefox sessions, then rerun `pire-browser upgrade`.",
+      }
+    );
   }
   if (background && process.platform === "win32" && !backgroundWorker) {
     spawnDetached(process.execPath, [
@@ -207,18 +247,39 @@ function applyUpdate({ json, background, backgroundWorker = false, delayMs = 0 }
     installKind.kind === "pi"
       ? ["pi", ["update", "npm:pire-browser"]]
       : ["npm", ["install", "-g", `pire-browser@${cache.latestVersion}`, "--include=optional"]];
+  const commandText = formatCommand(command);
   const maxAttempts = backgroundWorker ? 3 : 1;
   let lastStatus = 1;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const result = runInstallCommand(command, background);
     if (result.status === 0) {
-      return outputUpdateResult("applied", `updated to ${cache.latestVersion}`, json, background);
+      return outputUpdateResult(
+        "applied",
+        `updated to ${cache.latestVersion}`,
+        json,
+        background,
+        0,
+        { operation, update: cache, install: installKind, command: commandText, upgrade }
+      );
     }
     lastStatus = result.status ?? 1;
     if (attempt >= maxAttempts || !isLockLikeFailure(result)) break;
     sleep(750 * attempt);
   }
-  return outputUpdateResult("failed", `update command exited with ${lastStatus}`, json, background, 1);
+  return outputUpdateResult(
+    "failed",
+    `update command exited with ${lastStatus}`,
+    json,
+    background,
+    1,
+    {
+      operation,
+      update: cache,
+      install: installKind,
+      command: commandText,
+      nextAction: installFailureHint(installKind, cache.latestVersion),
+    }
+  );
 }
 
 function maybeStartBackgroundUpdateCheck(commandArgs) {
@@ -263,7 +324,29 @@ function npmViewLatest(timeout) {
   }
 }
 
-function classifyUpdate(currentVersion, latestVersion) {
+function getUpdateRecommendation({ background }) {
+  const currentVersion = packageJson.version;
+  if (isOfflineEnv()) {
+    return {
+      checkedAt: Date.now(),
+      available: false,
+      kind: "offline",
+      currentVersion,
+      latestVersion: null,
+      offline: true,
+    };
+  }
+  const latest = npmViewLatest(background ? 3_000 : 15_000);
+  const checkedAt = Date.now();
+  const recommendation = latest
+    ? classifyUpdate(currentVersion, latest)
+    : { available: false, kind: "unknown", currentVersion, latestVersion: null };
+  const update = { checkedAt, ...recommendation };
+  writeJson(cachePath(), update);
+  return update;
+}
+
+export function classifyUpdate(currentVersion, latestVersion) {
   const current = parseSemver(currentVersion);
   const latest = parseSemver(latestVersion);
   if (!current || !latest || compareSemver(latest, current) <= 0) {
@@ -358,12 +441,12 @@ function outputUpdate(data, json) {
   if (json) {
     console.log(JSON.stringify({ success: true, data }, null, 2));
   } else {
-    console.log(JSON.stringify(data, null, 2));
+    console.log(formatUpdatePlain(data));
   }
 }
 
-function outputUpdateResult(status, message, json, background, exitCode = 0) {
-  if (!background) outputUpdate({ status, message }, json);
+function outputUpdateResult(status, message, json, background, exitCode = 0, details = {}) {
+  if (!background) outputUpdate({ status, message, ...details }, json);
   return exitCode;
 }
 
@@ -398,6 +481,77 @@ function runInstallCommand(command, background) {
   });
 }
 
+export function formatUpdatePlain(data) {
+  if (data.mode) return `pire-browser update mode set to ${data.mode}.`;
+  if (data.update && !data.status) return formatUpdateCheckPlain(data.update);
+  if (!data.status) return JSON.stringify(data, null, 2);
+
+  const operation = data.operation === "upgrade" ? "upgrade" : "update";
+  const update = data.update ?? {};
+  const current = update.currentVersion ?? packageJson.version;
+  const latest = update.latestVersion;
+  if (data.status === "applied") {
+    return latest && current
+      ? `pire-browser ${operation === "upgrade" ? "upgraded" : "updated"} ${current} -> ${latest}.`
+      : `pire-browser ${operation} applied.`;
+  }
+  if (data.status === "current") {
+    return operation === "upgrade"
+      ? `pire-browser ${current} is already current.`
+      : `pire-browser update is current. ${current} is installed.`;
+  }
+  if (data.status === "notify") {
+    const next = data.nextAction ? `\nNext: ${data.nextAction}` : "";
+    const suffix = latest ? ` Latest is ${latest}; current is ${current}.` : "";
+    return `pire-browser ${operation} not applied: ${data.message}.${suffix}${next}`;
+  }
+  if (data.status === "deferred") {
+    const next = data.nextAction ? `\nNext: ${data.nextAction}` : "";
+    return `pire-browser ${operation} deferred: ${data.message}.${next}`;
+  }
+  if (data.status === "offline") {
+    return `pire-browser ${operation} skipped: offline mode is enabled. Current version is ${current}.`;
+  }
+  if (data.status === "unknown") {
+    const next = data.nextAction ? `\nNext: ${data.nextAction}` : "";
+    return `pire-browser ${operation} could not check the latest version. Current version is ${current}.${next}`;
+  }
+  if (data.status === "disabled") {
+    return `pire-browser update mode is off. Run \`pire-browser update configure --mode patch\` to re-enable checks.`;
+  }
+  if (data.status === "failed") {
+    const next = data.nextAction ? `\nNext: ${data.nextAction}` : "";
+    return `pire-browser ${operation} failed: ${data.message}.${next}`;
+  }
+  return `pire-browser update ${data.status}: ${data.message}`;
+}
+
+function formatUpdateCheckPlain(update) {
+  const current = update.currentVersion ?? packageJson.version;
+  if (update.kind === "offline") return `pire-browser update check skipped: offline mode is enabled. Current version is ${current}.`;
+  if (update.kind === "unknown") return `pire-browser update check could not reach the npm registry. Current version is ${current}.`;
+  if (!update.available) return `pire-browser ${current} is already current.`;
+  return `pire-browser ${update.latestVersion} is available (${update.kind}); current is ${current}.\nRun \`pire-browser upgrade\` to update.`;
+}
+
+function localInstallUpgradeHint(latestVersion) {
+  const suffix = latestVersion ? `@${latestVersion}` : "@latest";
+  return `Run \`npm install pire-browser${suffix} --include=optional\` in the project, or install globally with \`npm install -g pire-browser --include=optional\`.`;
+}
+
+function installFailureHint(installKind, latestVersion) {
+  if (installKind.kind === "pi") return "Run `pi update npm:pire-browser`, then restart Pi.";
+  if (installKind.kind === "global") {
+    const suffix = latestVersion ? `@${latestVersion}` : "@latest";
+    return `Run \`npm install -g pire-browser${suffix} --include=optional\`.`;
+  }
+  return localInstallUpgradeHint(latestVersion);
+}
+
+function formatCommand(command) {
+  return [command[0], ...command[1]].join(" ");
+}
+
 function isLockLikeFailure(result) {
   if (process.platform !== "win32") return false;
   const text = `${result.error?.code ?? ""}\n${result.error?.message ?? ""}\n${result.stdout ?? ""}\n${result.stderr ?? ""}`;
@@ -416,4 +570,8 @@ function spawnDetached(command, commandArgs) {
 
 function separator() {
   return process.platform === "win32" ? "\\" : "/";
+}
+
+function isMain() {
+  return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 }

@@ -648,8 +648,8 @@ typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/di
 evidence, eval, status, confirmation follow-up, basic tabs, profile discovery,
 close, and skill guidance. Add comma-separated profiles only when needed:
 `network` for request diagnostics/routes/HAR, `state` for cookies/storage/auth
-and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair, safe
-upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/trace/profiler/record/vitals,
+and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair,
+user-requested package upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/trace/profiler/record/vitals,
 `tabs` for tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
 helpers including click-equivalent `pire_browser_tap` and touch-direction page-scroll `pire_browser_swipe`. `react` exposes best-effort typed React Fiber tools
 (`pire_browser_react_tree`, `pire_browser_react_inspect`, `pire_browser_react_renders_start`, `pire_browser_react_renders_stop`, `pire_browser_react_suspense`) plus vitals. Use `all`
@@ -720,7 +720,7 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 - `pire-browser install --with-deps` is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux.
 - `pire-browser setup` is the lower-level setup command.
 - `--firefox-path` and `PIRE_BROWSER_FIREFOX_PATH` may point to the Firefox executable, a directory containing it, or `/Applications/Firefox.app` on macOS. If discovery fails, follow the platform repair command in the error output.
-- `pire-browser upgrade` checks for the latest package and applies a safe update when the install method allows it.
+- `pire-browser upgrade` checks npm and updates global npm or Pi-managed installs to the latest package when no managed Firefox session is active. Local project installs print the exact project-local `npm install` command. Background auto-update and lower-level `update apply` stay patch-only.
 - `pire-browser status` reports live session and policy state without fixing anything.
 - `pire-browser doctor` and `pire-browser install-status` give read-only install diagnostics.
 - `pire-browser doctor --json` and `pire-browser install-status --json` include `nextActions`; follow those concrete repair commands before guessing.

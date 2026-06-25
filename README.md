@@ -91,10 +91,14 @@ pire-browser update apply
 pire-browser update configure --mode off|notify|patch
 ```
 
-`upgrade` checks for the latest package first, then applies a safe update using
-the same rules as `update apply`. Patch auto-update is allowed only for global
-npm installs or confirmed Pi-managed installs, and only when no managed Firefox
-session is active. Local project installs and minor/major updates notify only.
+`upgrade` is the agent-browser-style foreground update path: it checks npm, then
+updates global npm or Pi-managed installs to the latest package when no managed
+Firefox session is active. Local project installs print the exact `npm install`
+command to run in that project. Background auto-update and lower-level
+`update apply` stay patch-only. Update JSON uses `success: true` when the update
+command completed and reports the outcome in `data.status` (`current`,
+`notify`, `deferred`, `offline`, `applied`, or `failed`); invalid arguments use
+`success: false`.
 
 ### Requirements
 
@@ -632,7 +636,7 @@ executable overrides; use those fields instead of `extraArgs` for guardrails.
 for pre-navigation setup. Prefer `pire_browser_open` for normal
 launch/navigation; the `debug` profile exposes `pire_browser_launch` as a
 narrower lower-level launch tool, `pire_browser_install` for explicit
-native-host setup or repair, `pire_browser_upgrade` for safe package upgrades,
+native-host setup or repair, `pire_browser_upgrade` for user-requested package upgrades,
 and `pire_browser_batch` for short command sequences. Pass `withDeps: true` to
 `pire_browser_install` only when following an agent-browser-style dependency
 recipe; it may install Firefox through winget/Chocolatey on Windows or Homebrew

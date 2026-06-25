@@ -39,7 +39,7 @@ cd ..`),
 pire-browser update check --json
 pire-browser update apply
 pire-browser update configure --mode off|notify|patch`),
-  p("<code>upgrade</code> checks for the latest package first, then applies a safe update using the same patch-only global/Pi-managed install rules as <code>update apply</code>."),
+  p("<code>upgrade</code> is the agent-browser-style foreground update path: it checks npm, then updates global npm or Pi-managed installs to the latest package when no managed Firefox session is active. Local project installs print the exact project-local <code>npm install</code> command. Background auto-update and lower-level <code>update apply</code> stay patch-only. Update JSON uses <code>success: true</code> when the update command completed and reports the outcome in <code>data.status</code>; invalid arguments use <code>success: false</code>."),
   h2("Doctor", "doctor"),
   code(`pire-browser doctor
 pire-browser doctor --fix

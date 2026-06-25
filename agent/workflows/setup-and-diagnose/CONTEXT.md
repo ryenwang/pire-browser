@@ -25,7 +25,7 @@ Use this when install, launch, native messaging, optional native package resolut
 
 - `status` and plain `doctor` must remain observational; `doctor --fix` is the explicit repair path.
 - Browser commands that need auto-launch may run lazy setup when registration is stale.
-- Use `pire-browser upgrade` for a foreground package update; in MCP, use debug-profile `pire_browser_upgrade` only when the user wants package update. Use `update check/apply` only when you need the lower-level status or JSON path.
+- Use `pire-browser upgrade` for a foreground latest-package update; in MCP, use debug-profile `pire_browser_upgrade` only when the user wants package update. Use `update check/apply` only when you need the lower-level status or JSON path.
 - On Windows, close managed Firefox sessions before replacing binaries during an update.
 - Do not claim setup is fixed until a verification command succeeds.
 
