@@ -246,7 +246,7 @@ ThreadingHTTPServer(("127.0.0.1", $Port), Handler).serve_forever()
   $timeoutPath = Join-Path $DownloadsDir "timeout.txt"
   $null = Invoke-Pire "Open timeout fixture" @("--session-name", $timeoutProfile, "open", $PageUrl, "--json") '"success"\s*:\s*true'
   $null = Invoke-PireFailure "Wait download timeout" @("--session-name", $timeoutProfile, "wait", "--download", $timeoutPath, "--timeout", "500", "--json") "TimeoutError"
-  $null = Invoke-PireFailure "Network remains unavailable" @("network", "requests", "--json") "NotAvailableError"
+  $null = Invoke-Pire "Network requests remain available" @("network", "requests", "--json") '"success"\s*:\s*true'
 
   $script:smokeSucceeded = $true
   Write-Output "Download smoke test passed for profile $Profile."

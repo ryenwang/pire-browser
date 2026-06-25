@@ -757,70 +757,194 @@
         const resolved = resolveOne(locator);
         if ("error" in resolved)
             return resolved;
-        const input = fileInputForUploadTarget(resolved.element);
-        if ("error" in input)
-            return input;
-        if (input.element.disabled) {
-            return { error: { code: "not_enabled", message: `${describeElement(input.element)} is disabled` }, dialogs: drainDialogs() };
-        }
         const parsed = parseUploadFiles(rawFiles);
         if ("error" in parsed)
             return parsed;
-        if (parsed.files.length > 1 && !input.element.multiple) {
+        const input = uploadInputForTarget(resolved.element);
+        if (!input) {
+            return dropUploadFilesOnElement(resolved.element, parsed.files);
+        }
+        if (input.disabled) {
+            return { error: { code: "not_enabled", message: `${describeElement(input)} is disabled` }, dialogs: drainDialogs() };
+        }
+        if (parsed.files.length > 1 && !input.multiple) {
             return {
                 error: {
                     code: "InvalidArgumentError",
-                    message: `${describeElement(input.element)} does not accept multiple files`,
+                    message: `${describeElement(input)} does not accept multiple files`,
                 },
                 dialogs: drainDialogs(),
             };
         }
-        const transfer = new DataTransfer();
-        for (const file of parsed.files) {
-            transfer.items.add(file.file);
-        }
+        const transfer = dataTransferForUploadFiles(parsed.files);
+        if ("error" in transfer)
+            return transfer;
         try {
-            input.element.files = transfer.files;
+            input.files = transfer.transfer.files;
         }
         catch (error) {
             return {
                 error: {
                     code: "InvalidArgumentError",
-                    message: `Firefox did not allow assigning files to ${describeElement(input.element)}: ${error instanceof Error ? error.message : String(error)}`,
+                    message: `Firefox did not allow assigning files to ${describeElement(input)}: ${error instanceof Error ? error.message : String(error)}`,
                 },
                 dialogs: drainDialogs(),
             };
         }
-        input.element.dispatchEvent(new Event("input", { bubbles: true }));
-        input.element.dispatchEvent(new Event("change", { bubbles: true }));
-        const totalBytes = parsed.files.reduce((sum, item) => sum + item.size, 0);
-        const files = parsed.files.map((item) => ({ name: item.name, size: item.size, type: item.type }));
-        return {
-            text: `Uploaded ${files.length} file(s) to ${describeElement(input.element)} (${totalBytes} byte(s))`,
-            target: describeElement(input.element),
-            fileCount: files.length,
-            files,
-            totalBytes,
-            dialogs: drainDialogs(),
-        };
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        return uploadFilesResult("input", input, parsed.files);
     }
-    function fileInputForUploadTarget(element) {
+    function uploadInputForTarget(element) {
         if (element instanceof HTMLInputElement && element.type === "file") {
-            return { element };
+            return element;
         }
         if (element instanceof HTMLLabelElement && element.control instanceof HTMLInputElement && element.control.type === "file") {
-            return { element: element.control };
+            return element.control;
         }
         if (element instanceof HTMLElement) {
             const nested = element.querySelector("input[type=file]");
             if (nested instanceof HTMLInputElement)
-                return { element: nested };
+                return nested;
         }
+        return null;
+    }
+    function dropUploadFilesOnElement(element, files) {
+        element.scrollIntoView({ block: "center", inline: "center" });
+        if (dispatchPageRealmUploadDrop(element, files)) {
+            return uploadFilesResult("drop", element, files);
+        }
+        const transfer = dataTransferForUploadFiles(files);
+        if ("error" in transfer)
+            return transfer;
+        for (const type of ["dragenter", "dragover", "drop"]) {
+            element.dispatchEvent(uploadDragEvent(type, transfer.transfer));
+        }
+        return uploadFilesResult("drop", element, files);
+    }
+    function dispatchPageRealmUploadDrop(element, files) {
+        const firefoxWindow = window;
+        const pageWindow = firefoxWindow.wrappedJSObject;
+        if (!pageWindow || typeof pageWindow.eval !== "function") {
+            return false;
+        }
+        const marker = `pire-upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const attr = "data-pire-upload-target";
+        element.setAttribute(attr, marker);
+        try {
+            const payload = files.map((item) => ({
+                name: item.name,
+                type: item.type,
+                bytesBase64: item.bytesBase64,
+            }));
+            const source = `(() => {
+      const target = document.querySelector(${JSON.stringify(`[${attr}="${marker}"]`)});
+      if (!target || typeof File !== "function" || typeof DataTransfer !== "function" || typeof DragEvent !== "function") return false;
+      const transfer = new DataTransfer();
+      const decode = (value) => {
+        const binary = atob(value);
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+        return bytes;
+      };
+      for (const item of ${JSON.stringify(payload)}) {
+        transfer.items.add(new File([decode(item.bytesBase64)], item.name, { type: item.type }));
+      }
+      for (const type of ["dragenter", "dragover", "drop"]) {
+        target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, composed: true, dataTransfer: transfer }));
+      }
+      return true;
+    })()`;
+            return pageWindow.eval(source) === true;
+        }
+        catch {
+            return false;
+        }
+        finally {
+            element.removeAttribute(attr);
+        }
+    }
+    function dataTransferForUploadFiles(files) {
+        if (typeof DataTransfer !== "function") {
+            return {
+                error: {
+                    code: "NotAvailableError",
+                    message: "Firefox did not expose DataTransfer for upload automation in this page",
+                },
+                dialogs: drainDialogs(),
+            };
+        }
+        const transfer = new DataTransfer();
+        for (const file of files) {
+            transfer.items.add(file.file);
+        }
+        return { transfer };
+    }
+    function uploadDragEvent(type, dataTransfer) {
+        const init = { bubbles: true, cancelable: true, composed: true, dataTransfer };
+        let event;
+        if (typeof DragEvent === "function") {
+            event = new DragEvent(type, init);
+        }
+        else {
+            event = new Event(type, init);
+        }
+        try {
+            Object.defineProperty(event, "dataTransfer", { value: pageRealmUploadDataTransfer(dataTransfer) });
+        }
+        catch {
+            // Some browsers expose a non-configurable dataTransfer property on DragEvent.
+        }
+        return event;
+    }
+    function pageRealmUploadDataTransfer(dataTransfer) {
+        const firefoxGlobal = globalThis;
+        const firefoxWindow = window;
+        if (typeof firefoxGlobal.cloneInto !== "function" || !firefoxWindow.wrappedJSObject) {
+            return dataTransfer;
+        }
+        const files = [];
+        for (let index = 0; index < dataTransfer.files.length; index++) {
+            const file = dataTransfer.files.item(index);
+            if (file)
+                files.push(file);
+        }
+        const items = [];
+        for (let index = 0; index < dataTransfer.items.length; index++) {
+            const item = dataTransfer.items[index];
+            if (item)
+                items.push(item);
+        }
+        const facade = {
+            files,
+            items,
+            types: ["Files"],
+            dropEffect: dataTransfer.dropEffect,
+            effectAllowed: dataTransfer.effectAllowed,
+            getData: () => "",
+            setData: () => undefined,
+            clearData: () => undefined,
+        };
+        try {
+            return firefoxGlobal.cloneInto(facade, firefoxWindow.wrappedJSObject, {
+                cloneFunctions: true,
+                wrapReflectors: true,
+            });
+        }
+        catch {
+            return dataTransfer;
+        }
+    }
+    function uploadFilesResult(mode, element, parsedFiles) {
+        const totalBytes = parsedFiles.reduce((sum, item) => sum + item.size, 0);
+        const files = parsedFiles.map((item) => ({ name: item.name, size: item.size, type: item.type }));
         return {
-            error: {
-                code: "InvalidArgumentError",
-                message: `Upload target must be an input[type=file] or associated label, got ${describeElement(element)}`,
-            },
+            text: `${mode === "drop" ? "Dropped" : "Uploaded"} ${files.length} file(s) ${mode === "drop" ? "on" : "to"} ${describeElement(element)} (${totalBytes} byte(s))`,
+            target: describeElement(element),
+            mode,
+            fileCount: files.length,
+            files,
+            totalBytes,
             dialogs: drainDialogs(),
         };
     }
@@ -855,6 +979,8 @@
                 name,
                 size: expectedSize,
                 type,
+                bytes: bytes.bytes,
+                bytesBase64,
             });
         }
         return { files };

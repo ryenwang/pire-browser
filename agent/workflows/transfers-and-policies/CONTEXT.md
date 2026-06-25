@@ -17,10 +17,12 @@ Use this for downloads, uploads, external navigation, destructive actions, actio
 5. For downloads, verify the completed file path and expected file type or size when relevant.
 6. Reinspect after transfer-related actions because dialogs and page state often change refs.
 
-Uploads assign local files to `input[type=file]` controls, associated labels, or
-containers with a nested file input. Payloads are chunked through the native
-host and capped at 8 MiB total raw bytes per command. Native OS file-picker
-control, directory upload, and drag/drop upload are not implemented.
+Uploads assign local files to `input[type=file]` controls, associated labels,
+containers with a nested file input, or page dropzones. Payloads are chunked
+through the native host and capped at 8 MiB total raw bytes per command.
+Dropzone upload dispatches page `dragenter`/`dragover`/`drop` events with
+`DataTransfer` files. Native OS file-picker control, directory upload, and
+browser-chrome drag state are not implemented.
 
 ## Audit
 

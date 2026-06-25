@@ -163,7 +163,7 @@ try {
   Set-Content -LiteralPath $labelPath -Value "label upload smoke`n" -NoNewline
   Set-Content -LiteralPath $denyPath -Value "denied upload smoke`n" -NoNewline
   Set-Content -LiteralPath $mutablePath -Value "mutable upload smoke`n" -NoNewline
-  [IO.File]::WriteAllBytes($oversizedPath, [byte[]]::new(524289))
+  [IO.File]::WriteAllBytes($oversizedPath, [byte[]]::new(8388609))
 
   $oneHash = FileHashLower $onePath
   $twoHash = FileHashLower $twoPath
@@ -180,7 +180,7 @@ try {
   <input id="single" type="file">
   <input id="multi" type="file" multiple>
   <label id="label-target" for="single">Upload via label</label>
-  <button id="not-file">Not a file input</button>
+  <div id="dropzone" style="min-height:80px;border:1px dashed #888;padding:12px">Drop files here</div>
   <pre id="summary">empty</pre>
   <script>
     async function hashFile(file) {
@@ -188,16 +188,24 @@ try {
       const digest = await crypto.subtle.digest("SHA-256", bytes);
       return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
     }
-    async function update(event) {
-      const files = Array.from(event.target.files || []);
+    async function updateFiles(files) {
       const parts = [];
       for (const file of files) {
         parts.push(`${file.name}:${file.size}:${await hashFile(file)}`);
       }
       document.querySelector("#summary").textContent = parts.join("|") || "empty";
     }
-    document.querySelector("#single").addEventListener("change", update);
-    document.querySelector("#multi").addEventListener("change", update);
+    async function updateInput(event) {
+      await updateFiles(Array.from(event.target.files || []));
+    }
+    async function updateDrop(event) {
+      event.preventDefault();
+      await updateFiles(Array.from(event.dataTransfer?.files || []));
+    }
+    document.querySelector("#single").addEventListener("change", updateInput);
+    document.querySelector("#multi").addEventListener("change", updateInput);
+    document.querySelector("#dropzone").addEventListener("dragover", (event) => event.preventDefault());
+    document.querySelector("#dropzone").addEventListener("drop", updateDrop);
   </script>
 </body>
 </html>
@@ -256,8 +264,12 @@ ThreadingHTTPServer(("127.0.0.1", $Port), Handler).serve_forever()
   Assert-NoPayloadLeak $label
   $null = Invoke-Pire "Assert label upload hash" @("--session-name", $Profile, "wait", "--text", $labelHash, "--timeout", "30000", "--json") '"success"\s*:\s*true'
 
+  $drop = Invoke-Pire "Dropzone upload" @("--session-name", $Profile, "upload", "#dropzone", $onePath, $twoPath, "--json") '"mode"\s*:\s*"drop"'
+  Assert-NoPayloadLeak $drop
+  $null = Invoke-Pire "Assert dropzone upload hash one" @("--session-name", $Profile, "wait", "--text", $oneHash, "--timeout", "30000", "--json") '"success"\s*:\s*true'
+  $null = Invoke-Pire "Assert dropzone upload hash two" @("--session-name", $Profile, "wait", "--text", $twoHash, "--timeout", "30000", "--json") '"success"\s*:\s*true'
+
   $null = Invoke-PireFailure "Non-multiple input rejects multiple files" @("--session-name", $Profile, "upload", "#single", $onePath, $twoPath, "--json") "multiple files"
-  $null = Invoke-PireFailure "Non-file target fails" @("--session-name", $Profile, "upload", "#not-file", $onePath, "--json") "input\[type=file\]"
   $null = Invoke-PireFailure "Missing local file fails" @("--session-name", $Profile, "upload", "#single", (Join-Path $FilesDir "missing.txt"), "--json") "upload file not found"
   $null = Invoke-PireFailure "Oversized local file fails" @("--session-name", $Profile, "upload", "#single", $oversizedPath, "--json") "too large"
 
@@ -282,7 +294,7 @@ ThreadingHTTPServer(("127.0.0.1", $Port), Handler).serve_forever()
   $null = Invoke-PireFailure "Confirmed upload rejects changed file" @("confirm", $pendingMutable.error.data.confirmationId, "--json") "changed since confirmation"
   Remove-Item Env:PIRE_BROWSER_CONFIRM_ACTIONS -ErrorAction SilentlyContinue
 
-  $null = Invoke-PireFailure "Network remains unavailable" @("network", "requests", "--json") "NotAvailableError"
+  $null = Invoke-Pire "Network requests remain available" @("network", "requests", "--json") '"success"\s*:\s*true'
 
   $script:smokeSucceeded = $true
   Write-Output "Upload smoke test passed for profile $Profile."

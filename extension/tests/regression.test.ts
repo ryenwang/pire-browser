@@ -925,7 +925,7 @@ describe("pire-browser command foundations", () => {
     expect(contentBody).toContain("function screenshotScroll");
   });
 
-  it("routes uploads through file-input assignment without echoing payload bytes", () => {
+  it("routes uploads through file-input assignment or page drop events without echoing payload bytes", () => {
     const backgroundBody = background();
     const contentBody = content();
     expect(backgroundBody).toContain('case "upload":');
@@ -936,7 +936,12 @@ describe("pire-browser command foundations", () => {
     expect(contentBody).toContain('message.type === "upload_files"');
     expect(contentBody).toContain("function uploadFilesLocator");
     expect(contentBody).toContain("new DataTransfer()");
-    expect(contentBody).toContain("input.element.files = transfer.files");
+    expect(contentBody).toContain("input.files = transfer.transfer.files");
+    expect(contentBody).toContain("function dropUploadFilesOnElement");
+    expect(contentBody).toContain("function dispatchPageRealmUploadDrop");
+    expect(contentBody).toContain("pageWindow.eval(source)");
+    expect(contentBody).toContain('["dragenter", "dragover", "drop"]');
+    expect(contentBody).toContain('"drop"');
     expect(contentBody).toContain("element instanceof HTMLLabelElement");
     expect(contentBody).not.toContain("bytesBase64, dialogs");
   });

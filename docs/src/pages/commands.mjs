@@ -26,7 +26,7 @@ pire-browser scroll <dir> [px]       # Scroll page or container
 pire-browser scrollintoview <sel>    # Scroll element into view
 pire-browser swipe up [px]           # Best-effort mobile swipe as page scroll
 pire-browser drag <src> <dst>        # Drag and drop with page-level events
-pire-browser upload <sel> <files>    # Assign local file input payloads
+pire-browser upload <sel> <files>    # Upload to file inputs or dropzones
 pire-browser screenshot [path]       # Capture screenshot evidence
 pire-browser pdf page.pdf            # Capture image-backed PDF evidence
 pire-browser snapshot -i             # Accessibility tree with refs

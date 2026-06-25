@@ -167,7 +167,7 @@ pire-browser scroll <dir> [px]       # Scroll page or container
 pire-browser scrollintoview <sel>    # Scroll element into view
 pire-browser swipe up [px]           # Best-effort mobile swipe as page scroll
 pire-browser drag <src> <dst>        # Drag and drop with page-level events
-pire-browser upload <sel> <files>    # Upload files
+pire-browser upload <sel> <files>    # Upload files to inputs or dropzones
 pire-browser screenshot [path]       # Screenshot
 pire-browser screenshot --annotate   # Annotated screenshot with numbered element labels
 pire-browser screenshot --screenshot-dir ./shots
@@ -1152,7 +1152,7 @@ pire-browser pdf output.pdf
 pire-browser upload '#file' ./fixture.png
 ```
 
-For repeatable agent tests, an HTTP fixture server is usually more reliable than file URLs. Uploads are chunked through the native host and capped at 8 MiB total raw bytes per command. They assign files to `input[type=file]` controls or associated labels; native OS file-picker control, directory upload, and drag/drop upload are not implemented. PDF output is image-backed visual evidence, not a selectable-text print export.
+For repeatable agent tests, an HTTP fixture server is usually more reliable than file URLs. Uploads are chunked through the native host and capped at 8 MiB total raw bytes per command. They assign files to `input[type=file]` controls, associated labels, nested file inputs, or page dropzones. Dropzone support dispatches page `dragenter`/`dragover`/`drop` events with `DataTransfer` files; native OS file-picker control, directory upload, and browser-chrome drag state are not implemented. PDF output is image-backed visual evidence, not a selectable-text print export.
 
 ## CDP Mode
 

@@ -10,7 +10,7 @@ pire-browser wait --download --timeout 60000`),
   h2("Uploads", "uploads"),
   code(`pire-browser upload '#file' ./path/to/file.txt
 pire-browser upload '#multi-file' ./one.txt ./two.json --json`),
-  p("Uploads are chunked through the native host and capped at 8 MiB total raw bytes per command. The command assigns files to input[type=file] controls or associated labels; native OS file-picker control, directory upload, and drag/drop upload are not implemented."),
+  p("Uploads are chunked through the native host and capped at 8 MiB total raw bytes per command. The command assigns files to input[type=file] controls, associated labels, nested file inputs, or page dropzones. Dropzone support dispatches page dragenter/dragover/drop events with DataTransfer files; native OS file-picker control, directory upload, and browser-chrome drag state are not implemented."),
   h2("Clipboard", "clipboard"),
   code(`pire-browser clipboard read
 pire-browser clipboard write "hello"

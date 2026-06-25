@@ -2524,7 +2524,7 @@ Common commands:
   wait --download out.txt         Wait for a recent/new download and save it
   --download-path ./downloads open <url>
                                   Use a default Firefox download directory
-  upload '#file' ./fixture.txt    Assign bounded local files to a file input
+  upload '#file' ./fixture.txt    Assign bounded files to an input or dropzone
   auth login app                  Open a saved login form and submit it
   auth login app --credential-provider vault --item "My App"
                                   Resolve credentials through a configured plugin
@@ -3327,13 +3327,15 @@ const UPLOAD_HELP: &str = r##"
 Usage:
   pire-browser upload <target> <file> [more-files...] [--json]
 
-Assigns bounded local files to a targeted input[type=file] or associated label
-in the active Firefox page. The CLI reads files locally, stages payloads through
-the native host, and streams chunks to the extension so Firefox's Native
-Messaging message limit is not exceeded. Total raw upload bytes are capped at
-8 MiB per command.
+Assigns bounded local files to a targeted input[type=file], associated label,
+nested file input, or page dropzone in the active Firefox page. The CLI reads
+files locally, stages payloads through the native host, and streams chunks to
+the extension so Firefox's Native Messaging message limit is not exceeded.
+Total raw upload bytes are capped at 8 MiB per command.
 
-No native OS file picker, directory upload, or drag/drop upload is implemented.
+Dropzone uploads dispatch page dragenter/dragover/drop events with DataTransfer
+files. Native OS file picker control, directory upload, and browser-chrome drag
+state are not implemented.
 "##;
 
 const CLIPBOARD_HELP: &str = r##"

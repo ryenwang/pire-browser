@@ -441,18 +441,21 @@ paths resolve from the command's current working directory. Use an explicit
 final filename must be exact. With no explicit output path, `wait --download`
 reports the completed Firefox file path; verify file type or size when relevant.
 
-Upload local files through file input controls:
+Upload local files through file input controls or page dropzones:
 
 ```bash
 pire-browser snapshot -i
 pire-browser upload '<file-input-ref-or-selector>' ./fixture.png
+pire-browser upload '<dropzone-ref-or-selector>' ./one.png ./two.json
 pire-browser snapshot -i
 ```
 
 Use a fresh snapshot to verify the target is an `input[type=file]`, an
-associated label, or a container with a nested file input. Uploads are chunked
-through the native host and capped at 8 MiB total raw bytes per command. Native
-OS file-picker control, directory upload, and drag/drop upload are not
+associated label, a container with a nested file input, or the visible dropzone
+that the web app listens to. Uploads are chunked through the native host and
+capped at 8 MiB total raw bytes per command. Dropzone upload dispatches page
+`dragenter`/`dragover`/`drop` events with `DataTransfer` files. Native OS
+file-picker control, directory upload, and browser-chrome drag state are not
 implemented, so verify success through fresh page state after the upload.
 
 Compare page structure before and after an action:

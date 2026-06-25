@@ -200,7 +200,6 @@ try {
   if ($batchUrl -match "localhost") { throw "batch should not navigate after denied subcommand" }
 
   $null = Invoke-PireFailure "Domain denial wins over action denial" @("--session-name", $Profile, "--allowed-domains", "127.0.0.1", "--action-policy", $DenyNavigatePolicy, "open", $DeniedHostUrl, "--json") "DomainPolicyError[\s\S]*$policyPhasePattern"
-  $null = Invoke-PireFailure "Unavailable command keeps NotAvailableError" @("--action-policy", $ReviewPolicy, "upload", "#file", "out.zip", "--json") "NotAvailableError"
   $null = Invoke-PireFailure "Unsupported command keeps unsupported_command" @("--action-policy", $ReviewPolicy, "stats", "--json") "unsupported_command"
 
   $script:smokeSucceeded = $true
