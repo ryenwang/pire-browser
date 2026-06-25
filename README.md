@@ -603,7 +603,7 @@ pire-browser skills get core
 pire-browser skills get --all --json
 ```
 
-Installed agents should use the bundled skill command for version-matched guidance instead of relying on stale copied instructions. `skills get` is an agent-browser-style alias for `skills cat`; `skills get --all` returns all bundled skill content. The package also ships compact routing context under `agent/`.
+Installed agents should use the bundled skill command for version-matched guidance instead of relying on stale copied instructions. `skills get` is an agent-browser-style alias for `skills cat`; `skills get --all` returns all bundled skill content. Skill commands are served by the JS launcher when possible, so agents can still load setup and repair guidance if the native binary is missing or stale. The package also ships compact routing context under `agent/`.
 
 ### MCP Server
 

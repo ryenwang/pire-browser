@@ -10,6 +10,59 @@ afterEach(() => {
 });
 
 describe("launcher update UX", () => {
+  it("serves agent-browser-style skills get core from the JS launcher before native resolution", () => {
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+    expect(main(["skills", "get", "core", "--json"])).toBe(0);
+
+    const body = JSON.parse(logs.join("\n"));
+    expect(body).toMatchObject({
+      success: true,
+      data: {
+        skill: {
+          name: "core",
+        },
+      },
+    });
+    expect(body.data.skill.content).toContain("pire-browser skills get core");
+    expect(body.data.skill.content).toContain("pire-browser skills get --all");
+    expect(body.data.skill.content).not.toContain("\r");
+  });
+
+  it("serves skills get --all with the success/data envelope", () => {
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+    expect(main(["skills", "get", "--all", "--json"])).toBe(0);
+
+    const body = JSON.parse(logs.join("\n"));
+    expect(body).toMatchObject({
+      success: true,
+      data: {
+        skills: [
+          {
+            name: "core",
+          },
+        ],
+      },
+    });
+  });
+
+  it("reports invalid launcher-served skills requests without invoking native commands", () => {
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+    expect(main(["skills", "get", "missing", "--json"])).toBe(1);
+
+    expect(JSON.parse(logs.join("\n"))).toMatchObject({
+      success: false,
+      error: {
+        code: "unsupported_command",
+      },
+    });
+  });
+
   it("classifies semver changes for patch, minor, major, and current", () => {
     expect(classifyUpdate("0.2.2", "0.2.3")).toMatchObject({
       available: true,

@@ -28,6 +28,9 @@ export function main(args = process.argv.slice(2)) {
     return handleUpgrade(args.slice(1));
   }
 
+  const skillsResult = handleLauncherSkills(args);
+  if (skillsResult !== null) return skillsResult;
+
   maybeStartBackgroundUpdateCheck(args);
   const resolved = resolveNativeBinary({ root });
   if (!resolved.ok) {
@@ -106,6 +109,139 @@ function forwardFile(path, stream) {
   if (!existsSync(path)) return;
   const body = readFileSync(path, "utf8");
   if (body) stream.write(body);
+}
+
+export function handleLauncherSkills(args, options = {}) {
+  const output = options.output ?? console.log;
+  const error = options.error ?? console.error;
+  if (!["skills", "skill"].includes(args[0])) return null;
+
+  const skillArgs = args.slice(1);
+  const json = removeFlag(skillArgs, "--json");
+  const subcommand = skillArgs.shift() ?? "list";
+  if (subcommand === "list") {
+    if (skillArgs.length > 0) {
+      return outputSkillsError(`unsupported skills list option: ${skillArgs[0]}`, json, output, error);
+    }
+    return outputSkillsList(json, output);
+  }
+  if (subcommand === "cat" || subcommand === "get") {
+    const full = removeFlag(skillArgs, "--full");
+    void full;
+    if (removeFlag(skillArgs, "--all")) {
+      if (skillArgs.length > 0) {
+        return outputSkillsError(`unsupported skills ${subcommand} option: ${skillArgs[0]}`, json, output, error);
+      }
+      return outputSkillsCatAll(json, output);
+    }
+    const name = skillArgs.shift();
+    if (!name) {
+      return outputSkillsError(`invalid_args: skills ${subcommand} requires <name>`, json, output, error);
+    }
+    if (skillArgs.length > 0) {
+      return outputSkillsError(`unsupported skills ${subcommand} option: ${skillArgs[0]}`, json, output, error);
+    }
+    return outputSkillsCat(name, json, output, error);
+  }
+  if (subcommand.startsWith("-")) {
+    return outputSkillsError(`unsupported skills option: ${subcommand}`, json, output, error);
+  }
+  return outputSkillsError(`unsupported skills command: ${subcommand}; try \`pire-browser skills list\``, json, output, error);
+}
+
+function outputSkillsList(json, output) {
+  const skills = launcherSkills();
+  if (json) output(successEnvelope({ skills }));
+  else {
+    for (const skill of skills) output(`${skill.name}\t${skill.description}`);
+  }
+  return 0;
+}
+
+function outputSkillsCat(name, json, output, error) {
+  const skill = launcherSkillContent(name);
+  if (!skill) {
+    const available = launcherSkills().map((item) => item.name).join(", ");
+    return outputSkillsError(`unknown skill: No skill named \`${name}\`. Available skills: ${available}.`, json, output, error);
+  }
+  if (json) output(successEnvelope({ skill }));
+  else process.stdout.write(skill.content);
+  return 0;
+}
+
+function outputSkillsCatAll(json, output) {
+  const skills = launcherSkills().map((skill) => launcherSkillContent(skill.name)).filter(Boolean);
+  if (json) output(successEnvelope({ skills }));
+  else process.stdout.write(skills.map((skill) => skill.content).join("\n"));
+  return 0;
+}
+
+function outputSkillsError(message, json, output, error) {
+  const cleanMessage = message.replace(/^invalid_args: /, "");
+  if (json) {
+    output(
+      JSON.stringify(
+        {
+          success: false,
+          error: {
+            code: message.startsWith("invalid_args:") ? "invalid_args" : "unsupported_command",
+            message: cleanMessage,
+          },
+          warnings: [],
+        },
+        null,
+        2
+      )
+    );
+  } else {
+    error(`${message.startsWith("invalid_args:") ? "invalid_args" : "unsupported_command"}: ${cleanMessage}`);
+  }
+  return 1;
+}
+
+function launcherSkills() {
+  const skill = launcherSkillContent("core");
+  return [{ name: "core", description: skill?.description ?? "Core pire-browser workflow for safe Firefox automation." }];
+}
+
+function launcherSkillContent(name) {
+  if (!/^[A-Za-z0-9_.-]+$/.test(name)) return null;
+  const path = join(root, "skill-data", name, "SKILL.md");
+  if (!existsSync(path)) return null;
+  const content = normalizeSkillText(readFileSync(path, "utf8"));
+  const frontmatter = skillFrontmatter(content);
+  if (!frontmatter || frontmatter.name !== name) return null;
+  return {
+    name: frontmatter.name,
+    description: frontmatter.description,
+    content,
+  };
+}
+
+function skillFrontmatter(content) {
+  const lines = content.split("\n");
+  if (lines.shift() !== "---") return null;
+  let name = "";
+  let description = "";
+  for (const line of lines) {
+    if (line === "---") break;
+    const index = line.indexOf(":");
+    if (index === -1) return null;
+    const key = line.slice(0, index).trim();
+    const value = line.slice(index + 1).trim().replace(/^"(.*)"$/, "$1");
+    if (key === "name") name = value;
+    if (key === "description") description = value;
+  }
+  if (!name) return null;
+  return { name, description };
+}
+
+function normalizeSkillText(text) {
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function successEnvelope(data) {
+  return JSON.stringify({ success: true, data, warnings: [] }, null, 2);
 }
 
 function handleUpdate(updateArgs) {

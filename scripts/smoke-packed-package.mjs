@@ -515,6 +515,15 @@ function runInstalledChecks({ command, commandCwd, env, recorder }) {
   if (parsed.success !== true || parsed.data?.skill?.name !== "core") {
     throw new Error("skills cat core --json did not return the expected success/data envelope");
   }
+  const skillGet = runPire(command, ["skills", "get", "core", "--json"], { cwd: commandCwd, env, recorder });
+  const parsedGet = JSON.parse(skillGet.stdout);
+  if (
+    parsedGet.success !== true ||
+    parsedGet.data?.skill?.name !== "core" ||
+    !String(parsedGet.data?.skill?.content ?? "").includes("pire-browser skills get --all")
+  ) {
+    throw new Error("skills get core --json did not return the expected current success/data envelope");
+  }
   runPire(command, ["status", "--json"], { cwd: commandCwd, env, recorder });
   runPire(command, ["doctor"], { cwd: commandCwd, env, recorder });
 }

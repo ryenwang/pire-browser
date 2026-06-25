@@ -81,12 +81,24 @@ export function buildPlatform(tuple, options = {}) {
   assertNonEmpty(hostOut);
 
   if (validateNative) {
-    const result = spawnSync(cliOut, ["skills", "list", "--json"], {
+    const list = spawnSync(cliOut, ["skills", "list", "--json"], {
       cwd: root,
       encoding: "utf8",
     });
-    if (result.status !== 0) {
-      throw new Error(result.stderr || result.stdout || `${cliOut} skills list failed`);
+    if (list.status !== 0) {
+      throw new Error(list.stderr || list.stdout || `${cliOut} skills list failed`);
+    }
+    const get = spawnSync(cliOut, ["skills", "get", "core", "--json"], {
+      cwd: root,
+      encoding: "utf8",
+    });
+    if (get.status !== 0) {
+      throw new Error(get.stderr || get.stdout || `${cliOut} skills get core failed`);
+    }
+    const parsed = JSON.parse(get.stdout);
+    const content = parsed?.data?.skill?.content ?? "";
+    if (parsed?.success !== true || parsed?.data?.skill?.name !== "core" || !content.includes("pire-browser skills get --all")) {
+      throw new Error(`${cliOut} did not return the current core skill contract`);
     }
   }
 

@@ -12,7 +12,7 @@ pire-browser skills cat core
 pire-browser skills cat core --json
 pire-browser skills get core
 pire-browser skills get --all --json`),
-  p("<code>skills get</code> is an agent-browser-style alias for <code>skills cat</code>. Agents retrieve skill content at runtime, so instructions match the installed CLI version instead of going stale."),
+  p("<code>skills get</code> is an agent-browser-style alias for <code>skills cat</code>. Agents retrieve skill content at runtime, so instructions match the installed package version instead of going stale. The JS launcher serves these skill commands when possible, which keeps setup and repair guidance available even if the native binary is missing or stale."),
   h2("How It Works", "how-it-works"),
   p("The repository skill is intentionally thin and stable. Actual usage instructions, command references, workflows, and safety notes live in <code>skill-data/</code> and are served by the CLI."),
   h2("Available Skills", "available-skills"),
