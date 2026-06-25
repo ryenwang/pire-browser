@@ -77,6 +77,7 @@ use pire_browser_core::upload::{
     PreparedUpload, UploadFileIdentity,
 };
 use serde_json::{json, Map, Value};
+use sha1::{Digest as Sha1Digest, Sha1};
 use std::fs;
 use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -99,6 +100,8 @@ const CHAT_DEFAULT_BASE_URL: &str = "https://ai-gateway.vercel.sh";
 const CHAT_DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4.6";
 const CHAT_COMMAND_TIMEOUT_MS: u64 = 120_000;
 const CHAT_OBSERVATION_CHAR_LIMIT: usize = 24_000;
+const DASHBOARD_PREVIEW_INTERVAL_MS: u64 = 1500;
+const WEBSOCKET_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const CHAT_NODE_FETCH_SCRIPT: &str = r#"
 (async () => {
   const fs = require('node:fs');
@@ -3160,13 +3163,15 @@ fn read_dashboard_state_value() -> Result<Option<Value>> {
 }
 
 fn dashboard_state_port(value: &Value) -> Option<u16> {
-    value["dashboard"]["port"]
+    let dashboard = value.get("dashboard").unwrap_or(value);
+    dashboard["port"]
         .as_u64()
         .and_then(|port| u16::try_from(port).ok())
 }
 
 fn dashboard_state_pid(value: &Value) -> Option<u32> {
-    value["dashboard"]["pid"]
+    let dashboard = value.get("dashboard").unwrap_or(value);
+    dashboard["pid"]
         .as_u64()
         .and_then(|pid| u32::try_from(pid).ok())
 }
@@ -3301,10 +3306,10 @@ fn stream_enable_value(port: u16) -> Result<Value> {
     let dashboard = dashboard_start_background_value(port)?;
     let mut value = stream_value_from_dashboard(dashboard);
     let url = value["stream"]["dashboardUrl"].as_str().unwrap_or("");
+    let ws = value["stream"]["webSocketUrl"].as_str().unwrap_or("");
     value["text"] = json!(format!(
-        "Enabled pire-browser stream preview via dashboard polling on {url}.\nWarning [STREAM_WEBSOCKET_UNAVAILABLE]: Full WebSocket viewport streaming is not implemented in the Firefox backend yet."
+        "Enabled pire-browser WebSocket screenshot stream on {ws}. Dashboard: {url}"
     ));
-    value["warnings"] = json!([stream_websocket_gap_warning()]);
     Ok(value)
 }
 
@@ -3314,12 +3319,12 @@ fn stream_status_value() -> Result<Value> {
     let enabled = value["stream"]["enabled"].as_bool() == Some(true);
     value["text"] = if enabled {
         json!(format!(
-            "pire-browser stream preview is enabled via dashboard polling on {}.",
-            value["stream"]["dashboardUrl"].as_str().unwrap_or("")
+            "pire-browser WebSocket screenshot stream is enabled on {}.",
+            value["stream"]["webSocketUrl"].as_str().unwrap_or("")
         ))
     } else {
         json!(
-            "pire-browser stream preview is disabled. Run `pire-browser stream enable` to start the dashboard-backed preview service."
+            "pire-browser stream is disabled. Run `pire-browser stream enable` to start the dashboard-backed WebSocket stream service."
         )
     };
     Ok(value)
@@ -3343,29 +3348,25 @@ fn stream_value_from_dashboard(dashboard_value: Value) -> Value {
     } else {
         Value::Null
     };
+    let web_socket_url = dashboard_state_port(&dashboard)
+        .filter(|_| running)
+        .map(|port| format!("ws://127.0.0.1:{port}/api/stream"));
     json!({
         "stream": {
             "enabled": running,
             "status": if running { "enabled" } else { "disabled" },
-            "transport": if running { "dashboard-http-polling" } else { "none" },
+            "transport": if running { "dashboard-websocket-screenshot" } else { "none" },
             "dashboardUrl": dashboard_url,
-            "webSocketStreaming": false,
-            "webSocketUrl": Value::Null,
+            "webSocketStreaming": running,
+            "webSocketUrl": web_socket_url,
             "liveViewport": true,
-            "liveViewportKind": "polling-screenshot-preview",
+            "liveViewportKind": if running { "websocket-screenshot-stream" } else { "none" },
             "readOnlyViewportPreview": true,
+            "remoteInput": running,
             "activityFeed": true,
-            "note": "Firefox backend currently provides dashboard HTTP polling for viewport preview; full agent-browser WebSocket frame streaming is not implemented yet."
+            "note": "Firefox backend streams visible-viewport screenshot frames over WebSocket and accepts basic mouse/keyboard/touch-shaped input events. It is not native WebM video or Chrome DevTools screencast output."
         },
         "dashboard": dashboard
-    })
-}
-
-fn stream_websocket_gap_warning() -> Value {
-    json!({
-        "code": "STREAM_WEBSOCKET_UNAVAILABLE",
-        "feature": "stream",
-        "message": "Firefox backend exposes dashboard HTTP polling preview; full WebSocket viewport streaming is not implemented yet."
     })
 }
 
@@ -3415,7 +3416,11 @@ fn terminate_dashboard_process(pid: u32) -> Result<()> {
 
 fn serve_dashboard_stream(stream: &mut TcpStream) -> Result<()> {
     let request = read_dashboard_request(stream)?;
-    let response = dashboard_response_for_request(&request.unwrap_or_else(DashboardRequest::root));
+    let request = request.unwrap_or_else(DashboardRequest::root);
+    if dashboard_is_websocket_stream_request(&request) {
+        return serve_dashboard_websocket_stream(stream, &request);
+    }
+    let response = dashboard_response_for_request(&request);
     write_dashboard_response(stream, &response)?;
     Ok(())
 }
@@ -3424,6 +3429,7 @@ fn serve_dashboard_stream(stream: &mut TcpStream) -> Result<()> {
 struct DashboardRequest {
     method: String,
     path: String,
+    headers: Vec<(String, String)>,
     body: String,
 }
 
@@ -3432,6 +3438,7 @@ impl DashboardRequest {
         Self {
             method: "GET".to_string(),
             path: "/".to_string(),
+            headers: Vec::new(),
             body: String::new(),
         }
     }
@@ -3445,17 +3452,23 @@ fn read_dashboard_request(stream: &mut TcpStream) -> Result<Option<DashboardRequ
         return Ok(None);
     };
     let mut content_length = 0usize;
+    let mut headers = Vec::new();
     loop {
         line.clear();
         reader.read_line(&mut line)?;
         if line == "\r\n" || line == "\n" || line.is_empty() {
             break;
         }
-        if let Some(value) = line
-            .split_once(':')
-            .and_then(|(name, value)| name.eq_ignore_ascii_case("content-length").then_some(value))
-        {
-            content_length = value.trim().parse::<usize>().unwrap_or(0).min(128 * 1024);
+        if let Some((name, value)) = line.split_once(':') {
+            let trimmed_name = name.trim().to_ascii_lowercase();
+            let trimmed_value = value.trim().to_string();
+            if !trimmed_name.is_empty() {
+                headers.push((trimmed_name.clone(), trimmed_value.clone()));
+            }
+            if trimmed_name == "content-length" {
+                content_length = trimmed_value.parse::<usize>().unwrap_or(0).min(128 * 1024);
+            }
+            continue;
         }
     }
     let mut body = vec![0; content_length];
@@ -3465,6 +3478,7 @@ fn read_dashboard_request(stream: &mut TcpStream) -> Result<Option<DashboardRequ
     Ok(Some(DashboardRequest {
         method,
         path,
+        headers,
         body: String::from_utf8_lossy(&body).to_string(),
     }))
 }
@@ -3604,6 +3618,7 @@ fn dashboard_response_for_path(path: &str) -> DashboardResponse {
     dashboard_response_for_request(&DashboardRequest {
         method: "GET".to_string(),
         path: path.to_string(),
+        headers: Vec::new(),
         body: String::new(),
     })
 }
@@ -3632,6 +3647,417 @@ fn write_dashboard_response(stream: &mut TcpStream, response: &DashboardResponse
     Ok(())
 }
 
+fn dashboard_is_websocket_stream_request(request: &DashboardRequest) -> bool {
+    request.method == "GET"
+        && dashboard_stream_session_id(&request.path).is_some()
+        && dashboard_header(request, "upgrade")
+            .is_some_and(|value| value.eq_ignore_ascii_case("websocket"))
+        && dashboard_header(request, "connection")
+            .is_some_and(|value| value.to_ascii_lowercase().contains("upgrade"))
+}
+
+fn dashboard_header<'a>(request: &'a DashboardRequest, name: &str) -> Option<&'a str> {
+    let expected = name.to_ascii_lowercase();
+    request
+        .headers
+        .iter()
+        .find_map(|(key, value)| (key == &expected).then_some(value.as_str()))
+}
+
+fn dashboard_stream_session_id(path: &str) -> Option<Option<String>> {
+    if path == "/api/stream" {
+        return Some(None);
+    }
+    let suffix = path.strip_prefix("/api/stream/")?;
+    let value = suffix.trim_matches('/');
+    Some((!value.is_empty()).then(|| value.to_string()))
+}
+
+fn dashboard_websocket_accept_key(key: &str) -> String {
+    let mut hasher = Sha1::new();
+    hasher.update(key.trim().as_bytes());
+    hasher.update(WEBSOCKET_GUID.as_bytes());
+    let digest = hasher.finalize();
+    base64::engine::general_purpose::STANDARD.encode(digest)
+}
+
+fn serve_dashboard_websocket_stream(
+    stream: &mut TcpStream,
+    request: &DashboardRequest,
+) -> Result<()> {
+    let Some(key) = dashboard_header(request, "sec-websocket-key") else {
+        let response = DashboardResponse {
+            status: 400,
+            reason: "Bad Request",
+            content_type: "text/plain; charset=utf-8",
+            body: "Missing Sec-WebSocket-Key".to_string(),
+        };
+        write_dashboard_response(stream, &response)?;
+        return Ok(());
+    };
+    let accept_key = dashboard_websocket_accept_key(key);
+    write!(
+        stream,
+        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept_key}\r\nCache-Control: no-store\r\n\r\n"
+    )?;
+    stream.flush()?;
+    let session_id = dashboard_stream_session_id(&request.path).flatten();
+    run_dashboard_websocket_loop(stream, session_id.as_deref())
+}
+
+fn run_dashboard_websocket_loop(stream: &mut TcpStream, session_id: Option<&str>) -> Result<()> {
+    stream.set_read_timeout(Some(Duration::from_millis(200)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+    write_ws_text(
+        stream,
+        &json!({
+            "type": "status",
+            "connected": true,
+            "transport": "dashboard-websocket-screenshot",
+            "intervalMs": DASHBOARD_PREVIEW_INTERVAL_MS,
+            "webSocketStreaming": true,
+            "remoteInput": true,
+            "sessionId": session_id,
+        })
+        .to_string(),
+    )?;
+    let mut next_frame = Instant::now();
+    loop {
+        if Instant::now() >= next_frame {
+            match dashboard_capture_preview(session_id) {
+                Ok(capture) => {
+                    write_ws_text(
+                        stream,
+                        &dashboard_websocket_frame_value(&capture).to_string(),
+                    )?;
+                }
+                Err(err) => {
+                    write_ws_text(
+                        stream,
+                        &json!({
+                            "type": "error",
+                            "code": "dashboard_stream_frame_failed",
+                            "message": redact_text(&format!("{err:#}")),
+                        })
+                        .to_string(),
+                    )?;
+                }
+            }
+            next_frame = Instant::now() + Duration::from_millis(DASHBOARD_PREVIEW_INTERVAL_MS);
+        }
+
+        match read_ws_client_message(stream)? {
+            Some(WsClientMessage::Text(text)) => {
+                let result = dashboard_handle_stream_input(session_id, &text);
+                write_ws_text(stream, &result.to_string())?;
+            }
+            Some(WsClientMessage::Ping(payload)) => write_ws_frame(stream, 0xA, &payload)?,
+            Some(WsClientMessage::Close) => break,
+            Some(WsClientMessage::Pong) | Some(WsClientMessage::Binary) | None => {}
+        }
+    }
+    Ok(())
+}
+
+fn dashboard_websocket_frame_value(capture: &DashboardPreviewCapture) -> Value {
+    json!({
+        "type": "frame",
+        "data": capture.base64_png,
+        "dataUrl": format!("data:image/png;base64,{}", capture.base64_png),
+        "sessionId": capture.session_id,
+        "mimeType": "image/png",
+        "source": "firefox-webextension-visible-viewport-screenshot",
+        "capturedAt": capture.captured_at,
+        "activePage": capture.active_page,
+        "metadata": {
+            "deviceWidth": capture.width,
+            "deviceHeight": capture.height,
+            "pageScaleFactor": 1,
+            "offsetTop": 0,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0
+        }
+    })
+}
+
+enum WsClientMessage {
+    Text(String),
+    Binary,
+    Ping(Vec<u8>),
+    Pong,
+    Close,
+}
+
+fn read_ws_client_message(stream: &mut TcpStream) -> Result<Option<WsClientMessage>> {
+    let mut header = [0u8; 2];
+    match stream.read_exact(&mut header) {
+        Ok(()) => {}
+        Err(err)
+            if matches!(
+                err.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+            ) =>
+        {
+            return Ok(None);
+        }
+        Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => {
+            return Ok(Some(WsClientMessage::Close));
+        }
+        Err(err) => return Err(err).context("failed to read WebSocket frame header"),
+    }
+
+    let opcode = header[0] & 0x0f;
+    let masked = (header[1] & 0x80) != 0;
+    let mut len = u64::from(header[1] & 0x7f);
+    if len == 126 {
+        let mut buf = [0u8; 2];
+        stream.read_exact(&mut buf)?;
+        len = u64::from(u16::from_be_bytes(buf));
+    } else if len == 127 {
+        let mut buf = [0u8; 8];
+        stream.read_exact(&mut buf)?;
+        len = u64::from_be_bytes(buf);
+    }
+    if len > 1024 * 1024 {
+        bail!("dashboard_stream_frame_too_large: WebSocket message exceeded 1 MiB");
+    }
+
+    let mut mask = [0u8; 4];
+    if masked {
+        stream.read_exact(&mut mask)?;
+    }
+    let mut payload = vec![0u8; len as usize];
+    if len > 0 {
+        stream.read_exact(&mut payload)?;
+    }
+    if masked {
+        for (index, byte) in payload.iter_mut().enumerate() {
+            *byte ^= mask[index % 4];
+        }
+    }
+
+    Ok(Some(match opcode {
+        0x1 => WsClientMessage::Text(String::from_utf8_lossy(&payload).to_string()),
+        0x2 => WsClientMessage::Binary,
+        0x8 => WsClientMessage::Close,
+        0x9 => WsClientMessage::Ping(payload),
+        0xA => WsClientMessage::Pong,
+        _ => WsClientMessage::Close,
+    }))
+}
+
+fn write_ws_text(stream: &mut TcpStream, text: &str) -> Result<()> {
+    write_ws_frame(stream, 0x1, text.as_bytes())
+}
+
+fn write_ws_frame(stream: &mut TcpStream, opcode: u8, payload: &[u8]) -> Result<()> {
+    let mut header = vec![0x80 | (opcode & 0x0f)];
+    let len = payload.len();
+    if len < 126 {
+        header.push(len as u8);
+    } else if len <= u16::MAX as usize {
+        header.push(126);
+        header.extend_from_slice(&(len as u16).to_be_bytes());
+    } else {
+        header.push(127);
+        header.extend_from_slice(&(len as u64).to_be_bytes());
+    }
+    stream.write_all(&header)?;
+    stream.write_all(payload)?;
+    stream.flush()?;
+    Ok(())
+}
+
+fn dashboard_handle_stream_input(session_id: Option<&str>, text: &str) -> Value {
+    match dashboard_stream_input_commands(text).and_then(|commands| {
+        dashboard_execute_stream_input_commands(session_id, &commands).map(|session| {
+            json!({
+                "type": "input_result",
+                "ok": true,
+                "sessionId": session,
+                "commands": commands,
+            })
+        })
+    }) {
+        Ok(value) => value,
+        Err(err) => json!({
+            "type": "input_result",
+            "ok": false,
+            "error": {
+                "code": "dashboard_stream_input_failed",
+                "message": redact_text(&format!("{err:#}")),
+            }
+        }),
+    }
+}
+
+fn dashboard_stream_input_commands(text: &str) -> Result<Vec<Vec<String>>> {
+    let value: Value = serde_json::from_str(text).context("dashboard_stream_input_invalid_json")?;
+    let input_type = value
+        .get("type")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("dashboard_stream_input_missing_type"))?;
+    match input_type {
+        "input_mouse" => dashboard_mouse_input_commands(&value),
+        "input_keyboard" => dashboard_keyboard_input_commands(&value),
+        "input_touch" => dashboard_touch_input_commands(&value),
+        "ping" => Ok(Vec::new()),
+        other => bail!("dashboard_stream_input_unsupported_type: {other}"),
+    }
+}
+
+fn dashboard_execute_stream_input_commands(
+    session_id: Option<&str>,
+    commands: &[Vec<String>],
+) -> Result<String> {
+    let mut actual_session = session_id.unwrap_or("default").to_string();
+    for command in commands {
+        let request = build_command_request(command.clone());
+        let (response, response_session) = send_to_session(session_id, &request)?;
+        actual_session = response_session;
+        if !response.ok {
+            let error = response
+                .error
+                .unwrap_or(pire_browser_core::protocol::RpcError {
+                    code: "unknown_error".into(),
+                    message: "unknown extension error".into(),
+                    data: None,
+                });
+            bail!("{}: {}", error.code, error.message);
+        }
+    }
+    Ok(actual_session)
+}
+
+fn dashboard_mouse_input_commands(value: &Value) -> Result<Vec<Vec<String>>> {
+    let event_type = value
+        .get("eventType")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("input_mouse requires eventType"))?;
+    let button = value
+        .get("button")
+        .and_then(Value::as_str)
+        .unwrap_or("left")
+        .to_ascii_lowercase();
+    let button = match button.as_str() {
+        "left" | "middle" | "right" => button,
+        _ => "left".to_string(),
+    };
+    match event_type {
+        "mouseMoved" | "mouseMove" => Ok(vec![vec![
+            "mouse".to_string(),
+            "move".to_string(),
+            dashboard_input_coordinate(value, "x")?.to_string(),
+            dashboard_input_coordinate(value, "y")?.to_string(),
+        ]]),
+        "mousePressed" | "mouseDown" => Ok(vec![
+            vec![
+                "mouse".to_string(),
+                "move".to_string(),
+                dashboard_input_coordinate(value, "x")?.to_string(),
+                dashboard_input_coordinate(value, "y")?.to_string(),
+            ],
+            vec!["mouse".to_string(), "down".to_string(), button],
+        ]),
+        "mouseReleased" | "mouseUp" => Ok(vec![
+            vec![
+                "mouse".to_string(),
+                "move".to_string(),
+                dashboard_input_coordinate(value, "x")?.to_string(),
+                dashboard_input_coordinate(value, "y")?.to_string(),
+            ],
+            vec!["mouse".to_string(), "up".to_string(), button],
+        ]),
+        "mouseWheel" | "wheel" => Ok(vec![vec![
+            "mouse".to_string(),
+            "wheel".to_string(),
+            dashboard_input_number(value, "deltaY")
+                .or_else(|| dashboard_input_number(value, "delta"))
+                .unwrap_or(0.0)
+                .round()
+                .to_string(),
+        ]]),
+        other => bail!("unsupported input_mouse eventType: {other}"),
+    }
+}
+
+fn dashboard_keyboard_input_commands(value: &Value) -> Result<Vec<Vec<String>>> {
+    let event_type = value
+        .get("eventType")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("input_keyboard requires eventType"))?;
+    let key = value
+        .get("key")
+        .or_else(|| value.get("code"))
+        .or_else(|| value.get("text"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("input_keyboard requires key, code, or text"))?;
+    match event_type {
+        "keyDown" | "rawKeyDown" => Ok(vec![vec!["keydown".to_string(), key.to_string()]]),
+        "keyUp" => Ok(vec![vec!["keyup".to_string(), key.to_string()]]),
+        "char" | "insertText" => Ok(vec![vec![
+            "keyboard".to_string(),
+            "type".to_string(),
+            key.to_string(),
+        ]]),
+        other => bail!("unsupported input_keyboard eventType: {other}"),
+    }
+}
+
+fn dashboard_touch_input_commands(value: &Value) -> Result<Vec<Vec<String>>> {
+    let event_type = value
+        .get("eventType")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("input_touch requires eventType"))?;
+    let point = value
+        .get("touchPoints")
+        .and_then(Value::as_array)
+        .and_then(|points| points.first());
+    match event_type {
+        "touchStart" => {
+            let point = point
+                .ok_or_else(|| anyhow::anyhow!("input_touch touchStart requires a touch point"))?;
+            Ok(vec![
+                vec![
+                    "mouse".to_string(),
+                    "move".to_string(),
+                    dashboard_input_coordinate(point, "x")?.to_string(),
+                    dashboard_input_coordinate(point, "y")?.to_string(),
+                ],
+                vec!["mouse".to_string(), "down".to_string(), "left".to_string()],
+            ])
+        }
+        "touchMove" => {
+            let point = point
+                .ok_or_else(|| anyhow::anyhow!("input_touch touchMove requires a touch point"))?;
+            Ok(vec![vec![
+                "mouse".to_string(),
+                "move".to_string(),
+                dashboard_input_coordinate(point, "x")?.to_string(),
+                dashboard_input_coordinate(point, "y")?.to_string(),
+            ]])
+        }
+        "touchEnd" | "touchCancel" => Ok(vec![vec![
+            "mouse".to_string(),
+            "up".to_string(),
+            "left".to_string(),
+        ]]),
+        other => bail!("unsupported input_touch eventType: {other}"),
+    }
+}
+
+fn dashboard_input_coordinate(value: &Value, key: &str) -> Result<i64> {
+    let number = dashboard_input_number(value, key)
+        .ok_or_else(|| anyhow::anyhow!("input event requires numeric {key}"))?;
+    Ok(number.round() as i64)
+}
+
+fn dashboard_input_number(value: &Value, key: &str) -> Option<f64> {
+    value.get(key).and_then(Value::as_f64)
+}
+
 fn dashboard_status_value() -> Result<Value> {
     let mut sessions = list_sessions()?;
     annotate_session_profile_names(&mut sessions)?;
@@ -3656,10 +4082,12 @@ fn dashboard_capabilities_value() -> Value {
     json!({
         "statusDashboard": true,
         "liveViewport": true,
-        "liveViewportKind": "polling-screenshot-preview",
-        "liveViewportIntervalMs": 1500,
-        "webSocketStreaming": false,
+        "liveViewportKind": "websocket-screenshot-stream",
+        "liveViewportIntervalMs": DASHBOARD_PREVIEW_INTERVAL_MS,
+        "webSocketStreaming": true,
+        "webSocketPath": "/api/stream",
         "readOnlyViewportPreview": true,
+        "remoteInput": true,
         "screenshotSequenceRecording": true,
         "videoRecording": false,
         "activityFeed": true,
@@ -3686,7 +4114,17 @@ fn dashboard_preview_session_id(path: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
-fn dashboard_preview_value(session_id: Option<&str>) -> Result<Value> {
+struct DashboardPreviewCapture {
+    session_id: String,
+    captured_at: u64,
+    base64_png: String,
+    width: Option<u32>,
+    height: Option<u32>,
+    active_page: Option<Value>,
+    screenshot_result: Value,
+}
+
+fn dashboard_capture_preview(session_id: Option<&str>) -> Result<DashboardPreviewCapture> {
     cleanup_stale_sessions(now_ms())?;
     let temp_path = std::env::temp_dir().join(format!(
         "pire-browser-dashboard-preview-{}.png",
@@ -3712,26 +4150,45 @@ fn dashboard_preview_value(session_id: Option<&str>) -> Result<Value> {
         .with_context(|| format!("failed to read preview image {}", temp_path.display()));
     let _ = fs::remove_file(&temp_path);
     let bytes = bytes?;
+    let dimensions = image::load_from_memory(&bytes)
+        .ok()
+        .map(|image| (image.width(), image.height()));
     let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
     let active_page = select_session(Some(&actual_session_id))
         .ok()
-        .and_then(|session| session.active_page);
+        .and_then(|session| session.active_page)
+        .and_then(|page| serde_json::to_value(page).ok());
+    Ok(DashboardPreviewCapture {
+        session_id: actual_session_id,
+        captured_at: now_ms(),
+        base64_png: encoded,
+        width: dimensions.map(|(width, _)| width),
+        height: dimensions.map(|(_, height)| height),
+        active_page,
+        screenshot_result: result,
+    })
+}
+
+fn dashboard_preview_value(session_id: Option<&str>) -> Result<Value> {
+    let capture = dashboard_capture_preview(session_id)?;
     Ok(json!({
-        "text": format!("Captured dashboard preview for session {actual_session_id}"),
+        "text": format!("Captured dashboard preview for session {}", capture.session_id),
         "preview": {
-            "sessionId": actual_session_id,
-            "capturedAt": now_ms(),
+            "sessionId": capture.session_id,
+            "capturedAt": capture.captured_at,
             "mimeType": "image/png",
-            "dataUrl": format!("data:image/png;base64,{encoded}"),
-            "activePage": active_page,
+            "dataUrl": format!("data:image/png;base64,{}", capture.base64_png),
+            "activePage": capture.active_page,
             "source": "firefox-webextension-visible-viewport-screenshot",
             "liveViewport": true,
             "liveViewportKind": "polling-screenshot-preview",
-            "webSocketStreaming": false,
+            "webSocketStreaming": true,
+            "width": capture.width,
+            "height": capture.height,
         },
         "screenshot": {
-            "path": result.get("screenshotPath").cloned().unwrap_or(Value::Null),
-            "text": result.get("text").cloned().unwrap_or(Value::Null),
+            "path": capture.screenshot_result.get("screenshotPath").cloned().unwrap_or(Value::Null),
+            "text": capture.screenshot_result.get("text").cloned().unwrap_or(Value::Null),
         }
     }))
 }
@@ -3910,7 +4367,7 @@ fn dashboard_index_html() -> String {
       </div>
       <div class="panel">
         <h2>Capability Notes</h2>
-        <p class="note">This dashboard shows setup status, live sessions, managed profiles, a live read-only viewport preview, and a bounded redacted command activity feed. The live preview polls visible-viewport screenshots from the Firefox extension. WebSocket viewport streaming, remote input events, and native WebM video recording are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>record start</code>, <code>record restart</code>, <code>record stop</code>, <code>status</code>, and <code>doctor</code> for machine-readable evidence.</p>
+        <p class="note">This dashboard shows setup status, live sessions, managed profiles, a live viewport preview, and a bounded redacted command activity feed. The built-in preview polls visible-viewport screenshots from the Firefox extension; agent clients can also connect to <code>ws://127.0.0.1:&lt;port&gt;/api/stream</code> for screenshot-frame WebSocket streaming and basic mouse/keyboard/touch-shaped input events. Native WebM video recording and Chrome DevTools screencast output are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>record start</code>, <code>record restart</code>, <code>record stop</code>, <code>status</code>, and <code>doctor</code> for machine-readable evidence.</p>
       </div>
     </section>
   </main>
@@ -10903,15 +11360,23 @@ mod tests {
         );
         assert_eq!(
             value["dashboard"]["capabilities"]["liveViewportKind"],
-            json!("polling-screenshot-preview")
+            json!("websocket-screenshot-stream")
         );
         assert_eq!(
             value["dashboard"]["capabilities"]["liveViewportIntervalMs"],
-            json!(1500)
+            json!(DASHBOARD_PREVIEW_INTERVAL_MS)
         );
         assert_eq!(
             value["dashboard"]["capabilities"]["webSocketStreaming"],
-            json!(false)
+            json!(true)
+        );
+        assert_eq!(
+            value["dashboard"]["capabilities"]["webSocketPath"],
+            json!("/api/stream")
+        );
+        assert_eq!(
+            value["dashboard"]["capabilities"]["remoteInput"],
+            json!(true)
         );
         assert_eq!(
             value["dashboard"]["capabilities"]["readOnlyViewportPreview"],
@@ -10961,8 +11426,10 @@ mod tests {
         assert!(index.body.contains("pire-browser dashboard"));
         assert!(index.body.contains("/api/status"));
         assert!(index.body.contains("/api/preview/"));
+        assert!(index.body.contains("ws://127.0.0.1"));
+        assert!(index.body.contains("/api/stream"));
         assert!(index.body.contains("Viewport Preview"));
-        assert!(index.body.contains("live read-only viewport preview"));
+        assert!(index.body.contains("live viewport preview"));
         assert!(index.body.contains("Pause live preview"));
         assert!(index
             .body
@@ -10974,7 +11441,7 @@ mod tests {
         assert!(index
             .body
             .contains("bounded redacted command activity feed"));
-        assert!(index.body.contains("WebSocket viewport streaming"));
+        assert!(index.body.contains("screenshot-frame WebSocket streaming"));
 
         let missing = dashboard_response_for_path("/missing");
         assert_eq!(missing.status, 404);
@@ -10988,6 +11455,7 @@ mod tests {
         let get_response = dashboard_response_for_request(&DashboardRequest {
             method: "GET".to_string(),
             path: "/api/chat".to_string(),
+            headers: Vec::new(),
             body: String::new(),
         });
         assert_eq!(get_response.status, 405);
@@ -10995,6 +11463,7 @@ mod tests {
         let invalid_response = dashboard_response_for_request(&DashboardRequest {
             method: "POST".to_string(),
             path: "/api/chat".to_string(),
+            headers: Vec::new(),
             body: "{}".to_string(),
         });
         assert_eq!(invalid_response.status, 400);
@@ -11020,6 +11489,35 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_stream_session_id_and_websocket_request_parse() {
+        assert_eq!(dashboard_stream_session_id("/api/stream"), Some(None));
+        assert_eq!(
+            dashboard_stream_session_id("/api/stream/s1"),
+            Some(Some("s1".to_string()))
+        );
+        assert_eq!(dashboard_stream_session_id("/api/preview/s1"), None);
+
+        let request = DashboardRequest {
+            method: "GET".to_string(),
+            path: "/api/stream/s1".to_string(),
+            headers: vec![
+                ("upgrade".to_string(), "websocket".to_string()),
+                ("connection".to_string(), "keep-alive, Upgrade".to_string()),
+                (
+                    "sec-websocket-key".to_string(),
+                    "dGhlIHNhbXBsZSBub25jZQ==".to_string(),
+                ),
+            ],
+            body: String::new(),
+        };
+        assert!(dashboard_is_websocket_stream_request(&request));
+        assert_eq!(
+            dashboard_websocket_accept_key("dGhlIHNhbXBsZSBub25jZQ=="),
+            "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+        );
+    }
+
+    #[test]
     fn dashboard_process_value_reports_lifecycle_fields() {
         let path = PathBuf::from("state/dashboard.json");
         let value = dashboard_process_value(9000, "background", 1234, Some(&path));
@@ -11036,23 +11534,57 @@ mod tests {
     }
 
     #[test]
-    fn stream_value_reports_dashboard_polling_transport() {
+    fn stream_value_reports_dashboard_websocket_transport() {
         let dashboard = dashboard_process_value(9223, "background", 1234, None);
         let value = stream_value_from_dashboard(dashboard);
         assert_eq!(value["stream"]["enabled"], json!(true));
         assert_eq!(
             value["stream"]["transport"],
-            json!("dashboard-http-polling")
+            json!("dashboard-websocket-screenshot")
         );
         assert_eq!(
             value["stream"]["dashboardUrl"],
             json!("http://127.0.0.1:9223")
         );
-        assert_eq!(value["stream"]["webSocketStreaming"], json!(false));
+        assert_eq!(
+            value["stream"]["webSocketUrl"],
+            json!("ws://127.0.0.1:9223/api/stream")
+        );
+        assert_eq!(value["stream"]["webSocketStreaming"], json!(true));
+        assert_eq!(value["stream"]["remoteInput"], json!(true));
         assert_eq!(
             value["stream"]["liveViewportKind"],
-            json!("polling-screenshot-preview")
+            json!("websocket-screenshot-stream")
         );
+    }
+
+    #[test]
+    fn dashboard_stream_input_maps_agent_browser_protocol() {
+        assert_eq!(
+            dashboard_stream_input_commands(
+                r#"{"type":"input_mouse","eventType":"mousePressed","x":100.2,"y":199.8,"button":"left"}"#
+            )
+            .unwrap(),
+            vec![
+                s(&["mouse", "move", "100", "200"]),
+                s(&["mouse", "down", "left"])
+            ]
+        );
+        assert_eq!(
+            dashboard_stream_input_commands(
+                r#"{"type":"input_keyboard","eventType":"keyDown","key":"Enter","code":"Enter"}"#
+            )
+            .unwrap(),
+            vec![s(&["keydown", "Enter"])]
+        );
+        assert_eq!(
+            dashboard_stream_input_commands(
+                r#"{"type":"input_touch","eventType":"touchMove","touchPoints":[{"x":10,"y":20}]}"#
+            )
+            .unwrap(),
+            vec![s(&["mouse", "move", "10", "20"])]
+        );
+        assert!(dashboard_stream_input_commands(r#"{"type":"input_mouse"}"#).is_err());
     }
 
     #[cfg(windows)]

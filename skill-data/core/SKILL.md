@@ -294,8 +294,8 @@ Use snapshots, targeted get/is checks, console/errors, and vitals for supporting
 evidence.
 
 Start the local dashboard when a human or agent needs a quick view of setup,
-live sessions, managed profiles, a live read-only viewport preview, optional
-AI Gateway chat, and recent command activity:
+live sessions, managed profiles, a live viewport preview, WebSocket screenshot
+streaming, optional AI Gateway chat, and recent command activity:
 
 ```bash
 pire-browser dashboard start
@@ -314,23 +314,25 @@ The dashboard is a localhost server. Without `--background`, stop it with
 `dashboard stop`. It shows install health, live sessions, managed profiles, a
 bounded redacted command activity feed, a live read-only preview for the
 selected session, optional non-streaming dashboard chat, and capability notes.
-The preview polls visible-viewport screenshots from the Firefox extension. For
-scripts, use:
+The dashboard UI preview polls visible-viewport screenshots from the Firefox
+extension. Agent clients can connect to `ws://127.0.0.1:<port>/api/stream` for
+JSON `frame` messages with base64 PNG data and can send `input_mouse`,
+`input_keyboard`, or `input_touch` events. For scripts, use:
 
 ```bash
 pire-browser stream status --json
 pire-browser activity list --json
 ```
 
-Activity shows what commands ran; it does not prove page success. The dashboard
-preview is read-only. `stream enable/status/disable` is the
-agent-browser-style lifecycle surface for that same dashboard-backed preview
-service and reports `transport: "dashboard-http-polling"` with
-`webSocketStreaming: false`; it is not full WebSocket frame streaming, remote
-input, or native WebM video. Keep using `snapshot -i`, `screenshot`, `record
-start` / `record stop`, `status`, and `doctor` as the primary
-machine-readable evidence path. `record` is screenshot-sequence evidence, not
-native WebM video.
+Activity shows what commands ran; it does not prove page success.
+`stream enable/status/disable` is the agent-browser-style lifecycle surface for
+the dashboard-backed WebSocket screenshot stream and reports
+`transport: "dashboard-websocket-screenshot"`, `webSocketStreaming: true`,
+`remoteInput: true`, and `webSocketUrl` when enabled. This is screenshot-frame
+streaming with basic remote input, not native WebM video or Chrome DevTools
+screencast output. Keep using `snapshot -i`, `screenshot`, `record start` /
+`record stop`, `status`, and `doctor` as the primary machine-readable evidence
+path. `record` is screenshot-sequence evidence, not native WebM video.
 
 Handle page JavaScript dialogs when warnings mention `PAGE_DIALOG`:
 
@@ -723,8 +725,9 @@ recipe means click-equivalent page interaction, and `pire_browser_swipe` only
 when a mobile-style recipe means touch-direction page scroll. Add the `debug` profile and use `pire_browser_launch` only
 for lower-level launch diagnostics. Use debug-profile
 `pire_browser_stream_enable`, `pire_browser_stream_status`, and
-`pire_browser_stream_disable` when the user wants a dashboard-backed live
-preview service; it is HTTP polling, not full WebSocket frame streaming. Use
+`pire_browser_stream_disable` when the user wants dashboard-backed WebSocket
+screenshot streaming with basic remote input; it is not native WebM video or
+Chrome DevTools screencast output. Use
 debug-profile `pire_browser_install`
 only when the user wants explicit native-host setup or repair, and
 `pire_browser_upgrade` only when the user wants package update. Use

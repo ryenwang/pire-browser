@@ -3885,11 +3885,13 @@ dashboard process state file so `dashboard status` and `dashboard stop` can
 inspect or stop it later.
 
 The dashboard shows setup status, live sessions, managed profiles, a live
-read-only viewport preview, optional AI Gateway chat, recent redacted command
-activity, and current capability notes. The preview polls Firefox
-visible-viewport screenshots. Dashboard chat uses the same bounded command loop
-as `pire-browser chat` and is non-streaming. WebSocket viewport streaming,
-remote input events, and native WebM video are not implemented.
+viewport preview, optional AI Gateway chat, recent redacted command activity,
+and current capability notes. The built-in preview polls Firefox
+visible-viewport screenshots. Agent clients can connect to
+ws://127.0.0.1:<port>/api/stream for screenshot-frame WebSocket streaming and
+basic mouse/keyboard/touch-shaped input events. Dashboard chat uses the same
+bounded command loop as `pire-browser chat` and is non-streaming. Native WebM
+video and Chrome DevTools screencast output are not implemented.
 "##;
 
 const STREAM_HELP: &str = r##"
@@ -3899,14 +3901,14 @@ Usage:
   pire-browser stream disable [--json]
 
 Agent-browser-style stream controls for the Firefox backend. `stream enable`
-starts the same local dashboard server in the background and exposes a live
-read-only viewport preview through dashboard HTTP polling. `stream status`
-reports the dashboard URL, transport, and live preview capabilities. `stream
+starts the same local dashboard server in the background and exposes
+ws://127.0.0.1:<port>/api/stream for visible-viewport screenshot frames plus
+basic mouse/keyboard/touch-shaped input events. `stream status` reports the
+dashboard URL, WebSocket URL, transport, and live preview capabilities. `stream
 disable` stops that background dashboard process.
 
-This is real observability for agent workflows, but it is not full
-agent-browser WebSocket frame streaming yet: `webSocketStreaming` is reported
-as false and `liveViewportKind` is `polling-screenshot-preview`.
+This is screenshot-frame WebSocket streaming, not native WebM video or Chrome
+DevTools screencast output.
 "##;
 
 const MCP_HELP: &str = r##"
@@ -6296,10 +6298,10 @@ mod tests {
             .contains("network unroute [pattern-or-route-id]"));
         assert!(help_text(Some("stream"))
             .unwrap()
-            .contains("dashboard HTTP polling"));
+            .contains("ws://127.0.0.1:<port>/api/stream"));
         assert!(help_text(Some("stream"))
             .unwrap()
-            .contains("webSocketStreaming"));
+            .contains("screenshot-frame WebSocket streaming"));
         assert!(help_text(Some("trace"))
             .unwrap()
             .contains("pire-browser trace stop [output.json]"));
@@ -6487,7 +6489,7 @@ mod tests {
             .contains("non-streaming"));
         assert!(help_text(Some("streaming"))
             .unwrap()
-            .contains("agent-browser WebSocket frame streaming"));
+            .contains("screenshot-frame WebSocket streaming"));
         assert!(help_text(Some("mcp")).unwrap().contains("smallest tools"));
         assert!(help_text(Some("mcp")).unwrap().contains("core,network"));
         assert!(help_text(Some("mcp")).unwrap().contains("network"));

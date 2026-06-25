@@ -78,12 +78,12 @@ export const featureStatuses = {
   },
   debugging: {
     status: "partial",
-    summary: "`console`, `errors`, `highlight`, Firefox trace QA bundles, Firefox Performance Timeline profiler bundles, screenshot-sequence recording bundles, best-effort `vitals`, best-effort React Fiber tree/inspect/render recording/Suspense, recent redacted command activity, `stream enable/status/disable`, and the local status/session/activity dashboard with live read-only polling viewport preview are available for Firefox workflows; Chrome DevTools inspect proxy, full WebSocket viewport streaming, Chrome CPU profiling, and native WebM/video recording are not implemented.",
+    summary: "`console`, `errors`, `highlight`, Firefox trace QA bundles, Firefox Performance Timeline profiler bundles, screenshot-sequence recording bundles, best-effort `vitals`, best-effort React Fiber tree/inspect/render recording/Suspense, recent redacted command activity, `stream enable/status/disable`, and the local status/session/activity dashboard with polling preview plus WebSocket screenshot-frame streaming and basic remote input are available for Firefox workflows; Chrome DevTools inspect proxy, Chrome DevTools screencast output, Chrome CPU profiling, and native WebM/video recording are not implemented.",
     sources: ["README.md", "extension/src/background.ts"],
   },
   dashboard: {
     status: "partial",
-    summary: "`dashboard start` serves a localhost dashboard for install health, live sessions, managed profiles, a live read-only polling viewport preview, optional non-streaming AI Gateway chat, a bounded redacted command activity feed, and capability notes. `dashboard start --background`, `dashboard status`, `dashboard stop`, and `stream enable/status/disable` provide agent-browser-style lifecycle control for the dashboard-backed preview service. Use `record start`, `record restart`, and `record stop` for screenshot-sequence QA evidence. Full WebSocket viewport streaming, streamed chat updates, dashboard-created sessions, remote input events, and native WebM/video recording are not implemented yet.",
+    summary: "`dashboard start` serves a localhost dashboard for install health, live sessions, managed profiles, a polling viewport preview, optional non-streaming AI Gateway chat, a bounded redacted command activity feed, and capability notes. `dashboard start --background`, `dashboard status`, `dashboard stop`, and `stream enable/status/disable` provide agent-browser-style lifecycle control for the dashboard-backed WebSocket screenshot stream with basic remote input. Use `record start`, `record restart`, and `record stop` for screenshot-sequence QA evidence. Streamed chat updates, dashboard-created sessions, native WebM/video recording, and Chrome DevTools screencast output are not implemented yet.",
     sources: ["README.md", "docs/src/pages/dashboard.mjs", "cli/pire-browser-cli/src/main.rs", "cli/pire-browser-core/src/cli.rs"],
   },
   dialogs: {
