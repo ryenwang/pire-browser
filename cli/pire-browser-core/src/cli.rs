@@ -112,8 +112,11 @@ pub enum LocalCommand {
         tools: String,
     },
     Dashboard {
+        action: DashboardAction,
         port: u16,
         json: bool,
+        background: bool,
+        background_worker: bool,
     },
     ActivityList {
         json: bool,
@@ -292,6 +295,13 @@ pub enum LocalCommand {
         confirmation_policy: ConfirmationPolicyArgs,
         args: Vec<String>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DashboardAction {
+    Start,
+    Status,
+    Stop,
 }
 
 const GLOBAL_VALUE_FLAGS: &[&str] = &[
@@ -1158,18 +1168,38 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     if command == "dashboard" {
         args.remove(0);
         remove_json_flags(&mut args, &mut json_output);
-        if args.first().is_some_and(|arg| arg == "start") {
-            args.remove(0);
-        }
+        let action = match args.first().map(String::as_str) {
+            Some("start") => {
+                args.remove(0);
+                DashboardAction::Start
+            }
+            Some("status") => {
+                args.remove(0);
+                DashboardAction::Status
+            }
+            Some("stop") => {
+                args.remove(0);
+                DashboardAction::Stop
+            }
+            _ => DashboardAction::Start,
+        };
         remove_json_flags(&mut args, &mut json_output);
         let mut port = 4848;
+        let mut background = false;
+        let mut background_worker = false;
         let mut i = 0;
         while i < args.len() {
             match args[i].as_str() {
                 "--json" => {
                     json_output = true;
                 }
-                "--port" => {
+                "--background" if action == DashboardAction::Start => {
+                    background = true;
+                }
+                "--background-worker" if action == DashboardAction::Start => {
+                    background_worker = true;
+                }
+                "--port" if action == DashboardAction::Start => {
                     i += 1;
                     let Some(value) = args.get(i) else {
                         bail!("--port requires a port number");
@@ -1178,6 +1208,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                         .parse::<u16>()
                         .map_err(|_| anyhow::anyhow!("--port must be a TCP port number"))?;
                 }
+                "--port" => bail!("dashboard {action:?} does not support --port"),
                 other if other.starts_with('-') => bail!("unsupported dashboard option: {other}"),
                 other => bail!(
                     "unsupported dashboard command: {other}; try `pire-browser dashboard start`"
@@ -1186,8 +1217,11 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             i += 1;
         }
         return Ok(LocalCommand::Dashboard {
+            action,
             port,
             json: json_output,
+            background,
+            background_worker,
         });
     }
 
@@ -2217,7 +2251,9 @@ Common commands:
                                   Check setup health; --fix repairs setup
   mcp [--tools core|network|state|debug|tabs|mobile|react|all]
                                   Start the MCP stdio server
-  dashboard start [--port 4848]   Start a local status/session/activity dashboard
+  dashboard start [--port 4848] [--background]
+                                  Start a local status/session/activity dashboard
+  dashboard status|stop           Inspect or stop the background dashboard
   activity list [--json]          Show recent redacted CLI command activity
   --config ./ci-config.json open <url>
   open <url> [--label <name>]      Open a URL, auto-launching Firefox if needed
@@ -3203,13 +3239,20 @@ Usage:
   pire-browser dashboard
   pire-browser dashboard start
   pire-browser dashboard start --port 4848
+  pire-browser dashboard start --background
   pire-browser dashboard start --port 0 --json
+  pire-browser dashboard status [--json]
+  pire-browser dashboard stop [--json]
 
-Starts a foreground local dashboard server bound to 127.0.0.1. The dashboard
-shows setup status, live sessions, managed profiles, recent redacted command
-activity, and current capability notes. It does not provide live viewport
-WebSocket streaming yet; use screenshots for visual evidence. Press Ctrl+C to
-stop the server.
+Starts a local dashboard server bound to 127.0.0.1. Without `--background`, it
+runs in the foreground and stops with Ctrl+C. With `--background`, it records a
+dashboard process state file so `dashboard status` and `dashboard stop` can
+inspect or stop it later.
+
+The dashboard shows setup status, live sessions, managed profiles, a read-only
+still viewport preview, recent redacted command activity, and current capability
+notes. It does not provide live viewport WebSocket streaming yet; use snapshots,
+screenshots, and recording bundles for machine-readable visual evidence.
 "##;
 
 const MCP_HELP: &str = r##"
@@ -4695,25 +4738,64 @@ mod tests {
         assert_eq!(
             parse_cli_args(&s(&["dashboard"])).unwrap(),
             LocalCommand::Dashboard {
+                action: DashboardAction::Start,
                 port: 4848,
-                json: false
+                json: false,
+                background: false,
+                background_worker: false
             }
         );
         assert_eq!(
             parse_cli_args(&s(&["dashboard", "start", "--port", "0", "--json"])).unwrap(),
             LocalCommand::Dashboard {
+                action: DashboardAction::Start,
                 port: 0,
-                json: true
+                json: true,
+                background: false,
+                background_worker: false
             }
         );
         assert_eq!(
             parse_cli_args(&s(&["--json", "dashboard", "--port", "9223"])).unwrap(),
             LocalCommand::Dashboard {
+                action: DashboardAction::Start,
                 port: 9223,
-                json: true
+                json: true,
+                background: false,
+                background_worker: false
             }
         );
-        assert!(parse_cli_args(&s(&["dashboard", "stop"])).is_err());
+        assert_eq!(
+            parse_cli_args(&s(&["dashboard", "start", "--background"])).unwrap(),
+            LocalCommand::Dashboard {
+                action: DashboardAction::Start,
+                port: 4848,
+                json: false,
+                background: true,
+                background_worker: false
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["dashboard", "status", "--json"])).unwrap(),
+            LocalCommand::Dashboard {
+                action: DashboardAction::Status,
+                port: 4848,
+                json: true,
+                background: false,
+                background_worker: false
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["dashboard", "stop"])).unwrap(),
+            LocalCommand::Dashboard {
+                action: DashboardAction::Stop,
+                port: 4848,
+                json: false,
+                background: false,
+                background_worker: false
+            }
+        );
+        assert!(parse_cli_args(&s(&["dashboard", "status", "--port", "9223"])).is_err());
         assert!(parse_cli_args(&s(&["dashboard", "--port", "nope"])).is_err());
     }
 
@@ -5223,9 +5305,7 @@ mod tests {
         assert!(help_text(Some("react"))
             .unwrap()
             .contains("pire-browser react inspect r1"));
-        assert!(help_text(Some("react"))
-            .unwrap()
-            .contains("best-effort"));
+        assert!(help_text(Some("react")).unwrap().contains("best-effort"));
         assert!(help_text(None).unwrap().contains("react tree"));
         assert!(help_text(Some("highlight"))
             .unwrap()

@@ -78,7 +78,7 @@ export const featureStatuses = {
   },
   dashboard: {
     status: "partial",
-    summary: "`dashboard start` serves a foreground localhost dashboard for install health, live sessions, managed profiles, a read-only still viewport preview, a bounded redacted command activity feed, and capability notes. Use `record start` / `record stop` for screenshot-sequence QA evidence. Live viewport streaming, dashboard-created sessions, and native WebM/video recording are not implemented yet.",
+    summary: "`dashboard start` serves a localhost dashboard for install health, live sessions, managed profiles, a read-only still viewport preview, a bounded redacted command activity feed, and capability notes. `dashboard start --background`, `dashboard status`, and `dashboard stop` provide agent-browser-style lifecycle control. Use `record start` / `record stop` for screenshot-sequence QA evidence. Live viewport streaming, dashboard-created sessions, and native WebM/video recording are not implemented yet.",
     sources: ["README.md", "docs/src/pages/dashboard.mjs", "cli/pire-browser-cli/src/main.rs", "cli/pire-browser-core/src/cli.rs"],
   },
   dialogs: {

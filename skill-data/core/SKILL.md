@@ -240,14 +240,18 @@ command activity:
 
 ```bash
 pire-browser dashboard start
+pire-browser dashboard start --background
 pire-browser dashboard start --port 4848
 pire-browser dashboard start --port 0 --json
+pire-browser dashboard status --json
+pire-browser dashboard stop
 ```
 
-The dashboard is a foreground localhost server; stop it with `Ctrl+C`. It shows
-install health, live sessions, managed profiles, a bounded redacted command
-activity feed, a refreshable still preview for the selected session, and
-capability notes. For scripts, use:
+The dashboard is a localhost server. Without `--background`, stop it with
+`Ctrl+C`; with `--background`, manage it with `dashboard status` and
+`dashboard stop`. It shows install health, live sessions, managed profiles, a
+bounded redacted command activity feed, a refreshable still preview for the
+selected session, and capability notes. For scripts, use:
 
 ```bash
 pire-browser activity list --json

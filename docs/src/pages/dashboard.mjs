@@ -4,11 +4,16 @@ const dashboardBlocks = [
   statusNote("dashboard"),
   h2("Usage", "usage"),
   code(`pire-browser dashboard start
+pire-browser dashboard start --background
 pire-browser dashboard start --port 4848
-pire-browser dashboard start --port 0 --json`),
-  p("The dashboard is a foreground localhost server bound to <code>127.0.0.1</code>. Open the printed URL to inspect install health, live Firefox sessions, managed profiles, a read-only still viewport preview, recent redacted command activity, and capability notes. Press <code>Ctrl+C</code> in the terminal to stop it."),
+pire-browser dashboard start --port 0 --json
+pire-browser dashboard status --json
+pire-browser dashboard stop`),
+  p("The dashboard is a localhost server bound to <code>127.0.0.1</code>. Open the printed URL to inspect install health, live Firefox sessions, managed profiles, a read-only still viewport preview, recent redacted command activity, and capability notes. Without <code>--background</code>, press <code>Ctrl+C</code> in the terminal to stop it. With <code>--background</code>, use <code>dashboard status</code> and <code>dashboard stop</code> to manage the recorded process."),
   h2("Current observability", "current-observability"),
   code(`pire-browser dashboard start
+pire-browser dashboard start --background
+pire-browser dashboard status
 pire-browser status
 pire-browser status --json
 pire-browser session list --json

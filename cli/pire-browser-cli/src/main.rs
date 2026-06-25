@@ -17,7 +17,8 @@ use pire_browser_core::activity::{
 use pire_browser_core::auth_handoff::{auth_handoff_text, collect_default_auth_handoff};
 use pire_browser_core::cli::{
     apply_config_defaults, build_command_request, format_cli_result, help_text, parse_cli_args,
-    ConfigWarning, GlobalFlagWarning, LocalCommand, ReadActiveUrlOptions, SessionTarget,
+    ConfigWarning, DashboardAction, GlobalFlagWarning, LocalCommand, ReadActiveUrlOptions,
+    SessionTarget,
 };
 use pire_browser_core::confirmation_policy::{
     confirmation_policy_diagnostic_from_args, confirmation_policy_text,
@@ -74,8 +75,9 @@ use pire_browser_core::upload::{
 use serde_json::{json, Value};
 use std::fs;
 use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -83,8 +85,7 @@ use uuid::Uuid;
 use crate::mcp::{run_mcp_server, McpToolsProfile};
 use crate::read::{read_url, ReadUrlOptions};
 
-const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] =
-    &["connect", "profiler", "stream", "upgrade"];
+const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &["connect", "profiler", "stream", "upgrade"];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 struct PolicyArgsBundle {
@@ -568,9 +569,23 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         LocalCommand::Mcp { tools } => {
             run_mcp_server(McpToolsProfile::parse(&tools)?)?;
         }
-        LocalCommand::Dashboard { port, json } => {
-            handle_dashboard_start(port, json)?;
-        }
+        LocalCommand::Dashboard {
+            action,
+            port,
+            json,
+            background,
+            background_worker,
+        } => match action {
+            DashboardAction::Start => {
+                handle_dashboard_start(port, json, background, background_worker)?;
+            }
+            DashboardAction::Status => {
+                handle_dashboard_status(json)?;
+            }
+            DashboardAction::Stop => {
+                handle_dashboard_stop(json)?;
+            }
+        },
         LocalCommand::ActivityList { json, limit } => {
             handle_activity_list(json, limit)?;
         }
@@ -1112,7 +1127,10 @@ fn maybe_write_trace_bundle(args: &[String], result: &mut Value) -> Result<()> {
         .filter(|parent| !parent.as_os_str().is_empty())
     {
         fs::create_dir_all(parent).with_context(|| {
-            format!("failed to create trace output directory {}", parent.display())
+            format!(
+                "failed to create trace output directory {}",
+                parent.display()
+            )
         })?;
     }
     let body = serde_json::to_string_pretty(trace)?;
@@ -1174,8 +1192,12 @@ fn maybe_write_recording_manifest(args: &[String], result: &mut Value) -> Result
         })?;
     }
     let body = serde_json::to_string_pretty(recording)?;
-    fs::write(&manifest_path, body)
-        .with_context(|| format!("failed to write recording manifest {}", manifest_path.display()))?;
+    fs::write(&manifest_path, body).with_context(|| {
+        format!(
+            "failed to write recording manifest {}",
+            manifest_path.display()
+        )
+    })?;
     result["recordingPath"] = json!(manifest_path.to_string_lossy().to_string());
     Ok(())
 }
@@ -1999,14 +2021,184 @@ fn activity_text(events: &[ActivityEvent]) -> String {
     lines.join("\n")
 }
 
-fn handle_dashboard_start(port: u16, json_output: bool) -> Result<()> {
+fn handle_dashboard_start(
+    port: u16,
+    json_output: bool,
+    background: bool,
+    background_worker: bool,
+) -> Result<()> {
+    if background_worker {
+        return run_dashboard_server(port, false, "background");
+    }
+    if background {
+        return handle_dashboard_start_background(port, json_output);
+    }
+    run_dashboard_server(port, json_output, "foreground")
+}
+
+fn handle_dashboard_start_background(port: u16, json_output: bool) -> Result<()> {
+    let status = dashboard_lifecycle_status_value()?;
+    if status["dashboard"]["running"].as_bool() == Some(true) {
+        let mut value = status;
+        value["dashboard"]["alreadyRunning"] = json!(true);
+        value["text"] = json!(format!(
+            "pire-browser dashboard already running on {}",
+            value["dashboard"]["url"].as_str().unwrap_or("")
+        ));
+        println!("{}", format_cli_result(&value, json_output)?);
+        return Ok(());
+    }
+
+    let state_path = dashboard_state_path()?;
+    if let Some(parent) = state_path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create dashboard state directory {}",
+                parent.display()
+            )
+        })?;
+    }
+    let log_path = dashboard_log_path("log")?;
+    let err_path = dashboard_log_path("err.log")?;
+    let _ = fs::remove_file(&state_path);
+    let _ = fs::remove_file(&log_path);
+    let _ = fs::remove_file(&err_path);
+    let started_after = now_ms();
+    let expected_pid = spawn_dashboard_worker(port, &log_path, &err_path)?;
+
+    let Some(mut value) = wait_for_background_dashboard(
+        expected_pid,
+        port,
+        started_after,
+        Duration::from_millis(5000),
+    )?
+    else {
+        if let Some(pid) = expected_pid {
+            let _ = terminate_dashboard_process(pid);
+        }
+        bail!(
+            "dashboard_start_failed: background dashboard worker did not become ready; inspect {} and {}",
+            log_path.display(),
+            err_path.display()
+        );
+    };
+    value["dashboard"]["logPath"] = json!(log_path.to_string_lossy().to_string());
+    value["dashboard"]["errorLogPath"] = json!(err_path.to_string_lossy().to_string());
+    value["text"] = json!(format!(
+        "pire-browser dashboard listening on {} in the background. Stop it with `pire-browser dashboard stop`.",
+        value["dashboard"]["url"].as_str().unwrap_or("")
+    ));
+    println!("{}", format_cli_result(&value, json_output)?);
+    io::stdout().flush()?;
+    Ok(())
+}
+
+fn spawn_dashboard_worker(port: u16, log_path: &Path, err_path: &Path) -> Result<Option<u32>> {
+    let exe =
+        std::env::current_exe().context("failed to resolve current pire-browser executable")?;
+    #[cfg(windows)]
+    {
+        fs::write(log_path, "").with_context(|| {
+            format!("failed to initialize dashboard log {}", log_path.display())
+        })?;
+        fs::write(err_path, "").with_context(|| {
+            format!(
+                "failed to initialize dashboard error log {}",
+                err_path.display()
+            )
+        })?;
+        let script = format!(
+            "Start-Process -WindowStyle Hidden -FilePath {} -ArgumentList @('dashboard','start','--port','{}','--background-worker')",
+            powershell_quote_path(&exe),
+            port
+        );
+        let status = Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                &script,
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .context("failed to spawn background dashboard worker through PowerShell")?;
+        if !status.success() {
+            bail!("dashboard_start_failed: PowerShell Start-Process failed for dashboard worker");
+        }
+        Ok(None)
+    }
+    #[cfg(not(windows))]
+    {
+        let stdout = fs::File::create(log_path)
+            .with_context(|| format!("failed to create dashboard log {}", log_path.display()))?;
+        let stderr = fs::File::create(err_path).with_context(|| {
+            format!(
+                "failed to create dashboard error log {}",
+                err_path.display()
+            )
+        })?;
+        let child = Command::new(exe)
+            .args([
+                "dashboard",
+                "start",
+                "--port",
+                &port.to_string(),
+                "--background-worker",
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::from(stdout))
+            .stderr(Stdio::from(stderr))
+            .spawn()
+            .context("failed to spawn background dashboard worker")?;
+        Ok(Some(child.id()))
+    }
+}
+
+#[cfg(windows)]
+fn powershell_quote_path(path: &Path) -> String {
+    format!("'{}'", path.to_string_lossy().replace('\'', "''"))
+}
+
+fn wait_for_background_dashboard(
+    expected_pid: Option<u32>,
+    requested_port: u16,
+    started_after: u64,
+    timeout: Duration,
+) -> Result<Option<Value>> {
+    let deadline = std::time::Instant::now() + timeout;
+    while std::time::Instant::now() < deadline {
+        if let Some(value) = read_dashboard_state_value()? {
+            let pid_matches = expected_pid.is_none()
+                || value["dashboard"]["pid"].as_u64() == expected_pid.map(u64::from);
+            let port_matches =
+                requested_port == 0 || dashboard_state_port(&value) == Some(requested_port);
+            let started_matches = value["dashboard"]["startedAt"]
+                .as_u64()
+                .is_some_and(|started| started >= started_after);
+            if pid_matches && port_matches && started_matches {
+                if let Some(port) = dashboard_state_port(&value) {
+                    if dashboard_ping(port) {
+                        return Ok(Some(value));
+                    }
+                }
+            }
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Ok(None)
+}
+
+fn run_dashboard_server(port: u16, json_output: bool, mode: &str) -> Result<()> {
     let listener = TcpListener::bind(("127.0.0.1", port))
         .with_context(|| format!("failed to bind dashboard server on 127.0.0.1:{port}"))?;
     let actual_port = listener.local_addr()?.port();
-    let start = dashboard_start_value(actual_port);
+    let start = write_dashboard_state(actual_port, mode)?;
     if json_output {
         println!("{}", format_cli_result(&start, true)?);
-    } else {
+    } else if mode == "foreground" {
         println!(
             "pire-browser dashboard listening on {}\nPress Ctrl+C to stop.",
             start["dashboard"]["url"].as_str().unwrap_or("")
@@ -2033,20 +2225,235 @@ fn handle_dashboard_start(port: u16, json_output: bool) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 fn dashboard_start_value(port: u16) -> Value {
+    dashboard_process_value(port, "foreground", std::process::id(), None)
+}
+
+fn dashboard_process_value(port: u16, mode: &str, pid: u32, state_path: Option<&Path>) -> Value {
+    let mut dashboard = json!({
+        "url": dashboard_url(port),
+        "host": "127.0.0.1",
+        "port": port,
+        "mode": mode,
+        "pid": pid,
+        "running": true,
+        "startedAt": now_ms(),
+        "capabilities": dashboard_capabilities_value()
+    });
+    if let Some(path) = state_path {
+        dashboard["statePath"] = json!(path.to_string_lossy().to_string());
+    }
     json!({
-        "dashboard": {
-            "url": dashboard_url(port),
-            "host": "127.0.0.1",
-            "port": port,
-            "mode": "foreground",
-            "capabilities": dashboard_capabilities_value()
-        }
+        "dashboard": dashboard
     })
 }
 
 fn dashboard_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
+}
+
+fn dashboard_state_path() -> Result<PathBuf> {
+    Ok(pire_browser_core::platform::data_dir()?.join("dashboard.json"))
+}
+
+fn dashboard_log_path(suffix: &str) -> Result<PathBuf> {
+    Ok(pire_browser_core::platform::data_dir()?.join(format!("dashboard.{suffix}")))
+}
+
+fn write_dashboard_state(port: u16, mode: &str) -> Result<Value> {
+    let path = dashboard_state_path()?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create dashboard state directory {}",
+                parent.display()
+            )
+        })?;
+    }
+    let value = dashboard_process_value(port, mode, std::process::id(), Some(&path));
+    fs::write(&path, serde_json::to_string_pretty(&value)?)
+        .with_context(|| format!("failed to write dashboard state {}", path.display()))?;
+    Ok(value)
+}
+
+fn read_dashboard_state_value() -> Result<Option<Value>> {
+    let path = dashboard_state_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read dashboard state {}", path.display()))?;
+    let mut value: Value = serde_json::from_str(&text)
+        .with_context(|| format!("failed to parse dashboard state {}", path.display()))?;
+    value["dashboard"]["statePath"] = json!(path.to_string_lossy().to_string());
+    Ok(Some(value))
+}
+
+fn dashboard_state_port(value: &Value) -> Option<u16> {
+    value["dashboard"]["port"]
+        .as_u64()
+        .and_then(|port| u16::try_from(port).ok())
+}
+
+fn dashboard_state_pid(value: &Value) -> Option<u32> {
+    value["dashboard"]["pid"]
+        .as_u64()
+        .and_then(|pid| u32::try_from(pid).ok())
+}
+
+fn dashboard_ping(port: u16) -> bool {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(300)) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
+    if stream
+        .write_all(b"GET /api/status HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .is_err()
+    {
+        return false;
+    }
+    let mut text = String::new();
+    if stream.read_to_string(&mut text).is_err() {
+        return false;
+    }
+    text.starts_with("HTTP/1.1 200") && text.contains("\"dashboard\"")
+}
+
+fn handle_dashboard_status(json_output: bool) -> Result<()> {
+    let value = dashboard_lifecycle_status_value()?;
+    println!("{}", format_cli_result(&value, json_output)?);
+    io::stdout().flush()?;
+    Ok(())
+}
+
+fn dashboard_lifecycle_status_value() -> Result<Value> {
+    let state_path = dashboard_state_path()?;
+    let Some(mut value) = read_dashboard_state_value()? else {
+        return Ok(json!({
+            "text": "pire-browser dashboard is not running.",
+            "dashboard": {
+                "running": false,
+                "statePath": state_path.to_string_lossy().to_string(),
+                "capabilities": dashboard_capabilities_value()
+            }
+        }));
+    };
+    let running = dashboard_state_port(&value).is_some_and(dashboard_ping);
+    value["dashboard"]["running"] = json!(running);
+    value["dashboard"]["stale"] = json!(!running);
+    value["dashboard"]["capabilities"] = dashboard_capabilities_value();
+    value["text"] = if running {
+        json!(format!(
+            "pire-browser dashboard is running on {}",
+            value["dashboard"]["url"].as_str().unwrap_or("")
+        ))
+    } else {
+        json!("pire-browser dashboard is not running; recorded state is stale.")
+    };
+    Ok(value)
+}
+
+fn handle_dashboard_stop(json_output: bool) -> Result<()> {
+    let status = dashboard_lifecycle_status_value()?;
+    let running = status["dashboard"]["running"].as_bool() == Some(true);
+    let pid = dashboard_state_pid(&status);
+    let port = dashboard_state_port(&status);
+    let mut stopped = false;
+    let mut warnings = Vec::new();
+    if running {
+        if let Some(pid) = pid {
+            terminate_dashboard_process(pid)?;
+            if let Some(port) = port {
+                stopped = wait_until_dashboard_stopped(port, Duration::from_millis(2500));
+                if !stopped {
+                    warnings.push(json!({
+                        "code": "dashboard_stop_timeout",
+                        "message": "Dashboard process was signaled but still responded before timeout."
+                    }));
+                }
+            } else {
+                stopped = true;
+            }
+        } else {
+            warnings.push(json!({
+                "code": "dashboard_missing_pid",
+                "message": "Dashboard state did not include a process id to stop."
+            }));
+        }
+    }
+    let state_path = dashboard_state_path()?;
+    let _ = fs::remove_file(&state_path);
+    let mut value = json!({
+        "text": if stopped {
+            "Stopped pire-browser dashboard."
+        } else if running {
+            "Tried to stop pire-browser dashboard."
+        } else {
+            "pire-browser dashboard was not running."
+        },
+        "dashboard": {
+            "running": false,
+            "stopped": stopped,
+            "wasRunning": running,
+            "pid": pid,
+            "port": port,
+            "statePath": state_path.to_string_lossy().to_string(),
+            "capabilities": dashboard_capabilities_value()
+        }
+    });
+    if !warnings.is_empty() {
+        value["warnings"] = json!(warnings);
+    }
+    println!("{}", format_cli_result(&value, json_output)?);
+    io::stdout().flush()?;
+    Ok(())
+}
+
+fn wait_until_dashboard_stopped(port: u16, timeout: Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    while std::time::Instant::now() < deadline {
+        if !dashboard_ping(port) {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    !dashboard_ping(port)
+}
+
+fn terminate_dashboard_process(pid: u32) -> Result<()> {
+    if pid == std::process::id() {
+        bail!("dashboard_stop_failed: refusing to terminate the current process");
+    }
+    #[cfg(windows)]
+    {
+        let status = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .with_context(|| format!("failed to invoke taskkill for dashboard pid {pid}"))?;
+        if !status.success() {
+            bail!("dashboard_stop_failed: taskkill failed for dashboard pid {pid}");
+        }
+    }
+    #[cfg(unix)]
+    {
+        let status = Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .with_context(|| format!("failed to invoke kill for dashboard pid {pid}"))?;
+        if !status.success() {
+            bail!("dashboard_stop_failed: kill failed for dashboard pid {pid}");
+        }
+    }
+    Ok(())
 }
 
 fn serve_dashboard_stream(stream: &mut TcpStream) -> Result<()> {
@@ -8201,6 +8608,8 @@ mod tests {
             value["dashboard"]["capabilities"]["statusDashboard"],
             json!(true)
         );
+        assert_eq!(value["dashboard"]["running"], json!(true));
+        assert_eq!(value["dashboard"]["pid"], json!(std::process::id() as u64));
         assert_eq!(
             value["dashboard"]["capabilities"]["liveViewport"],
             json!(false)
@@ -8230,8 +8639,7 @@ mod tests {
             Some("/api/status")
         );
         assert_eq!(
-            dashboard_path_from_request_line("GET /api/preview/s1?fresh=1 HTTP/1.1\r\n")
-                .as_deref(),
+            dashboard_path_from_request_line("GET /api/preview/s1?fresh=1 HTTP/1.1\r\n").as_deref(),
             Some("/api/preview/s1")
         );
         assert_eq!(
@@ -8269,7 +8677,10 @@ mod tests {
 
     #[test]
     fn dashboard_preview_session_id_parses_optional_session() {
-        assert_eq!(dashboard_preview_session_id("/api/preview").as_deref(), None);
+        assert_eq!(
+            dashboard_preview_session_id("/api/preview").as_deref(),
+            None
+        );
         assert_eq!(
             dashboard_preview_session_id("/api/preview/s1").as_deref(),
             Some("s1")
@@ -8278,6 +8689,22 @@ mod tests {
             dashboard_preview_session_id("/api/preview/s1/").as_deref(),
             Some("s1")
         );
+    }
+
+    #[test]
+    fn dashboard_process_value_reports_lifecycle_fields() {
+        let path = PathBuf::from("state/dashboard.json");
+        let value = dashboard_process_value(9000, "background", 1234, Some(&path));
+        assert_eq!(value["dashboard"]["url"], json!("http://127.0.0.1:9000"));
+        assert_eq!(value["dashboard"]["mode"], json!("background"));
+        assert_eq!(value["dashboard"]["pid"], json!(1234));
+        assert_eq!(value["dashboard"]["running"], json!(true));
+        assert_eq!(
+            value["dashboard"]["statePath"],
+            json!(path.to_string_lossy().to_string())
+        );
+        assert_eq!(dashboard_state_port(&value), Some(9000));
+        assert_eq!(dashboard_state_pid(&value), Some(1234));
     }
 
     #[test]
@@ -8366,10 +8793,8 @@ mod tests {
 
     #[test]
     fn writes_recording_manifest_for_record_stop() {
-        let dir = std::env::temp_dir().join(format!(
-            "pire-browser-recording-test-{}",
-            Uuid::new_v4()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("pire-browser-recording-test-{}", Uuid::new_v4()));
         let mut result = json!({
             "recording": {
                 "schemaVersion": 1,
@@ -8380,7 +8805,10 @@ mod tests {
         maybe_write_recording_manifest(&s(&["record", "stop"]), &mut result).unwrap();
         let path = dir.join("recording.json");
         assert!(path.exists());
-        assert_eq!(result["recordingPath"], json!(path.to_string_lossy().to_string()));
+        assert_eq!(
+            result["recordingPath"],
+            json!(path.to_string_lossy().to_string())
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
