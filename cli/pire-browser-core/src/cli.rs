@@ -157,6 +157,12 @@ pub enum LocalCommand {
     SkillsCatAll {
         json: bool,
     },
+    Chat {
+        json: bool,
+        ignored_global_flags: Vec<GlobalFlagWarning>,
+        instruction: Option<String>,
+        max_steps: usize,
+    },
     InstallStatus {
         json: bool,
         domain_policy: DomainPolicyArgs,
@@ -342,6 +348,8 @@ const GLOBAL_BOOL_FLAGS: &[&str] = &[
     "--content-boundaries",
     "-q",
     "-v",
+    "--quiet",
+    "--verbose",
 ];
 
 pub fn apply_config_defaults(raw: &[String]) -> Result<ConfigApplyResult> {
@@ -1066,6 +1074,48 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             other if other.starts_with('-') => bail!("unsupported skills option: {other}"),
             other => bail!("unsupported skills command: {other}; try `pire-browser skills list`"),
         }
+    }
+
+    if command == "chat" {
+        args.remove(0);
+        remove_json_flags(&mut args, &mut json_output);
+        let mut max_steps = 5usize;
+        let mut instruction_parts = Vec::new();
+        let mut i = 0;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--json" => json_output = true,
+                "--max-steps" => {
+                    i += 1;
+                    let Some(value) = args.get(i) else {
+                        bail!("invalid_args: chat --max-steps requires a positive integer");
+                    };
+                    max_steps = value.parse::<usize>().map_err(|_| {
+                        anyhow::anyhow!(
+                            "invalid_args: chat --max-steps requires a positive integer"
+                        )
+                    })?;
+                    if max_steps == 0 {
+                        bail!("invalid_args: chat --max-steps requires a positive integer");
+                    }
+                    max_steps = max_steps.min(20);
+                }
+                other if other.starts_with('-') => bail!("unsupported chat option: {other}"),
+                other => instruction_parts.push(other.to_string()),
+            }
+            i += 1;
+        }
+        let instruction = if instruction_parts.is_empty() {
+            None
+        } else {
+            Some(instruction_parts.join(" "))
+        };
+        return Ok(LocalCommand::Chat {
+            json: json_output,
+            ignored_global_flags,
+            instruction,
+            max_steps,
+        });
     }
 
     if command == "install" {
@@ -2247,6 +2297,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "" | "commands" => TOP_LEVEL_HELP,
         "status" => STATUS_HELP,
         "doctor" | "install-status" => DOCTOR_HELP,
+        "chat" => CHAT_HELP,
         "config" | "--config" => CONFIG_HELP,
         "install" => INSTALL_HELP,
         "update" | "upgrade" => UPDATE_HELP,
@@ -2338,6 +2389,8 @@ Common commands:
                                   Start a local status/session/activity dashboard
   dashboard status|stop           Inspect or stop the background dashboard
   activity list [--json]          Show recent redacted CLI command activity
+  chat "open example.com and summarize it"
+                                  Natural-language browser control via AI Gateway
   --config ./ci-config.json open <url>
   open <url> [--label <name>]      Open a URL, auto-launching Firefox if needed
   open <url> --headers '{"Authorization":"Bearer token"}'
@@ -2476,6 +2529,27 @@ CLI launcher. The feed is bounded on disk and masks known secret-bearing
 arguments such as passwords, headers, proxy credentials, cookie values, storage
 values, and HTTP Basic credentials. It is intended for debugging agent runs and
 for the local dashboard activity panel.
+"##;
+
+const CHAT_HELP: &str = r##"
+Usage:
+  pire-browser chat "open example.com and summarize it"
+  pire-browser --model anthropic/claude-sonnet-4.6 chat "take a screenshot"
+  pire-browser -q chat "summarize this page"
+  pire-browser -v chat "fill the login form"
+  pire-browser chat --max-steps 8
+  pire-browser chat --json "fill the login form"
+
+Runs an agent-browser-style natural-language browser loop. The model proposes
+pire-browser commands as JSON, the CLI executes them through normal command
+paths, and the model receives command output before deciding the next step or
+final answer. The loop is bounded by --max-steps, default 5 and maximum 20.
+
+Set AI_GATEWAY_API_KEY for Vercel AI Gateway. VERCEL_OIDC_TOKEN is also
+accepted. The default AI_GATEWAY_URL is https://ai-gateway.vercel.sh and the
+default AI_GATEWAY_MODEL is anthropic/claude-sonnet-4.6. Use --model or
+AI_GATEWAY_MODEL to override the model. With no instruction, chat starts a
+small terminal REPL; when stdin is piped, it reads one instruction from stdin.
 "##;
 
 const CONFIG_HELP: &str = r##"
@@ -3585,6 +3659,43 @@ mod tests {
             env_config: None,
             ..ConfigApplyOptions::default()
         }
+    }
+
+    #[test]
+    fn parses_chat_command_shape() {
+        let command = parse_cli_args(&s(&[
+            "--json",
+            "-q",
+            "--model",
+            "anthropic/claude-sonnet-4.6",
+            "chat",
+            "--max-steps",
+            "8",
+            "open example.com",
+        ]))
+        .unwrap();
+        assert_eq!(
+            command,
+            LocalCommand::Chat {
+                json: true,
+                ignored_global_flags: vec![],
+                instruction: Some("open example.com".to_string()),
+                max_steps: 8,
+            }
+        );
+        assert!(matches!(
+            parse_cli_args(&s(&["chat", "--max-steps", "0"])),
+            Err(_)
+        ));
+    }
+
+    #[test]
+    fn help_includes_chat_command() {
+        let top = help_text(None).unwrap();
+        assert!(top.contains("chat \"open example.com"));
+        let chat = help_text(Some("chat")).unwrap();
+        assert!(chat.contains("AI_GATEWAY_API_KEY"));
+        assert!(chat.contains("anthropic/claude-sonnet-4.6"));
     }
 
     #[test]

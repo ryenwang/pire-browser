@@ -95,6 +95,39 @@ const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &["connect", "stream", "upgrade"
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PLUGIN_PROTOCOL: &str = "agent-browser.plugin.v1";
 const CREDENTIAL_PROVIDER_TIMEOUT_MS: u64 = 10_000;
+const CHAT_DEFAULT_BASE_URL: &str = "https://ai-gateway.vercel.sh";
+const CHAT_DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4.6";
+const CHAT_COMMAND_TIMEOUT_MS: u64 = 120_000;
+const CHAT_OBSERVATION_CHAR_LIMIT: usize = 24_000;
+const CHAT_NODE_FETCH_SCRIPT: &str = r#"
+(async () => {
+  const fs = require('node:fs');
+  const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+  const url = String(input.url || '');
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${input.apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: input.model,
+      messages: input.messages,
+      stream: false
+    }),
+    signal: AbortSignal.timeout(Number(input.timeoutMs || 120000))
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    console.error(`HTTP ${response.status}`);
+    process.exit(2);
+  }
+  process.stdout.write(text);
+})().catch((error) => {
+  console.error(error && error.message ? error.message : String(error));
+  process.exit(1);
+});
+"#;
 #[cfg(windows)]
 const DASHBOARD_DETACHED_PROCESS: u32 = 0x0000_0008;
 #[cfg(windows)]
@@ -203,6 +236,23 @@ struct CredentialProviderResolution {
     item_ref: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ChatConfig {
+    api_key: String,
+    api_key_source: String,
+    base_url: String,
+    model: String,
+    quiet: bool,
+    verbose: bool,
+    forwarded_globals: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ChatPlan {
+    commands: Vec<String>,
+    final_answer: Option<String>,
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let activity = begin_cli_activity(&args);
@@ -264,6 +314,30 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         }
         LocalCommand::SkillsCatAll { json } => {
             handle_skills_cat_all(json)?;
+        }
+        LocalCommand::Chat {
+            json,
+            ignored_global_flags,
+            instruction,
+            max_steps,
+        } => {
+            let mut result = match handle_chat_command(
+                json,
+                &ignored_global_flags,
+                instruction,
+                max_steps,
+                &config_map,
+                &config_result.args,
+            ) {
+                Ok(result) => result,
+                Err(err) => {
+                    exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                    unreachable!();
+                }
+            };
+            append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
+            apply_output_guards(&mut result, &output_guards, json);
+            println!("{}", format_cli_result(&result, json)?);
         }
         LocalCommand::ProfilesList { json } => {
             handle_profiles_list(json)?;
@@ -2133,6 +2207,476 @@ fn handle_skills_cat_all(json_output: bool) -> Result<()> {
         io::stdout().flush()?;
     }
     Ok(())
+}
+
+fn handle_chat_command(
+    json_output: bool,
+    _ignored_global_flags: &[GlobalFlagWarning],
+    instruction: Option<String>,
+    max_steps: usize,
+    config: &Map<String, Value>,
+    effective_args: &[String],
+) -> Result<Value> {
+    let chat_config = resolve_chat_config(config, effective_args)?;
+    if let Some(instruction) = read_chat_instruction(instruction)? {
+        return run_chat_once(&chat_config, &instruction, max_steps);
+    }
+    if json_output {
+        bail!("invalid_args: chat --json requires an instruction or piped stdin");
+    }
+    run_chat_repl(&chat_config, max_steps)
+}
+
+fn read_chat_instruction(instruction: Option<String>) -> Result<Option<String>> {
+    if let Some(instruction) = instruction {
+        let trimmed = instruction.trim();
+        if trimmed.is_empty() {
+            bail!("invalid_args: chat instruction cannot be empty");
+        }
+        return Ok(Some(trimmed.to_string()));
+    }
+    if io::stdin().is_terminal() {
+        return Ok(None);
+    }
+    let mut input = String::new();
+    io::stdin()
+        .read_to_string(&mut input)
+        .context("invalid_args: failed to read chat instruction from stdin")?;
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        bail!("invalid_args: chat instruction cannot be empty");
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
+fn run_chat_repl(config: &ChatConfig, max_steps: usize) -> Result<Value> {
+    println!("pire-browser chat. Type quit to exit.");
+    let mut completed = 0usize;
+    loop {
+        print!("pire-browser chat> ");
+        io::stdout().flush()?;
+        let mut input = String::new();
+        if io::stdin().read_line(&mut input)? == 0 {
+            break;
+        }
+        let instruction = input.trim();
+        if instruction.eq_ignore_ascii_case("quit") || instruction.eq_ignore_ascii_case("exit") {
+            break;
+        }
+        if instruction.is_empty() {
+            continue;
+        }
+        let result = run_chat_once(config, instruction, max_steps)?;
+        println!(
+            "{}",
+            result
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or("Done.")
+        );
+        completed += 1;
+    }
+    Ok(json!({
+        "text": "Chat ended.",
+        "chat": {
+            "mode": "repl",
+            "completedTurns": completed,
+            "model": config.model,
+            "baseUrl": config.base_url,
+            "apiKeySource": config.api_key_source,
+            "quiet": config.quiet,
+            "verbose": config.verbose,
+        }
+    }))
+}
+
+fn run_chat_once(config: &ChatConfig, instruction: &str, max_steps: usize) -> Result<Value> {
+    let mut messages = vec![
+        json!({ "role": "system", "content": chat_system_prompt() }),
+        json!({ "role": "user", "content": format!("User instruction:\n{instruction}") }),
+    ];
+    let mut steps = Vec::new();
+    let mut final_answer = None;
+    for step_index in 0..max_steps {
+        let assistant_text = request_chat_completion(config, &messages)?;
+        let plan = parse_chat_plan(&assistant_text)?;
+        let mut command_results = Vec::new();
+        if plan.commands.is_empty() {
+            final_answer = plan
+                .final_answer
+                .or_else(|| Some(assistant_text.trim().to_string()));
+            steps.push(json!({
+                "index": step_index + 1,
+                "assistant": assistant_text,
+                "commands": [],
+                "results": [],
+                "final": final_answer,
+            }));
+            break;
+        }
+        for command in plan.commands.iter().take(5) {
+            command_results.push(run_chat_child_command(config, command)?);
+        }
+        steps.push(json!({
+            "index": step_index + 1,
+            "assistant": assistant_text,
+            "commands": plan.commands,
+            "results": command_results,
+        }));
+        messages.push(json!({ "role": "assistant", "content": assistant_text }));
+        messages.push(json!({
+            "role": "user",
+            "content": format!(
+                "Command observations as JSON. Decide the next commands or final answer:\n{}",
+                truncate_for_chat_observation(&serde_json::to_string_pretty(steps.last().unwrap())?)
+            )
+        }));
+    }
+    let final_answer = final_answer.unwrap_or_else(|| {
+        format!(
+            "Reached the chat step limit ({max_steps}) before the model returned a final answer."
+        )
+    });
+    let text = if config.verbose {
+        chat_verbose_text(&final_answer, &steps)
+    } else {
+        final_answer.clone()
+    };
+    Ok(json!({
+        "text": text,
+        "chat": {
+            "mode": "single-shot",
+            "model": config.model,
+            "baseUrl": config.base_url,
+            "apiKeySource": config.api_key_source,
+            "quiet": config.quiet,
+            "verbose": config.verbose,
+            "maxSteps": max_steps,
+            "final": final_answer,
+            "steps": steps,
+        }
+    }))
+}
+
+fn chat_verbose_text(final_answer: &str, steps: &[Value]) -> String {
+    let mut text = String::new();
+    for step in steps {
+        let index = step.get("index").and_then(Value::as_u64).unwrap_or(0);
+        let commands = step
+            .get("commands")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if commands.is_empty() {
+            continue;
+        }
+        text.push_str(&format!("Step {index}:\n"));
+        for command in commands {
+            if let Some(command) = command.as_str() {
+                text.push_str(&format!("  $ pire-browser {command}\n"));
+            }
+        }
+    }
+    if !text.is_empty() {
+        text.push('\n');
+    }
+    text.push_str(final_answer);
+    text
+}
+
+fn resolve_chat_config(
+    config: &Map<String, Value>,
+    effective_args: &[String],
+) -> Result<ChatConfig> {
+    let (api_key, api_key_source) = if let Some(value) = non_empty_env("AI_GATEWAY_API_KEY") {
+        (value, "AI_GATEWAY_API_KEY".to_string())
+    } else if let Some(value) = non_empty_env("VERCEL_OIDC_TOKEN") {
+        (value, "VERCEL_OIDC_TOKEN".to_string())
+    } else {
+        bail!("missing_ai_gateway_credentials: set AI_GATEWAY_API_KEY to use `pire-browser chat`");
+    };
+    let base_url = non_empty_env("AI_GATEWAY_URL")
+        .or_else(|| non_empty_env("AI_GATEWAY_BASE_URL"))
+        .or_else(|| non_empty_env("OPENAI_BASE_URL"))
+        .unwrap_or_else(|| CHAT_DEFAULT_BASE_URL.to_string());
+    let model = chat_model_from_args(effective_args)
+        .or_else(|| non_empty_env("AI_GATEWAY_MODEL"))
+        .or_else(|| non_empty_env("PIRE_BROWSER_MODEL"))
+        .or_else(|| non_empty_env("AGENT_BROWSER_MODEL"))
+        .or_else(|| {
+            config
+                .get("model")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| CHAT_DEFAULT_MODEL.to_string());
+    Ok(ChatConfig {
+        api_key,
+        api_key_source,
+        base_url,
+        model,
+        quiet: chat_has_flag(effective_args, &["-q", "--quiet"]),
+        verbose: chat_has_flag(effective_args, &["-v", "--verbose"]),
+        forwarded_globals: chat_forwarded_global_args(effective_args),
+    })
+}
+
+fn chat_model_from_args(args: &[String]) -> Option<String> {
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == "--model" {
+            return args.get(index + 1).cloned();
+        }
+        index += 1;
+    }
+    None
+}
+
+fn chat_has_flag(args: &[String], flags: &[&str]) -> bool {
+    args.iter().any(|arg| flags.contains(&arg.as_str()))
+}
+
+fn chat_forwarded_global_args(args: &[String]) -> Vec<String> {
+    let mut forwarded = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        if arg == "chat" {
+            break;
+        }
+        if matches!(
+            arg,
+            "--session"
+                | "--session-name"
+                | "--profile"
+                | "--state"
+                | "--color-scheme"
+                | "--allowed-domains"
+                | "--confirm-actions"
+                | "--action-policy"
+                | "--config"
+                | "--executable-path"
+                | "--download-path"
+                | "--proxy"
+                | "--proxy-bypass"
+        ) {
+            if let Some(value) = args.get(index + 1) {
+                forwarded.push(args[index].clone());
+                forwarded.push(value.clone());
+                index += 2;
+                continue;
+            }
+        }
+        if matches!(
+            arg,
+            "--headed"
+                | "--headless"
+                | "--allow-file-access"
+                | "--auto-connect"
+                | "--confirm-interactive"
+                | "--no-allowed-domains"
+                | "--content-boundaries"
+        ) {
+            forwarded.push(args[index].clone());
+        }
+        index += 1;
+    }
+    forwarded
+}
+
+fn request_chat_completion(config: &ChatConfig, messages: &[Value]) -> Result<String> {
+    let request = json!({
+        "apiKey": config.api_key,
+        "baseUrl": config.base_url,
+        "url": chat_completions_url(&config.base_url),
+        "model": config.model,
+        "messages": messages,
+        "timeoutMs": CHAT_COMMAND_TIMEOUT_MS,
+    });
+    let mut child = Command::new(chat_node_command())
+        .arg("-e")
+        .arg(CHAT_NODE_FETCH_SCRIPT)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("chat_request_failed: failed to start Node.js for AI Gateway request")?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(serde_json::to_string(&request)?.as_bytes())
+            .context("chat_request_failed: failed to write AI Gateway request to Node.js")?;
+    }
+    let output = child
+        .wait_with_output()
+        .context("chat_request_failed: failed to read AI Gateway response from Node.js")?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.status.success() {
+        let stderr = redact_text(&String::from_utf8_lossy(&output.stderr));
+        bail!(
+            "chat_request_failed: AI Gateway request failed{}",
+            if stderr.trim().is_empty() {
+                "".to_string()
+            } else {
+                format!(": {}", stderr.trim())
+            }
+        );
+    }
+    let value: Value = serde_json::from_str(&stdout)
+        .context("chat_malformed_response: AI Gateway returned invalid JSON")?;
+    value
+        .get("choices")
+        .and_then(Value::as_array)
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("message"))
+        .and_then(|message| message.get("content"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| anyhow::anyhow!("chat_malformed_response: missing assistant content"))
+}
+
+fn chat_node_command() -> String {
+    non_empty_env("PIRE_BROWSER_NODE")
+        .or_else(|| non_empty_env("NODE"))
+        .unwrap_or_else(|| "node".to_string())
+}
+
+fn chat_completions_url(base_url: &str) -> String {
+    let trimmed = base_url.trim_end_matches('/');
+    if trimmed.ends_with("/v1") {
+        format!("{trimmed}/chat/completions")
+    } else {
+        format!("{trimmed}/v1/chat/completions")
+    }
+}
+
+fn parse_chat_plan(text: &str) -> Result<ChatPlan> {
+    let value: Value = serde_json::from_str(extract_chat_json(text)?)
+        .context("chat_malformed_plan: model must return a JSON object")?;
+    let Some(object) = value.as_object() else {
+        bail!("chat_malformed_plan: model must return a JSON object");
+    };
+    let commands = match object.get("commands") {
+        Some(Value::Array(values)) => values
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|command| !command.is_empty())
+                    .map(str::to_string)
+                    .ok_or_else(|| anyhow::anyhow!("chat_malformed_plan: commands must be strings"))
+            })
+            .collect::<Result<Vec<_>>>()?,
+        Some(Value::Null) | None => Vec::new(),
+        _ => bail!("chat_malformed_plan: commands must be an array"),
+    };
+    let final_answer = object
+        .get("final")
+        .or_else(|| object.get("answer"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    Ok(ChatPlan {
+        commands,
+        final_answer,
+    })
+}
+
+fn extract_chat_json(text: &str) -> Result<&str> {
+    let trimmed = text.trim();
+    if trimmed.starts_with('{') && trimmed.ends_with('}') {
+        return Ok(trimmed);
+    }
+    if let Some(start) = trimmed.find('{') {
+        if let Some(end) = trimmed.rfind('}') {
+            if end > start {
+                return Ok(&trimmed[start..=end]);
+            }
+        }
+    }
+    bail!("chat_malformed_plan: model response did not contain a JSON object");
+}
+
+fn run_chat_child_command(config: &ChatConfig, command: &str) -> Result<Value> {
+    let mut args = split_command_text(command).with_context(|| {
+        format!(
+            "chat_malformed_plan: could not parse command `{}`",
+            redact_text(command)
+        )
+    })?;
+    if args.first().map(String::as_str) == Some("pire-browser") {
+        args.remove(0);
+    }
+    let Some(root) = args.first().map(String::as_str) else {
+        bail!("chat_malformed_plan: command cannot be empty");
+    };
+    if matches!(root, "chat" | "confirm" | "deny" | "mcp" | "dashboard") {
+        bail!("chat_unsafe_command: chat cannot run `{root}` automatically");
+    }
+    let mut child_args = vec![
+        "--json".to_string(),
+        "--max-output".to_string(),
+        CHAT_OBSERVATION_CHAR_LIMIT.to_string(),
+    ];
+    child_args.extend(config.forwarded_globals.clone());
+    child_args.extend(args.clone());
+    let output = Command::new(std::env::current_exe()?)
+        .args(&child_args)
+        .output()
+        .with_context(|| {
+            format!(
+                "chat_command_failed: failed to run `{}`",
+                redact_text(command)
+            )
+        })?;
+    let stdout =
+        truncate_for_chat_observation(&redact_text(&String::from_utf8_lossy(&output.stdout)));
+    let stderr =
+        truncate_for_chat_observation(&redact_text(&String::from_utf8_lossy(&output.stderr)));
+    Ok(json!({
+        "command": command,
+        "args": args,
+        "status": output.status.code(),
+        "success": output.status.success(),
+        "stdout": stdout,
+        "stderr": stderr,
+    }))
+}
+
+fn truncate_for_chat_observation(text: &str) -> String {
+    if text.chars().count() <= CHAT_OBSERVATION_CHAR_LIMIT {
+        return text.to_string();
+    }
+    let mut truncated = text
+        .chars()
+        .take(CHAT_OBSERVATION_CHAR_LIMIT)
+        .collect::<String>();
+    truncated.push_str("\n[CHAT_OBSERVATION_TRUNCATED]");
+    truncated
+}
+
+fn chat_system_prompt() -> &'static str {
+    r#"You are the pire-browser chat controller. Translate the user's natural-language browser task into safe pire-browser CLI commands, observe results, and then answer.
+
+Return ONLY a JSON object, no markdown:
+{"commands":["open https://example.com","snapshot -i"],"final":null}
+or:
+{"commands":[],"final":"The task is complete because ..."}
+
+Rules:
+- Command strings must omit the leading `pire-browser`.
+- Use Firefox-backed pire-browser commands only.
+- Inspect with `snapshot -i` before click/fill/select/check/uncheck/drag.
+- Use fresh refs after navigation, DOM changes, dialogs, uploads, downloads, or errors.
+- Prefer semantic find commands for form interactions when refs are unknown.
+- Use `wait` before retrying when a page is still loading.
+- Do not run `confirm`, `deny`, `chat`, `mcp`, or `dashboard`.
+- If a command returns confirmation-required output, stop and ask the user to approve.
+- Use at most five commands per response.
+- Do not claim success until command output proves it."#
 }
 
 fn handle_profiles_list(json_output: bool) -> Result<()> {
@@ -10653,6 +11197,84 @@ mod tests {
         .unwrap_err()
         .to_string()
         .contains("credential object"));
+    }
+
+    #[test]
+    fn parses_chat_plan_from_plain_or_fenced_json() {
+        let plan = parse_chat_plan(
+            r#"```json
+{"commands":["open https://example.com","snapshot -i"],"final":null}
+```"#,
+        )
+        .unwrap();
+        assert_eq!(
+            plan,
+            ChatPlan {
+                commands: s(&["open https://example.com", "snapshot -i"]),
+                final_answer: None,
+            }
+        );
+        let final_plan = parse_chat_plan(r#"{"commands":[],"final":"Done"}"#).unwrap();
+        assert_eq!(final_plan.commands, Vec::<String>::new());
+        assert_eq!(final_plan.final_answer.as_deref(), Some("Done"));
+        assert!(parse_chat_plan(r#"{"commands":"open"}"#).is_err());
+    }
+
+    #[test]
+    fn chat_url_model_and_global_forwarding_follow_agent_browser_shape() {
+        assert_eq!(
+            chat_completions_url("https://ai-gateway.vercel.sh"),
+            "https://ai-gateway.vercel.sh/v1/chat/completions"
+        );
+        assert_eq!(
+            chat_completions_url("https://ai-gateway.vercel.sh/v1"),
+            "https://ai-gateway.vercel.sh/v1/chat/completions"
+        );
+        assert_eq!(
+            chat_model_from_args(&s(&["--model", "anthropic/claude-sonnet-4.6", "chat"])),
+            Some("anthropic/claude-sonnet-4.6".to_string())
+        );
+        assert_eq!(
+            chat_forwarded_global_args(&s(&[
+                "--allowed-domains",
+                "example.com",
+                "--confirm-actions",
+                "eval",
+                "--json",
+                "-q",
+                "--model",
+                "anthropic/claude-sonnet-4.6",
+                "chat",
+                "open example.com",
+            ])),
+            s(&[
+                "--allowed-domains",
+                "example.com",
+                "--confirm-actions",
+                "eval"
+            ])
+        );
+    }
+
+    #[test]
+    fn chat_child_rejects_recursive_and_confirmation_commands() {
+        let config = ChatConfig {
+            api_key: "test".to_string(),
+            api_key_source: "test".to_string(),
+            base_url: CHAT_DEFAULT_BASE_URL.to_string(),
+            model: CHAT_DEFAULT_MODEL.to_string(),
+            quiet: false,
+            verbose: false,
+            forwarded_globals: Vec::new(),
+        };
+        assert!(run_chat_child_command(&config, "chat \"loop\"")
+            .unwrap_err()
+            .to_string()
+            .contains("chat_unsafe_command"));
+        assert!(run_chat_child_command(&config, "confirm c_123")
+            .unwrap_err()
+            .to_string()
+            .contains("chat_unsafe_command"));
     }
 
     #[test]

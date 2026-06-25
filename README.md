@@ -175,6 +175,7 @@ pire-browser dashboard start --background
 pire-browser dashboard status
 pire-browser dashboard stop
 pire-browser activity list --json    # Recent redacted command activity
+pire-browser chat "open example.com and summarize it"
 pire-browser close                   # Close targeted managed Firefox session
 pire-browser close --all             # Close all managed Firefox sessions
 ```
@@ -187,7 +188,7 @@ not native touch input or mobile browser chrome emulation. `swipe` maps touch
 direction to page scroll (`swipe up` scrolls down); use `scroll` when you want
 direct scroll direction.
 
-PDF capture is available as an image-backed visual evidence file. CDP connect, WebSocket viewport streaming, and natural-language chat are not implemented in the current Firefox backend. The dashboard does provide a live read-only viewport preview by polling visible-viewport screenshots.
+PDF capture is available as an image-backed visual evidence file. Natural-language chat is available through `pire-browser chat` when `AI_GATEWAY_API_KEY` is set; it runs a bounded command-plan loop through the normal CLI command paths. CDP connect and WebSocket viewport streaming are not implemented in the current Firefox backend. The dashboard does provide a live read-only viewport preview by polling visible-viewport screenshots.
 
 ### Read Agent-Friendly Text
 
@@ -900,13 +901,41 @@ pire-browser pdf viewport.pdf --viewport
 --confirm-interactive           # Interactive confirmation prompts
 --engine <name>                 # Accepted legacy input
 -p, --provider <name>           # Accepted legacy input
---model <name>                  # Accepted legacy input
+--model <name>                  # Chat model override; accepted elsewhere as legacy input
 --debug                         # Debug output
 ```
 
 `--confirm-actions` accepts normal action categories such as `eval` and
 `download`, plus plugin capability categories such as
 `plugin:vault:credential.read`.
+
+## AI Chat
+
+`chat` mirrors agent-browser's natural-language entry point. It asks AI Gateway
+for JSON command plans, executes those commands through the normal
+`pire-browser` CLI path, feeds command output back to the model, and stops when
+the model returns a final answer or the step limit is reached.
+
+```bash
+set AI_GATEWAY_API_KEY=...              # Windows cmd
+$env:AI_GATEWAY_API_KEY="..."           # PowerShell
+export AI_GATEWAY_API_KEY=...           # macOS/Linux
+
+pire-browser chat "open example.com and summarize the page"
+pire-browser -q chat "summarize this page"
+pire-browser -v chat "fill the search box with cats and press Enter"
+pire-browser --model anthropic/claude-sonnet-4.6 chat "take a screenshot"
+pire-browser chat --max-steps 8
+pire-browser chat
+```
+
+Bare `chat` starts a small terminal REPL; type `quit` to exit. Piped stdin is
+treated as one instruction. `AI_GATEWAY_MODEL` overrides the default
+`anthropic/claude-sonnet-4.6`, and `AI_GATEWAY_URL` overrides the default
+`https://ai-gateway.vercel.sh`. Chat child commands inherit important global
+policy/session flags such as `--allowed-domains`, `--confirm-actions`,
+`--action-policy`, `--profile`, and `--session-name`. The chat loop refuses to
+run `confirm`, `deny`, `chat`, `mcp`, or `dashboard` automatically.
 
 ## Observability Dashboard
 

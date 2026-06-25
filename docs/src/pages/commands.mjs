@@ -364,9 +364,14 @@ pire-browser install-status --json`),
   p("Exit code is <code>0</code> when checks pass or report only advisory warnings, and nonzero when setup is missing or arguments are invalid. Plain doctor is read-only; <code>doctor --json</code> and <code>install-status --json</code> include <code>nextActions</code> with concrete repair commands, while <code>doctor --fix</code> explicitly reruns native host setup and exits nonzero if the follow-up status still needs attention. <code>doctor --fix --with-deps</code> accepts agent-browser-style repair recipes; it can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and reports guided non-Snap/non-Flatpak Firefox steps on Linux."),
 
   h2("Chat", "chat"),
-  code(`# Natural-language chat is not implemented in pire-browser yet.
-pire-browser skills cat core
-pire-browser help commands`),
+  statusNote("chat"),
+  code(`AI_GATEWAY_API_KEY=... pire-browser chat "open example.com and summarize it"
+pire-browser -q chat "summarize this page"
+pire-browser -v chat "fill the search box with cats and press Enter"
+pire-browser --model anthropic/claude-sonnet-4.6 chat "take a screenshot"
+pire-browser chat --max-steps 8
+pire-browser chat`),
+  p("<code>chat</code> is an agent-browser-style natural-language loop backed by Vercel AI Gateway. The model returns JSON command plans, pire-browser executes those commands through the normal CLI path, and observations are sent back until the model returns a final answer or the bounded step limit is reached. Bare <code>chat</code> starts a small terminal REPL; type <code>quit</code> to exit. Set <code>AI_GATEWAY_API_KEY</code>; optional <code>AI_GATEWAY_MODEL</code> and <code>AI_GATEWAY_URL</code> override the defaults."),
 
   h2("MCP", "mcp"),
   statusNote("mcp"),

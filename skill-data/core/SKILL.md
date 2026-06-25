@@ -90,6 +90,21 @@ pire-browser dblclick '<item-ref>'
 pire-browser snapshot -i
 ```
 
+Use chat only when the user specifically wants natural-language browser control
+from the CLI:
+
+```bash
+AI_GATEWAY_API_KEY=... pire-browser chat "open example.com and summarize it"
+pire-browser -q chat "summarize this page"
+pire-browser -v chat "fill the search box with cats and press Enter"
+```
+
+`chat` mirrors agent-browser's AI Gateway-backed command loop. It asks the model
+for JSON command plans, runs those commands through normal `pire-browser` CLI
+paths, and feeds observations back until a final answer or the bounded step
+limit. Prefer direct commands or MCP typed tools when you already know the next
+browser action; chat adds model latency and requires `AI_GATEWAY_API_KEY`.
+
 Read documents, docs pages, and article text before falling back to snapshots:
 
 ```bash
