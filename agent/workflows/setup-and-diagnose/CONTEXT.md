@@ -14,6 +14,7 @@ Use this when install, launch, native messaging, optional native package resolut
    - Prefer `pire-browser doctor --json` when available; follow `data.nextActions` before guessing a repair.
 2. If native messaging registration is missing or mismatched, run `pire-browser doctor --fix` or the lower-level `pire-browser setup`.
    - In MCP, use debug-profile `pire_browser_install` for explicit native-host setup or repair.
+   - If following an agent-browser-style recipe, `pire-browser install --with-deps` and `doctor --fix --with-deps` are accepted and print dependency guidance; they do not run system package managers or install Firefox automatically.
    - If Firefox discovery fails, follow the platform repair command printed by the error. `--firefox-path` may point to the Firefox executable, a directory containing it, or `/Applications/Firefox.app` on macOS.
 3. If postinstall was skipped by `--ignore-scripts`, run setup or retry the browser command that needs auto-launch.
 4. If Pi reports a duplicate `pire-browser` tool from `npm:pire-browser` and a legacy GitHub source, wait a moment and rerun `pi`; if it remains, run `pi remove git:github.com/ryenwang/pire-browser` and then `pi install npm:pire-browser`.

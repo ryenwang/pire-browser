@@ -22,17 +22,22 @@ pub struct SetupResult {
     pub host_path: PathBuf,
     pub manifest_path: PathBuf,
     pub note: Option<String>,
+    pub dependency_note: Option<String>,
 }
 
 pub fn setup(firefox_path: Option<String>) -> Result<SetupResult> {
-    setup_inner(firefox_path)
+    setup_inner(firefox_path, false)
+}
+
+pub fn setup_with_deps(firefox_path: Option<String>) -> Result<SetupResult> {
+    setup_inner(firefox_path, true)
 }
 
 pub fn setup_windows(firefox_path: Option<String>) -> Result<SetupResult> {
-    setup_inner(firefox_path)
+    setup_inner(firefox_path, false)
 }
 
-fn setup_inner(firefox_path: Option<String>) -> Result<SetupResult> {
+fn setup_inner(firefox_path: Option<String>, with_deps: bool) -> Result<SetupResult> {
     ensure_runtime_dirs()?;
     let firefox_path = discover_firefox(firefox_path.clone())
         .with_context(|| firefox_discovery_error_message(firefox_path.as_deref()))?;
@@ -50,6 +55,7 @@ fn setup_inner(firefox_path: Option<String>) -> Result<SetupResult> {
 
     Ok(SetupResult {
         note: linux_sandbox_note(&firefox_path),
+        dependency_note: dependency_note(with_deps),
         firefox_path,
         host_path,
         manifest_path,
@@ -140,7 +146,36 @@ pub fn setup_result_text(result: &SetupResult) -> String {
     if let Some(note) = &result.note {
         text.push_str(&format!("\nNote: {note}"));
     }
+    if let Some(note) = &result.dependency_note {
+        text.push_str(&format!("\nDependency note: {note}"));
+    }
     text
+}
+
+fn dependency_note(with_deps: bool) -> Option<String> {
+    if !with_deps {
+        return None;
+    }
+    Some(platform_dependency_note().to_string())
+}
+
+pub fn platform_dependency_note() -> &'static str {
+    #[cfg(windows)]
+    {
+        "`--with-deps` is accepted for agent-browser-style setup recipes. pire-browser uses the user's installed Firefox and does not run winget, Chocolatey, or other system installers automatically; install Mozilla Firefox if needed, then rerun `pire-browser install`."
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "`--with-deps` is accepted for agent-browser-style setup recipes. pire-browser uses the user's installed Firefox and does not run Homebrew or other system installers automatically; install Firefox.app if needed, then rerun `pire-browser install`."
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        "`--with-deps` is accepted for agent-browser-style setup recipes. pire-browser uses an installed Firefox and does not run sudo or package managers automatically; prefer an unrestricted Mozilla or distro Firefox build over Snap/Flatpak, then rerun `pire-browser install`."
+    }
+    #[cfg(not(any(windows, target_os = "macos", unix)))]
+    {
+        "`--with-deps` is accepted for agent-browser-style setup recipes, but this platform needs a user-installed Firefox. Install Firefox, then rerun `pire-browser install`."
+    }
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -163,6 +198,15 @@ mod tests {
         if let Ok(path) = path {
             assert!(path.to_string_lossy().contains(NATIVE_HOST_NAME));
         }
+    }
+
+    #[test]
+    fn dependency_note_only_appears_with_deps() {
+        assert!(dependency_note(false).is_none());
+        let note = dependency_note(true).unwrap();
+        assert!(note.contains("--with-deps"));
+        assert!(note.contains("Firefox"));
+        assert!(note.contains("does not run"));
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]

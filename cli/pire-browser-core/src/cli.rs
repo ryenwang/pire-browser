@@ -98,6 +98,7 @@ pub enum LocalCommand {
     Setup {
         windows: bool,
         firefox_path: Option<String>,
+        with_deps: bool,
     },
     Launch {
         profile: String,
@@ -155,6 +156,7 @@ pub enum LocalCommand {
     DoctorFix {
         json: bool,
         firefox_path: Option<String>,
+        with_deps: bool,
     },
     Status {
         json: bool,
@@ -1039,9 +1041,11 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     if command == "install" {
         args.remove(0);
         let mut firefox_path = None;
+        let mut with_deps = false;
         let mut i = 0;
         while i < args.len() {
             match args[i].as_str() {
+                "--with-deps" => with_deps = true,
                 "--firefox-path" => {
                     i += 1;
                     let Some(path) = args.get(i).cloned() else {
@@ -1056,6 +1060,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         return Ok(LocalCommand::Setup {
             windows: false,
             firefox_path,
+            with_deps,
         });
     }
 
@@ -1063,10 +1068,12 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         args.remove(0);
         let mut windows = false;
         let mut firefox_path = None;
+        let mut with_deps = false;
         let mut i = 0;
         while i < args.len() {
             match args[i].as_str() {
                 "--windows" => windows = true,
+                "--with-deps" => with_deps = true,
                 "--firefox-path" => {
                     i += 1;
                     let Some(path) = args.get(i).cloned() else {
@@ -1081,6 +1088,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         return Ok(LocalCommand::Setup {
             windows,
             firefox_path,
+            with_deps,
         });
     }
 
@@ -1226,6 +1234,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         args.remove(0);
         let mut fix = false;
         let mut firefox_path = None;
+        let mut with_deps = false;
         let mut i = 0;
         while i < args.len() {
             match args[i].as_str() {
@@ -1237,6 +1246,9 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 }
                 "--fix" => {
                     fix = true;
+                }
+                "--with-deps" => {
+                    with_deps = true;
                 }
                 "--firefox-path" => {
                     i += 1;
@@ -1253,6 +1265,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             return Ok(LocalCommand::DoctorFix {
                 json: json_output,
                 firefox_path,
+                with_deps,
             });
         }
         return Ok(LocalCommand::InstallStatus {
@@ -2191,9 +2204,10 @@ Usage:
 
 Common commands:
   status [--json]                 Show live Firefox sessions and default target
-  install [--firefox-path <path>]  Register the Firefox Native Messaging host
+  install [--with-deps] [--firefox-path <path>]
+                                    Register the Firefox Native Messaging host
   upgrade                         Check and apply a safe package update
-  doctor [--json] [--offline] [--fix]
+  doctor [--json] [--offline] [--fix] [--with-deps]
                                   Check setup health; --fix repairs setup
   mcp [--tools core|network|state|debug|tabs|mobile|react|all]
                                   Start the MCP stdio server
@@ -2288,7 +2302,7 @@ the active page when Firefox has reported one, and advisory policy diagnostics.
 const DOCTOR_HELP: &str = r##"
 Usage:
   pire-browser doctor [--json] [--offline] [--quick]
-  pire-browser doctor --fix [--json] [--firefox-path <path>]
+  pire-browser doctor --fix [--json] [--with-deps] [--firefox-path <path>]
   pire-browser install-status [--json]
 
 Checks Firefox discovery, native messaging setup, extension build files, managed
@@ -3022,12 +3036,14 @@ aliases. `close --all` closes every live pire-browser managed session.
 
 const INSTALL_HELP: &str = r##"
 Usage:
-  pire-browser install [--firefox-path <path>]
+  pire-browser install [--with-deps] [--firefox-path <path>]
 
 Alias for setup. Registers the Firefox Native Messaging host for the current
 user. `--firefox-path` accepts the Firefox executable, a directory containing
 the executable, or a macOS Firefox.app bundle. Use `pire-browser doctor` for
-read-only diagnostics.
+read-only diagnostics. `--with-deps` is accepted for agent-browser-style setup
+recipes and prints platform dependency guidance; it does not run system package
+managers or install Firefox automatically.
 "##;
 
 const UPDATE_HELP: &str = r##"
@@ -3046,14 +3062,15 @@ session is active. Local project installs and minor/major updates notify only.
 
 const SETUP_HELP: &str = r##"
 Usage:
-  pire-browser setup [--firefox-path <path>]
-  pire-browser setup --windows [--firefox-path <path>]
+  pire-browser setup [--with-deps] [--firefox-path <path>]
+  pire-browser setup --windows [--with-deps] [--firefox-path <path>]
 
 Registers the Firefox Native Messaging host for the current user. `--windows`
 is a deprecated compatibility alias and is ignored on non-Windows platforms.
 `--firefox-path` accepts the Firefox executable, a directory containing the
 executable, or a macOS Firefox.app bundle. `pire-browser install` is a public
-alias for this setup step.
+alias for this setup step. `--with-deps` prints platform dependency guidance
+without invoking system package managers.
 "##;
 
 const LAUNCH_HELP: &str = r##"
@@ -3609,6 +3626,7 @@ mod tests {
             LocalCommand::Setup {
                 windows: false,
                 firefox_path: None,
+                with_deps: false,
             }
         );
 
@@ -3623,7 +3641,8 @@ mod tests {
             parsed,
             LocalCommand::Setup {
                 windows: true,
-                firefox_path: Some("C:/Firefox/firefox.exe".to_string())
+                firefox_path: Some("C:/Firefox/firefox.exe".to_string()),
+                with_deps: false,
             }
         );
 
@@ -3633,11 +3652,23 @@ mod tests {
             LocalCommand::Setup {
                 windows: false,
                 firefox_path: None,
+                with_deps: false,
+            }
+        );
+
+        let install_with_deps = parse_cli_args(&s(&["install", "--with-deps"])).unwrap();
+        assert_eq!(
+            install_with_deps,
+            LocalCommand::Setup {
+                windows: false,
+                firefox_path: None,
+                with_deps: true,
             }
         );
 
         let install_with_path = parse_cli_args(&s(&[
             "install",
+            "--with-deps",
             "--firefox-path",
             "/Applications/Firefox.app",
         ]))
@@ -3647,6 +3678,7 @@ mod tests {
             LocalCommand::Setup {
                 windows: false,
                 firefox_path: Some("/Applications/Firefox.app".to_string()),
+                with_deps: true,
             }
         );
         assert!(parse_cli_args(&s(&["install", "--windows"])).is_err());
@@ -4874,12 +4906,14 @@ mod tests {
             parsed,
             LocalCommand::DoctorFix {
                 json: true,
-                firefox_path: None
+                firefox_path: None,
+                with_deps: false,
             }
         );
         let parsed = parse_cli_args(&s(&[
             "doctor",
             "--fix",
+            "--with-deps",
             "--firefox-path",
             "/Applications/Firefox.app/Contents/MacOS/firefox",
             "--json",
@@ -4889,7 +4923,8 @@ mod tests {
             parsed,
             LocalCommand::DoctorFix {
                 json: true,
-                firefox_path: Some("/Applications/Firefox.app/Contents/MacOS/firefox".to_string())
+                firefox_path: Some("/Applications/Firefox.app/Contents/MacOS/firefox".to_string()),
+                with_deps: true,
             }
         );
     }
@@ -4917,7 +4952,7 @@ mod tests {
         assert!(text.contains("network har"));
         assert!(text.contains("diff snapshot"));
         assert!(text.contains("highlight '#submit'"));
-        assert!(text.contains("install [--firefox-path <path>]"));
+        assert!(text.contains("install [--with-deps] [--firefox-path <path>]"));
         assert!(text.contains("upgrade"));
         assert!(text.contains("--config ./ci-config.json open <url>"));
         assert!(text.contains("open <url> --headers"));
@@ -4942,6 +4977,7 @@ mod tests {
             .unwrap()
             .contains("Alias for setup"));
         assert!(help_text(Some("install")).unwrap().contains("Firefox.app"));
+        assert!(help_text(Some("install")).unwrap().contains("--with-deps"));
         assert!(help_text(Some("setup"))
             .unwrap()
             .contains("directory containing the"));

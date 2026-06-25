@@ -54,7 +54,7 @@ use pire_browser_core::session::{
     session_cleanup_text, session_cleanup_value, session_status_text, session_status_value,
     SessionInfo,
 };
-use pire_browser_core::setup::{setup, setup_result_text, SetupResult};
+use pire_browser_core::setup::{setup, setup_result_text, setup_with_deps, SetupResult};
 use pire_browser_core::skills::{list_skills, skill_content};
 use pire_browser_core::state_file::{
     display_url_without_query_or_fragment, read_state_file_with_metadata,
@@ -198,12 +198,17 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         LocalCommand::Setup {
             windows,
             firefox_path,
+            with_deps,
         } => {
             if windows {
                 eprintln!("Warning: `setup --windows` is deprecated; use `pire-browser setup`.");
             }
             let firefox_path = firefox_path.or_else(|| firefox_path_override.clone());
-            let result = setup(firefox_path)?;
+            let result = if with_deps {
+                setup_with_deps(firefox_path)?
+            } else {
+                setup(firefox_path)?
+            };
             println!("{}", setup_result_text(&result));
         }
         LocalCommand::SkillsList { json } => {
@@ -659,9 +664,13 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 println!("{}", install_status_text(&report));
             }
         }
-        LocalCommand::DoctorFix { json, firefox_path } => {
+        LocalCommand::DoctorFix {
+            json,
+            firefox_path,
+            with_deps,
+        } => {
             let firefox_path = firefox_path.or_else(|| firefox_path_override.clone());
-            handle_doctor_fix(json, firefox_path)?;
+            handle_doctor_fix(json, firefox_path, with_deps)?;
         }
         LocalCommand::Confirm { id, json } => {
             handle_confirm(id, json)?;
@@ -1100,9 +1109,17 @@ fn print_config_warnings(warnings: &[ConfigWarning]) {
     }
 }
 
-fn handle_doctor_fix(json_output: bool, firefox_path: Option<String>) -> Result<()> {
+fn handle_doctor_fix(
+    json_output: bool,
+    firefox_path: Option<String>,
+    with_deps: bool,
+) -> Result<()> {
     let before = collect_install_status()?;
-    let setup_result = match setup(firefox_path) {
+    let setup_result = match if with_deps {
+        setup_with_deps(firefox_path)
+    } else {
+        setup(firefox_path)
+    } {
         Ok(result) => result,
         Err(err) => {
             print_doctor_fix_error(
@@ -1241,6 +1258,9 @@ fn setup_result_value(result: &SetupResult) -> Value {
     });
     if let Some(note) = &result.note {
         value["note"] = json!(note);
+    }
+    if let Some(note) = &result.dependency_note {
+        value["dependencyNote"] = json!(note);
     }
     value
 }

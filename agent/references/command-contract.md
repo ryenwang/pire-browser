@@ -26,6 +26,7 @@ Skill commands use:
 - `pire-browser status`
 - `pire-browser doctor`
 - `pire-browser setup`
+- `pire-browser install --with-deps`
 - `pire-browser upgrade`
 - `pire-browser update check`
 - `pire-browser update apply`

@@ -8,7 +8,7 @@ export const statusLabels = {
 export const featureStatuses = {
   coreCommands: {
     status: "available",
-    summary: "Navigation, agent-friendly URL/active-tab reads, snapshots, refs, DOM actions, waits, screenshots, downloads, uploads, clipboard text, tabs, frames, sessions, state files, install diagnostics with nextActions, and guardrails are part of the current public package.",
+    summary: "Navigation, agent-friendly URL/active-tab reads, snapshots, refs, DOM actions, waits, screenshots, downloads, uploads, clipboard text, tabs, frames, sessions, state files, install diagnostics with nextActions, agent-browser-style install --with-deps dependency guidance, and guardrails are part of the current public package.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/cli.rs"],
   },
   settings: {

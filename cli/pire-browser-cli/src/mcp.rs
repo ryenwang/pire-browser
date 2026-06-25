@@ -640,8 +640,15 @@ fn tool_command_args(
             args.extend(required_batch_commands(object)?);
         }
         (_, "pire_browser_install") => {
-            reject_unsupported_fields(object, "pire_browser_install", &["firefoxPath"])?;
+            reject_unsupported_fields(
+                object,
+                "pire_browser_install",
+                &["firefoxPath", "withDeps"],
+            )?;
             args.push("install".to_string());
+            if optional_bool(object, "withDeps")? {
+                args.push("--with-deps".to_string());
+            }
             push_optional_flag_value(&mut args, object, "firefoxPath", "--firefox-path")?;
         }
         (_, "pire_browser_upgrade") => {
@@ -2242,8 +2249,14 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_install",
             "Install or repair native host",
-            "Register or repair the Firefox Native Messaging host for the current OS user. Debug profile only; mutates local setup.",
-            tool_schema_without_common(vec![("firefoxPath", string_prop("Optional Firefox executable path."))], &[]),
+            "Register or repair the Firefox Native Messaging host for the current OS user. Debug profile only; mutates local setup. withDeps accepts agent-browser-style recipes and returns platform dependency guidance without running system package managers.",
+            tool_schema_without_common(
+                vec![
+                    ("firefoxPath", string_prop("Optional Firefox executable path.")),
+                    ("withDeps", bool_prop("Accept agent-browser-style --with-deps setup and print platform dependency guidance.")),
+                ],
+                &[],
+            ),
             false,
         ),
         tool(
@@ -4206,6 +4219,10 @@ mod tests {
             install["inputSchema"]["properties"]["firefoxPath"]["type"],
             "string"
         );
+        assert_eq!(
+            install["inputSchema"]["properties"]["withDeps"]["type"],
+            "boolean"
+        );
         assert!(install["inputSchema"]["properties"]
             .as_object()
             .unwrap()
@@ -4668,6 +4685,7 @@ mod tests {
         let args = tool_command_args(
             "pire_browser_install",
             &json!({
+                "withDeps": true,
                 "firefoxPath": "C:/Program Files/Mozilla Firefox/firefox.exe"
             }),
             McpToolsProfile::Debug,
@@ -4678,6 +4696,7 @@ mod tests {
             vec![
                 "--json",
                 "install",
+                "--with-deps",
                 "--firefox-path",
                 "C:/Program Files/Mozilla Firefox/firefox.exe"
             ]
