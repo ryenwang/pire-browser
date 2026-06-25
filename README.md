@@ -2,21 +2,34 @@
 
 Firefox automation CLI for AI agents. Fast native Rust CLI, Firefox WebExtension backend, and Pi package support.
 
-`pire-browser` intentionally does not use BiDi or CDP. Firefox loads a WebExtension, the WebExtension talks to a Native Messaging host, and the CLI talks to that host through current-user IPC: Windows named pipes on Windows and Unix domain sockets on macOS/Linux.
+Firefox loads a WebExtension, the WebExtension talks to a Native Messaging host, and the CLI talks to that host through current-user IPC: Windows named pipes on Windows and Unix domain sockets on macOS/Linux.
 
 ## Installation
 
-### Global Installation (recommended)
+### Global Installation (recommended for direct CLI use)
 
 Installs the native launcher and matching platform binary package:
 
 ```bash
 npm install -g pire-browser
-pire-browser install
+pire-browser install   # register Firefox Native Messaging
 ```
 
-`install` registers the Firefox Native Messaging host for the current OS user. npm install also runs best-effort setup, but it is safe to run again.
-`pire-browser install --with-deps` is the agent-browser-style first-run helper: it uses an installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux.
+`npm install` runs best-effort setup; `pire-browser install` is safe to run again and makes the setup step explicit.
+
+### Pi Package
+
+Install the public Pi package:
+
+```bash
+pi install npm:pire-browser
+```
+
+Then ask Pi to use the tool:
+
+```text
+Use pire-browser to open https://example.com and snapshot the page.
+```
 
 ### Project Installation (local dependency)
 
@@ -29,26 +42,25 @@ npx pire-browser install
 
 Then use via `package.json` scripts or by invoking `npx pire-browser`.
 
-### Pi Package
+### First-Run Repair
 
-Install the public Pi package:
+Use this only when Firefox is missing or setup fails:
 
 ```bash
-pi install npm:pire-browser
+pire-browser install --with-deps
+pire-browser doctor --json
 ```
 
-If you previously installed from GitHub, from a local checkout, or through an old Windows ZIP shim, the npm installer reconciles known duplicate `pire-browser` sources after Pi records the npm install. It removes old settings entries, removes old direct extension shims, and quarantines the old Pi-managed GitHub checkout after verifying it is the `pire-browser` package. If Pi reports a duplicate `pire-browser` tool immediately after installation, wait a moment and rerun `pi`. If the conflict remains, remove the older source shown in Pi's error, then reinstall the npm package:
+`install --with-deps` is the agent-browser-style first-run helper: it uses an installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux. `doctor --json` reports concrete `nextActions` when setup needs repair.
+
+### Migrating From Old GitHub/Local Installs
+
+Most users can skip this. If you previously installed from GitHub, from a local checkout, or through an old Windows ZIP shim, the npm installer reconciles known duplicate `pire-browser` sources after Pi records the npm install. It removes old settings entries, removes old direct extension shims, and quarantines the old Pi-managed GitHub checkout after verifying it is the `pire-browser` package. If Pi reports a duplicate `pire-browser` tool immediately after installation, wait a moment and rerun `pi`. If the conflict remains, remove the older source shown in Pi's error, then reinstall the npm package:
 
 ```bash
 pi remove git:github.com/ryenwang/pire-browser
 # or: pi remove /absolute/path/to/your/local/pire-browser-checkout
 pi install npm:pire-browser
-```
-
-Then ask Pi to use the tool:
-
-```text
-Use pire-browser to open https://example.com and snapshot the page.
 ```
 
 ### From Source

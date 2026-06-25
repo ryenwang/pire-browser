@@ -1,22 +1,24 @@
 import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, table, unavailable } from "../blocks.mjs";
 
 const installationBlocks = [
-  h2("Global installation (recommended)", "global-installation-recommended"),
+  h2("Global installation", "global-installation"),
   code(`npm install -g pire-browser
 pire-browser install  # register Firefox Native Messaging`),
-  p("This is the fastest option. Commands run through the native Rust CLI and reuse managed Firefox sessions."),
-  p("<code>pire-browser install --with-deps</code> is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux."),
-  h2("Quick start (no install)", "quick-start-no-install"),
-  code(`npx pire-browser install   # register Firefox Native Messaging
-npx pire-browser open https://example.com`),
-  h2("Project installation (local dependency)", "project-installation-local-dependency"),
+  p("This is the recommended path for direct CLI use. <code>npm install</code> runs best-effort setup; <code>pire-browser install</code> is safe to run again and makes Firefox Native Messaging registration explicit."),
+  h2("Pi package", "pi-package"),
+  code(`pi install npm:pire-browser`),
+  p("Use this when Pi should load the packaged extension and skill. After install, ask Pi to use <code>pire-browser</code> for browser automation."),
+  h2("Project installation", "project-installation"),
   code(`npm install pire-browser
 npx pire-browser install
 npx pire-browser snapshot -i`),
-  p("Then use via <code>npx</code> or <code>package.json</code> scripts."),
-  h2("Pi package", "pi-package"),
-  code(`pi install npm:pire-browser`),
-  p("If an older GitHub, local-checkout, or Windows ZIP shim install is still registered, the npm package schedules a fast reconciliation after Pi records the npm install. It removes old settings entries, removes old direct extension shims, and quarantines verified old Pi-managed GitHub checkouts. If Pi reports a duplicate <code>pire-browser</code> tool immediately after installation, wait a moment and rerun <code>pi</code>. If the conflict remains, remove the older source shown in Pi's error and reinstall the npm package."),
+  p("Use this when a project wants to pin the package version. Invoke through <code>npx pire-browser</code> or <code>package.json</code> scripts."),
+  h2("First-run repair", "first-run-repair"),
+  code(`pire-browser install --with-deps
+pire-browser doctor --json`),
+  p("Use this only when Firefox is missing or setup fails. <code>install --with-deps</code> is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux. <code>doctor --json</code> reports concrete <code>nextActions</code> when setup needs repair."),
+  h2("Migrating from old GitHub/local installs", "migrating-from-old-github-local-installs"),
+  p("Most users can skip this. If an older GitHub, local-checkout, or Windows ZIP shim install is still registered, the npm package schedules a fast reconciliation after Pi records the npm install. It removes old settings entries, removes old direct extension shims, and quarantines verified old Pi-managed GitHub checkouts. If Pi reports a duplicate <code>pire-browser</code> tool immediately after installation, wait a moment and rerun <code>pi</code>. If the conflict remains, remove the older source shown in Pi's error and reinstall the npm package."),
   code(`pi remove git:github.com/ryenwang/pire-browser
 # or: pi remove /absolute/path/to/your/local/pire-browser-checkout
 pi install npm:pire-browser`),

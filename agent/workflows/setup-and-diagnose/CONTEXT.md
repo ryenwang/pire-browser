@@ -1,6 +1,7 @@
 # Setup And Diagnose
 
 Use this when install, launch, native messaging, optional native package resolution, or Firefox discovery is failing.
+For a fresh install with no reported failure, prefer the short happy path first: `pi install npm:pire-browser` for Pi or `npm install -g pire-browser && pire-browser install` for direct CLI use.
 
 ## Inputs
 
