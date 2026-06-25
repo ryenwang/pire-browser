@@ -355,7 +355,10 @@ pire-browser snapshot -i
 using `text` as the prompt return value. `dialog dismiss` configures the next
 shimmed confirm or prompt to cancel. Firefox dialog support is page-shimmed
 best effort, not native browser chrome control. Reinspect after handling a
-dialog before using old refs.
+dialog before using old refs. Use global `--no-auto-dialog` or
+`AGENT_BROWSER_NO_AUTO_DIALOG=1` only when you need agent-browser-style debugging
+with the shim disabled; native Firefox page dialogs may block until handled
+manually.
 
 Inspect network activity during QA:
 
@@ -668,11 +671,13 @@ pire-browser --config ./ci-config.json open https://example.com
 PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com
 ```
 
-Config files use camelCase keys. Useful defaults include `json`, `profile`, `sessionName`, `session`, `state`, `allowedDomains`, `confirmActions`, `confirmInteractive`, `allowFileAccess`, `headed`, `headless`, `colorScheme`, `args`, `userAgent`, `downloadPath`, `maxOutput`, and `contentBoundaries`. CLI flags override config defaults. Unknown keys are ignored.
+Config files use camelCase keys. Useful defaults include `json`, `profile`, `sessionName`, `session`, `state`, `allowedDomains`, `confirmActions`, `confirmInteractive`, `noAutoDialog`, `allowFileAccess`, `headed`, `headless`, `colorScheme`, `args`, `userAgent`, `downloadPath`, `maxOutput`, and `contentBoundaries`. CLI flags override config defaults. Unknown keys are ignored.
 
 Use `--headless`, `PIRE_BROWSER_HEADLESS=1`, `AGENT_BROWSER_HEADLESS=1`, or `headless: true` in config for CI-style runs. Headless applies when a command launches a new managed Firefox session; existing live sessions keep their current mode.
 
 Use `--args "<comma-or-newline-separated Firefox args>"`, `PIRE_BROWSER_ARGS`, `AGENT_BROWSER_ARGS`, or `args` in config when a newly launched managed session needs raw Firefox launch args. Use `--user-agent "<value>"`, `PIRE_BROWSER_USER_AGENT`, `AGENT_BROWSER_USER_AGENT`, or `userAgent` in config when the new managed profile needs a Firefox User-Agent override. Existing live sessions keep their current launch context; close/relaunch the managed session before relying on these settings. If the User-Agent matters, verify with `pire-browser eval "navigator.userAgent"` or app-visible behavior after launch.
+
+Use `--no-auto-dialog`, `PIRE_BROWSER_NO_AUTO_DIALOG=1`, `AGENT_BROWSER_NO_AUTO_DIALOG=1`, or `noAutoDialog: true` in config only when you need agent-browser-style debugging with the page dialog shim disabled. Native Firefox page dialogs may block until handled manually.
 
 List and target managed profiles or live sessions:
 

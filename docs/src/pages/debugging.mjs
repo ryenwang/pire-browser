@@ -15,7 +15,7 @@ pire-browser errors --clear`),
 pire-browser dialog accept [text]
 pire-browser dialog dismiss
 pire-browser snapshot -i`),
-  p("Use these when command output includes PAGE_DIALOG warnings. Firefox dialog control is page-shimmed best effort; re-run snapshot after handling a dialog before using old refs."),
+  p("Use these when command output includes PAGE_DIALOG warnings. Firefox dialog control is page-shimmed best effort; re-run snapshot after handling a dialog before using old refs. Use global <code>--no-auto-dialog</code> or <code>AGENT_BROWSER_NO_AUTO_DIALOG=1</code> for agent-browser-style debugging with the shim disabled; native Firefox page dialogs may block until handled manually."),
   h2("Highlight", "highlight"),
   code(`pire-browser highlight '@e2'
 pire-browser highlight '#submit'

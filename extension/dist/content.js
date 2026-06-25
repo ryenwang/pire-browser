@@ -11,6 +11,7 @@
     let mouseX = Math.round(window.innerWidth / 2);
     let mouseY = Math.round(window.innerHeight / 2);
     injectDialogShim();
+    void syncDialogAutoHandling();
     window.addEventListener("message", (event) => {
         if (event.source !== window)
             return;
@@ -36,6 +37,8 @@
             return Promise.resolve(dialogStatus());
         if (message.type === "dialog_control")
             return Promise.resolve(configureNextDialog(message.action, message.text));
+        if (message.type === "dialog_auto")
+            return Promise.resolve(configureDialogAutoHandling(message.enabled !== false));
         if (message.type === "snapshot")
             return Promise.resolve(snapshotFrame(message.selector, message.depth, Boolean(message.cursorInteractive)));
         if (message.type === "find")
@@ -140,6 +143,17 @@
             return pushStateNavigation(String(message.url ?? ""));
         return undefined;
     });
+    async function syncDialogAutoHandling() {
+        try {
+            const settings = await browser.runtime.sendMessage({ type: "runtime_settings" });
+            if (settings && typeof settings === "object" && settings.autoDialog === false) {
+                configureDialogAutoHandling(false);
+            }
+        }
+        catch {
+            // Default to today's auto-dialog behavior when the background page is not ready yet.
+        }
+    }
     function injectDialogShim() {
         try {
             const script = document.createElement("script");
@@ -151,6 +165,7 @@
         const originalConfirm = window.confirm.bind(window);
         const originalPrompt = window.prompt.bind(window);
         let nextDialogResponse = null;
+        let autoDialogEnabled = true;
         Object.defineProperty(window, "__pireBrowserDialogShimInstalled", {
           value: true,
           configurable: false,
@@ -168,31 +183,47 @@
           nextDialogResponse = null;
           return response;
         };
+        const installOverrides = () => {
+          window.alert = (message) => {
+            const response = consumeResponse();
+            emit({ type: "alert", message: String(message ?? ""), returned: true, configuredAction: response?.action, at: Date.now() });
+          };
+          window.confirm = (message) => {
+            const response = consumeResponse();
+            const returned = response?.action === "accept";
+            emit({ type: "confirm", message: String(message ?? ""), returned, configuredAction: response?.action, at: Date.now() });
+            return returned;
+          };
+          window.prompt = (message, defaultValue) => {
+            const response = consumeResponse();
+            const returned = response?.action === "accept" ? (response.text ?? String(defaultValue ?? "")) : null;
+            emit({ type: "prompt", message: String(message ?? ""), defaultValue, returned, configuredAction: response?.action, at: Date.now() });
+            return returned;
+          };
+        };
+        const restoreOriginals = () => {
+          window.alert = originalAlert;
+          window.confirm = originalConfirm;
+          window.prompt = originalPrompt;
+          nextDialogResponse = null;
+        };
         window.addEventListener("message", (event) => {
           if (event.source !== window) return;
           const data = event.data;
-          if (!data || data.source !== "pire-browser" || data.kind !== "dialog_control") return;
+          if (!data || data.source !== "pire-browser") return;
+          if (data.kind === "dialog_auto") {
+            autoDialogEnabled = data.enabled !== false;
+            if (autoDialogEnabled) installOverrides();
+            else restoreOriginals();
+            return;
+          }
+          if (data.kind !== "dialog_control" || !autoDialogEnabled) return;
           nextDialogResponse = {
             action: data.action === "accept" ? "accept" : "dismiss",
             text: typeof data.text === "string" ? data.text : undefined,
           };
         });
-        window.alert = (message) => {
-          const response = consumeResponse();
-          emit({ type: "alert", message: String(message ?? ""), returned: true, configuredAction: response?.action, at: Date.now() });
-        };
-        window.confirm = (message) => {
-          const response = consumeResponse();
-          const returned = response?.action === "accept";
-          emit({ type: "confirm", message: String(message ?? ""), returned, configuredAction: response?.action, at: Date.now() });
-          return returned;
-        };
-        window.prompt = (message, defaultValue) => {
-          const response = consumeResponse();
-          const returned = response?.action === "accept" ? (response.text ?? String(defaultValue ?? "")) : null;
-          emit({ type: "prompt", message: String(message ?? ""), defaultValue, returned, configuredAction: response?.action, at: Date.now() });
-          return returned;
-        };
+        installOverrides();
         const truncate = (text, max = 2000) => text.length > max ? text.slice(0, max - 1) + "…" : text;
         const valueText = (value) => {
           try {
@@ -253,6 +284,14 @@
         }
         catch {
             // Restricted pages can reject script injection; commands will continue without dialog capture.
+        }
+    }
+    function configureDialogAutoHandling(enabled) {
+        try {
+            window.postMessage({ source: "pire-browser", kind: "dialog_auto", enabled }, "*");
+        }
+        catch {
+            // Best-effort page-shim control; the command response still carries the chosen runtime setting.
         }
     }
     function snapshotFrame(selector, depth, includeCursorInteractive = false) {

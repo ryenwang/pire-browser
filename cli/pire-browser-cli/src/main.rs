@@ -327,6 +327,8 @@ fn main() {
 fn run_with_args(args: Vec<String>) -> Result<()> {
     let config_result = apply_config_defaults(&args)?;
     let launch_headless = launch_headless_from_effective_args(&config_result.args);
+    let auto_dialog = auto_dialog_from_effective_args(&config_result.args);
+    set_effective_auto_dialog_env(auto_dialog);
     let color_scheme = color_scheme_from_effective_args(&config_result.args)?;
     let proxy_config = proxy_config_from_effective_args(&config_result.args)?;
     let output_guards = output_guard_options_from_effective_args(&config_result.args)?;
@@ -833,11 +835,12 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 },
                 Some(&launch_runtime),
             )?;
-            let post_launch_url = if has_launch_plugin_init_scripts(Some(&launch_runtime)) {
-                options.url.take()
-            } else {
-                None
-            };
+            let post_launch_url =
+                if has_launch_plugin_init_scripts(Some(&launch_runtime)) || !auto_dialog {
+                    options.url.take()
+                } else {
+                    None
+                };
             let result = launch_firefox_with_lazy_setup(options)?;
             apply_launch_plugin_init_scripts_after_launch(
                 &result.session.session_id,
@@ -1860,6 +1863,55 @@ fn launch_headless_from_effective_args_and_env(raw: &[String], env_headless: Opt
     headless
 }
 
+fn auto_dialog_from_effective_args(raw: &[String]) -> bool {
+    let env_no_auto_dialog = non_empty_env("PIRE_BROWSER_NO_AUTO_DIALOG")
+        .or_else(|| non_empty_env("AGENT_BROWSER_NO_AUTO_DIALOG"))
+        .map(|value| parse_boolish(&value));
+    auto_dialog_from_effective_args_and_env(raw, env_no_auto_dialog)
+}
+
+fn auto_dialog_from_effective_args_and_env(
+    raw: &[String],
+    env_no_auto_dialog: Option<bool>,
+) -> bool {
+    let mut auto_dialog = !env_no_auto_dialog.unwrap_or(false);
+    let mut i = 0;
+    while i < raw.len() {
+        match raw[i].as_str() {
+            "--no-auto-dialog" => {
+                i += 1;
+                if let Some(value) = raw.get(i).and_then(|value| parse_bool_literal(value)) {
+                    auto_dialog = !value;
+                    i += 1;
+                } else {
+                    auto_dialog = false;
+                }
+            }
+            flag if is_output_guard_value_global_flag(flag) => i += 2,
+            "--headed" | "--headless" => {
+                i += 1;
+                if raw
+                    .get(i)
+                    .and_then(|value| parse_bool_literal(value))
+                    .is_some()
+                {
+                    i += 1;
+                }
+            }
+            flag if is_output_guard_bool_global_flag(flag) => i += 1,
+            _ => i += 1,
+        }
+    }
+    auto_dialog
+}
+
+fn set_effective_auto_dialog_env(auto_dialog: bool) {
+    std::env::set_var(
+        "PIRE_BROWSER_AUTO_DIALOG_EFFECTIVE",
+        if auto_dialog { "1" } else { "0" },
+    );
+}
+
 fn download_path_override_from_args_and_env(raw: &[String]) -> Result<Option<PathBuf>> {
     let Some(value) = download_path_override_from_args(raw)
         .or_else(|| non_empty_env("PIRE_BROWSER_DOWNLOAD_PATH"))
@@ -1876,7 +1928,7 @@ fn download_path_override_from_args(raw: &[String]) -> Option<String> {
         match raw[i].as_str() {
             "--download-path" => return raw.get(i + 1).cloned(),
             flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" => {
+            "--headed" | "--headless" | "--no-auto-dialog" => {
                 i += 1;
                 if raw
                     .get(i)
@@ -1909,7 +1961,7 @@ fn launch_extra_args_from_args(raw: &[String]) -> Option<String> {
         match raw[i].as_str() {
             "--args" => return raw.get(i + 1).cloned(),
             flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" => {
+            "--headed" | "--headless" | "--no-auto-dialog" => {
                 i += 1;
                 if raw
                     .get(i)
@@ -1947,7 +1999,7 @@ fn user_agent_override_from_args(raw: &[String]) -> Option<String> {
         match raw[i].as_str() {
             "--user-agent" => return raw.get(i + 1).cloned(),
             flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" => {
+            "--headed" | "--headless" | "--no-auto-dialog" => {
                 i += 1;
                 if raw
                     .get(i)
@@ -1970,7 +2022,7 @@ fn firefox_path_override_from_args(raw: &[String]) -> Option<String> {
         match raw[i].as_str() {
             "--executable-path" => return raw.get(i + 1).cloned(),
             flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" => {
+            "--headed" | "--headless" | "--no-auto-dialog" => {
                 i += 1;
                 if raw
                     .get(i)
@@ -2043,7 +2095,7 @@ fn output_guard_options_from_effective_args_and_env(
                 }
                 i += 2;
             }
-            "--headed" | "--headless" => {
+            "--headed" | "--headless" | "--no-auto-dialog" => {
                 i += 1;
                 if raw
                     .get(i)
@@ -2132,6 +2184,7 @@ fn is_output_guard_bool_global_flag(flag: &str) -> bool {
     matches!(
         flag,
         "--json"
+            | "--no-auto-dialog"
             | "--allow-file-access"
             | "--auto-connect"
             | "--confirm-interactive"
@@ -8115,7 +8168,7 @@ fn color_scheme_from_effective_args(args: &[String]) -> Result<Option<String>> {
             | "-v" => {
                 index += 1;
             }
-            "--headed" | "--headless" => {
+            "--headed" | "--headless" | "--no-auto-dialog" => {
                 if args
                     .get(index + 1)
                     .is_some_and(|value| matches!(value.as_str(), "true" | "false"))
@@ -8167,7 +8220,7 @@ where
                 }
                 index += 2;
             }
-            "--headed" | "--headless" => {
+            "--headed" | "--headless" | "--no-auto-dialog" => {
                 index += 1;
                 if args
                     .get(index)
@@ -9326,7 +9379,9 @@ fn rewrite_eval_stdin(args: &mut Vec<String>, script: String) -> Result<()> {
         return Ok(());
     }
     if args.len() != 2 {
-        bail!("invalid_args: eval --stdin cannot be combined with inline JavaScript or base64 input");
+        bail!(
+            "invalid_args: eval --stdin cannot be combined with inline JavaScript or base64 input"
+        );
     }
     *args = vec!["eval".to_string(), script];
     Ok(())
@@ -9345,7 +9400,9 @@ fn rewrite_eval_base64(args: &mut Vec<String>) -> Result<()> {
         }
         Some(value) if value.starts_with("--base64=") => {
             if args.len() != 2 {
-                bail!("invalid_args: eval --base64=<value> cannot be combined with inline JavaScript");
+                bail!(
+                    "invalid_args: eval --base64=<value> cannot be combined with inline JavaScript"
+                );
             }
             value["--base64=".len()..].to_string()
         }
@@ -9357,7 +9414,8 @@ fn rewrite_eval_base64(args: &mut Vec<String>) -> Result<()> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(encoded.trim())
         .context("invalid_args: eval base64 input is invalid")?;
-    let script = String::from_utf8(bytes).context("invalid_args: eval base64 input is not UTF-8")?;
+    let script =
+        String::from_utf8(bytes).context("invalid_args: eval base64 input is not UTF-8")?;
     *args = vec!["eval".to_string(), script];
     Ok(())
 }
@@ -12543,6 +12601,9 @@ fn host_status_request() -> RpcRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn s(values: &[&str]) -> Vec<String> {
         values.iter().map(|v| v.to_string()).collect()
@@ -12568,6 +12629,43 @@ mod tests {
             &s(&["launch", "--headless", "false"]),
             Some(true)
         ));
+    }
+
+    #[test]
+    fn auto_dialog_resolves_from_env_config_and_cli() {
+        assert!(auto_dialog_from_effective_args_and_env(&[], None));
+        assert!(!auto_dialog_from_effective_args_and_env(&[], Some(true)));
+        assert!(auto_dialog_from_effective_args_and_env(
+            &s(&["--no-auto-dialog", "false", "open", "https://example.com"]),
+            Some(true)
+        ));
+        assert!(!auto_dialog_from_effective_args_and_env(
+            &s(&["--no-auto-dialog", "snapshot"]),
+            None
+        ));
+    }
+
+    #[test]
+    fn command_request_carries_effective_auto_dialog_setting() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("PIRE_BROWSER_AUTO_DIALOG_EFFECTIVE");
+        assert!(build_command_request(s(&["snapshot"]))
+            .params
+            .get("autoDialog")
+            .is_none());
+
+        set_effective_auto_dialog_env(false);
+        assert_eq!(
+            build_command_request(s(&["snapshot"])).params["autoDialog"],
+            json!(false)
+        );
+
+        set_effective_auto_dialog_env(true);
+        assert_eq!(
+            build_command_request(s(&["snapshot"])).params["autoDialog"],
+            json!(true)
+        );
+        std::env::remove_var("PIRE_BROWSER_AUTO_DIALOG_EFFECTIVE");
     }
 
     #[test]
@@ -14020,10 +14118,7 @@ mod tests {
             s(&["eval", "document.querySelector('#app')?.textContent"])
         );
 
-        let mut long_flag = vec![
-            "eval".to_string(),
-            format!("--base64={encoded}"),
-        ];
+        let mut long_flag = vec!["eval".to_string(), format!("--base64={encoded}")];
         rewrite_eval_base64(&mut long_flag).unwrap();
         assert_eq!(
             long_flag,

@@ -382,6 +382,7 @@ const GLOBAL_BOOL_FLAGS: &[&str] = &[
     "--json",
     "--headed",
     "--headless",
+    "--no-auto-dialog",
     "--allow-file-access",
     "--auto-connect",
     "--confirm-interactive",
@@ -648,11 +649,13 @@ fn first_command_index(args: &[String]) -> Option<usize> {
         }
         if GLOBAL_BOOL_FLAGS.contains(&arg) {
             index += 1;
-            if matches!(arg, "--headed" | "--headless" | "--content-boundaries")
-                && args
-                    .get(index)
-                    .and_then(|value| parse_bool_literal(value))
-                    .is_some()
+            if matches!(
+                arg,
+                "--headed" | "--headless" | "--content-boundaries" | "--no-auto-dialog"
+            ) && args
+                .get(index)
+                .and_then(|value| parse_bool_literal(value))
+                .is_some()
             {
                 index += 1;
             }
@@ -875,6 +878,14 @@ fn config_args_from_map(config: &Map<String, Value>, raw: &[String]) -> Vec<Stri
         "confirmInteractive",
         "--confirm-interactive",
         &["--confirm-interactive"],
+    );
+    push_bool_config(
+        &mut args,
+        config,
+        raw,
+        "noAutoDialog",
+        "--no-auto-dialog",
+        &["--no-auto-dialog"],
     );
     push_bool_config(&mut args, config, raw, "json", "--json", &["--json"]);
     push_bool_config(
@@ -1169,7 +1180,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             args.remove(0);
             let effective_flag = if matches!(
                 first.as_str(),
-                "--headed" | "--headless" | "--content-boundaries"
+                "--headed" | "--headless" | "--content-boundaries" | "--no-auto-dialog"
             ) {
                 if let Some(value) = args.first().and_then(|value| parse_bool_literal(value)) {
                     args.remove(0);
@@ -1179,6 +1190,8 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                         "--headless".to_string()
                     } else if first == "--headless" {
                         "--headed".to_string()
+                    } else if first == "--no-auto-dialog" {
+                        "--auto-dialog".to_string()
                     } else {
                         first.clone()
                     }
@@ -2877,6 +2890,7 @@ Common commands:
   open                            Launch/reuse Firefox without navigating
   open <url> [--label <name>]      Open a URL, auto-launching Firefox if needed
   --headless open <url>            Launch managed Firefox headlessly for CI
+  --no-auto-dialog open <url>      Disable page dialog auto-handling
   --args "-private-window" open <url>
                                   Pass Firefox args when launching a new session
   --user-agent "qa-bot/1.0" open <url>
@@ -3066,16 +3080,19 @@ AGENT_BROWSER_CONFIG paths must exist and contain a JSON object.
 
 Supported camelCase defaults include json, profile, sessionName, session,
 state, autoConnect, allowedDomains, noAllowedDomains, actionPolicy,
-confirmActions, confirmInteractive, allowFileAccess, headed, headless,
-colorScheme, proxy, proxyBypass, args, userAgent, downloadPath, maxOutput,
-contentBoundaries, engine, provider, model, and plugins. `plugins` configures
+confirmActions, confirmInteractive, noAutoDialog, allowFileAccess, headed,
+headless, colorScheme, proxy, proxyBypass, args, userAgent, downloadPath,
+maxOutput, contentBoundaries, engine, provider, model, and plugins. `plugins` configures
 credential-provider and command/custom integrations; `plugin add` can write
 entries, but configured plugins do not synthesize CLI flags. CLI flags override
 config defaults. Unknown keys are ignored. `headless: true`, `--headless`,
 PIRE_BROWSER_HEADLESS=1, and AGENT_BROWSER_HEADLESS=1 make newly launched
 managed Firefox sessions run headlessly; existing live sessions keep their
-current mode. `args`, `userAgent`, `--args`, and `--user-agent` also apply only
-when a new managed Firefox session is launched.
+current mode. `--no-auto-dialog`, AGENT_BROWSER_NO_AUTO_DIALOG=1, and
+`noAutoDialog: true` disable pire-browser's page-shimmed dialog auto-handling
+for command requests; native page dialogs may block Firefox until handled
+manually. `args`, `userAgent`, `--args`, and `--user-agent` also apply only when
+a new managed Firefox session is launched.
 "##;
 
 const OPEN_HELP: &str = r##"
@@ -3483,11 +3500,14 @@ Usage:
 Reports and configures JavaScript dialogs observed by the managed Firefox
 content script. Dialog support is Firefox WebExtension mediated: alert,
 confirm, and prompt are shimmed in the page context so they do not hard-block
-the agent loop. `dialog accept [text]` configures the next shimmed confirm or
-prompt to accept, using text as the prompt return value; `dialog dismiss`
-configures the next shimmed confirm or prompt to cancel. When a dialog is
-observed during another command, command output includes PAGE_DIALOG warnings.
-Re-run `snapshot -i` after handling a dialog before acting on refs.
+the agent loop. Use global `--no-auto-dialog` or AGENT_BROWSER_NO_AUTO_DIALOG=1
+to disable that page shim for agent-browser-compatible debugging; native page
+dialogs may block Firefox until handled manually. `dialog accept [text]`
+configures the next shimmed confirm or prompt to accept, using text as the
+prompt return value; `dialog dismiss` configures the next shimmed confirm or
+prompt to cancel. When a dialog is observed during another command, command
+output includes PAGE_DIALOG warnings. Re-run `snapshot -i` after handling a
+dialog before acting on refs.
 "##;
 
 const NETWORK_HELP: &str = r##"
@@ -4220,11 +4240,27 @@ pub fn build_command_request(args: Vec<String>) -> RpcRequest {
     let invocation_cwd = env::current_dir()
         .ok()
         .map(|path| path.to_string_lossy().to_string());
+    let mut params = json!({ "args": args, "invocationCwd": invocation_cwd });
+    if let Some(auto_dialog) = effective_auto_dialog_from_env() {
+        if let Some(object) = params.as_object_mut() {
+            object.insert("autoDialog".to_string(), json!(auto_dialog));
+        }
+    }
     RpcRequest {
         id: Uuid::new_v4().to_string(),
         method: "command".to_string(),
-        params: json!({ "args": args, "invocationCwd": invocation_cwd }),
+        params,
     }
+}
+
+fn effective_auto_dialog_from_env() -> Option<bool> {
+    env::var("PIRE_BROWSER_AUTO_DIALOG_EFFECTIVE")
+        .ok()
+        .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => Some(true),
+            "0" | "false" | "no" | "off" => Some(false),
+            _ => None,
+        })
 }
 
 pub fn format_cli_result(value: &Value, json_output: bool) -> Result<String> {
@@ -5355,6 +5391,46 @@ mod tests {
     }
 
     #[test]
+    fn no_auto_dialog_global_flag_is_a_launch_preference_without_ignored_warning() {
+        let parsed = parse_cli_args(&s(&[
+            "--no-auto-dialog",
+            "--color-scheme",
+            "dark",
+            "open",
+            "https://example.com",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["open", "https://example.com"])
+            }
+        );
+
+        let parsed_false =
+            parse_cli_args(&s(&["--no-auto-dialog", "false", "snapshot", "--json"])).unwrap();
+        assert_eq!(
+            parsed_false,
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["snapshot"])
+            }
+        );
+    }
+
+    #[test]
     fn accepts_content_boundaries_as_bool_global_flag() {
         let parsed = parse_cli_args(&s(&["--content-boundaries", "snapshot", "--json"])).unwrap();
         assert_eq!(
@@ -5420,6 +5496,29 @@ mod tests {
                 action_policy: default_action_policy(),
                 confirmation_policy: default_confirmation_policy(),
                 args: s(&["open", "file:///tmp/local-file.html"])
+            }
+        );
+    }
+
+    #[test]
+    fn applies_no_auto_dialog_config_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let enabled = dir.path().join("enabled.json");
+        fs::write(&enabled, r#"{ "noAutoDialog": true }"#).unwrap();
+        let expanded =
+            apply_config_defaults_with_options(&s(&["open"]), config_options(Some(enabled)))
+                .unwrap();
+        assert!(expanded.args.contains(&"--no-auto-dialog".to_string()));
+        assert_eq!(
+            parse_cli_args(&expanded.args).unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["open"])
             }
         );
     }
@@ -6885,7 +6984,9 @@ mod tests {
         assert!(help_text(Some("click"))
             .unwrap()
             .contains("click '@link-ref' --new-tab"));
-        assert!(help_text(Some("click")).unwrap().contains("Use `--new-tab` or `--new`"));
+        assert!(help_text(Some("click"))
+            .unwrap()
+            .contains("Use `--new-tab` or `--new`"));
         assert!(help_text(Some("dblclick"))
             .unwrap()
             .contains("pire-browser dblclick '@e4'"));

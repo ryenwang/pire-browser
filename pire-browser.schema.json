@@ -56,6 +56,10 @@
       "type": "boolean",
       "description": "Allow an interactive terminal prompt for confirmation-required actions."
     },
+    "noAutoDialog": {
+      "type": "boolean",
+      "description": "Disable page-shimmed dialog auto-handling for command requests."
+    },
     "allowFileAccess": {
       "type": "boolean",
       "description": "Accept local file URLs for supported local-file workflows."

@@ -467,7 +467,10 @@ loop. `dialog accept [text]` configures the next shimmed confirm or prompt to
 accept, using `text` as the prompt return value; `dialog dismiss` configures
 the next shimmed confirm or prompt to cancel. When a dialog is observed during
 another command, output includes a `PAGE_DIALOG` warning. Re-run `snapshot -i`
-after handling a dialog before acting on refs.
+after handling a dialog before acting on refs. Use global `--no-auto-dialog` or
+`AGENT_BROWSER_NO_AUTO_DIALOG=1` when you need agent-browser-style debugging
+with the page dialog shim disabled; native Firefox page dialogs may block until
+handled manually.
 
 ### Diff
 
@@ -1239,6 +1242,12 @@ pire-browser --user-agent "qa-bot/1.0" open https://example.com
 Config keys and environment variables are also accepted:
 `args`, `userAgent`, `PIRE_BROWSER_ARGS`, `AGENT_BROWSER_ARGS`,
 `PIRE_BROWSER_USER_AGENT`, and `AGENT_BROWSER_USER_AGENT`.
+
+For agent-browser-compatible dialog debugging, use `--no-auto-dialog`,
+`PIRE_BROWSER_NO_AUTO_DIALOG=1`, `AGENT_BROWSER_NO_AUTO_DIALOG=1`, or
+`"noAutoDialog": true` in config to disable pire-browser's page-shimmed dialog
+auto-handling for command requests. Native Firefox page dialogs may block until
+handled manually.
 
 ## Custom Browser Executable
 

@@ -389,6 +389,7 @@ let profileId = "";
 let nextTabNumber = 1;
 let controlledCloseScheduled = false;
 let nativeReconnectEnabled = true;
+let autoDialogEnabled = true;
 const tabsByBrowserId = new Map<number, TabRecord>();
 const tabsByAgentId = new Map<string, TabRecord>();
 const labels = new Map<string, string>();
@@ -487,6 +488,7 @@ const DEVICE_PROFILES: DeviceProfile[] = [
 
 connectNative();
 void applyContentColorScheme("auto").catch(() => undefined);
+registerRuntimeMessageListener();
 registerBrowserListeners();
 registerHeaderListener();
 registerAuthListener();
@@ -597,6 +599,7 @@ async function executeRequest(request: RpcRequest): Promise<RpcResponse> {
     if (request.method !== "command") {
       return errorResponse(request.id, "unsupported_method", `Unsupported method: ${request.method}`);
     }
+    await applyRuntimeSettingsFromParams(request.params ?? {});
     const args = Array.isArray(request.params?.args) ? (request.params?.args as string[]) : [];
     const domainPolicy = domainPolicyFromParams(request.params?.domainPolicy);
     const actionPolicy = actionPolicyFromParams(request.params?.actionPolicy);
@@ -619,6 +622,48 @@ async function executeRequest(request: RpcRequest): Promise<RpcResponse> {
   } catch (error) {
     return errorResponse(request.id, "command_failed", error instanceof Error ? error.message : String(error));
   }
+}
+
+function registerRuntimeMessageListener() {
+  browser.runtime.onMessage.addListener((message: any) => {
+    if (!message || typeof message.type !== "string") return undefined;
+    if (message.type === "runtime_settings") {
+      return Promise.resolve({ autoDialog: autoDialogEnabled });
+    }
+    return undefined;
+  });
+}
+
+async function applyRuntimeSettingsFromParams(params: Record<string, any>) {
+  if (params.autoDialog === false) {
+    await setAutoDialogEnabled(false);
+  } else if (params.autoDialog === true) {
+    await setAutoDialogEnabled(true);
+  }
+}
+
+async function setAutoDialogEnabled(enabled: boolean) {
+  if (autoDialogEnabled === enabled) return;
+  autoDialogEnabled = enabled;
+  await broadcastDialogAutoHandling(enabled);
+}
+
+async function broadcastDialogAutoHandling(enabled: boolean) {
+  let tabs: any[] = [];
+  try {
+    tabs = await browser.tabs.query({});
+  } catch {
+    return;
+  }
+  await Promise.all(
+    tabs
+      .filter((tab) => typeof tab.id === "number")
+      .map((tab) =>
+        browser.tabs
+          .sendMessage(tab.id, { type: "dialog_auto", enabled })
+          .catch(() => undefined)
+      )
+  );
 }
 
 function errorResponse(id: string, code: string, message: string): RpcResponse {

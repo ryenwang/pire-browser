@@ -88,7 +88,7 @@ export const featureStatuses = {
   },
   dialogs: {
     status: "best_effort",
-    summary: "`dialog status`, `dialog accept [text]`, and `dialog dismiss` work through a Firefox page-context dialog shim. Observed dialogs surface as PAGE_DIALOG warnings, but this is not native browser chrome dialog control.",
+    summary: "`dialog status`, `dialog accept [text]`, and `dialog dismiss` work through a Firefox page-context dialog shim. Observed dialogs surface as PAGE_DIALOG warnings, and `--no-auto-dialog` / `AGENT_BROWSER_NO_AUTO_DIALOG=1` disable the shim for agent-browser-style debugging, but this is not native browser chrome dialog control and native Firefox page dialogs may block.",
     sources: ["README.md", "skill-data/core/SKILL.md", "extension/src/background.ts"],
   },
   profiler: {

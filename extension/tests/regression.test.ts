@@ -357,6 +357,28 @@ describe("pire-browser command foundations", () => {
     expect(body).toContain("new TextDecoder().decode(bytes)");
   });
 
+  it("supports agent-browser-style dialog auto-handling opt-out", () => {
+    const body = background();
+    const contentBody = content();
+
+    expect(body).toContain("let autoDialogEnabled = true;");
+    expect(body).toContain("registerRuntimeMessageListener();");
+    expect(body).toContain('message.type === "runtime_settings"');
+    expect(body).toContain("applyRuntimeSettingsFromParams(request.params ?? {})");
+    expect(body).toContain("params.autoDialog === false");
+    expect(body).toContain("broadcastDialogAutoHandling(enabled)");
+    expect(body).toContain('{ type: "dialog_auto", enabled }');
+
+    expect(contentBody).toContain("void syncDialogAutoHandling();");
+    expect(contentBody).toContain('browser.runtime.sendMessage({ type: "runtime_settings" })');
+    expect(contentBody).toContain('if (message.type === "dialog_auto")');
+    expect(contentBody).toContain("function configureDialogAutoHandling(enabled: boolean)");
+    expect(contentBody).toContain('kind: "dialog_auto"');
+    expect(contentBody).toContain("const restoreOriginals = () =>");
+    expect(contentBody).toContain("window.alert = originalAlert;");
+    expect(contentBody).toContain('data.kind !== "dialog_control" || !autoDialogEnabled');
+  });
+
   it("routes common legacy aliases and core actions", () => {
     const body = background();
     for (const command of [
