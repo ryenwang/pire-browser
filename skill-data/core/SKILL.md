@@ -573,11 +573,13 @@ Prefer `--password-stdin` over `--password` when saving credentials so the passw
 Use a configured credential-provider plugin when the user keeps credentials in an external vault:
 
 ```bash
+pire-browser plugin list
+pire-browser plugin show vault
 pire-browser auth login app --credential-provider vault --item "My App" --url https://example.com/login
 pire-browser snapshot -i --compact
 ```
 
-Credential providers use the agent-browser plugin protocol with capability `credential.read`; configure them in `pire-browser.json` / `agent-browser.json` under `plugins`, or set `AGENT_BROWSER_PLUGINS` / `PIRE_BROWSER_PLUGINS` to the same JSON array. Do not put vault tokens or passwords in plugin args. Use `--confirm-actions plugin:vault:credential.read` when provider access should require approval before the plugin runs. When using MCP, only call `pire_browser_auth_save` with user-approved credentials; use `pire_browser_auth_login` with `credentialProvider` and `item` for configured vault providers. Always verify login with a fresh snapshot, URL, or page state before reporting success.
+Credential providers use the agent-browser plugin protocol with capability `credential.read`; configure them in `pire-browser.json` / `agent-browser.json` under `plugins`, or set `AGENT_BROWSER_PLUGINS` / `PIRE_BROWSER_PLUGINS` to the same JSON array. Use `plugin list` / `plugin show <name>` to inspect configured plugins without running them. These commands report configured capabilities and mark non-credential capabilities such as `browser.provider`, `launch.mutate`, and `command.run` as discoverable but not executed by the Firefox backend yet. Do not put vault tokens or passwords in plugin args. Use `--confirm-actions plugin:vault:credential.read` when provider access should require approval before the plugin runs. When using MCP, only call `pire_browser_auth_save` with user-approved credentials; use `pire_browser_auth_login` with `credentialProvider` and `item` for configured vault providers. Always verify login with a fresh snapshot, URL, or page state before reporting success.
 
 Open tabs and windows:
 

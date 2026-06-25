@@ -166,6 +166,13 @@ pub enum LocalCommand {
         name: String,
         json: bool,
     },
+    PluginList {
+        json: bool,
+    },
+    PluginShow {
+        name: String,
+        json: bool,
+    },
     Chat {
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
@@ -1307,6 +1314,42 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             }
             other if other.starts_with('-') => bail!("unsupported skills option: {other}"),
             other => bail!("unsupported skills command: {other}; try `pire-browser skills list`"),
+        }
+    }
+
+    if command == "plugin" || command == "plugins" {
+        args.remove(0);
+        remove_json_flags(&mut args, &mut json_output);
+        let subcommand = args.first().map(String::as_str).unwrap_or("list");
+        match subcommand {
+            "list" => {
+                if !args.is_empty() {
+                    args.remove(0);
+                }
+                remove_json_flags(&mut args, &mut json_output);
+                if let Some(extra) = args.first() {
+                    bail!("unsupported plugin list option: {extra}");
+                }
+                return Ok(LocalCommand::PluginList { json: json_output });
+            }
+            "show" => {
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                let Some(name) = args.first().cloned() else {
+                    bail!("invalid_args: plugin show requires <name>");
+                };
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                if let Some(extra) = args.first() {
+                    bail!("unsupported plugin show option: {extra}");
+                }
+                return Ok(LocalCommand::PluginShow {
+                    name,
+                    json: json_output,
+                });
+            }
+            other if other.starts_with('-') => bail!("unsupported plugin option: {other}"),
+            other => bail!("unsupported plugin command: {other}; try `pire-browser plugin list`"),
         }
     }
 
@@ -2641,6 +2684,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "upload" => UPLOAD_HELP,
         "clipboard" => CLIPBOARD_HELP,
         "auth" => AUTH_HELP,
+        "plugin" | "plugins" => PLUGIN_HELP,
         "state" => STATE_HELP,
         "action-policy" => ACTION_POLICY_HELP,
         "confirmation" | "confirm" | "deny" | "confirm-actions" => CONFIRMATION_HELP,
@@ -2765,6 +2809,8 @@ Common commands:
   auth login app                  Open a saved login form and submit it
   auth login app --credential-provider vault --item "My App"
                                   Resolve credentials through a configured plugin
+  plugin list                     List configured agent-browser protocol plugins
+  plugin show vault               Show one configured plugin without running it
   clipboard read                  Read text from the system clipboard
   skills list                     List installed agent skills
   skills cat core                 Print the version-matched core agent skill
@@ -3633,6 +3679,23 @@ JSON array. The plugin receives credential.resolve and must return credential
 with username, password, url, and optional usernameSelector/passwordSelector/
 submitSelector. Plugin stderr and plugin error text are suppressed for this core
 login path to reduce accidental secret exposure.
+"##;
+
+const PLUGIN_HELP: &str = r##"
+Usage:
+  pire-browser plugin list [--json]
+  pire-browser plugin show <name> [--json]
+
+Lists or inspects configured agent-browser protocol plugins without running
+them. Plugin entries come from the `plugins` array in pire-browser config files
+or from PIRE_BROWSER_PLUGINS / AGENT_BROWSER_PLUGINS. This read-only surface
+matches agent-browser's discovery workflow so agents can see available
+credential-provider plugins before using `auth login --credential-provider`.
+
+Current built-in execution support is limited to `credential.read` providers
+through `auth login --credential-provider`; browser.provider, launch.mutate, and
+generic command.run plugins are reported but not executed by this Firefox
+backend yet.
 "##;
 
 const STATE_HELP: &str = r##"
@@ -5637,6 +5700,39 @@ mod tests {
     }
 
     #[test]
+    fn parses_plugin_commands() {
+        assert_eq!(
+            parse_cli_args(&s(&["plugin"])).unwrap(),
+            LocalCommand::PluginList { json: false }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["plugins", "list", "--json"])).unwrap(),
+            LocalCommand::PluginList { json: true }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["--json", "plugin", "list"])).unwrap(),
+            LocalCommand::PluginList { json: true }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["plugin", "show", "vault"])).unwrap(),
+            LocalCommand::PluginShow {
+                name: "vault".to_string(),
+                json: false
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["plugin", "show", "vault", "--json"])).unwrap(),
+            LocalCommand::PluginShow {
+                name: "vault".to_string(),
+                json: true
+            }
+        );
+        assert!(parse_cli_args(&s(&["plugin", "show"])).is_err());
+        assert!(parse_cli_args(&s(&["plugin", "add", "agent-browser-plugin-vault"])).is_err());
+        assert!(parse_cli_args(&s(&["plugin", "run", "vault"])).is_err());
+    }
+
+    #[test]
     fn parses_mcp_command() {
         assert_eq!(
             parse_cli_args(&s(&["mcp"])).unwrap(),
@@ -6163,6 +6259,8 @@ mod tests {
         assert!(text.contains("--allow-file-access open file:///path/to/page.html"));
         assert!(text.contains("auth login"));
         assert!(text.contains("auth login app --credential-provider vault"));
+        assert!(text.contains("plugin list"));
+        assert!(text.contains("plugin show vault"));
         assert_eq!(help_text(Some("commands")), Some(text));
         assert!(help_text(Some("status")).unwrap().contains("status"));
         assert!(help_text(Some("install"))
@@ -6194,6 +6292,12 @@ mod tests {
         assert!(help_text(Some("auth"))
             .unwrap()
             .contains("credential-provider"));
+        assert!(help_text(Some("plugin"))
+            .unwrap()
+            .contains("plugin show <name>"));
+        assert!(help_text(Some("plugins"))
+            .unwrap()
+            .contains("credential.read"));
         assert!(help_text(Some("config")).unwrap().contains("autoConnect"));
         assert!(help_text(Some("config")).unwrap().contains("proxyBypass"));
         assert!(help_text(Some("state"))

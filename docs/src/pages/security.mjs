@@ -28,7 +28,10 @@ pire-browser deny c_8f3a1234`),
   h2("Auth vault", "auth-vault"),
   p("<code>auth save</code> stores selector-driven username/password profiles in a local AES-256-GCM encrypted auth vault under the OS app-data directory. The key comes from <code>PIRE_BROWSER_AUTH_ENCRYPTION_KEY</code>, <code>PIRE_BROWSER_ENCRYPTION_KEY</code>, <code>AGENT_BROWSER_ENCRYPTION_KEY</code>, or an auto-generated local key file. <code>auth list</code> and <code>auth show</code> never print passwords; <code>auth login</code> decrypts locally and sends a one-shot profile payload to the managed Firefox extension."),
   h2("Credential providers", "credential-providers"),
-  p("<code>auth login --credential-provider</code> runs a configured local plugin with the agent-browser plugin protocol and capability <code>credential.read</code>. Keep vault tokens out of plugin args; use the vault vendor's own local session, keychain, or environment setup. This core login path suppresses plugin stderr and plugin-provided error text to reduce accidental secret exposure. Use <code>--confirm-actions plugin:&lt;name&gt;:credential.read</code> when provider access should require user approval before the plugin runs."),
+  code(`pire-browser plugin list
+pire-browser plugin show vault
+pire-browser auth login app --credential-provider vault --item "My App" --url https://example.com/login`),
+  p("<code>plugin list</code> and <code>plugin show &lt;name&gt;</code> inspect configured agent-browser protocol plugins without running them. <code>auth login --credential-provider</code> runs a configured local plugin with capability <code>credential.read</code>. Keep vault tokens out of plugin args; use the vault vendor's own local session, keychain, or environment setup. This core login path suppresses plugin stderr and plugin-provided error text to reduce accidental secret exposure. Use <code>--confirm-actions plugin:&lt;name&gt;:credential.read</code> when provider access should require user approval before the plugin runs. Non-credential capabilities such as <code>browser.provider</code>, <code>launch.mutate</code>, and <code>command.run</code> are discoverable but not executed by this Firefox backend yet."),
 ];
 
 export default page({

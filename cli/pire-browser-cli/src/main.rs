@@ -320,6 +320,12 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         LocalCommand::SkillsPath { name, json } => {
             handle_skills_path(&name, json)?;
         }
+        LocalCommand::PluginList { json } => {
+            handle_plugin_list(&config_map, json)?;
+        }
+        LocalCommand::PluginShow { name, json } => {
+            handle_plugin_show(&config_map, &name, json)?;
+        }
         LocalCommand::Chat {
             json,
             ignored_global_flags,
@@ -2297,6 +2303,175 @@ fn handle_skills_path(name: &str, json_output: bool) -> Result<()> {
         println!("{}", skill.path);
     }
     Ok(())
+}
+
+fn handle_plugin_list(config: &Map<String, Value>, json_output: bool) -> Result<()> {
+    let plugins = configured_plugins(config)?;
+    let values = plugins.iter().map(plugin_value).collect::<Vec<_>>();
+    if json_output {
+        println!(
+            "{}",
+            format_cli_result(&json!({ "plugins": values }), true)?
+        );
+        return Ok(());
+    }
+    println!("{}", plugin_list_text(&plugins));
+    Ok(())
+}
+
+fn handle_plugin_show(config: &Map<String, Value>, name: &str, json_output: bool) -> Result<()> {
+    let plugins = configured_plugins(config)?;
+    let Some(plugin) = plugins.iter().find(|plugin| plugin.name == name) else {
+        let available = plugins
+            .iter()
+            .map(|plugin| plugin.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let message = if available.is_empty() {
+            format!(
+                "plugin_not_configured: no plugins are configured; add a plugins array to pire-browser.json or set AGENT_BROWSER_PLUGINS before showing `{}`",
+                redact_text(name)
+            )
+        } else {
+            format!(
+                "plugin_not_configured: plugin `{}` is not configured; available plugins: {}",
+                redact_text(name),
+                available
+                    .split(", ")
+                    .map(redact_text)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+        if json_output {
+            let error = pire_browser_core::protocol::RpcError {
+                code: "plugin_not_configured".to_string(),
+                message,
+                data: Some(json!({ "plugin": redact_text(name) })),
+            };
+            print_json_error_with_warning_values(&error, &[], &[])?;
+        } else {
+            eprintln!("{message}");
+        }
+        std::process::exit(exit_code_for_error("unsupported_command"));
+    };
+    let value = plugin_value(plugin);
+    if json_output {
+        println!("{}", format_cli_result(&json!({ "plugin": value }), true)?);
+    } else {
+        println!("{}", plugin_show_text(plugin));
+    }
+    Ok(())
+}
+
+fn configured_plugins(config: &Map<String, Value>) -> Result<Vec<CredentialProviderConfig>> {
+    let plugins = credential_plugins_value(config)?;
+    let Some(array) = plugins.as_array() else {
+        bail!("config_malformed: plugins must be a JSON array");
+    };
+    array
+        .iter()
+        .map(parse_credential_provider_config)
+        .collect::<Result<Vec<_>>>()
+}
+
+fn plugin_value(plugin: &CredentialProviderConfig) -> Value {
+    let (supported, unsupported) = plugin_capability_support(plugin);
+    json!({
+        "name": plugin.name,
+        "protocol": PLUGIN_PROTOCOL,
+        "command": redact_text(&plugin.command),
+        "args": plugin.args.iter().map(|arg| redact_text(arg)).collect::<Vec<_>>(),
+        "capabilities": plugin.capabilities,
+        "supportedCapabilities": supported,
+        "unsupportedCapabilities": unsupported,
+        "timeoutMs": plugin.timeout_ms,
+        "execution": {
+            "credential.read": plugin.capabilities.iter().any(|capability| capability == "credential.read"),
+            "browser.provider": false,
+            "launch.mutate": false,
+            "command.run": false
+        },
+        "note": "pire-browser currently executes credential.read plugins through auth login --credential-provider. Other agent-browser plugin capabilities are discoverable but not executed by this Firefox backend yet."
+    })
+}
+
+fn plugin_capability_support(plugin: &CredentialProviderConfig) -> (Vec<String>, Vec<String>) {
+    plugin
+        .capabilities
+        .iter()
+        .cloned()
+        .partition(|capability| capability == "credential.read")
+}
+
+fn plugin_list_text(plugins: &[CredentialProviderConfig]) -> String {
+    if plugins.is_empty() {
+        return "No plugins configured. Add a plugins array to pire-browser.json or set AGENT_BROWSER_PLUGINS.".to_string();
+    }
+    let mut lines = vec!["Configured plugins:".to_string()];
+    for plugin in plugins {
+        let (supported, unsupported) = plugin_capability_support(plugin);
+        let supported = if supported.is_empty() {
+            "none".to_string()
+        } else {
+            supported.join(", ")
+        };
+        let unsupported = if unsupported.is_empty() {
+            String::new()
+        } else {
+            format!("; unsupported here: {}", unsupported.join(", "))
+        };
+        lines.push(format!(
+            "- {} [{}{}]",
+            redact_text(&plugin.name),
+            supported,
+            unsupported
+        ));
+    }
+    lines.join("\n")
+}
+
+fn plugin_show_text(plugin: &CredentialProviderConfig) -> String {
+    let (supported, unsupported) = plugin_capability_support(plugin);
+    let capabilities = if plugin.capabilities.is_empty() {
+        "none".to_string()
+    } else {
+        plugin.capabilities.join(", ")
+    };
+    let supported = if supported.is_empty() {
+        "none".to_string()
+    } else {
+        supported.join(", ")
+    };
+    let unsupported = if unsupported.is_empty() {
+        "none".to_string()
+    } else {
+        unsupported.join(", ")
+    };
+    let args = if plugin.args.is_empty() {
+        "[]".to_string()
+    } else {
+        format!(
+            "[{}]",
+            plugin
+                .args
+                .iter()
+                .map(|arg| format!("{:?}", redact_text(arg)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    format!(
+        "Plugin: {}\nProtocol: {}\nCommand: {}\nArgs: {}\nCapabilities: {}\nSupported by pire-browser: {}\nDiscoverable but not executed here: {}\nTimeout: {}ms",
+        redact_text(&plugin.name),
+        PLUGIN_PROTOCOL,
+        redact_text(&plugin.command),
+        args,
+        capabilities,
+        supported,
+        unsupported,
+        plugin.timeout_ms
+    )
 }
 
 fn handle_chat_command(
@@ -12260,6 +12435,53 @@ mod tests {
         assert_eq!(input.selectors.username, "#email");
         assert_eq!(input.selectors.password, "#password");
         assert_eq!(input.selectors.submit, "#submit");
+    }
+
+    #[test]
+    fn plugin_discovery_reports_supported_and_unsupported_capabilities() {
+        let mut config = Map::new();
+        config.insert(
+            "plugins".to_string(),
+            json!([
+                {
+                    "name": "vault",
+                    "command": "agent-browser-plugin-vault",
+                    "args": ["--quiet"],
+                    "capabilities": ["credential.read"],
+                    "timeoutMs": 2500
+                },
+                {
+                    "name": "cloud-browser",
+                    "command": "agent-browser-plugin-cloud-browser",
+                    "capabilities": ["browser.provider"]
+                }
+            ]),
+        );
+        let plugins = configured_plugins(&config).unwrap();
+        assert_eq!(plugins.len(), 2);
+
+        let vault = plugin_value(&plugins[0]);
+        assert_eq!(vault["name"], json!("vault"));
+        assert_eq!(vault["supportedCapabilities"], json!(["credential.read"]));
+        assert_eq!(vault["unsupportedCapabilities"], json!([]));
+        assert_eq!(vault["execution"]["credential.read"], json!(true));
+        assert_eq!(vault["execution"]["browser.provider"], json!(false));
+
+        let cloud = plugin_value(&plugins[1]);
+        assert_eq!(cloud["supportedCapabilities"], json!([]));
+        assert_eq!(
+            cloud["unsupportedCapabilities"],
+            json!(["browser.provider"])
+        );
+        assert_eq!(cloud["execution"]["credential.read"], json!(false));
+
+        let list_text = plugin_list_text(&plugins);
+        assert!(list_text.contains("vault [credential.read]"));
+        assert!(list_text.contains("cloud-browser [none; unsupported here: browser.provider]"));
+
+        let show_text = plugin_show_text(&plugins[1]);
+        assert!(show_text.contains("Plugin: cloud-browser"));
+        assert!(show_text.contains("Discoverable but not executed here: browser.provider"));
     }
 
     #[test]

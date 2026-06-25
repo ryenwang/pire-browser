@@ -68,7 +68,7 @@ export const featureStatuses = {
   },
   auth: {
     status: "best_effort",
-    summary: "`auth save/login/list/show/delete` provide a built-in AES-256-GCM encrypted local auth vault with CLI-expanded `auth save --password-stdin`; `auth login` decrypts locally and sends a one-shot profile payload to Firefox. `auth login --credential-provider <name>` can resolve one-shot credentials from an agent-browser-compatible local plugin with capability `credential.read`.",
+    summary: "`auth save/login/list/show/delete` provide a built-in AES-256-GCM encrypted local auth vault with CLI-expanded `auth save --password-stdin`; `auth login` decrypts locally and sends a one-shot profile payload to Firefox. `plugin list/show` inspect configured agent-browser protocol plugins without running them, and `auth login --credential-provider <name>` can resolve one-shot credentials from a configured local plugin with capability `credential.read`. Other plugin capabilities are discoverable but not executed by this Firefox backend yet.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/auth_vault.rs", "extension/src/background.ts"],
   },
   networkControls: {

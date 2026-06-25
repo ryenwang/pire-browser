@@ -763,6 +763,8 @@ Then resolve credentials for one login without saving them in the local auth
 vault:
 
 ```bash
+pire-browser plugin list
+pire-browser plugin show vault
 pire-browser auth login app --credential-provider vault --item "My App" --url https://example.com/login
 pire-browser snapshot -i
 ```
@@ -773,8 +775,12 @@ return `credential` with `username`, `password`, `url`, and optional
 `usernameSelector`, `passwordSelector`, and `submitSelector`. Plugin stderr and
 plugin error text are suppressed in this core login path to reduce accidental
 secret exposure. Use `--confirm-actions plugin:vault:credential.read` when a
-user approval gate should run before the provider is invoked. Do not claim login
-success until a fresh snapshot, URL, or page state confirms it.
+user approval gate should run before the provider is invoked. `plugin list` and
+`plugin show <name>` are read-only agent-browser-style discovery commands; they
+report configured capabilities and clearly mark non-credential capabilities such
+as `browser.provider`, `launch.mutate`, and `command.run` as discoverable but not
+executed by the Firefox backend yet. Do not claim login success until a fresh
+snapshot, URL, or page state confirms it.
 
 ### Proxy authentication
 
