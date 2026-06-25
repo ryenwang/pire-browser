@@ -264,6 +264,7 @@ fn main() {
 
 fn run_with_args(args: Vec<String>) -> Result<()> {
     let config_result = apply_config_defaults(&args)?;
+    let launch_headless = launch_headless_from_effective_args(&config_result.args);
     let color_scheme = color_scheme_from_effective_args(&config_result.args)?;
     let proxy_config = proxy_config_from_effective_args(&config_result.args)?;
     let output_guards = output_guard_options_from_effective_args(&config_result.args)?;
@@ -569,6 +570,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 args,
                 color_scheme.as_deref(),
                 proxy_config.as_ref(),
+                launch_headless,
             )?;
         }
         LocalCommand::Download {
@@ -597,6 +599,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 firefox_path_override.clone(),
                 download_path_override.clone(),
                 proxy_config.as_ref(),
+                launch_headless,
             )?;
         }
         LocalCommand::WaitDownload {
@@ -623,6 +626,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 firefox_path_override.clone(),
                 download_path_override.clone(),
                 proxy_config.as_ref(),
+                launch_headless,
             )?;
         }
         LocalCommand::Upload {
@@ -687,6 +691,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 url,
                 firefox_path,
                 download_dir: download_path_override.clone(),
+                headless: launch_headless,
             })?;
             let mut text = launch_result_text(&result);
             for warning in &domain_decision.warnings {
@@ -791,6 +796,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 firefox_path_override.as_deref(),
                 color_scheme.as_deref(),
                 proxy_config.as_ref(),
+                launch_headless,
             )?;
         }
         LocalCommand::InstallStatus {
@@ -935,6 +941,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                     firefox_path_override.as_deref(),
                     color_scheme.as_deref(),
                     proxy_config.as_ref(),
+                    launch_headless,
                 )?;
                 append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
                 append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
@@ -956,6 +963,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                     firefox_path_override.as_deref(),
                     color_scheme.as_deref(),
                     proxy_config.as_ref(),
+                    launch_headless,
                 )?;
                 append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
                 append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
@@ -977,6 +985,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                     firefox_path_override.as_deref(),
                     color_scheme.as_deref(),
                     proxy_config.as_ref(),
+                    launch_headless,
                 )?;
                 append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
                 append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
@@ -999,6 +1008,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                     color_scheme.as_deref(),
                     proxy_config.as_ref(),
                     &config_map,
+                    launch_headless,
                 ) {
                     Ok(result) => result,
                     Err(err) => {
@@ -1037,6 +1047,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 &ignored_global_flags,
                 firefox_path_override.as_deref(),
                 download_path_override.as_deref(),
+                launch_headless,
             )?;
             if !response.ok {
                 let error = response
@@ -1120,6 +1131,7 @@ fn handle_read_active_url(
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<()> {
     let domain_decision =
         resolve_domain_policy_or_exit(&policies.domain_policy, json_output, ignored_global_flags)?;
@@ -1165,6 +1177,7 @@ fn handle_read_active_url(
         firefox_path_override,
         color_scheme,
         proxy_config,
+        launch_headless,
     )?;
     let url = match active_url_from_get_url_result(&active) {
         Ok(url) => url,
@@ -1609,6 +1622,44 @@ fn firefox_path_override_from_args_and_env(raw: &[String]) -> Option<String> {
         .or_else(|| non_empty_env("PIRE_BROWSER_FIREFOX_PATH"))
         .or_else(|| non_empty_env("PIRE_BROWSER_EXECUTABLE_PATH"))
         .or_else(|| non_empty_env("AGENT_BROWSER_EXECUTABLE_PATH"))
+}
+
+fn launch_headless_from_effective_args(raw: &[String]) -> bool {
+    let env_headless = non_empty_env("PIRE_BROWSER_HEADLESS")
+        .or_else(|| non_empty_env("AGENT_BROWSER_HEADLESS"))
+        .map(|value| parse_boolish(&value));
+    launch_headless_from_effective_args_and_env(raw, env_headless)
+}
+
+fn launch_headless_from_effective_args_and_env(raw: &[String], env_headless: Option<bool>) -> bool {
+    let mut headless = env_headless.unwrap_or(false);
+    let mut i = 0;
+    while i < raw.len() {
+        match raw[i].as_str() {
+            "--headless" => {
+                i += 1;
+                if let Some(value) = raw.get(i).and_then(|value| parse_bool_literal(value)) {
+                    headless = value;
+                    i += 1;
+                } else {
+                    headless = true;
+                }
+            }
+            "--headed" => {
+                i += 1;
+                if let Some(value) = raw.get(i).and_then(|value| parse_bool_literal(value)) {
+                    headless = !value;
+                    i += 1;
+                } else {
+                    headless = false;
+                }
+            }
+            flag if is_output_guard_value_global_flag(flag) => i += 2,
+            flag if is_output_guard_bool_global_flag(flag) => i += 1,
+            _ => i += 1,
+        }
+    }
+    headless
 }
 
 fn download_path_override_from_args_and_env(raw: &[String]) -> Result<Option<PathBuf>> {
@@ -4362,6 +4413,7 @@ fn handle_state_shortcut(
     mut args: Vec<String>,
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<()> {
     prepare_auth_password_stdin(&mut args)?;
     prepare_batch_stdin(&mut args)?;
@@ -4460,9 +4512,15 @@ fn handle_state_shortcut(
     attach_proxy_config(&mut request, proxy_config)?;
     let dispatch_result = match &target {
         SessionTarget::Id(session_id) => send_to_session(Some(session_id), &request),
-        SessionTarget::Name(profile_name) => {
-            send_to_named_session(profile_name, &args, &request, &domain_decision, None, None)
-        }
+        SessionTarget::Name(profile_name) => send_to_named_session(
+            profile_name,
+            &args,
+            &request,
+            &domain_decision,
+            None,
+            None,
+            launch_headless,
+        ),
         SessionTarget::Default => match send_to_session(None, &request) {
             Ok(result) => Ok(result),
             Err(err) if should_auto_launch_remote(None, &args, &err) => {
@@ -4483,6 +4541,7 @@ fn handle_state_shortcut(
                     url: launch_url_for_remote_args(&args),
                     firefox_path: None,
                     download_dir: None,
+                    headless: launch_headless,
                 }) {
                     Ok(result) => result,
                     Err(err) => {
@@ -4779,6 +4838,7 @@ fn handle_download(
     firefox_path_override: Option<String>,
     download_path_override: Option<PathBuf>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<()> {
     let mut public_args = vec![
         "download".to_string(),
@@ -4803,6 +4863,7 @@ fn handle_download(
         firefox_path_override,
         download_path_override,
         proxy_config,
+        launch_headless,
     )
 }
 
@@ -4816,6 +4877,7 @@ fn handle_wait_download(
     firefox_path_override: Option<String>,
     download_path_override: Option<PathBuf>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<()> {
     let mut public_args = vec!["wait".to_string(), "--download".to_string()];
     if let Some(path) = &destination {
@@ -4835,6 +4897,7 @@ fn handle_wait_download(
         firefox_path_override,
         download_path_override,
         proxy_config,
+        launch_headless,
     )
 }
 
@@ -4847,6 +4910,7 @@ fn execute_download_command(
     firefox_path_override: Option<String>,
     download_path_override: Option<PathBuf>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<()> {
     let domain_decision =
         resolve_domain_policy_or_exit(&policies.domain_policy, json_output, &ignored_global_flags)?;
@@ -4902,6 +4966,7 @@ fn execute_download_command(
         plan.destination,
         firefox_path_override,
         download_path_override,
+        launch_headless,
     )
 }
 
@@ -4915,6 +4980,7 @@ fn run_download_dispatch(
     destination: Option<PathBuf>,
     firefox_path_override: Option<String>,
     download_path_override: Option<PathBuf>,
+    launch_headless: bool,
 ) -> Result<()> {
     if let Err(err) = sweep_old_downloads(now_ms()) {
         exit_with_anyhow_error_with_domain_policy(
@@ -4932,6 +4998,7 @@ fn run_download_dispatch(
         domain_decision,
         firefox_path_override.as_deref(),
         download_path_override.as_deref(),
+        launch_headless,
     ) {
         Ok(result) => result,
         Err(err) => {
@@ -5178,6 +5245,7 @@ fn send_download_request(
     domain_decision: &DomainPolicyDecision,
     firefox_path_override: Option<&str>,
     download_path_override: Option<&Path>,
+    launch_headless: bool,
 ) -> Result<(RpcResponse, String)> {
     match target {
         SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
@@ -5188,6 +5256,7 @@ fn send_download_request(
             domain_decision,
             firefox_path_override,
             download_path_override,
+            launch_headless,
         ),
         SessionTarget::Default => match send_to_session(None, request) {
             Ok(result) => Ok(result),
@@ -5198,6 +5267,7 @@ fn send_download_request(
                     url: launch_url_for_remote_args(args),
                     firefox_path: firefox_path_override.map(ToString::to_string),
                     download_dir: download_path_override.map(Path::to_path_buf),
+                    headless: launch_headless,
                 })?;
                 send_to_session(Some(&result.session.session_id), request)
             }
@@ -5380,6 +5450,7 @@ fn execute_confirmed_diff(
             None,
             None,
             None,
+            false,
         )?
     } else if let Some(options) = diff_url_options(&record.args)? {
         for url in [&options.first_url, &options.second_url] {
@@ -5397,6 +5468,7 @@ fn execute_confirmed_diff(
             None,
             None,
             None,
+            false,
         )?
     } else {
         bail!("invalid_args: pending confirmation record is not a local diff command");
@@ -5462,6 +5534,7 @@ fn execute_confirmed_launch(
         url,
         firefox_path,
         download_dir: None,
+        headless: false,
     })?;
     println!("{}", launch_result_text(&result));
     Ok(())
@@ -5489,6 +5562,7 @@ fn execute_confirmed_remote(
             &domain_decision,
             None,
             None,
+            false,
         ),
         SessionTarget::Default => match send_to_session(None, &request) {
             Ok(result) => Ok(result),
@@ -5499,6 +5573,7 @@ fn execute_confirmed_remote(
                     url: launch_url_for_remote_args(&record.args),
                     firefox_path: None,
                     download_dir: None,
+                    headless: false,
                 })?;
                 send_to_session(None, &request)
             }
@@ -5546,6 +5621,7 @@ fn execute_confirmed_auth_login(
         None,
         None,
         &config_result.config,
+        false,
     )?;
     append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json_output)?;
     println!("{}", format_cli_result(&result, json_output)?);
@@ -5575,6 +5651,7 @@ fn execute_confirmed_download(
         &domain_decision,
         None,
         None,
+        false,
     )?;
     let result = response_result_or_exit_with_domain_policy(
         response,
@@ -6023,6 +6100,7 @@ fn launch_state_target(profile: &str, url: &str) -> Result<String> {
         url: Some(url.to_string()),
         firefox_path: None,
         download_dir: None,
+        headless: false,
     })?;
     let session_id = result.session.session_id;
     let open_request = build_command_request(vec!["open".to_string(), url.to_string()]);
@@ -6548,6 +6626,7 @@ fn handle_auth_login_command(
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
     config: &Map<String, Value>,
+    launch_headless: bool,
 ) -> Result<Value> {
     let options = parse_auth_login_options(args)?;
     if options.credential_provider.is_some() {
@@ -6585,6 +6664,7 @@ fn handle_auth_login_command(
             &resolution.profile,
             Some(&resolution),
             None,
+            launch_headless,
         );
     }
 
@@ -6605,6 +6685,7 @@ fn handle_auth_login_command(
         &profile,
         None,
         Some(&vault),
+        launch_headless,
     )
 }
 
@@ -6624,6 +6705,7 @@ fn dispatch_auth_profile_login(
     profile: &AuthProfile,
     provider_resolution: Option<&CredentialProviderResolution>,
     vault: Option<&AuthVault>,
+    launch_headless: bool,
 ) -> Result<Value> {
     ensure_url_allowed(domain_decision, &profile.url)?;
     let inline_payload = serde_json::to_string(profile)?;
@@ -6650,6 +6732,7 @@ fn dispatch_auth_profile_login(
         ignored_global_flags,
         firefox_path_override,
         None,
+        launch_headless,
     )?;
     if !response.ok {
         let error = response
@@ -7712,6 +7795,7 @@ fn handle_diff_screenshot(
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<Value> {
     let current_path = match &options.current_path {
         Some(path) => path.clone(),
@@ -7727,6 +7811,7 @@ fn handle_diff_screenshot(
             firefox_path_override,
             color_scheme,
             proxy_config,
+            launch_headless,
         )?,
     };
 
@@ -7751,6 +7836,7 @@ fn handle_diff_url(
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<Value> {
     let baseline_screenshot_path = if options.screenshot {
         Some(diff_url_temp_path("baseline", "png"))
@@ -7777,6 +7863,7 @@ fn handle_diff_url(
         firefox_path_override,
         color_scheme,
         proxy_config,
+        launch_headless,
     )?;
     let baseline_path = diff_url_temp_path("snapshot-baseline", "txt");
     fs::write(&baseline_path, &baseline_snapshot).with_context(|| {
@@ -7801,6 +7888,7 @@ fn handle_diff_url(
         firefox_path_override,
         color_scheme,
         proxy_config,
+        launch_headless,
     )?;
     let _ = fs::remove_file(&baseline_path);
 
@@ -7882,6 +7970,7 @@ fn capture_diff_screenshot_current(
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<PathBuf> {
     let path =
         std::env::temp_dir().join(format!("pire-browser-diff-current-{}.png", Uuid::new_v4()));
@@ -7908,6 +7997,7 @@ fn capture_diff_screenshot_current(
         ignored_global_flags,
         firefox_path_override,
         None,
+        launch_headless,
     )?;
     if !response.ok {
         let error = response
@@ -7940,6 +8030,7 @@ fn handle_pdf_capture(
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<Value> {
     let screenshot_path = capture_diff_screenshot_current(
         target,
@@ -7953,6 +8044,7 @@ fn handle_pdf_capture(
         firefox_path_override,
         color_scheme,
         proxy_config,
+        launch_headless,
     )?;
     let output_path = resolve_pdf_output_path(&options.output_path)?;
     let image = image::open(&screenshot_path).with_context(|| {
@@ -8103,6 +8195,7 @@ fn capture_diff_url_baseline(
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<String> {
     execute_diff_url_open_and_wait(
         target,
@@ -8117,6 +8210,7 @@ fn capture_diff_url_baseline(
         firefox_path_override,
         color_scheme,
         proxy_config,
+        launch_headless,
     )?;
     let snapshot_args = diff_url_snapshot_args(options);
     let snapshot = execute_remote_value_with_policies(
@@ -8131,6 +8225,7 @@ fn capture_diff_url_baseline(
         firefox_path_override,
         color_scheme,
         proxy_config,
+        launch_headless,
     )?;
     if let Some(path) = screenshot_path {
         capture_diff_url_screenshot(
@@ -8146,6 +8241,7 @@ fn capture_diff_url_baseline(
             firefox_path_override,
             color_scheme,
             proxy_config,
+            launch_headless,
         )?;
     }
     Ok(snapshot
@@ -8170,6 +8266,7 @@ fn capture_diff_url_current(
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<Value> {
     execute_diff_url_open_and_wait(
         target,
@@ -8184,6 +8281,7 @@ fn capture_diff_url_current(
         firefox_path_override,
         color_scheme,
         proxy_config,
+        launch_headless,
     )?;
     let diff_args = diff_url_snapshot_diff_args(options, baseline_path);
     let diff = execute_remote_value_with_policies(
@@ -8198,6 +8296,7 @@ fn capture_diff_url_current(
         firefox_path_override,
         color_scheme,
         proxy_config,
+        launch_headless,
     )?;
     if let Some(path) = screenshot_path {
         capture_diff_url_screenshot(
@@ -8213,6 +8312,7 @@ fn capture_diff_url_current(
             firefox_path_override,
             color_scheme,
             proxy_config,
+            launch_headless,
         )?;
     }
     Ok(diff)
@@ -8231,6 +8331,7 @@ fn execute_diff_url_open_and_wait(
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<()> {
     execute_remote_value_with_policies(
         target,
@@ -8244,6 +8345,7 @@ fn execute_diff_url_open_and_wait(
         firefox_path_override,
         color_scheme,
         proxy_config,
+        launch_headless,
     )?;
     if let Some(wait_until) = &options.wait_until {
         execute_remote_value_with_policies(
@@ -8262,6 +8364,7 @@ fn execute_diff_url_open_and_wait(
             firefox_path_override,
             color_scheme,
             proxy_config,
+            launch_headless,
         )?;
     }
     Ok(())
@@ -8280,6 +8383,7 @@ fn capture_diff_url_screenshot(
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<()> {
     let mut args = vec!["screenshot".to_string(), path.to_string_lossy().to_string()];
     if full_page {
@@ -8297,6 +8401,7 @@ fn capture_diff_url_screenshot(
         firefox_path_override,
         color_scheme,
         proxy_config,
+        launch_headless,
     )?;
     Ok(())
 }
@@ -8313,6 +8418,7 @@ fn execute_remote_value_with_policies(
     firefox_path_override: Option<&str>,
     color_scheme: Option<&str>,
     proxy_config: Option<&ProxyConfig>,
+    launch_headless: bool,
 ) -> Result<Value> {
     let mut request = build_command_request_with_policies(
         args.clone(),
@@ -8332,6 +8438,7 @@ fn execute_remote_value_with_policies(
         ignored_global_flags,
         firefox_path_override,
         None,
+        launch_headless,
     )?;
     response_result_or_exit_with_domain_policy(
         response,
@@ -9604,6 +9711,7 @@ fn send_to_named_session(
     domain_policy: &DomainPolicyDecision,
     firefox_path_override: Option<&str>,
     download_path_override: Option<&Path>,
+    launch_headless: bool,
 ) -> Result<(RpcResponse, String)> {
     validate_profile_name(profile_name)?;
     cleanup_stale_sessions(now_ms())?;
@@ -9631,6 +9739,7 @@ fn send_to_named_session(
         url: launch_url_for_remote_args(args),
         firefox_path: firefox_path_override.map(ToString::to_string),
         download_dir: download_path_override.map(Path::to_path_buf),
+        headless: launch_headless,
     })?;
     let session_id = result.session.session_id;
     send_to_session(Some(&session_id), request)
@@ -9645,6 +9754,7 @@ fn dispatch_remote_request_or_exit(
     ignored_global_flags: &[GlobalFlagWarning],
     firefox_path_override: Option<&str>,
     download_path_override: Option<&Path>,
+    launch_headless: bool,
 ) -> Result<(RpcResponse, String)> {
     let dispatch_result = match target {
         SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
@@ -9655,6 +9765,7 @@ fn dispatch_remote_request_or_exit(
             domain_decision,
             firefox_path_override,
             download_path_override,
+            launch_headless,
         ),
         SessionTarget::Default => match send_to_session(None, request) {
             Ok(result) => Ok(result),
@@ -9676,6 +9787,7 @@ fn dispatch_remote_request_or_exit(
                     url: launch_url_for_remote_args(args),
                     firefox_path: firefox_path_override.map(ToString::to_string),
                     download_dir: download_path_override.map(Path::to_path_buf),
+                    headless: launch_headless,
                 }) {
                     Ok(result) => result,
                     Err(err) => {
@@ -10167,6 +10279,28 @@ mod tests {
 
     fn s(values: &[&str]) -> Vec<String> {
         values.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn launch_headless_resolves_from_env_config_and_cli() {
+        assert!(!launch_headless_from_effective_args_and_env(&[], None));
+        assert!(launch_headless_from_effective_args_and_env(&[], Some(true)));
+        assert!(!launch_headless_from_effective_args_and_env(
+            &s(&["--headed", "open", "https://example.com"]),
+            Some(true)
+        ));
+        assert!(launch_headless_from_effective_args_and_env(
+            &s(&["--headless", "open", "https://example.com"]),
+            None
+        ));
+        assert!(launch_headless_from_effective_args_and_env(
+            &s(&["--headed", "false", "launch"]),
+            None
+        ));
+        assert!(!launch_headless_from_effective_args_and_env(
+            &s(&["launch", "--headless", "false"]),
+            Some(true)
+        ));
     }
 
     #[test]
@@ -11978,6 +12112,7 @@ mod tests {
             profile_path: PathBuf::from("profile"),
             launcher_pid: 123,
             log_path: PathBuf::from("web-ext.log"),
+            headless: false,
         }
     }
 

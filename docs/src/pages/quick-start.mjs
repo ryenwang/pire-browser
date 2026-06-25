@@ -39,9 +39,11 @@ pire-browser close`),
 pire-browser fill "input[name=email]" "hello@example.com"
 pire-browser find role button --name "Submit" click`),
   p("<code>keyboard type</code>, <code>keyboard inserttext</code>, <code>keydown</code>, and <code>keyup</code> use the current page focus. Click or focus the target first, then verify the page state."),
-  h2("Headed mode", "headed-mode"),
-  code(`pire-browser --headed open https://example.com`),
-  p("The current Firefox backend launches a managed visible Firefox session through <code>web-ext</code>; <code>--headed</code> and <code>--headless</code> are accepted as legacy launch inputs."),
+  h2("Headed and headless mode", "headed-headless-mode"),
+  code(`pire-browser --headed open https://example.com
+pire-browser --headless open https://example.com
+PIRE_BROWSER_HEADLESS=1 pire-browser open https://example.com`),
+  p("The Firefox backend launches visible managed sessions through <code>web-ext</code> by default. Use <code>--headless</code>, <code>PIRE_BROWSER_HEADLESS=1</code>, <code>AGENT_BROWSER_HEADLESS=1</code>, or <code>headless: true</code> in config when a CI command should start a new headless managed session. Existing live sessions keep their current mode."),
   h2("Wait for content", "wait-for-content"),
   code(`pire-browser wait '@e1'                  # Wait for element
 pire-browser wait --load networkidle    # Wait for active-tab network idle

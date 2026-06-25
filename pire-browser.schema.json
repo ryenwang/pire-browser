@@ -66,11 +66,11 @@
     },
     "headed": {
       "type": "boolean",
-      "description": "Legacy headed flag accepted as a Firefox session input."
+      "description": "Launch new managed Firefox sessions visibly. This is the default."
     },
     "headless": {
       "type": "boolean",
-      "description": "Legacy headless flag accepted as a Firefox session input."
+      "description": "Launch new managed Firefox sessions headlessly for CI-style runs."
     },
     "colorScheme": {
       "type": "string",

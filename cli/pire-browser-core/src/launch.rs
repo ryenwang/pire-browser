@@ -25,6 +25,7 @@ pub struct LaunchOptions {
     pub url: Option<String>,
     pub firefox_path: Option<String>,
     pub download_dir: Option<PathBuf>,
+    pub headless: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +36,7 @@ pub struct LaunchResult {
     pub profile_path: PathBuf,
     pub launcher_pid: u32,
     pub log_path: PathBuf,
+    pub headless: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -113,6 +115,8 @@ pub struct LauncherMetadata {
     pub last_launch_url: Option<String>,
     pub session_id: Option<String>,
     pub profile_id: Option<String>,
+    #[serde(default)]
+    pub headless: bool,
 }
 
 pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
@@ -162,6 +166,7 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
                 profile_path,
                 launcher_pid: metadata.launcher_pid,
                 log_path,
+                headless: metadata.headless,
             });
         }
 
@@ -209,6 +214,9 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
                 .stdin(Stdio::null())
                 .stdout(Stdio::from(log))
                 .stderr(Stdio::from(log_err));
+            if options.headless {
+                command.arg("-headless");
+            }
             if let Some(url) = &options.url {
                 command.arg(url);
             }
@@ -233,6 +241,9 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
                 .stdin(Stdio::null())
                 .stdout(Stdio::from(log))
                 .stderr(Stdio::from(log_err));
+            if options.headless {
+                command.arg("--arg=-headless");
+            }
             if let Some(url) = &options.url {
                 command.arg("--start-url").arg(url);
             }
@@ -267,6 +278,7 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
         last_launch_url: options.url,
         session_id: None,
         profile_id: None,
+        headless: options.headless,
     };
     write_launcher_metadata_atomic(&launcher_path, &metadata)?;
 
@@ -298,6 +310,7 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
                 profile_path,
                 launcher_pid,
                 log_path,
+                headless: options.headless,
             });
         }
 
@@ -312,10 +325,16 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
 
 pub fn launch_result_text(result: &LaunchResult) -> String {
     let action = if result.reused { "reused" } else { "launched" };
+    let mode = if result.headless {
+        "headless"
+    } else {
+        "headed"
+    };
     format!(
-        "pire-browser {action} Firefox profile {}\nSession: {}\nProfile path: {}\nLauncher PID: {}\nLog: {}",
+        "pire-browser {action} Firefox profile {}\nSession: {}\nMode: {}\nProfile path: {}\nLauncher PID: {}\nLog: {}",
         result.profile_name,
         result.session.session_id,
+        mode,
         result.profile_path.display(),
         result.launcher_pid,
         result.log_path.display()
@@ -1386,6 +1405,34 @@ mod tests {
     }
 
     #[test]
+    fn launch_result_text_reports_headless_mode() {
+        let result = LaunchResult {
+            reused: false,
+            session: SessionInfo {
+                session_id: "s-1".into(),
+                profile_name: Some("ci".into()),
+                profile_id: "p-1".into(),
+                pipe_name: "pipe".into(),
+                extension_id: "ext".into(),
+                extension_version: "1".into(),
+                started_at: 1,
+                last_heartbeat_at: 2,
+                last_focused_at: 3,
+                active_page: None,
+            },
+            profile_name: "ci".into(),
+            profile_path: PathBuf::from("profile"),
+            launcher_pid: 42,
+            log_path: PathBuf::from("web-ext.log"),
+            headless: true,
+        };
+
+        let text = launch_result_text(&result);
+
+        assert!(text.contains("Mode: headless"));
+    }
+
+    #[test]
     fn extension_source_can_be_supplied_by_launcher_env() {
         let root = tempfile::tempdir().unwrap();
         let extension = root.path().join("extension");
@@ -1538,6 +1585,7 @@ mod tests {
                 last_launch_url: None,
                 session_id: Some("s-alpha".into()),
                 profile_id: Some("p-alpha".into()),
+                headless: false,
             },
         )
         .unwrap();
@@ -1553,6 +1601,7 @@ mod tests {
                 last_launch_url: None,
                 session_id: None,
                 profile_id: Some("p-beta".into()),
+                headless: true,
             },
         )
         .unwrap();

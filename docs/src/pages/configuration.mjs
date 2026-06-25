@@ -16,6 +16,7 @@ PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
   "$schema": "./node_modules/pire-browser/pire-browser.schema.json",
   "json": true,
   "profile": "Work",
+  "headless": true,
   "state": "./.pire-state/work.json",
   "allowedDomains": ["app.example.com", "*.example.com"],
   "proxy": "http://proxy.example:8080",
@@ -30,7 +31,7 @@ PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
     }
   ]
 }`, "json"),
-  p("The packaged schema lives at <code>pire-browser.schema.json</code> in the repo and <code>./node_modules/pire-browser/pire-browser.schema.json</code> in an installed package. <code>plugins</code> entries are used for agent-browser-compatible credential providers and do not synthesize CLI flags."),
+  p("The packaged schema lives at <code>pire-browser.schema.json</code> in the repo and <code>./node_modules/pire-browser/pire-browser.schema.json</code> in an installed package. <code>headless: true</code> launches new managed Firefox sessions headlessly for CI while existing live sessions keep their current mode. <code>plugins</code> entries are used for agent-browser-compatible credential providers and do not synthesize CLI flags."),
   h2("Common flags", "common-flags"),
   code(`pire-browser --config ./ci-config.json open https://example.com
 pire-browser --profile Work open https://example.com
@@ -41,6 +42,7 @@ pire-browser --allowed-domains "example.com,*.example.com" snapshot -i
 pire-browser --proxy http://proxy.example:8080 open https://example.com
 pire-browser --proxy http://proxy.example:8080 --proxy-bypass "localhost,*.internal" open https://example.com
 pire-browser --download-path ./downloads open https://example.com
+pire-browser --headless open https://example.com
 pire-browser --action-policy ./policy.json eval "document.title"
 pire-browser --confirm-actions eval,download eval "document.title"
 pire-browser --executable-path /path/to/firefox open https://example.com`),

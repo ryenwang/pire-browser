@@ -40,6 +40,10 @@ pire-browser --session-name dogfood open https://app.example.com
 pire-browser --session-name dogfood snapshot -i -c
 ```
 
+For CI-style dogfood runs, add `--headless` before the command or set
+`PIRE_BROWSER_HEADLESS=1`. Headless only affects newly launched managed Firefox
+sessions; existing sessions keep their current mode.
+
 If the app needs login state, ask the user whether to use an existing Firefox
 profile, a managed profile, or a saved state file. Useful setup commands:
 

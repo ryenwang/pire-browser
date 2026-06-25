@@ -144,7 +144,8 @@ pire-browser clipboard paste`),
 
   h2("Settings", "settings"),
   statusNote("settings"),
-  code(`pire-browser --headed open https://example.com          # Legacy launch input
+  code(`pire-browser --headed open https://example.com          # Visible managed Firefox, the default
+pire-browser --headless open https://example.com        # Headless managed Firefox for CI
 pire-browser --color-scheme dark open https://example.com
 pire-browser --proxy http://proxy.example:8080 open https://example.com
 pire-browser --proxy http://proxy.example:8080 --proxy-bypass "localhost,*.internal" open https://example.com

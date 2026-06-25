@@ -447,7 +447,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open/goto/navigate, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, pire_browser_skills_get_core, and pire_browser_skills_get_dogfood. Use pire_browser_skills_get_dogfood for systematic exploratory QA, app review, or bug hunts. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open, pire_browser_goto, or pire_browser_navigate for normal launch/navigation; use enableReactDevtools on those tools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop/restart for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed HTTP polling live preview; it is not full WebSocket frame streaming yet. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when request/response waits, network diagnostics, cookies/storage/auth/state, Firefox profile import, debugging, tab labels/frames/dialogs/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open/goto/navigate, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, pire_browser_skills_get_core, and pire_browser_skills_get_dogfood. Use pire_browser_skills_get_dogfood for systematic exploratory QA, app review, or bug hunts. Use typed headless for CI-style runs where a tool may launch a new managed Firefox session, or headed to force the visible default; existing live sessions keep their current mode. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open, pire_browser_goto, or pire_browser_navigate for normal launch/navigation; use enableReactDevtools on those tools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop/restart for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed HTTP polling live preview; it is not full WebSocket frame streaming yet. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when request/response waits, network diagnostics, cookies/storage/auth/state, Firefox profile import, debugging, tab labels/frames/dialogs/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -2214,6 +2214,7 @@ fn target_args(object: &Map<String, Value>) -> std::result::Result<Vec<String>, 
     if optional_bool(object, "allowFileAccess")? {
         args.push("--allow-file-access".to_string());
     }
+    push_headed_flags(&mut args, object)?;
     push_optional_flag_value(&mut args, object, "proxy", "--proxy")?;
     push_optional_flag_value(&mut args, object, "proxyBypass", "--proxy-bypass")?;
     push_optional_flag_value(&mut args, object, "downloadPath", "--download-path")?;
@@ -2247,7 +2248,25 @@ fn launch_prefix_args(object: &Map<String, Value>) -> std::result::Result<Vec<St
     if optional_bool(object, "confirmInteractive")? {
         args.push("--confirm-interactive".to_string());
     }
+    push_headed_flags(&mut args, object)?;
     Ok(args)
+}
+
+fn push_headed_flags(
+    args: &mut Vec<String>,
+    object: &Map<String, Value>,
+) -> std::result::Result<(), String> {
+    let headless = optional_bool(object, "headless")?;
+    let headed = optional_bool(object, "headed")?;
+    if headless && headed {
+        return Err("cannot use headless and headed together".to_string());
+    }
+    if headless {
+        args.push("--headless".to_string());
+    } else if headed {
+        args.push("--headed".to_string());
+    }
+    Ok(())
 }
 
 fn reject_launch_unsupported_fields(
@@ -4349,6 +4368,14 @@ fn launch_tool_schema() -> Value {
                 "confirmInteractive",
                 bool_prop("Also require confirmation for interactive page actions."),
             ),
+            (
+                "headless",
+                bool_prop("Launch the managed Firefox session in headless mode."),
+            ),
+            (
+                "headed",
+                bool_prop("Launch the managed Firefox session visibly. This is the default."),
+            ),
         ],
         &[],
     )
@@ -4408,6 +4435,16 @@ fn common_properties() -> Map<String, Value> {
     map.insert(
         "allowFileAccess".to_string(),
         bool_prop("Allow local file:// URL access for this command."),
+    );
+    map.insert(
+        "headless".to_string(),
+        bool_prop(
+            "Launch the managed Firefox session in headless mode when this command starts one.",
+        ),
+    );
+    map.insert(
+        "headed".to_string(),
+        bool_prop("Launch the managed Firefox session visibly when this command starts one. This is the default."),
     );
     map.insert(
         "allowedDomains".to_string(),
@@ -4816,6 +4853,10 @@ mod tests {
             "object"
         );
         assert_eq!(
+            open["inputSchema"]["properties"]["headless"]["type"],
+            "boolean"
+        );
+        assert_eq!(
             open["inputSchema"]["properties"]["initScriptPaths"]["type"],
             "array"
         );
@@ -4827,6 +4868,10 @@ mod tests {
         assert_eq!(
             launch["inputSchema"]["properties"]["profile"]["type"],
             "string"
+        );
+        assert_eq!(
+            launch["inputSchema"]["properties"]["headless"]["type"],
+            "boolean"
         );
         assert!(launch["inputSchema"]["properties"]
             .as_object()
@@ -5357,7 +5402,8 @@ mod tests {
                 "allowedDomains": ["example.com", "*.example.com"],
                 "actionPolicy": "policy.json",
                 "confirmActions": "navigate",
-                "confirmInteractive": true
+                "confirmInteractive": true,
+                "headless": true
             }),
             McpToolsProfile::Core,
         )
@@ -5373,6 +5419,7 @@ mod tests {
                 "--confirm-actions",
                 "navigate",
                 "--confirm-interactive",
+                "--headless",
                 "launch",
                 "--profile",
                 "Work",
@@ -5473,6 +5520,7 @@ mod tests {
                 "confirmActions": "eval,navigate",
                 "confirmInteractive": true,
                 "allowFileAccess": true,
+                "headless": true,
                 "proxy": "http://proxy.example:8080",
                 "proxyBypass": "localhost,*.internal",
                 "maxOutput": 50000,
@@ -5505,6 +5553,7 @@ mod tests {
                 "eval,navigate",
                 "--confirm-interactive",
                 "--allow-file-access",
+                "--headless",
                 "--proxy",
                 "http://proxy.example:8080",
                 "--proxy-bypass",
@@ -7476,6 +7525,14 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("cannot use allowedDomains and noAllowedDomains together"));
+
+        let error = tool_command_args(
+            "pire_browser_open",
+            &json!({ "headless": true, "headed": true }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err();
+        assert!(error.contains("cannot use headless and headed together"));
 
         let error = tool_command_args(
             "pire_browser_batch",

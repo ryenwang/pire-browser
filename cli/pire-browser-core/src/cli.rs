@@ -1435,6 +1435,16 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                     };
                     firefox_path = Some(path);
                 }
+                "--headless" | "--headed" => {
+                    i += 1;
+                    if args
+                        .get(i)
+                        .and_then(|value| parse_bool_literal(value))
+                        .is_none()
+                    {
+                        i -= 1;
+                    }
+                }
                 other => bail!("unsupported launch option: {other}"),
             }
             i += 1;
@@ -2572,8 +2582,8 @@ fn parse_positive_timeout(value: &str) -> Result<u64> {
     Ok(timeout)
 }
 
-fn ignored_with_warning_global_flag(flag: &str) -> bool {
-    matches!(flag, "--headed" | "--headless")
+fn ignored_with_warning_global_flag(_flag: &str) -> bool {
+    false
 }
 
 pub fn help_text(topic: Option<&str>) -> Option<String> {
@@ -2681,6 +2691,7 @@ Common commands:
   --config ./ci-config.json open <url>
   open                            Launch/reuse Firefox without navigating
   open <url> [--label <name>]      Open a URL, auto-launching Firefox if needed
+  --headless open <url>            Launch managed Firefox headlessly for CI
   open <url> --headers '{"Authorization":"Bearer token"}'
   --proxy http://proxy.example:8080 open <url>
   --allow-file-access open file:///path/to/page.html
@@ -2864,7 +2875,9 @@ allowFileAccess, headed, headless, colorScheme, proxy, proxyBypass,
 downloadPath, maxOutput, contentBoundaries, engine, provider, model, and
 plugins. `plugins` is used for credential-provider integrations but does not
 synthesize CLI flags. CLI flags override config defaults. Unknown keys are
-ignored.
+ignored. `headless: true`, `--headless`, PIRE_BROWSER_HEADLESS=1, and
+AGENT_BROWSER_HEADLESS=1 make newly launched managed Firefox sessions run
+headlessly; existing live sessions keep their current mode.
 "##;
 
 const OPEN_HELP: &str = r##"
@@ -3846,9 +3859,11 @@ when Firefox is missing.
 
 const LAUNCH_HELP: &str = r##"
 Usage:
-  pire-browser launch [--profile Default] [--url <url>] [--firefox-path <path>]
+  pire-browser launch [--profile Default] [--url <url>] [--firefox-path <path>] [--headless]
 
 Starts the managed Firefox profile and waits for the extension to connect.
+`--headless` starts Firefox headlessly when creating a new managed session;
+the default is visible/headed Firefox through web-ext.
 For reusable named command workflows, use `--profile <name-or-path> <command>`,
 `--session <name> <command>`, or `--session-name <name> <command>`.
 `launch --profile <name-or-path>` only starts or reuses the profile.
@@ -4487,9 +4502,7 @@ mod tests {
             LocalCommand::Remote {
                 target: SessionTarget::Default,
                 json: false,
-                ignored_global_flags: vec![GlobalFlagWarning {
-                    flag: "--headless".to_string()
-                }],
+                ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
                 confirmation_policy: default_confirmation_policy(),
@@ -4503,9 +4516,7 @@ mod tests {
             LocalCommand::Remote {
                 target: SessionTarget::Default,
                 json: false,
-                ignored_global_flags: vec![GlobalFlagWarning {
-                    flag: "--headed".to_string()
-                }],
+                ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
                 confirmation_policy: default_confirmation_policy(),
@@ -4936,9 +4947,7 @@ mod tests {
             LocalCommand::Remote {
                 target: SessionTarget::Name("lemonade".to_string()),
                 json: true,
-                ignored_global_flags: vec![GlobalFlagWarning {
-                    flag: "--headed".to_string()
-                }],
+                ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
                 confirmation_policy: default_confirmation_policy(),
@@ -4974,7 +4983,7 @@ mod tests {
     }
 
     #[test]
-    fn records_ignored_global_flags_that_need_json_warnings() {
+    fn headless_global_flag_is_a_launch_preference_without_ignored_warning() {
         let parsed = parse_cli_args(&s(&[
             "--headless",
             "--color-scheme",
@@ -4991,9 +5000,7 @@ mod tests {
             LocalCommand::Remote {
                 target: SessionTarget::Default,
                 json: true,
-                ignored_global_flags: vec![GlobalFlagWarning {
-                    flag: "--headless".to_string()
-                }],
+                ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
                 confirmation_policy: default_confirmation_policy(),
@@ -5823,9 +5830,7 @@ mod tests {
             LocalCommand::StateLoad {
                 target: SessionTarget::Name("work".to_string()),
                 json: true,
-                ignored_global_flags: vec![GlobalFlagWarning {
-                    flag: "--headless".to_string()
-                }],
+                ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
                 confirmation_policy: default_confirmation_policy(),
@@ -6572,6 +6577,19 @@ mod tests {
                 profile: "Default".to_string(),
                 url: Some("https://discord.com/login".to_string()),
                 firefox_path: Some("C:/Firefox/firefox.exe".to_string()),
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy()
+            }
+        );
+
+        let parsed = parse_cli_args(&s(&["launch", "--headless", "--headed", "false"])).unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Launch {
+                profile: "Default".to_string(),
+                url: None,
+                firefox_path: None,
                 domain_policy: default_domain_policy(),
                 action_policy: default_action_policy(),
                 confirmation_policy: default_confirmation_policy()

@@ -646,6 +646,9 @@ Most browser-command tools accept common typed fields for session/profile
 targeting, state files, file access, domain allowlists, confirmation/action
 policies, content boundaries, output limits, proxy settings, and Firefox
 executable overrides; use those fields instead of `extraArgs` for guardrails.
+Use typed `headless` for CI-style runs where a tool may launch a new managed
+Firefox session, or `headed` to force the visible default. Existing live sessions
+keep their current mode.
 `pire_browser_open`, `pire_browser_goto`, and `pire_browser_navigate` also accept typed one-shot `headers`, `initScriptPaths`,
 and `enableReactDevtools` for pre-navigation setup. Prefer these tools for normal
 launch/navigation; the `debug` profile exposes `pire_browser_launch` as a
@@ -913,8 +916,8 @@ pire-browser pdf viewport.pdf --viewport
 --executable-path <path>        # Custom Firefox executable
 --allow-file-access             # Allow supported local file workflows
 --json                          # JSON output
---headed                        # Legacy launch flag
---headless                      # Legacy launch flag
+--headed                        # Launch managed Firefox visibly (default)
+--headless                      # Launch managed Firefox headlessly when starting a session
 --color-scheme <scheme>         # dark, light, or auto
 --screenshot-dir <path>         # Default screenshot output directory
 --screenshot-quality <n>        # JPEG quality 0-100
@@ -1137,12 +1140,13 @@ pire-browser open https://example.com && pire-browser screenshot page.png
 
 Use `&&` when you do not need to parse intermediate output. Run commands separately when you need refs or command results before deciding the next action.
 
-## Headed Mode
+## Headed And Headless Mode
 
-`pire-browser` controls a managed Firefox window. The current public default is a visible managed Firefox session launched through `web-ext`; `--headed` and `--headless` are accepted as legacy launch inputs.
+`pire-browser` controls a managed Firefox session. The public default is a visible session launched through `web-ext`. Use `--headless`, `PIRE_BROWSER_HEADLESS=1`, `AGENT_BROWSER_HEADLESS=1`, or `"headless": true` in config for CI-style runs where a command starts a new managed Firefox session. Existing live sessions keep their current mode.
 
 ```bash
 pire-browser --headed open https://example.com
+pire-browser --headless open https://example.com
 ```
 
 ## Custom Browser Executable
