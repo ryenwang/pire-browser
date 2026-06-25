@@ -140,6 +140,12 @@ pub enum LocalCommand {
     ProfilesList {
         json: bool,
     },
+    ProfilesImport {
+        json: bool,
+        source: String,
+        name: String,
+        overwrite: bool,
+    },
     SkillsList {
         json: bool,
     },
@@ -1357,10 +1363,67 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     if command == "profiles" {
         args.remove(0);
         remove_json_flags(&mut args, &mut json_output);
-        if let Some(extra) = args.first() {
-            bail!("unsupported profiles option: {extra}");
+
+        let subcommand = args.first().map(String::as_str);
+        if matches!(subcommand, None | Some("list")) {
+            if subcommand == Some("list") {
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+            }
+            if let Some(extra) = args.first() {
+                bail!("unsupported profiles list option: {extra}");
+            }
+            return Ok(LocalCommand::ProfilesList { json: json_output });
         }
-        return Ok(LocalCommand::ProfilesList { json: json_output });
+
+        if subcommand == Some("import") {
+            args.remove(0);
+            remove_json_flags(&mut args, &mut json_output);
+            let mut source = None;
+            let mut name = None;
+            let mut overwrite = false;
+            while let Some(arg) = args.first().cloned() {
+                args.remove(0);
+                match arg.as_str() {
+                    "--json" => json_output = true,
+                    "--overwrite" => overwrite = true,
+                    "--name" => {
+                        let Some(value) = args.first().cloned() else {
+                            bail!("profiles import --name requires a managed profile name");
+                        };
+                        args.remove(0);
+                        name = Some(value);
+                    }
+                    other if other.starts_with('-') => {
+                        bail!("unsupported profiles import option: {other}")
+                    }
+                    other => {
+                        if source.is_some() {
+                            bail!("profiles import accepts exactly one Firefox profile directory");
+                        }
+                        source = Some(other.to_string());
+                    }
+                }
+            }
+            let Some(source) = source else {
+                bail!("profiles import requires a Firefox profile directory");
+            };
+            let Some(name) = name else {
+                bail!("profiles import requires --name <managed-name>");
+            };
+            return Ok(LocalCommand::ProfilesImport {
+                json: json_output,
+                source,
+                name,
+                overwrite,
+            });
+        }
+
+        let extra = args
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "(missing)".to_string());
+        bail!("unsupported profiles command: {extra}; try `pire-browser profiles list`");
     }
 
     if command == "status" && matches!(session_target, SessionTarget::Default) {
@@ -2342,6 +2405,8 @@ Common commands:
   --session-name work open <url>  Explicit named Firefox profile spelling
   --profile Work open <url>       Managed Firefox profile alias
   profiles [--json]               List managed Firefox profiles
+  profiles import <dir> --name Work
+                                  Copy a Firefox profile into a managed profile
   session list                    List live Firefox sessions
   screenshot out.png              Capture screenshot evidence
   pdf page.pdf                    Capture an image-backed PDF of the page
@@ -3198,12 +3263,20 @@ numbers, internal spaces, `_`, `-`, and `.`.
 const PROFILES_HELP: &str = r##"
 Usage:
   pire-browser profiles [--json]
+  pire-browser profiles list [--json]
+  pire-browser profiles import <firefox-profile-dir> --name <managed-name> [--overwrite] [--json]
 
 Lists managed Firefox profiles known to pire-browser, including the default
 profile path, launch metadata, and any live session id. This is best-effort
 Firefox profile management under the local pire-browser data directory.
 Path-like `--profile` values are mapped to stable managed names rather than
 used as raw browser profile paths.
+
+`profiles import` copies an existing Firefox profile directory into a managed
+pire-browser profile. It never mutates the source profile and future changes in
+the source do not sync. Close Firefox before importing so lock files and
+partially-written profile data are not copied. Pass `--overwrite` to replace an
+existing stopped managed profile.
 "##;
 
 const SCREENSHOT_HELP: &str = r##"
@@ -4737,6 +4810,31 @@ mod tests {
             parse_cli_args(&s(&["profiles", "--json"])).unwrap(),
             LocalCommand::ProfilesList { json: true }
         );
+        assert_eq!(
+            parse_cli_args(&s(&["profiles", "list", "--json"])).unwrap(),
+            LocalCommand::ProfilesList { json: true }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "profiles",
+                "import",
+                "C:/Users/me/AppData/Roaming/Mozilla/Firefox/Profiles/abc.default",
+                "--name",
+                "Work",
+                "--overwrite",
+                "--json",
+            ]))
+            .unwrap(),
+            LocalCommand::ProfilesImport {
+                json: true,
+                source: "C:/Users/me/AppData/Roaming/Mozilla/Firefox/Profiles/abc.default"
+                    .to_string(),
+                name: "Work".to_string(),
+                overwrite: true,
+            }
+        );
+        assert!(parse_cli_args(&s(&["profiles", "import", "--name", "Work"])).is_err());
+        assert!(parse_cli_args(&s(&["profiles", "import", "profile-dir"])).is_err());
         assert!(parse_cli_args(&s(&["profiles", "show"])).is_err());
     }
 
@@ -5260,6 +5358,7 @@ mod tests {
         assert!(text.contains("close --all"));
         assert!(text.contains("--profile Work open <url>"));
         assert!(text.contains("profiles [--json]"));
+        assert!(text.contains("profiles import <dir> --name Work"));
         assert!(text.contains("set viewport"));
         assert!(text.contains("mouse move"));
         assert!(text.contains("swipe up 500"));
@@ -5567,6 +5666,9 @@ mod tests {
         assert!(help_text(Some("profiles"))
             .unwrap()
             .contains("managed Firefox profiles"));
+        assert!(help_text(Some("profiles"))
+            .unwrap()
+            .contains("profiles import <firefox-profile-dir>"));
         assert!(help_text(Some("action-policy"))
             .unwrap()
             .contains("PIRE_BROWSER_ACTION_POLICY"));

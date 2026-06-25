@@ -18,10 +18,13 @@ pire-browser --session-name work close`),
   p("<code>--session &lt;uuid&gt;</code> targets a strict live session id from <code>session list</code>. <code>--session &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION=&lt;name&gt;</code>, <code>--session-name &lt;name&gt;</code>, and <code>PIRE_BROWSER_SESSION_NAME=&lt;name&gt;</code> are named-profile aliases that may reuse or launch managed Firefox."),
   h2("Managed profiles", "managed-profiles"),
   code(`pire-browser profiles --json
+pire-browser profiles import /path/to/firefox-profile --name Work
+pire-browser profiles import /path/to/firefox-profile --name Work --overwrite
 pire-browser --profile Work open https://example.com
 PIRE_BROWSER_PROFILE=Work pire-browser snapshot -i
 pire-browser --profile ~/.myapp-profile open https://example.com`),
   p("<code>--profile &lt;name-or-path&gt;</code> reuses or launches a managed Firefox profile. Path-like values are mapped to stable managed Firefox profile names under the <code>pire-browser</code> data directory; they are not raw browser profile directories."),
+  p("<code>profiles import</code> copies an existing Firefox profile into a managed profile for login continuity. It never mutates the source profile and future source changes do not sync. Close Firefox before importing so lock files and partially-written data are not copied; use <code>--overwrite</code> only after closing the managed profile being replaced."),
   h2("State persistence", "state-persistence"),
   code(`pire-browser --session-name work state save ./.pire-state/app-work.json
 pire-browser --auto-connect state save ./.pire-state/app-work.json

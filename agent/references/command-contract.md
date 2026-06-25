@@ -33,6 +33,7 @@ Skill commands use:
 - `pire-browser update configure --mode off|notify|patch`
 - `pire-browser skills list`
 - `pire-browser skills cat core`
+- `pire-browser profiles import <firefox-profile-dir> --name <managed-name>`
 
 ## Browser Commands
 
@@ -55,6 +56,7 @@ Browser commands may auto-launch a managed Firefox session when safe. Read the r
 - Use `pire-browser set geo <lat> <lng>` for best-effort geolocation QA. It shims `navigator.geolocation` in managed pages but does not change Firefox's native permission prompt, OS location services, or IP-based location.
 - Use `pire-browser set credentials <username> <password>` for HTTP Basic auth on the active origin. It is session-memory only and does not echo the password.
 - Use `pire-browser auth save/login/list/show/delete` for selector-driven username/password form login profiles. Auth profiles live in a local AES-256-GCM encrypted auth vault; `list` and `show` never print passwords, and `login` decrypts locally before sending a one-shot profile payload to Firefox. Prefer `auth save --password-stdin` for shell use.
+- Use `pire-browser profiles import <firefox-profile-dir> --name <managed-name>` when the user already has Firefox login state that should become a managed pire-browser profile. This copies the source profile, never mutates it, and future source changes do not sync. If the command reports `profile_in_use`, ask the user to close Firefox before retrying.
 - Use `pire-browser cookies set --curl <file-or-cookie-data> --domain <domain>` to import user-approved cookies from Copy-as-cURL, JSON, or a bare Cookie header before navigation. Treat payloads as secrets and verify after navigating.
 - Use `pire-browser state save/load/list/show/inspect` for active-origin cookies and Web Storage. State files are plaintext by default; when `PIRE_BROWSER_ENCRYPTION_KEY` or `AGENT_BROWSER_ENCRYPTION_KEY` is set to a 64-character hex AES-256 key, saves write AES-256-GCM encrypted files and loads require the same key. Never print the key or cookie/storage values.
 - Use `pire-browser set offline on|off` for best-effort offline/reconnect QA. It cancels future managed-tab requests, but does not control `navigator.onLine`, service worker cache behavior, DNS, or socket state.

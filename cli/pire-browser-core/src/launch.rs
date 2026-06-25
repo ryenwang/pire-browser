@@ -49,6 +49,43 @@ pub struct ManagedProfileInfo {
     pub started_at: Option<u64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ProfileImportOptions {
+    pub source: PathBuf,
+    pub name: String,
+    pub overwrite: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileImportResult {
+    pub name: String,
+    pub source_path: PathBuf,
+    pub profile_path: PathBuf,
+    pub metadata_path: PathBuf,
+    pub copied_files: usize,
+    pub skipped_entries: usize,
+    pub overwritten: bool,
+    pub warnings: Vec<ProfileImportWarning>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileImportWarning {
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProfileImportMetadata {
+    source_path: PathBuf,
+    imported_at: u64,
+    copied_files: usize,
+    skipped_entries: usize,
+    overwritten: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExtensionLaunchMode {
     WebExt,
@@ -348,6 +385,115 @@ pub fn list_managed_profiles() -> Result<Vec<ManagedProfileInfo>> {
     Ok(profiles)
 }
 
+pub fn import_firefox_profile(options: ProfileImportOptions) -> Result<ProfileImportResult> {
+    ensure_runtime_dirs()?;
+    validate_profile_name(&options.name)?;
+    let source = options.source.canonicalize().with_context(|| {
+        format!(
+            "profile_import_not_found: could not read {}",
+            options.source.display()
+        )
+    })?;
+    if !source.is_dir() {
+        bail!(
+            "invalid_args: profile import source must be a Firefox profile directory: {}",
+            source.display()
+        );
+    }
+    validate_firefox_profile_source(&source)?;
+    if source_has_lock_file(&source) {
+        bail!(
+            "profile_in_use: source profile {} appears to be in use; close Firefox before importing it",
+            source.display()
+        );
+    }
+
+    let root = data_dir()?;
+    let profile_path = managed_profile_dir_from_data_dir(&root, &options.name);
+    let metadata_dir = profile_metadata_dir_from_data_dir(&root, &options.name);
+    let metadata_path = metadata_dir.join("profile-import.json");
+    if let Ok(existing_source) = profile_path.canonicalize() {
+        if existing_source == source {
+            bail!("invalid_args: profile import source and destination are the same directory");
+        }
+        if source.starts_with(&existing_source) {
+            bail!("invalid_args: profile import source must not be inside the managed destination");
+        }
+    }
+    if live_session_for_profile_name(&options.name)?.is_some()
+        || profile_processes_are_alive(&profile_path)
+    {
+        bail!(
+            "profile_in_use: managed profile `{}` is running; close it before importing over it",
+            options.name
+        );
+    }
+    let destination_exists = profile_path.exists() && dir_has_entries(&profile_path)?;
+    if destination_exists && !options.overwrite {
+        bail!(
+            "already_exists: managed profile `{}` already exists at {}; pass --overwrite to replace it",
+            options.name,
+            profile_path.display()
+        );
+    }
+    if destination_exists {
+        fs::remove_dir_all(&profile_path)
+            .with_context(|| format!("failed to remove {}", profile_path.display()))?;
+    }
+    if metadata_dir.exists() {
+        fs::remove_dir_all(&metadata_dir)
+            .with_context(|| format!("failed to remove {}", metadata_dir.display()))?;
+    }
+    fs::create_dir_all(&profile_path)
+        .with_context(|| format!("failed to create {}", profile_path.display()))?;
+    fs::create_dir_all(&metadata_dir)
+        .with_context(|| format!("failed to create {}", metadata_dir.display()))?;
+
+    let mut copied_files = 0usize;
+    let mut skipped_entries = 0usize;
+    copy_profile_tree(
+        &source,
+        &profile_path,
+        Path::new(""),
+        &mut copied_files,
+        &mut skipped_entries,
+    )?;
+    restrict_current_user_dir_best_effort(&profile_path);
+    restrict_current_user_dir_best_effort(&metadata_dir);
+    let metadata = ProfileImportMetadata {
+        source_path: source.clone(),
+        imported_at: now_ms(),
+        copied_files,
+        skipped_entries,
+        overwritten: destination_exists,
+    };
+    fs::write(&metadata_path, serde_json::to_vec_pretty(&metadata)?)
+        .with_context(|| format!("failed to write {}", metadata_path.display()))?;
+
+    let mut warnings = vec![ProfileImportWarning {
+        code: "PROFILE_IMPORT_COPY".to_string(),
+        message: "Imported profile data is a managed copy. Future changes in the original Firefox profile do not sync automatically.".to_string(),
+    }];
+    if skipped_entries > 0 {
+        warnings.push(ProfileImportWarning {
+            code: "PROFILE_IMPORT_SKIPPED_VOLATILE_ENTRIES".to_string(),
+            message: format!(
+                "Skipped {skipped_entries} lock/cache/runtime artifact(s) while copying the Firefox profile."
+            ),
+        });
+    }
+    Ok(ProfileImportResult {
+        name: options.name,
+        source_path: source,
+        profile_path,
+        metadata_path,
+        copied_files,
+        skipped_entries,
+        overwritten: destination_exists,
+        warnings,
+    })
+}
+
 fn collect_profile_names_from_dir(dir: &Path, names: &mut BTreeSet<String>) -> Result<()> {
     if !dir.exists() {
         return Ok(());
@@ -364,6 +510,127 @@ fn collect_profile_names_from_dir(dir: &Path, names: &mut BTreeSet<String>) -> R
         }
     }
     Ok(())
+}
+
+fn validate_firefox_profile_source(source: &Path) -> Result<()> {
+    let markers = [
+        "prefs.js",
+        "cookies.sqlite",
+        "places.sqlite",
+        "logins.json",
+        "storage",
+    ];
+    if markers.iter().any(|marker| source.join(marker).exists()) {
+        return Ok(());
+    }
+    bail!(
+        "invalid_args: {} does not look like a Firefox profile directory; expected prefs.js, cookies.sqlite, places.sqlite, logins.json, or storage/",
+        source.display()
+    )
+}
+
+fn source_has_lock_file(source: &Path) -> bool {
+    ["parent.lock", ".parentlock", "lock"]
+        .iter()
+        .any(|name| source.join(name).exists())
+}
+
+fn dir_has_entries(dir: &Path) -> Result<bool> {
+    Ok(fs::read_dir(dir)
+        .with_context(|| format!("failed to read {}", dir.display()))?
+        .next()
+        .is_some())
+}
+
+fn copy_profile_tree(
+    source_root: &Path,
+    destination_root: &Path,
+    relative: &Path,
+    copied_files: &mut usize,
+    skipped_entries: &mut usize,
+) -> Result<()> {
+    let source = source_root.join(relative);
+    let destination = destination_root.join(relative);
+    fs::create_dir_all(&destination)
+        .with_context(|| format!("failed to create {}", destination.display()))?;
+    for entry in
+        fs::read_dir(&source).with_context(|| format!("failed to read {}", source.display()))?
+    {
+        let entry =
+            entry.with_context(|| format!("failed to read entry in {}", source.display()))?;
+        let file_name = entry.file_name();
+        let child_relative = relative.join(&file_name);
+        let metadata = fs::symlink_metadata(entry.path())
+            .with_context(|| format!("failed to inspect {}", entry.path().display()))?;
+        if should_skip_profile_import_entry(&child_relative, metadata.is_dir())
+            || metadata.file_type().is_symlink()
+        {
+            *skipped_entries += 1;
+            continue;
+        }
+        if metadata.is_dir() {
+            copy_profile_tree(
+                source_root,
+                destination_root,
+                &child_relative,
+                copied_files,
+                skipped_entries,
+            )?;
+        } else if metadata.is_file() {
+            let target = destination_root.join(&child_relative);
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+            fs::copy(entry.path(), &target).with_context(|| {
+                format!(
+                    "failed to copy {} to {}; close Firefox and retry if the source profile is running",
+                    entry.path().display(),
+                    target.display()
+                )
+            })?;
+            *copied_files += 1;
+        } else {
+            *skipped_entries += 1;
+        }
+    }
+    Ok(())
+}
+
+fn should_skip_profile_import_entry(relative: &Path, is_dir: bool) -> bool {
+    let Some(file_name) = relative.file_name().and_then(|name| name.to_str()) else {
+        return true;
+    };
+    let lower = file_name.to_ascii_lowercase();
+    if matches!(
+        lower.as_str(),
+        "parent.lock"
+            | ".parentlock"
+            | "lock"
+            | "compatibility.ini"
+            | "sessioncheckpoints.json"
+            | "xulstore.json.tmp"
+    ) {
+        return true;
+    }
+    if is_dir
+        && matches!(
+            lower.as_str(),
+            "cache2"
+                | "startupcache"
+                | "jumplistcache"
+                | "crashes"
+                | "minidumps"
+                | "datareporting"
+                | "saved-telemetry-pings"
+                | "shader-cache"
+                | "thumbnails"
+                | "safebrowsing"
+        )
+    {
+        return true;
+    }
+    false
 }
 
 pub fn firefox_startup_policy_status() -> Result<bool> {
@@ -1171,6 +1438,59 @@ mod tests {
         assert!(body.contains("extensions.autoDisableScopes"));
         assert!(body.contains("xpinstall.signatures.required"));
         assert!(body.contains("browser.download.dir"));
+    }
+
+    #[test]
+    fn recognizes_firefox_profile_sources_and_locks() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        fs::create_dir_all(&source).unwrap();
+        assert!(validate_firefox_profile_source(&source).is_err());
+
+        fs::write(source.join("prefs.js"), b"user_pref();").unwrap();
+        assert!(validate_firefox_profile_source(&source).is_ok());
+        assert!(!source_has_lock_file(&source));
+
+        fs::write(source.join("parent.lock"), b"locked").unwrap();
+        assert!(source_has_lock_file(&source));
+    }
+
+    #[test]
+    fn copies_firefox_profile_tree_without_volatile_artifacts() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        let destination = root.path().join("destination");
+        fs::create_dir_all(source.join("storage/default/app")).unwrap();
+        fs::create_dir_all(source.join("cache2")).unwrap();
+        fs::create_dir_all(source.join("jumpListCache")).unwrap();
+        fs::write(source.join("prefs.js"), b"prefs").unwrap();
+        fs::write(source.join("cookies.sqlite"), b"cookies").unwrap();
+        fs::write(source.join("parent.lock"), b"locked").unwrap();
+        fs::write(source.join("storage/default/app/state.sqlite"), b"state").unwrap();
+        fs::write(source.join("cache2/ignored"), b"cache").unwrap();
+        fs::write(source.join("jumpListCache/ignored"), b"jump").unwrap();
+
+        let mut copied = 0usize;
+        let mut skipped = 0usize;
+        copy_profile_tree(
+            &source,
+            &destination,
+            Path::new(""),
+            &mut copied,
+            &mut skipped,
+        )
+        .unwrap();
+
+        assert_eq!(copied, 3);
+        assert_eq!(skipped, 3);
+        assert_eq!(fs::read(destination.join("prefs.js")).unwrap(), b"prefs");
+        assert_eq!(
+            fs::read(destination.join("storage/default/app/state.sqlite")).unwrap(),
+            b"state"
+        );
+        assert!(!destination.join("parent.lock").exists());
+        assert!(!destination.join("cache2").exists());
+        assert!(!destination.join("jumpListCache").exists());
     }
 
     #[test]

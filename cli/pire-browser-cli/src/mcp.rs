@@ -144,7 +144,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "state",
             bits: PROFILE_STATE,
-            description: "Cookies, storage, auth helpers, plaintext or opt-in encrypted state files, sessions, profiles, downloads/uploads, clipboard, and skills.",
+            description: "Cookies, storage, auth helpers, plaintext or opt-in encrypted state files, sessions, profiles including Firefox profile import, downloads/uploads, clipboard, and skills.",
         },
         McpProfileDescriptor {
             name: "debug",
@@ -181,6 +181,7 @@ fn tool_profile_bits(name: &str) -> u16 {
             PROFILE_CORE | PROFILE_TABS
         }
         "pire_browser_profiles_list" => PROFILE_CORE | PROFILE_STATE | PROFILE_DEBUG,
+        "pire_browser_profiles_import" => PROFILE_STATE | PROFILE_DEBUG,
         "pire_browser_skills_get_core" => PROFILE_CORE | PROFILE_STATE,
         "pire_browser_status" => PROFILE_CORE | PROFILE_DEBUG,
         "pire_browser_launch"
@@ -428,7 +429,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_record_start/status/stop for screenshot-sequence evidence, not native WebM video or live streaming. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade for safe package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_record_start/status/stop for screenshot-sequence evidence, not native WebM video or live streaming. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade for safe package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, Firefox profile import, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -1621,6 +1622,16 @@ fn tool_command_args(
         }
         (_, "pire_browser_profiles_list") => {
             args.push("profiles".to_string());
+        }
+        (_, "pire_browser_profiles_import") => {
+            args.push("profiles".to_string());
+            args.push("import".to_string());
+            args.push(required_string(object, "source")?);
+            args.push("--name".to_string());
+            args.push(required_string(object, "name")?);
+            if optional_bool(object, "overwrite")? {
+                args.push("--overwrite".to_string());
+            }
         }
         (_, "pire_browser_tabs_list") => {
             args.push("tabs".to_string());
@@ -3642,6 +3653,23 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_profiles_import",
+            "Import Firefox profile",
+            "Copy an existing Firefox profile directory into a stopped managed pire-browser profile.",
+            tool_schema(
+                vec![
+                    ("source", string_prop("Firefox profile directory to copy.")),
+                    ("name", string_prop("Managed pire-browser profile name to create or replace.")),
+                    (
+                        "overwrite",
+                        bool_prop("Replace an existing stopped managed profile with the same name."),
+                    ),
+                ],
+                &["source", "name"],
+            ),
+            false,
+        ),
+        tool(
             "pire_browser_tabs_list",
             "List tabs",
             "List managed Firefox tabs in the active session.",
@@ -3874,6 +3902,7 @@ fn is_open_world_tool(name: &str) -> bool {
             | "pire_browser_session_attach"
             | "pire_browser_session_cleanup"
             | "pire_browser_profiles_list"
+            | "pire_browser_profiles_import"
             | "pire_browser_skills_get_core"
     )
 }
@@ -4286,6 +4315,9 @@ mod tests {
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_profiles_list"));
+        assert!(!tools
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_profiles_import"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_skills_get_core"));
@@ -4629,6 +4661,7 @@ mod tests {
             "pire_browser_session_attach",
             "pire_browser_session_cleanup",
             "pire_browser_profiles_list",
+            "pire_browser_profiles_import",
             "pire_browser_skills_get_core",
         ] {
             let tool = tool_named(&tools, name);
@@ -6240,6 +6273,25 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "profiles"]);
+
+        let args = tool_command_args(
+            "pire_browser_profiles_import",
+            &json!({ "source": "C:/Users/me/profile", "name": "Work", "overwrite": true }),
+            McpToolsProfile::State,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "profiles",
+                "import",
+                "C:/Users/me/profile",
+                "--name",
+                "Work",
+                "--overwrite"
+            ]
+        );
 
         let args = tool_command_args(
             "pire_browser_tab_new",

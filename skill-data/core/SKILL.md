@@ -533,6 +533,8 @@ List and target managed profiles or live sessions:
 
 ```bash
 pire-browser profiles --json
+pire-browser profiles import /path/to/firefox-profile --name Work
+pire-browser profiles import /path/to/firefox-profile --name Work --overwrite
 pire-browser --profile Work open https://example.com
 PIRE_BROWSER_PROFILE=Work pire-browser snapshot -i
 pire-browser session list --json
@@ -544,6 +546,8 @@ PIRE_BROWSER_SESSION=agent1 pire-browser snapshot -i
 pire-browser close
 pire-browser close --all
 ```
+
+Use `profiles import <firefox-profile-dir> --name <managed-name>` when a user already has Firefox login state to reuse. It copies the source Firefox profile into managed pire-browser state, never mutates the original, and future source changes do not sync. Ask the user to close Firefox before import if lock files are present. Use `--overwrite` only after closing the managed profile being replaced.
 
 Use `--profile <name-or-path>` for reusable managed Firefox profiles. `PIRE_BROWSER_PROFILE=<name-or-path>` supplies the same default when no explicit profile/session flag is present. Path-like profile values are mapped to stable managed Firefox names, not raw browser profile directories. Use `--session <uuid>` only when targeting a strict live id from `session list`. `--session <name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION=<name>`, and `PIRE_BROWSER_SESSION_NAME=<name>` remain available as named-profile aliases.
 
@@ -562,7 +566,7 @@ pire-browser --session work state load ./.pire-state/app-ready.json
 pire-browser state clear app-ready
 ```
 
-State files contain active-origin cookies and Web Storage. They are plaintext by default for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY` or the agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY` to a 64-character hex AES-256 key when saved state should be AES-256-GCM encrypted; keep that key out of logs and shell history. `state list`, `state show`, and `state inspect` are metadata-only and do not print cookie or storage values. Bare state names resolve inside `.pire-state`; explicit paths remain supported for save/load/show/rename.
+State files contain active-origin cookies and Web Storage. They are plaintext by default for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY` or the agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY` to a 64-character hex AES-256 key when saved state should be AES-256-GCM encrypted; keep that key out of logs and shell history. `state list`, `state show`, and `state inspect` are metadata-only and do not print cookie or storage values. Bare state names resolve inside `.pire-state`; explicit paths remain supported for save/load/show/rename. Use managed profiles or `profiles import` when IndexedDB, service workers, cross-origin SSO state, or full Firefox profile continuity matters.
 `--auto-connect state save <path>` saves from the selected live managed Firefox session. `--state <path> <command>` preloads the saved active-origin state before the requested browser command; follow it with `snapshot -i` if the page is noisy or still loading.
 
 Use the packaged schema for autocomplete when creating project configs:

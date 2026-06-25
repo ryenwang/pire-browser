@@ -47,9 +47,9 @@ use pire_browser_core::install_status::{
 };
 use pire_browser_core::ipc::send_pipe_request;
 use pire_browser_core::launch::{
-    annotate_session_profile_names, launch_firefox, launch_result_text, list_managed_profiles,
-    live_session_for_profile_name, validate_profile_name, LaunchOptions, LaunchResult,
-    ManagedProfileInfo,
+    annotate_session_profile_names, import_firefox_profile, launch_firefox, launch_result_text,
+    list_managed_profiles, live_session_for_profile_name, validate_profile_name, LaunchOptions,
+    LaunchResult, ManagedProfileInfo, ProfileImportOptions, ProfileImportResult,
 };
 use pire_browser_core::protocol::{RpcRequest, RpcResponse};
 use pire_browser_core::redaction::{redact_json_value, redact_text};
@@ -235,6 +235,14 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         }
         LocalCommand::ProfilesList { json } => {
             handle_profiles_list(json)?;
+        }
+        LocalCommand::ProfilesImport {
+            json,
+            source,
+            name,
+            overwrite,
+        } => {
+            handle_profiles_import(source, name, overwrite, json)?;
         }
         LocalCommand::Status {
             json,
@@ -2015,6 +2023,30 @@ fn handle_profiles_list(json_output: bool) -> Result<()> {
     Ok(())
 }
 
+fn handle_profiles_import(
+    source: String,
+    name: String,
+    overwrite: bool,
+    json_output: bool,
+) -> Result<()> {
+    let result = import_firefox_profile(ProfileImportOptions {
+        source: PathBuf::from(source),
+        name,
+        overwrite,
+    })?;
+    let text = profile_import_text(&result);
+    if json_output {
+        let mut value = serde_json::to_value(&result)?;
+        if let Some(object) = value.as_object_mut() {
+            object.insert("text".to_string(), json!(text));
+        }
+        println!("{}", format_cli_result(&json!({ "profile": value }), true)?);
+    } else {
+        println!("{text}");
+    }
+    Ok(())
+}
+
 fn profiles_text(profiles: &[ManagedProfileInfo]) -> String {
     if profiles.is_empty() {
         return "No managed Firefox profiles found.".to_string();
@@ -2040,6 +2072,25 @@ fn profiles_text(profiles: &[ManagedProfileInfo]) -> String {
             last_url,
             profile.path.display()
         ));
+    }
+    lines.join("\n")
+}
+
+fn profile_import_text(result: &ProfileImportResult) -> String {
+    let action = if result.overwritten {
+        "Imported and replaced"
+    } else {
+        "Imported"
+    };
+    let mut lines = vec![
+        format!("{action} Firefox profile as `{}`.", result.name),
+        format!("Source: {}", result.source_path.display()),
+        format!("Managed profile: {}", result.profile_path.display()),
+        format!("Copied files: {}", result.copied_files),
+        format!("Skipped entries: {}", result.skipped_entries),
+    ];
+    for warning in &result.warnings {
+        lines.push(format!("Warning [{}]: {}", warning.code, warning.message));
     }
     lines.join("\n")
 }
