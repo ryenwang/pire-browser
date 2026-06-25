@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -94,9 +94,19 @@ export function migratePiSettingsForKnownLegacySources(settingsPath, { requireNp
     return false;
   });
   const removedShim = removeLegacyPireBrowserExtensionShim(settingsPath);
+  const quarantined = quarantineLegacyManagedInstallDirs(settingsPath);
 
-  if (removed.length === 0 && !removedShim.removed) {
-    return { changed: false, removed, reason: "no_legacy_source", settingsPath };
+  if (removed.length === 0 && !removedShim.removed && quarantined.quarantinedDirs.length === 0) {
+    return {
+      changed: false,
+      removed,
+      removedShims: [],
+      quarantinedDirs: [],
+      directoryBackupPaths: [],
+      ...(quarantined.quarantineErrors.length > 0 ? { quarantineErrors: quarantined.quarantineErrors } : {}),
+      reason: quarantined.quarantineErrors.length > 0 ? "legacy_directory_quarantine_failed" : "no_legacy_source",
+      settingsPath,
+    };
   }
 
   let backupPath = null;
@@ -113,6 +123,9 @@ export function migratePiSettingsForKnownLegacySources(settingsPath, { requireNp
     changed: true,
     removed,
     removedShims: removedShim.removed ? [removedShim.shimPath] : [],
+    quarantinedDirs: quarantined.quarantinedDirs,
+    directoryBackupPaths: quarantined.directoryBackupPaths,
+    ...(quarantined.quarantineErrors.length > 0 ? { quarantineErrors: quarantined.quarantineErrors } : {}),
     reason: "migrated",
     settingsPath,
     ...(backupPath ? { backupPath } : {}),
@@ -200,12 +213,7 @@ function isLocalPireBrowserSource(source, settingsPath) {
   const candidatePath = resolve(baseDir, raw);
   const packageRoot = localPackageRoot(candidatePath);
   if (!packageRoot) return false;
-  try {
-    const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
-    return packageJson?.name === PACKAGE_NAME && existsSync(join(packageRoot, PACKAGE_EXTENSION_PATH));
-  } catch {
-    return false;
-  }
+  return isPireBrowserPackageRoot(packageRoot);
 }
 
 function localPackageRoot(candidatePath) {
@@ -217,6 +225,52 @@ function localPackageRoot(candidatePath) {
     return null;
   }
   return null;
+}
+
+function isPireBrowserPackageRoot(packageRoot) {
+  try {
+    const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+    return packageJson?.name === PACKAGE_NAME && existsSync(join(packageRoot, PACKAGE_EXTENSION_PATH));
+  } catch {
+    return false;
+  }
+}
+
+function quarantineLegacyManagedInstallDirs(settingsPath) {
+  const quarantinedDirs = [];
+  const directoryBackupPaths = [];
+  const quarantineErrors = [];
+
+  for (const packageRoot of legacyManagedInstallDirs(settingsPath)) {
+    if (!existsSync(packageRoot)) continue;
+    if (!isPireBrowserPackageRoot(packageRoot)) continue;
+
+    const backupPath = nextBackupPath(packageRoot);
+    try {
+      renameSync(packageRoot, backupPath);
+      quarantinedDirs.push(packageRoot);
+      directoryBackupPaths.push(backupPath);
+    } catch (error) {
+      quarantineErrors.push(`${packageRoot}: ${error.message}`);
+    }
+  }
+
+  return { quarantinedDirs, directoryBackupPaths, quarantineErrors };
+}
+
+function legacyManagedInstallDirs(settingsPath) {
+  const settingsRoot = dirname(settingsPath);
+  return [join(settingsRoot, "git", "github.com", "ryenwang", "pire-browser")];
+}
+
+function nextBackupPath(path) {
+  const base = `${path}.pire-browser-migration.bak`;
+  if (!existsSync(base)) return base;
+  for (let index = 1; index < 1000; index += 1) {
+    const candidate = `${base}.${index}`;
+    if (!existsSync(candidate)) return candidate;
+  }
+  throw new Error(`Could not find available backup path for ${path}`);
 }
 
 function removeLegacyPireBrowserExtensionShim(settingsPath) {

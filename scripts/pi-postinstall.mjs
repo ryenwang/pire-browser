@@ -28,7 +28,7 @@ function scheduleMigrationIfNeeded() {
       "pire-browser: scheduled Pi package reconciliation for npm:pire-browser."
     );
     console.log(
-      "pire-browser: this removes known legacy GitHub/local duplicate pire-browser sources after Pi records the npm install."
+      "pire-browser: this removes known legacy GitHub/local duplicate pire-browser sources and quarantines old managed GitHub checkouts after Pi records the npm install."
     );
   }
 }

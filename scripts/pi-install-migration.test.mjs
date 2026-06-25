@@ -166,6 +166,94 @@ export default async function(pi) {
     expect(existsSync(`${shimPath}.pire-browser-migration.bak`)).toBe(true);
   });
 
+  it("quarantines verified legacy Pi-managed GitHub package directories", () => {
+    const root = tempDir();
+    const settingsPath = join(root, ".pi", "agent", "settings.json");
+    const legacyPackage = join(root, ".pi", "agent", "git", "github.com", "ryenwang", "pire-browser");
+    const backupPath = `${legacyPackage}.pire-browser-migration.bak`;
+    mkdirSync(join(root, ".pi", "agent"), { recursive: true });
+    mkdirSync(join(legacyPackage, "pi", "extensions"), { recursive: true });
+    writeFileSync(settingsPath, `${JSON.stringify({ packages: [{ source: "npm:pire-browser" }] })}\n`);
+    writeFileSync(join(legacyPackage, "package.json"), `${JSON.stringify({ name: "pire-browser" })}\n`);
+    writeFileSync(join(legacyPackage, "pi", "extensions", "pire-browser.ts"), "");
+
+    const result = migratePiSettingsForKnownLegacySources(settingsPath);
+
+    expect(result).toMatchObject({
+      changed: true,
+      removed: [],
+      quarantinedDirs: [legacyPackage],
+      directoryBackupPaths: [backupPath],
+      reason: "migrated",
+    });
+    expect(existsSync(legacyPackage)).toBe(false);
+    expect(existsSync(backupPath)).toBe(true);
+  });
+
+  it("uses a numbered quarantine backup when the first legacy backup exists", () => {
+    const root = tempDir();
+    const settingsPath = join(root, ".pi", "agent", "settings.json");
+    const legacyPackage = join(root, ".pi", "agent", "git", "github.com", "ryenwang", "pire-browser");
+    const existingBackup = `${legacyPackage}.pire-browser-migration.bak`;
+    const backupPath = `${existingBackup}.1`;
+    mkdirSync(join(root, ".pi", "agent"), { recursive: true });
+    mkdirSync(join(legacyPackage, "pi", "extensions"), { recursive: true });
+    mkdirSync(existingBackup, { recursive: true });
+    writeFileSync(settingsPath, `${JSON.stringify({ packages: [{ source: "npm:pire-browser" }] })}\n`);
+    writeFileSync(join(legacyPackage, "package.json"), `${JSON.stringify({ name: "pire-browser" })}\n`);
+    writeFileSync(join(legacyPackage, "pi", "extensions", "pire-browser.ts"), "");
+
+    const result = migratePiSettingsForKnownLegacySources(settingsPath);
+
+    expect(result).toMatchObject({
+      changed: true,
+      quarantinedDirs: [legacyPackage],
+      directoryBackupPaths: [backupPath],
+    });
+    expect(existsSync(existingBackup)).toBe(true);
+    expect(existsSync(backupPath)).toBe(true);
+  });
+
+  it("does not quarantine legacy GitHub package directories before the npm source exists", () => {
+    const root = tempDir();
+    const settingsPath = join(root, ".pi", "agent", "settings.json");
+    const legacyPackage = join(root, ".pi", "agent", "git", "github.com", "ryenwang", "pire-browser");
+    mkdirSync(join(root, ".pi", "agent"), { recursive: true });
+    mkdirSync(join(legacyPackage, "pi", "extensions"), { recursive: true });
+    writeFileSync(settingsPath, `${JSON.stringify({ packages: [{ source: "git:github.com/ryenwang/pire-browser" }] })}\n`);
+    writeFileSync(join(legacyPackage, "package.json"), `${JSON.stringify({ name: "pire-browser" })}\n`);
+    writeFileSync(join(legacyPackage, "pi", "extensions", "pire-browser.ts"), "");
+
+    const result = migratePiSettingsForKnownLegacySources(settingsPath);
+
+    expect(result).toMatchObject({
+      changed: false,
+      reason: "missing_npm_source",
+    });
+    expect(existsSync(legacyPackage)).toBe(true);
+  });
+
+  it("does not quarantine arbitrary directories in the legacy managed location", () => {
+    const root = tempDir();
+    const settingsPath = join(root, ".pi", "agent", "settings.json");
+    const legacyPackage = join(root, ".pi", "agent", "git", "github.com", "ryenwang", "pire-browser");
+    mkdirSync(join(root, ".pi", "agent"), { recursive: true });
+    mkdirSync(join(legacyPackage, "pi", "extensions"), { recursive: true });
+    writeFileSync(settingsPath, `${JSON.stringify({ packages: [{ source: "npm:pire-browser" }] })}\n`);
+    writeFileSync(join(legacyPackage, "package.json"), `${JSON.stringify({ name: "not-pire-browser" })}\n`);
+    writeFileSync(join(legacyPackage, "pi", "extensions", "pire-browser.ts"), "");
+
+    const result = migratePiSettingsForKnownLegacySources(settingsPath);
+
+    expect(result).toMatchObject({
+      changed: false,
+      removed: [],
+      quarantinedDirs: [],
+      reason: "no_legacy_source",
+    });
+    expect(existsSync(legacyPackage)).toBe(true);
+  });
+
   it("does not remove arbitrary user extension files with the same basename", () => {
     const root = tempDir();
     const settingsPath = join(root, ".pi", "agent", "settings.json");
@@ -222,6 +310,7 @@ export default async function(pi) {
     expect(shouldRetryMigrationReason("missing_settings")).toBe(true);
     expect(shouldRetryMigrationReason("invalid_settings: partial JSON")).toBe(true);
     expect(shouldRetryMigrationReason("missing_npm_source")).toBe(true);
+    expect(shouldRetryMigrationReason("legacy_directory_quarantine_failed")).toBe(false);
     expect(shouldRetryMigrationReason("no_legacy_source")).toBe(false);
   });
 });

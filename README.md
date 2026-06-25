@@ -37,7 +37,7 @@ Install the public Pi package:
 pi install npm:pire-browser
 ```
 
-If you previously installed from GitHub, from a local checkout, or through an old Windows ZIP shim, the npm installer reconciles known duplicate `pire-browser` sources after Pi records the npm install. If Pi reports a duplicate `pire-browser` tool immediately after installation, wait a moment and rerun `pi`. If the conflict remains, remove the older source shown in Pi's error, then reinstall the npm package:
+If you previously installed from GitHub, from a local checkout, or through an old Windows ZIP shim, the npm installer reconciles known duplicate `pire-browser` sources after Pi records the npm install. It removes old settings entries, removes old direct extension shims, and quarantines the old Pi-managed GitHub checkout after verifying it is the `pire-browser` package. If Pi reports a duplicate `pire-browser` tool immediately after installation, wait a moment and rerun `pi`. If the conflict remains, remove the older source shown in Pi's error, then reinstall the npm package:
 
 ```bash
 pi remove git:github.com/ryenwang/pire-browser
