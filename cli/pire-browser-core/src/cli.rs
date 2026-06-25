@@ -2382,6 +2382,7 @@ Common commands:
                                   Open a React app with agent-browser-style opt-in
   react tree                      Show best-effort React component tree
   react inspect r1                Inspect React props, hooks, state, and source
+  react suspense                  Show best-effort React Suspense boundaries
   highlight '#submit'             Draw a visible overlay around a target
   device "iPhone 14"              Best-effort device viewport preset
   set viewport 1280 720           Approximate the active page viewport
@@ -2982,6 +2983,8 @@ Usage:
   pire-browser react inspect r1
   pire-browser react inspect '@e1'
   pire-browser react inspect '#root button'
+  pire-browser react suspense
+  pire-browser react suspense --only-dynamic
 
 Inspects React components in the active Firefox tab. The command names mirror
 agent-browser's React workflow, but the Firefox backend is best-effort: it reads
@@ -2993,8 +2996,10 @@ Use `react tree` to get fresh component ids such as r1, then inspect a current
 id with `react inspect r1`. Component ids are derived from the current page tree,
 so rerun `react tree` after navigation, route changes, or large DOM updates.
 `react inspect` also accepts refs from `snapshot -i` or CSS selectors and
-inspects the nearest owning React component. Render recording and Suspense detail
-commands are not implemented yet.
+inspects the nearest owning React component. Use `react suspense` for best-effort
+Suspense boundary state from DOM-attached Fiber data; `--only-dynamic` shows
+currently fallback/dehydrated boundaries. Render recording is not implemented
+yet.
 "##;
 
 const HIGHLIGHT_HELP: &str = r##"
@@ -3452,8 +3457,8 @@ installed skill guidance. Add comma-separated profiles when needed: `network`,
 lower-level launch, install/repair, safe upgrade, typed batch, doctor/activity
 diagnostics, console/errors, dialogs, highlight, and vitals. Agent-browser-style
 action/tab/frame aliases are available alongside older compatible names. The
-`react` profile exposes best-effort Firefox React Fiber tree/inspect tools and
-vitals; render profiling and Suspense detail commands are not implemented yet.
+`react` profile exposes best-effort Firefox React Fiber tree/inspect/Suspense
+tools and vitals; render profiling is not implemented yet.
 Use `all` for every currently implemented MCP tool. The server defaults to MCP
 protocol 2025-11-25 and accepts older supported client protocol versions during
 initialization. Tool discovery is paginated for large profiles.
@@ -5541,8 +5546,13 @@ mod tests {
         assert!(help_text(Some("react"))
             .unwrap()
             .contains("pire-browser react inspect r1"));
+        assert!(help_text(Some("react"))
+            .unwrap()
+            .contains("pire-browser react suspense --only-dynamic"));
         assert!(help_text(Some("react")).unwrap().contains("best-effort"));
+        assert!(help_text(Some("react")).unwrap().contains("Render recording is not implemented"));
         assert!(help_text(None).unwrap().contains("react tree"));
+        assert!(help_text(None).unwrap().contains("react suspense"));
         assert!(help_text(Some("highlight"))
             .unwrap()
             .contains("Draws a visible overlay"));

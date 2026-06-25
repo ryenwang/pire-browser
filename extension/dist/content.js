@@ -123,6 +123,8 @@
             return Promise.resolve(reactTree(message.selector, message.maxDepth));
         if (message.type === "react_inspect")
             return Promise.resolve(reactInspect(String(message.target ?? ""), message.locator));
+        if (message.type === "react_suspense")
+            return Promise.resolve(reactSuspense(Boolean(message.onlyDynamic)));
         if (message.type === "eval")
             return Promise.resolve(evalScript(String(message.script ?? "")));
         if (message.type === "pushstate")
@@ -1864,6 +1866,33 @@
             dialogs: drainDialogs(),
         };
     }
+    function reactSuspense(onlyDynamic) {
+        const result = collectReactSuspenseBoundaries(undefined);
+        if ("error" in result)
+            return { ...result, dialogs: drainDialogs() };
+        const dynamicBoundaryCount = result.boundaries.filter((boundary) => boundary.dynamic).length;
+        const visible = onlyDynamic ? result.boundaries.filter((boundary) => boundary.dynamic) : result.boundaries;
+        const lines = [`React Suspense boundaries for ${location.href} (best effort)`];
+        for (const boundary of visible) {
+            const indent = "  ".repeat(Math.min(8, boundary.depth));
+            lines.push(`${indent}${boundary.id} ${reactSuspenseBoundarySummary(boundary)}`);
+        }
+        if (!visible.length) {
+            lines.push(onlyDynamic ? "No currently dynamic Suspense boundaries found." : "No Suspense boundaries found.");
+        }
+        return {
+            text: lines.join("\n"),
+            url: location.href,
+            title: document.title,
+            boundaries: visible.map(publicReactSuspenseBoundary),
+            boundaryCount: result.boundaries.length,
+            dynamicBoundaryCount,
+            onlyDynamic,
+            devtoolsHookPresent: result.devtoolsHookPresent,
+            warnings: [reactBestEffortWarning()],
+            dialogs: drainDialogs(),
+        };
+    }
     function collectReactComponents(selector) {
         const root = snapshotRoot(selector);
         if ("error" in root)
@@ -1927,6 +1956,77 @@
         ordered.forEach((node, index) => (node.id = `r${index + 1}`));
         return { nodes: ordered, devtoolsHookPresent: reactDevtoolsHookPresent() };
     }
+    function collectReactSuspenseBoundaries(selector) {
+        const root = snapshotRoot(selector);
+        if ("error" in root)
+            return { error: { code: "not_found", message: root.error } };
+        const fibers = new Set();
+        const fiberOrder = new Map();
+        const domByFiber = new Map();
+        let sawReactFiber = false;
+        let order = 0;
+        for (const element of reactCandidateElements(root.root)) {
+            const fiber = reactFiberForElement(element);
+            let current = fiber;
+            while (current) {
+                sawReactFiber = true;
+                if (isReactSuspenseFiber(current)) {
+                    if (!fiberOrder.has(current))
+                        fiberOrder.set(current, order++);
+                    fibers.add(current);
+                    if (!domByFiber.has(current))
+                        domByFiber.set(current, element);
+                }
+                current = current.return ?? null;
+            }
+        }
+        if (!sawReactFiber) {
+            return {
+                error: {
+                    code: "ReactNotFound",
+                    message: "No React Fiber data was found in the current page. Open a React app, wait for it to render, then retry. This Firefox backend uses best-effort Fiber expandos and does not install the full React DevTools hook.",
+                },
+            };
+        }
+        const boundaries = Array.from(fibers)
+            .sort((left, right) => (fiberOrder.get(left) ?? 0) - (fiberOrder.get(right) ?? 0))
+            .map((fiber, index) => {
+            const state = reactSuspenseState(fiber);
+            return {
+                id: `s${index + 1}`,
+                fiber,
+                name: reactSuspenseFiberName(fiber),
+                children: [],
+                domElement: domByFiber.get(fiber),
+                order: fiberOrder.get(fiber) ?? index,
+                depth: 0,
+                state,
+                dynamic: state !== "primary",
+                fallback: reactSuspenseFallback(fiber),
+            };
+        });
+        const boundaryByFiber = new Map(boundaries.map((boundary) => [boundary.fiber, boundary]));
+        for (const boundary of boundaries) {
+            let parentFiber = boundary.fiber.return ?? null;
+            while (parentFiber && !boundaryByFiber.has(parentFiber))
+                parentFiber = parentFiber.return ?? null;
+            const parent = parentFiber ? boundaryByFiber.get(parentFiber) : undefined;
+            if (parent && parent !== boundary) {
+                boundary.parent = parent;
+                parent.children.push(boundary);
+            }
+        }
+        const roots = boundaries.filter((boundary) => !boundary.parent).sort(compareReactSuspenseBoundaries);
+        const ordered = [];
+        const visit = (boundary, depth) => {
+            boundary.depth = depth;
+            ordered.push(boundary);
+            boundary.children.sort(compareReactSuspenseBoundaries).forEach((child) => visit(child, depth + 1));
+        };
+        roots.forEach((boundary) => visit(boundary, 0));
+        ordered.forEach((boundary, index) => (boundary.id = `s${index + 1}`));
+        return { boundaries: ordered, devtoolsHookPresent: reactDevtoolsHookPresent() };
+    }
     function reactCandidateElements(root) {
         const base = root instanceof Document ? root.documentElement : root instanceof Element ? root : null;
         if (!base)
@@ -1972,8 +2072,51 @@
             return Boolean(type.displayName || type.render || type.type);
         return false;
     }
+    function isReactSuspenseFiber(fiber) {
+        if (fiber.tag === 13 || fiber.tag === 19)
+            return true;
+        const typeText = reactTypeName(fiber.elementType ?? fiber.type) || reactTypeName(fiber.type);
+        if (typeText === "Suspense" || typeText === "SuspenseList")
+            return true;
+        const rawType = String(fiber.elementType ?? fiber.type ?? "");
+        return /react\.suspense_list|react\.suspenselist|react\.suspense/i.test(rawType);
+    }
     function reactFiberDisplayName(fiber) {
         return reactTypeName(fiber.elementType ?? fiber.type) || reactTypeName(fiber.type) || "Anonymous";
+    }
+    function reactSuspenseFiberName(fiber) {
+        if (fiber.tag === 13)
+            return "Suspense";
+        if (fiber.tag === 19)
+            return "SuspenseList";
+        const typeText = reactTypeName(fiber.elementType ?? fiber.type) || reactTypeName(fiber.type);
+        if (typeText)
+            return typeText;
+        const rawType = String(fiber.elementType ?? fiber.type ?? "");
+        if (/react\.suspense_list|react\.suspenselist/i.test(rawType))
+            return "SuspenseList";
+        if (/react\.suspense/i.test(rawType))
+            return "Suspense";
+        return "Suspense";
+    }
+    function reactSuspenseState(fiber) {
+        const state = fiber.memoizedState;
+        if (!state)
+            return "primary";
+        if (typeof state === "object" && state.dehydrated)
+            return "dehydrated";
+        return "fallback";
+    }
+    function reactSuspenseFallback(fiber) {
+        const props = fiber.memoizedProps;
+        if (!props || typeof props !== "object" || !("fallback" in props))
+            return null;
+        try {
+            return previewReactValue(props.fallback);
+        }
+        catch {
+            return "[unreadable]";
+        }
     }
     function reactTypeName(type) {
         if (!type)
@@ -1995,6 +2138,9 @@
     function compareReactNodes(left, right) {
         return left.order - right.order || left.name.localeCompare(right.name);
     }
+    function compareReactSuspenseBoundaries(left, right) {
+        return left.order - right.order || left.name.localeCompare(right.name);
+    }
     function reactNodeSummary(node) {
         const props = objectKeysPreview(node.fiber.memoizedProps);
         const state = reactHooks(node.fiber).length ? " hooks" : node.fiber.memoizedState != null ? " state" : "";
@@ -2011,6 +2157,24 @@
             hasState: node.fiber.memoizedState != null,
             hookCount: reactHooks(node.fiber).length,
             selector: node.domElement ? shortSelectorFor(node.domElement) : null,
+        };
+    }
+    function reactSuspenseBoundarySummary(boundary) {
+        const status = boundary.dynamic ? "dynamic" : "static";
+        const selector = boundary.domElement ? ` selector=${shortSelectorFor(boundary.domElement)}` : "";
+        const fallback = boundary.fallback !== null ? ` fallback=${truncateText(valueToText(boundary.fallback), 80)}` : "";
+        return `${boundary.name} ${status} state=${boundary.state}${selector}${fallback}`;
+    }
+    function publicReactSuspenseBoundary(boundary) {
+        return {
+            id: boundary.id,
+            name: boundary.name,
+            parentId: boundary.parent?.id ?? null,
+            depth: boundary.depth,
+            state: boundary.state,
+            dynamic: boundary.dynamic,
+            fallback: boundary.fallback,
+            selector: boundary.domElement ? shortSelectorFor(boundary.domElement) : null,
         };
     }
     function inspectReactNode(node) {
@@ -2140,7 +2304,10 @@
         return Boolean(pageWindow.__REACT_DEVTOOLS_GLOBAL_HOOK__);
     }
     function reactBestEffortWarning() {
-        return bestEffortWarning("react", "React commands use best-effort Firefox Fiber introspection. Full React DevTools hook features such as render profiling and Suspense details are not implemented.");
+        return bestEffortWarning("react", "React commands use best-effort Firefox Fiber introspection. Render profiling requires full React DevTools integration and is not implemented; Suspense detection is limited to DOM-attached Fiber data visible to Firefox content scripts.");
+    }
+    function truncateText(value, max) {
+        return value.length > max ? `${value.slice(0, Math.max(0, max - 3))}...` : value;
     }
     function pageObject(value) {
         return (value.wrappedJSObject ?? value);

@@ -389,6 +389,8 @@ pire-browser react tree
 pire-browser react tree --selector "#root" --depth 3
 pire-browser react inspect r1
 pire-browser react inspect '@e1'
+pire-browser react suspense
+pire-browser react suspense --only-dynamic
 pire-browser vitals
 pire-browser vitals https://app.example.com/dashboard
 pire-browser vitals --json

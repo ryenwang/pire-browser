@@ -936,6 +936,7 @@ describe("pire-browser command foundations", () => {
       ["vitals", "https://example.com"],
       ["react", "tree"],
       ["react", "inspect", "r1"],
+      ["react", "suspense", "--only-dynamic"],
       ["get", "title"],
       ["is", "visible", "@e1"],
       ["eval", "document.title"],
@@ -1186,29 +1187,38 @@ describe("command shape parity", () => {
     expect(body).toContain("visualRecordingsByTabId.delete(tabId)");
   });
 
-  it("supports best-effort React tree and inspect diagnostics", () => {
+  it("supports best-effort React tree, inspect, and Suspense diagnostics", () => {
     const body = background();
     expect(body).toContain('case "react":');
     expect(body).toContain("return reactCommand(rest);");
     expect(body).toContain("async function reactCommand");
     expect(body).toContain('type: "react_tree"');
     expect(body).toContain('type: "react_inspect"');
+    expect(body).toContain('type: "react_suspense"');
     expect(body).toContain("parseReactTreeArgs");
     expect(body).toContain("parseReactInspectArgs");
+    expect(body).toContain("parseReactSuspenseArgs");
+    expect(body).toContain('subcommand === "suspense"');
+    expect(body).toContain('arg === "--only-dynamic"');
     expect(body).toContain('firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers", "--enable"])');
     expect(body).toContain("open --enable react-devtools is accepted");
-    expect(body).toContain('subcommand === "renders" || subcommand === "suspense"');
+    expect(body).toContain('if (subcommand === "renders")');
 
     const contentBody = content();
     expect(contentBody).toContain('message.type === "react_tree"');
     expect(contentBody).toContain('message.type === "react_inspect"');
+    expect(contentBody).toContain('message.type === "react_suspense"');
     expect(contentBody).toContain("function collectReactComponents");
+    expect(contentBody).toContain("function collectReactSuspenseBoundaries");
+    expect(contentBody).toContain("function isReactSuspenseFiber");
+    expect(contentBody).toContain("function reactSuspenseState");
     expect(contentBody).toContain("__reactFiber$");
     expect(contentBody).toContain("__reactInternalInstance$");
     expect(contentBody).toContain("function reactFiberDisplayName");
     expect(contentBody).toContain("function reactHooks");
     expect(contentBody).toContain("ReactNotFound");
     expect(contentBody).toContain("best-effort Firefox Fiber introspection");
+    expect(contentBody).toContain("Suspense detection is limited to DOM-attached Fiber data");
   });
 
   it("supports text-based snapshot diffs", () => {

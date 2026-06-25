@@ -417,7 +417,7 @@
             case "vitals":
                 return firstPositionalArg(args.slice(1), []) ? "navigate" : "get";
             case "react":
-                return subcommand === "tree" || subcommand === "inspect" ? "get" : null;
+                return subcommand === "tree" || subcommand === "inspect" || subcommand === "suspense" ? "get" : null;
             case "network":
                 if (subcommand === "requests")
                     return args.includes("--clear") ? "state" : "get";
@@ -3768,10 +3768,19 @@
             const result = normalizeContentResponse(response);
             return "error" in result ? result : { ...result, tab };
         }
-        if (subcommand === "renders" || subcommand === "suspense") {
-            return notAvailable(`react ${subcommand}`, `react ${subcommand} requires full React DevTools integration and is not supported by the Firefox WebExtension backend yet.`);
+        if (subcommand === "suspense") {
+            const parsed = parseReactSuspenseArgs(rest);
+            if ("error" in parsed)
+                return parsed;
+            const tab = await targetTab();
+            const response = await sendFrame(tab.tabId, targetFrameIdForTab(tab.tabId), { type: "react_suspense", onlyDynamic: parsed.onlyDynamic }, { staleOnFrameRoutingError: true });
+            const result = normalizeContentResponse(response);
+            return "error" in result ? result : { ...result, tab };
         }
-        return { error: { code: "invalid_args", message: "react requires tree or inspect <fiberId|target>" } };
+        if (subcommand === "renders") {
+            return notAvailable(`react ${subcommand}`, "react renders requires full React DevTools render profiling integration and is not supported by the Firefox WebExtension backend yet.");
+        }
+        return { error: { code: "invalid_args", message: "react requires tree, inspect <fiberId|target>, or suspense" } };
     }
     function parseReactTreeArgs(args) {
         let selector;
@@ -3840,6 +3849,19 @@
         if ("error" in locator)
             return { error: { code: locator.error.code, message: locator.error.message } };
         return { target: actualTarget, locator: locator.locator, frameId: locator.frameId };
+    }
+    function parseReactSuspenseArgs(args) {
+        let onlyDynamic = false;
+        for (const arg of args) {
+            if (arg === "--json")
+                continue;
+            if (arg === "--only-dynamic") {
+                onlyDynamic = true;
+                continue;
+            }
+            return { error: { code: "invalid_args", message: `Unsupported react suspense option: ${arg}` } };
+        }
+        return { onlyDynamic };
     }
     async function networkCommand(args) {
         const [subcommand, ...rest] = args;

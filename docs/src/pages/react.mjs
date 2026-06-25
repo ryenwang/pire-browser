@@ -6,9 +6,11 @@ const reactBlocks = [
 pire-browser react tree
 pire-browser react tree --selector "#root" --depth 3
 pire-browser react inspect r1
-pire-browser react inspect '@e1'`),
-  p("<code>react tree</code> and <code>react inspect</code> mirror agent-browser's React command shape using best-effort Firefox Fiber data attached to DOM nodes. Run <code>react tree</code> after route changes or large DOM updates before reusing an <code>rN</code> component id."),
-  p("<code>open --enable react-devtools</code> is accepted for command-shape compatibility and reports a warning: the Firefox backend does not install the full React DevTools hook. Render profiling and Suspense detail commands are not implemented yet."),
+pire-browser react inspect '@e1'
+pire-browser react suspense
+pire-browser react suspense --only-dynamic`),
+  p("<code>react tree</code>, <code>react inspect</code>, and <code>react suspense</code> mirror agent-browser's React command shape using best-effort Firefox Fiber data attached to DOM nodes. Run <code>react tree</code> after route changes or large DOM updates before reusing an <code>rN</code> component id."),
+  p("<code>open --enable react-devtools</code> is accepted for command-shape compatibility and reports a warning: the Firefox backend does not install the full React DevTools hook. <code>react suspense --only-dynamic</code> focuses on currently fallback/dehydrated Suspense boundaries visible through DOM-attached Fiber data. Render profiling is not implemented yet."),
   h2("Web Vitals", "web-vitals"),
   code(`pire-browser vitals
 pire-browser vitals https://app.example.com/dashboard
