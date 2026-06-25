@@ -603,6 +603,7 @@ The server defaults to MCP protocol `2025-11-25` and accepts older supported cli
 - Use managed Firefox profiles for normal browser login state.
 - Use `auth save --password-stdin` when saving a selector-driven auth helper to avoid shell history.
 - Use `state save` and `state load` for active-origin cookies and Web Storage.
+- Set `PIRE_BROWSER_ENCRYPTION_KEY` or `AGENT_BROWSER_ENCRYPTION_KEY` to a 64-character hex key when saved state files should be encrypted.
 - Do not commit `.pire-state/` files.
 
 ### Manual browser login
@@ -718,7 +719,7 @@ pire-browser --state ./.pire-state/app-work.json open https://app.example.com/da
 pire-browser --session-name review state load --require-inspected ./.pire-state/app-work.json
 ```
 
-State files are plaintext and contain active-origin cookies, `localStorage`, and `sessionStorage`. They do not include saved passwords, full browser profiles, service workers, IndexedDB, or cross-origin SSO state.
+State files contain active-origin cookies, `localStorage`, and `sessionStorage`. By default they are plaintext for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY`, or the agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY`, to a 64-character hex AES-256 key before `state save` to write encrypted AES-256-GCM files and before `state load` to decrypt them. `state list`, `state show`, and non-recording `state inspect` remain metadata-only and do not print cookie or storage values. State files do not include saved passwords, full browser profiles, service workers, IndexedDB, or cross-origin SSO state.
 
 ## Security
 

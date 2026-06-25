@@ -14,6 +14,7 @@ authors = ["pire-browser contributors"]
 
 [workspace.dependencies]
 anyhow = "1.0.100"
+aes-gcm = "0.10.3"
 base64 = "0.22.1"
 clap = { version = "4.5.51", features = ["derive"] }
 crossbeam-channel = "0.5.15"

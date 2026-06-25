@@ -298,11 +298,13 @@ pire-browser state inspect --record ./.pire-state/example.com-review.json
 pire-browser state load --require-inspected ./.pire-state/example.com-review.json
 pire-browser state load --no-require-inspected ./.pire-state/example.com-review.json`),
   code(`PIRE_BROWSER_REQUIRE_INSPECTED_STATE=1 pire-browser state load ./.pire-state/app.json
+PIRE_BROWSER_ENCRYPTION_KEY=<64-hex-key> pire-browser state save ./.pire-state/app-work.json
+AGENT_BROWSER_ENCRYPTION_KEY=<64-hex-key> pire-browser state load ./.pire-state/app-work.json
 pire-browser --auto-connect state save ./.pire-state/app-work.json
 pire-browser --state ./.pire-state/app-work.json open https://example.com/dashboard
 pire-browser --session-name work state save ./.pire-state/app-work.json
 pire-browser --session-name review state load --require-inspected ./.pire-state/app-work.json`),
-  p("State files are plaintext active-origin cookies, localStorage, and sessionStorage. <code>state show</code> and <code>state inspect</code> are metadata-only. State files do not include saved passwords, full browser profiles, service workers, IndexedDB, or cross-origin SSO state."),
+  p("State files contain active-origin cookies, localStorage, and sessionStorage. They are plaintext by default for compatibility. Set <code>PIRE_BROWSER_ENCRYPTION_KEY</code> or the agent-browser-compatible <code>AGENT_BROWSER_ENCRYPTION_KEY</code> to a 64-character hex AES-256 key to write/load AES-256-GCM encrypted state files. <code>state list</code>, <code>state show</code>, and <code>state inspect</code> are metadata-only and do not print cookie or storage values. State files do not include saved passwords, full browser profiles, service workers, IndexedDB, or cross-origin SSO state."),
 
   h2("Sessions", "sessions"),
   statusNote("namedSessions"),

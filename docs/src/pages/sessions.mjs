@@ -25,8 +25,11 @@ pire-browser --profile ~/.myapp-profile open https://example.com`),
   h2("State persistence", "state-persistence"),
   code(`pire-browser --session-name work state save ./.pire-state/app-work.json
 pire-browser --auto-connect state save ./.pire-state/app-work.json
+PIRE_BROWSER_ENCRYPTION_KEY=<64-hex-key> pire-browser --session-name work state save ./.pire-state/app-work.json
+AGENT_BROWSER_ENCRYPTION_KEY=<64-hex-key> pire-browser --session-name review state load ./.pire-state/app-work.json
 pire-browser --state ./.pire-state/app-work.json open https://app.example.com/dashboard
 pire-browser --session-name review state load --require-inspected ./.pire-state/app-work.json`),
+  p("State files are plaintext by default for compatibility. Set <code>PIRE_BROWSER_ENCRYPTION_KEY</code> or <code>AGENT_BROWSER_ENCRYPTION_KEY</code> to a 64-character hex AES-256 key to save and load encrypted active-origin state files."),
 ];
 
 export default page({

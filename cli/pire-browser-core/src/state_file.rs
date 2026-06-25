@@ -1,8 +1,12 @@
 use std::collections::BTreeMap;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use aes_gcm::aead::{Aead, AeadCore, OsRng};
+use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+use anyhow::{anyhow, bail, Context, Result};
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -13,6 +17,10 @@ pub const MAX_STATE_FILE_BYTES: u64 = 50 * 1024 * 1024;
 pub const STATE_SCHEMA_VERSION: u8 = 1;
 pub const STATE_TOOL: &str = "pire-browser";
 pub const STATE_KIND: &str = "active-origin-state";
+pub const ENCRYPTED_STATE_KIND: &str = "encrypted-active-origin-state";
+pub const STATE_ENCRYPTION_ALGORITHM: &str = "AES-256-GCM";
+pub const PIRE_STATE_ENCRYPTION_KEY_ENV: &str = "PIRE_BROWSER_ENCRYPTION_KEY";
+pub const AGENT_BROWSER_STATE_ENCRYPTION_KEY_ENV: &str = "AGENT_BROWSER_ENCRYPTION_KEY";
 pub const STATE_RECEIPT_SCHEMA_VERSION: u8 = 1;
 pub const STATE_RECEIPT_KIND: &str = "state-inspection-receipt";
 pub const STATE_RECEIPT_TTL_MS: u64 = 24 * 60 * 60 * 1000;
@@ -23,6 +31,54 @@ pub struct ActiveOriginStateFileRead {
     pub bytes: u64,
     pub sha256: String,
     pub canonical_path: String,
+    pub encryption: StateFileEncryptionInfo,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveOriginStateFileWrite {
+    pub bytes: u64,
+    pub encryption: StateFileEncryptionInfo,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveOriginStateFileSummary {
+    pub schema_version: u8,
+    pub kind: String,
+    pub created_at: u64,
+    pub source: ActiveOriginStateSource,
+    pub counts: StateFileCounts,
+    pub bytes: u64,
+    pub encryption: StateFileEncryptionInfo,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateFileEncryptionInfo {
+    pub encrypted: bool,
+    pub algorithm: Option<String>,
+}
+
+impl StateFileEncryptionInfo {
+    pub fn plaintext() -> Self {
+        Self {
+            encrypted: false,
+            algorithm: None,
+        }
+    }
+
+    pub fn encrypted(algorithm: impl Into<String>) -> Self {
+        Self {
+            encrypted: true,
+            algorithm: Some(algorithm.into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StateFileCounts {
+    pub cookies: usize,
+    pub local_storage_keys: usize,
+    pub session_storage_keys: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +112,32 @@ pub struct ActiveOriginStateSource {
     pub session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct EncryptedActiveOriginStateFile {
+    schema_version: u8,
+    tool: String,
+    kind: String,
+    created_at: u64,
+    source: ActiveOriginStateSource,
+    counts: StateFileCounts,
+    encryption: EncryptedStateMetadata,
+    ciphertext: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct EncryptedStateMetadata {
+    algorithm: String,
+    nonce: String,
+    plaintext_sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateEncryptionKey {
+    bytes: [u8; 32],
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -109,6 +191,14 @@ impl ActiveOriginStateFile {
 
     pub fn session_storage_key_count(&self) -> usize {
         self.session_storage.len()
+    }
+
+    pub fn counts(&self) -> StateFileCounts {
+        StateFileCounts {
+            cookies: self.cookie_count(),
+            local_storage_keys: self.local_storage_key_count(),
+            session_storage_keys: self.session_storage_key_count(),
+        }
     }
 }
 
@@ -175,6 +265,15 @@ pub fn read_state_file_from_bytes(
     canonical_path: String,
     raw: Vec<u8>,
 ) -> Result<ActiveOriginStateFileRead> {
+    read_state_file_from_bytes_with_key(path, canonical_path, raw, state_encryption_key_from_env()?)
+}
+
+pub fn read_state_file_from_bytes_with_key(
+    path: &Path,
+    canonical_path: String,
+    raw: Vec<u8>,
+    encryption_key: Option<StateEncryptionKey>,
+) -> Result<ActiveOriginStateFileRead> {
     let bytes = raw.len() as u64;
     if bytes > MAX_STATE_FILE_BYTES {
         bail!(
@@ -190,6 +289,18 @@ pub fn read_state_file_from_bytes(
             path.display()
         )
     })?;
+    if state_file_json_kind(&body).as_deref() == Some(ENCRYPTED_STATE_KIND) {
+        let encrypted: EncryptedActiveOriginStateFile = serde_json::from_str(&body)
+            .context("invalid_args: failed to parse encrypted state file JSON")?;
+        let state = decrypt_state_file(path, &encrypted, encryption_key.as_ref())?;
+        return Ok(ActiveOriginStateFileRead {
+            state,
+            bytes,
+            sha256,
+            canonical_path,
+            encryption: StateFileEncryptionInfo::encrypted(STATE_ENCRYPTION_ALGORITHM),
+        });
+    }
     let mut state: ActiveOriginStateFile =
         serde_json::from_str(&body).context("invalid_args: failed to parse state file JSON")?;
     state.source.url = display_url_without_query_or_fragment(&state.source.url);
@@ -199,10 +310,22 @@ pub fn read_state_file_from_bytes(
         bytes,
         sha256,
         canonical_path,
+        encryption: StateFileEncryptionInfo::plaintext(),
     })
 }
 
-pub fn write_state_file(path: &Path, state: &ActiveOriginStateFile) -> Result<u64> {
+pub fn write_state_file(
+    path: &Path,
+    state: &ActiveOriginStateFile,
+) -> Result<ActiveOriginStateFileWrite> {
+    write_state_file_with_key(path, state, state_encryption_key_from_env()?)
+}
+
+pub fn write_state_file_with_key(
+    path: &Path,
+    state: &ActiveOriginStateFile,
+    encryption_key: Option<StateEncryptionKey>,
+) -> Result<ActiveOriginStateFileWrite> {
     let mut state = state.clone();
     state.source.url = display_url_without_query_or_fragment(&state.source.url);
     state.validate()?;
@@ -213,8 +336,226 @@ pub fn write_state_file(path: &Path, state: &ActiveOriginStateFile) -> Result<u6
         }
     }
     let body = serde_json::to_vec_pretty(&state)?;
+    let (body, encryption) = if let Some(key) = encryption_key {
+        let encrypted = encrypt_state_file(&state, &body, &key)?;
+        (
+            serde_json::to_vec_pretty(&encrypted)?,
+            StateFileEncryptionInfo::encrypted(STATE_ENCRYPTION_ALGORITHM),
+        )
+    } else {
+        (body, StateFileEncryptionInfo::plaintext())
+    };
     fs::write(path, &body).with_context(|| format!("failed to write {}", path.display()))?;
-    Ok(body.len() as u64)
+    Ok(ActiveOriginStateFileWrite {
+        bytes: body.len() as u64,
+        encryption,
+    })
+}
+
+pub fn read_state_file_summary(path: &Path) -> Result<ActiveOriginStateFileSummary> {
+    let metadata = fs::metadata(path)
+        .with_context(|| format!("invalid_args: failed to read state file {}", path.display()))?;
+    if !metadata.is_file() {
+        bail!(
+            "invalid_args: state file path is not a file: {}",
+            path.display()
+        );
+    }
+    let raw = fs::read(path)
+        .with_context(|| format!("invalid_args: failed to read state file {}", path.display()))?;
+    read_state_file_summary_from_bytes(path, raw)
+}
+
+pub fn read_state_file_summary_from_bytes(
+    path: &Path,
+    raw: Vec<u8>,
+) -> Result<ActiveOriginStateFileSummary> {
+    let bytes = raw.len() as u64;
+    if bytes > MAX_STATE_FILE_BYTES {
+        bail!(
+            "invalid_args: state file is too large ({} bytes); maximum supported size is {} bytes",
+            bytes,
+            MAX_STATE_FILE_BYTES
+        );
+    }
+    let body = String::from_utf8(raw).with_context(|| {
+        format!(
+            "invalid_args: state file is not valid UTF-8: {}",
+            path.display()
+        )
+    })?;
+    if state_file_json_kind(&body).as_deref() == Some(ENCRYPTED_STATE_KIND) {
+        let mut encrypted: EncryptedActiveOriginStateFile = serde_json::from_str(&body)
+            .context("invalid_args: failed to parse encrypted state file JSON")?;
+        encrypted.source.url = display_url_without_query_or_fragment(&encrypted.source.url);
+        validate_encrypted_state_envelope(&encrypted)?;
+        return Ok(ActiveOriginStateFileSummary {
+            schema_version: encrypted.schema_version,
+            kind: encrypted.kind,
+            created_at: encrypted.created_at,
+            source: encrypted.source,
+            counts: encrypted.counts,
+            bytes,
+            encryption: StateFileEncryptionInfo::encrypted(encrypted.encryption.algorithm),
+        });
+    }
+    let read = read_state_file_from_bytes_with_key(path, String::new(), body.into_bytes(), None)?;
+    let counts = read.state.counts();
+    Ok(ActiveOriginStateFileSummary {
+        schema_version: read.state.schema_version,
+        kind: read.state.kind,
+        created_at: read.state.created_at,
+        counts,
+        source: read.state.source,
+        bytes,
+        encryption: read.encryption,
+    })
+}
+
+pub fn state_encryption_key_from_env() -> Result<Option<StateEncryptionKey>> {
+    for name in [
+        PIRE_STATE_ENCRYPTION_KEY_ENV,
+        AGENT_BROWSER_STATE_ENCRYPTION_KEY_ENV,
+    ] {
+        if let Ok(value) = env::var(name) {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            return parse_state_encryption_key(trimmed)
+                .with_context(|| {
+                    format!("invalid_args: {name} must be a 64-character hex AES-256 key")
+                })
+                .map(Some);
+        }
+    }
+    Ok(None)
+}
+
+pub fn parse_state_encryption_key(value: &str) -> Result<StateEncryptionKey> {
+    let decoded = hex::decode(value.trim())
+        .context("invalid_args: encryption key must be 64 hex characters")?;
+    if decoded.len() != 32 {
+        bail!("invalid_args: encryption key must decode to 32 bytes");
+    }
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&decoded);
+    Ok(StateEncryptionKey { bytes })
+}
+
+fn encrypt_state_file(
+    state: &ActiveOriginStateFile,
+    plaintext: &[u8],
+    key: &StateEncryptionKey,
+) -> Result<EncryptedActiveOriginStateFile> {
+    let cipher = Aes256Gcm::new_from_slice(&key.bytes)
+        .context("invalid_args: failed to initialize state encryption key")?;
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let ciphertext = cipher
+        .encrypt(&nonce, plaintext)
+        .map_err(|_| anyhow!("failed to encrypt state file"))?;
+    Ok(EncryptedActiveOriginStateFile {
+        schema_version: STATE_SCHEMA_VERSION,
+        tool: STATE_TOOL.to_string(),
+        kind: ENCRYPTED_STATE_KIND.to_string(),
+        created_at: state.created_at,
+        source: state.source.clone(),
+        counts: state.counts(),
+        encryption: EncryptedStateMetadata {
+            algorithm: STATE_ENCRYPTION_ALGORITHM.to_string(),
+            nonce: base64::engine::general_purpose::STANDARD.encode(nonce),
+            plaintext_sha256: sha256_hex(plaintext),
+        },
+        ciphertext: base64::engine::general_purpose::STANDARD.encode(ciphertext),
+    })
+}
+
+fn decrypt_state_file(
+    path: &Path,
+    encrypted: &EncryptedActiveOriginStateFile,
+    key: Option<&StateEncryptionKey>,
+) -> Result<ActiveOriginStateFile> {
+    validate_encrypted_state_envelope(encrypted)?;
+    let key = key.with_context(|| {
+        format!(
+            "invalid_args: encrypted state file {} requires {PIRE_STATE_ENCRYPTION_KEY_ENV} or {AGENT_BROWSER_STATE_ENCRYPTION_KEY_ENV}",
+            path.display()
+        )
+    })?;
+    let nonce = base64::engine::general_purpose::STANDARD
+        .decode(&encrypted.encryption.nonce)
+        .context("invalid_args: encrypted state file nonce is invalid base64")?;
+    if nonce.len() != 12 {
+        bail!("invalid_args: encrypted state file nonce must be 12 bytes");
+    }
+    let ciphertext = base64::engine::general_purpose::STANDARD
+        .decode(&encrypted.ciphertext)
+        .context("invalid_args: encrypted state file ciphertext is invalid base64")?;
+    let cipher = Aes256Gcm::new_from_slice(&key.bytes)
+        .context("invalid_args: failed to initialize state encryption key")?;
+    let plaintext = cipher
+        .decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref())
+        .map_err(|_| {
+            anyhow!(
+                "invalid_args: failed to decrypt encrypted state file {}; check the encryption key",
+                path.display()
+            )
+        })?;
+    let plaintext_sha256 = sha256_hex(&plaintext);
+    if plaintext_sha256 != encrypted.encryption.plaintext_sha256 {
+        bail!("invalid_args: encrypted state file plaintext checksum did not match");
+    }
+    let mut state: ActiveOriginStateFile = serde_json::from_slice(&plaintext)
+        .context("invalid_args: decrypted state file JSON is invalid")?;
+    state.source.url = display_url_without_query_or_fragment(&state.source.url);
+    state.validate()?;
+    if state.created_at != encrypted.created_at
+        || state.source != encrypted.source
+        || state.counts() != encrypted.counts
+    {
+        bail!("invalid_args: encrypted state file metadata did not match decrypted state");
+    }
+    Ok(state)
+}
+
+fn validate_encrypted_state_envelope(encrypted: &EncryptedActiveOriginStateFile) -> Result<()> {
+    if encrypted.schema_version != STATE_SCHEMA_VERSION {
+        bail!(
+            "invalid_args: unsupported encrypted state file schemaVersion {}; expected {}",
+            encrypted.schema_version,
+            STATE_SCHEMA_VERSION
+        );
+    }
+    if encrypted.tool != STATE_TOOL {
+        bail!("invalid_args: encrypted state file tool must be `{STATE_TOOL}`");
+    }
+    if encrypted.kind != ENCRYPTED_STATE_KIND {
+        bail!("invalid_args: encrypted state file kind must be `{ENCRYPTED_STATE_KIND}`");
+    }
+    if encrypted.encryption.algorithm != STATE_ENCRYPTION_ALGORITHM {
+        bail!(
+            "invalid_args: unsupported state file encryption algorithm {}; expected {}",
+            encrypted.encryption.algorithm,
+            STATE_ENCRYPTION_ALGORITHM
+        );
+    }
+    validate_http_url(&encrypted.source.url)?;
+    validate_origin(&encrypted.source.origin)?;
+    if origin_from_http_url(&encrypted.source.url).as_deref()
+        != Some(encrypted.source.origin.as_str())
+    {
+        bail!("invalid_args: encrypted state file source.origin must match source.url");
+    }
+    Ok(())
+}
+
+fn state_file_json_kind(body: &str) -> Option<String> {
+    serde_json::from_str::<Value>(body).ok().and_then(|value| {
+        value
+            .get("kind")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    })
 }
 
 pub fn display_url_without_query_or_fragment(url: &str) -> String {
@@ -583,6 +924,146 @@ mod tests {
         assert!(body.contains("https://example.test/path"));
         assert!(!body.contains("query-secret"));
         assert!(!body.contains("fragment-secret"));
+    }
+
+    #[test]
+    fn parse_state_encryption_key_requires_32_byte_hex() {
+        assert!(parse_state_encryption_key(
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+        )
+        .is_ok());
+        assert!(parse_state_encryption_key("not-hex")
+            .unwrap_err()
+            .to_string()
+            .contains("hex"));
+        assert!(parse_state_encryption_key("00")
+            .unwrap_err()
+            .to_string()
+            .contains("32 bytes"));
+    }
+
+    #[test]
+    fn encrypted_state_file_roundtrips_and_hides_values() {
+        let file = NamedTempFile::new().unwrap();
+        let key = parse_state_encryption_key(
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        )
+        .unwrap();
+        let state = ActiveOriginStateFile {
+            schema_version: 1,
+            tool: "pire-browser".to_string(),
+            kind: "active-origin-state".to_string(),
+            created_at: 7,
+            source: ActiveOriginStateSource {
+                url: "https://example.test/path?code=query-secret#fragment-secret".to_string(),
+                origin: "https://example.test".to_string(),
+                session_id: Some("session-1".to_string()),
+                profile_name: Some("work".to_string()),
+            },
+            cookies: vec![json!({ "name": "sid", "value": "raw-cookie-secret" })],
+            local_storage: [("local-token".to_string(), "raw-local-secret".to_string())].into(),
+            session_storage: [(
+                "session-token".to_string(),
+                "raw-session-secret".to_string(),
+            )]
+            .into(),
+        };
+
+        let write = write_state_file_with_key(file.path(), &state, Some(key.clone())).unwrap();
+
+        assert!(write.encryption.encrypted);
+        assert_eq!(
+            write.encryption.algorithm.as_deref(),
+            Some(STATE_ENCRYPTION_ALGORITHM)
+        );
+        let body = fs::read_to_string(file.path()).unwrap();
+        assert!(body.contains(ENCRYPTED_STATE_KIND));
+        for sentinel in [
+            "raw-cookie-secret",
+            "raw-local-secret",
+            "raw-session-secret",
+            "query-secret",
+            "fragment-secret",
+        ] {
+            assert!(!body.contains(sentinel), "{sentinel}");
+        }
+
+        let summary = read_state_file_summary(file.path()).unwrap();
+        assert!(summary.encryption.encrypted);
+        assert_eq!(summary.counts.cookies, 1);
+        assert_eq!(summary.counts.local_storage_keys, 1);
+        assert_eq!(summary.counts.session_storage_keys, 1);
+        assert_eq!(summary.source.url, "https://example.test/path");
+
+        let encrypted_raw = fs::read(file.path()).unwrap();
+        let read = read_state_file_from_bytes_with_key(
+            file.path(),
+            "state.json".to_string(),
+            encrypted_raw,
+            Some(key),
+        )
+        .unwrap();
+        assert!(read.encryption.encrypted);
+        assert_eq!(read.state.source.url, "https://example.test/path");
+        assert_eq!(read.state.cookies[0]["value"], "raw-cookie-secret");
+        assert_eq!(read.state.local_storage["local-token"], "raw-local-secret");
+        assert_eq!(
+            read.state.session_storage["session-token"],
+            "raw-session-secret"
+        );
+    }
+
+    #[test]
+    fn encrypted_state_file_requires_matching_key_without_leaking_values() {
+        let file = NamedTempFile::new().unwrap();
+        let key = parse_state_encryption_key(
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        )
+        .unwrap();
+        let wrong_key = parse_state_encryption_key(
+            "1f1e1d1c1b1a191817161514131211100f0e0d0c0b0a09080706050403020100",
+        )
+        .unwrap();
+        let state = ActiveOriginStateFile {
+            schema_version: 1,
+            tool: "pire-browser".to_string(),
+            kind: "active-origin-state".to_string(),
+            created_at: 7,
+            source: ActiveOriginStateSource {
+                url: "https://example.test/path".to_string(),
+                origin: "https://example.test".to_string(),
+                session_id: None,
+                profile_name: None,
+            },
+            cookies: vec![json!({ "name": "sid", "value": "raw-cookie-secret" })],
+            local_storage: BTreeMap::new(),
+            session_storage: BTreeMap::new(),
+        };
+        write_state_file_with_key(file.path(), &state, Some(key)).unwrap();
+        let raw = fs::read(file.path()).unwrap();
+
+        let missing = read_state_file_from_bytes_with_key(
+            file.path(),
+            "state.json".to_string(),
+            raw.clone(),
+            None,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(missing.contains(PIRE_STATE_ENCRYPTION_KEY_ENV));
+        assert!(missing.contains(AGENT_BROWSER_STATE_ENCRYPTION_KEY_ENV));
+        assert!(!missing.contains("raw-cookie-secret"));
+
+        let wrong = read_state_file_from_bytes_with_key(
+            file.path(),
+            "state.json".to_string(),
+            raw,
+            Some(wrong_key),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(wrong.contains("failed to decrypt"));
+        assert!(!wrong.contains("raw-cookie-secret"));
     }
 
     #[test]

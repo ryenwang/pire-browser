@@ -3122,11 +3122,16 @@ Usage:
   pire-browser --auto-connect state save ./.pire-state/example.com-work.json
   pire-browser --state ./.pire-state/example.com-work.json open https://example.com/dashboard
 
-Saves, loads, lists, renames, clears, or inspects plaintext active-origin state
-for the targeted Firefox page: cookies, localStorage, and sessionStorage. State
-files contain secrets and should not be committed or shared. `state show` and
-`state inspect` are metadata-only; they do not print cookie or storage values.
-Management commands operate on `.pire-state` for bare names.
+Saves, loads, lists, renames, clears, or inspects active-origin state for the
+targeted Firefox page: cookies, localStorage, and sessionStorage. State files
+contain secrets and should not be committed or shared. `state show`,
+`state inspect`, and `state list` are metadata-only; they do not print cookie or
+storage values. Management commands operate on `.pire-state` for bare names.
+By default, `state save` writes plaintext files for compatibility. Set
+PIRE_BROWSER_ENCRYPTION_KEY, or the agent-browser-compatible
+AGENT_BROWSER_ENCRYPTION_KEY, to a 64-character hex AES-256 key to write and
+load AES-256-GCM encrypted state files. Encrypted files still expose metadata
+needed for list/show/inspect, but cookie and storage values stay encrypted.
 Use `state inspect --record` before `state load --require-inspected` for an
 opt-in 24-hour local receipt gate stored outside the repo under the OS app-data
 directory.
@@ -5510,6 +5515,12 @@ mod tests {
         assert!(help_text(Some("state")).unwrap().contains("state save"));
         assert!(help_text(Some("state")).unwrap().contains("state list"));
         assert!(help_text(Some("state")).unwrap().contains("state show"));
+        assert!(help_text(Some("state"))
+            .unwrap()
+            .contains("PIRE_BROWSER_ENCRYPTION_KEY"));
+        assert!(help_text(Some("state"))
+            .unwrap()
+            .contains("AGENT_BROWSER_ENCRYPTION_KEY"));
         assert!(help_text(Some("mcp"))
             .unwrap()
             .contains("Model Context Protocol server"));

@@ -23,7 +23,7 @@ PIRE_BROWSER_ALLOWED_DOMAINS="app.example.com" pire-browser snapshot -i`),
 pire-browser confirm c_8f3a1234
 pire-browser deny c_8f3a1234`),
   h2("State files", "state-files"),
-  p("State files are plaintext and may contain cookies or Web Storage secrets. Prefer <code>.pire-state/</code>, which this project gitignores, and use <code>state inspect --record</code> before loading sensitive state."),
+  p("State files may contain cookies or Web Storage secrets. They are plaintext by default for compatibility. Set <code>PIRE_BROWSER_ENCRYPTION_KEY</code> or the agent-browser-compatible <code>AGENT_BROWSER_ENCRYPTION_KEY</code> to a 64-character hex AES-256 key to write and load AES-256-GCM encrypted state files. Prefer <code>.pire-state/</code>, which this project gitignores, keep the key out of logs and shell history, and use <code>state inspect --record</code> before loading sensitive state."),
 ];
 
 export default page({

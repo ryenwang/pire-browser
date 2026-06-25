@@ -22,7 +22,9 @@ Use this for named sessions, profile reuse, persisted state, downloads, uploads,
 - `PIRE_BROWSER_PROFILE` and `PIRE_BROWSER_SESSION` supply defaults only when no explicit flag is present.
 - Path-like profile values map to managed Firefox profile names under the `pire-browser` data directory.
 - Current state schema is v1; unsupported future versions should fail clearly.
+- State files are plaintext by default. If `PIRE_BROWSER_ENCRYPTION_KEY` or `AGENT_BROWSER_ENCRYPTION_KEY` is set to a 64-character hex AES-256 key, `state save` writes encrypted files and `state load` decrypts them with the same key. `state list`, `state show`, and non-recording `state inspect` can read encrypted-file metadata without the key.
 - Do not print or summarize cookie, localStorage, or sessionStorage values.
+- Do not print, summarize, or persist the state encryption key.
 - Do not assume repository-relative paths when running from an installed package.
 
 ## Outputs

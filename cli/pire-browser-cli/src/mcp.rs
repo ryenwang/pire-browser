@@ -144,7 +144,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "state",
             bits: PROFILE_STATE,
-            description: "Cookies, storage, auth helpers, plaintext state files, sessions, profiles, downloads/uploads, clipboard, and skills.",
+            description: "Cookies, storage, auth helpers, plaintext or opt-in encrypted state files, sessions, profiles, downloads/uploads, clipboard, and skills.",
         },
         McpProfileDescriptor {
             name: "debug",

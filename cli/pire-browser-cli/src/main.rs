@@ -59,10 +59,10 @@ use pire_browser_core::session::{
 use pire_browser_core::setup::{setup, setup_result_text, setup_with_deps, SetupResult};
 use pire_browser_core::skills::{list_skills, skill_content};
 use pire_browser_core::state_file::{
-    display_url_without_query_or_fragment, read_state_file_with_metadata,
+    display_url_without_query_or_fragment, read_state_file_summary, read_state_file_with_metadata,
     state_from_extension_export, sweep_expired_state_receipts, validate_state_inspection_receipt,
     write_state_file, write_state_inspection_receipt, ActiveOriginStateFile,
-    StateInspectionReceipt,
+    ActiveOriginStateFileSummary, StateFileEncryptionInfo, StateInspectionReceipt,
 };
 use pire_browser_core::state_policy::{
     collect_state_policy, resolve_state_load_policy, state_policy_text, StateLoadPolicyDecision,
@@ -3036,8 +3036,8 @@ fn handle_state_save(
             unreachable!();
         }
     };
-    let bytes_written = match write_state_file(&path, &state) {
-        Ok(bytes_written) => bytes_written,
+    let write = match write_state_file(&path, &state) {
+        Ok(write) => write,
         Err(err) => {
             exit_with_anyhow_error_with_domain_policy(
                 err,
@@ -3048,7 +3048,7 @@ fn handle_state_save(
             unreachable!();
         }
     };
-    let mut value = state_save_value(&state, &path, bytes_written);
+    let mut value = state_save_value(&state, &path, write.bytes, &write.encryption);
     append_state_save_path_warning(&mut value, &path);
     append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
     append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
@@ -3184,7 +3184,7 @@ fn handle_state_load(
         &ignored_global_flags,
         &combined_policy_warnings,
     )?;
-    let mut value = state_load_value(&state, &path, &import_result);
+    let mut value = state_load_value(&state, &path, &read.encryption, &import_result);
     append_state_policy_diagnostic(&mut value, &policy_decision)?;
     append_state_policy_warnings(&mut value, &policy_decision.warnings, !json_output)?;
     append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
@@ -3545,7 +3545,7 @@ fn execute_state_load_shortcut(
         ignored_global_flags,
         &combined_policy_warnings,
     )?;
-    let mut value = state_load_value(&state, path, &import_result);
+    let mut value = state_load_value(&state, path, &read.encryption, &import_result);
     append_state_policy_diagnostic(&mut value, &policy_decision)?;
     append_state_policy_warnings(&mut value, &policy_decision.warnings, !json_output)?;
     append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
@@ -3569,6 +3569,20 @@ fn handle_state_inspect(
     path: PathBuf,
     record: bool,
 ) -> Result<()> {
+    if !record {
+        let summary = match read_state_file_summary(&path) {
+            Ok(summary) => summary,
+            Err(err) => {
+                exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+                unreachable!();
+            }
+        };
+        let mut value = state_summary_inspect_value(&summary, &path, !json_output);
+        append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
+        println!("{}", format_cli_result(&value, json_output)?);
+        return Ok(());
+    }
+
     let read = match read_state_file_with_metadata(&path) {
         Ok(read) => read,
         Err(err) => {
@@ -3576,7 +3590,13 @@ fn handle_state_inspect(
             unreachable!();
         }
     };
-    let mut value = state_inspect_value(&read.state, &path, read.bytes, !json_output);
+    let mut value = state_inspect_value(
+        &read.state,
+        &path,
+        read.bytes,
+        &read.encryption,
+        !json_output,
+    );
     if record {
         if let Err(err) = sweep_expired_state_receipts(now_ms()) {
             exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
@@ -4533,8 +4553,8 @@ fn execute_confirmed_state_save(
     )?;
     let profile_name = profile_name_for_state_source(&target, &session_id)?;
     let state = state_from_extension_export(export, session_id, profile_name)?;
-    let bytes_written = write_state_file(&path, &state)?;
-    let mut value = state_save_value(&state, &path, bytes_written);
+    let write = write_state_file(&path, &state)?;
+    let mut value = state_save_value(&state, &path, write.bytes, &write.encryption);
     append_state_save_path_warning(&mut value, &path);
     append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
     println!("{}", format_cli_result(&value, json_output)?);
@@ -4563,7 +4583,7 @@ fn execute_confirmed_state_load(
         &[],
         &domain_decision.warnings,
     )?;
-    let mut value = state_load_value(&state, &path, &import_result);
+    let mut value = state_load_value(&state, &path, &read.encryption, &import_result);
     append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
     println!("{}", format_cli_result(&value, json_output)?);
     Ok(())
@@ -6830,11 +6850,21 @@ fn launch_args_for_confirmation(
     args
 }
 
-fn state_save_value(state: &ActiveOriginStateFile, path: &Path, bytes_written: u64) -> Value {
+fn state_save_value(
+    state: &ActiveOriginStateFile,
+    path: &Path,
+    bytes_written: u64,
+    encryption: &StateFileEncryptionInfo,
+) -> Value {
     let display_url = display_url_without_query_or_fragment(&state.source.url);
+    let encryption_label = if encryption.encrypted {
+        "encrypted"
+    } else {
+        "plaintext"
+    };
     json!({
         "text": format!(
-            "Saved active-origin state for {} ({}) to {} ({} cookie(s), {} localStorage key(s), {} sessionStorage key(s))",
+            "Saved {encryption_label} active-origin state for {} ({}) to {} ({} cookie(s), {} localStorage key(s), {} sessionStorage key(s))",
             state.source.origin,
             display_url,
             path.display(),
@@ -6848,11 +6878,17 @@ fn state_save_value(state: &ActiveOriginStateFile, path: &Path, bytes_written: u
         "cookies": state.cookie_count(),
         "localStorageKeys": state.local_storage_key_count(),
         "sessionStorageKeys": state.session_storage_key_count(),
-        "bytesWritten": bytes_written
+        "bytesWritten": bytes_written,
+        "encryption": state_encryption_value(encryption)
     })
 }
 
-fn state_load_value(state: &ActiveOriginStateFile, path: &Path, import_result: &Value) -> Value {
+fn state_load_value(
+    state: &ActiveOriginStateFile,
+    path: &Path,
+    encryption: &StateFileEncryptionInfo,
+    import_result: &Value,
+) -> Value {
     let display_url = display_url_without_query_or_fragment(&state.source.url);
     let cookies_set = import_result
         .get("cookiesSet")
@@ -6879,7 +6915,8 @@ fn state_load_value(state: &ActiveOriginStateFile, path: &Path, import_result: &
         "cookiesSet": cookies_set,
         "localStorageKeys": state.local_storage_key_count(),
         "sessionStorageKeys": state.session_storage_key_count(),
-        "reloaded": reloaded
+        "reloaded": reloaded,
+        "encryption": state_encryption_value(encryption)
     });
     if let Some(warnings) = import_result.get("warnings") {
         value["warnings"] = warnings.clone();
@@ -6891,6 +6928,7 @@ fn state_inspect_value(
     state: &ActiveOriginStateFile,
     path: &Path,
     bytes: u64,
+    encryption: &StateFileEncryptionInfo,
     include_text: bool,
 ) -> Value {
     let display_url = display_url_without_query_or_fragment(&state.source.url);
@@ -6917,12 +6955,68 @@ fn state_inspect_value(
             "sessionStorageKeys": state.session_storage_key_count(),
         },
         "bytes": bytes,
+        "encryption": state_encryption_value(encryption),
     });
 
     if include_text {
-        value["text"] = json!(state_inspect_text(state, path, bytes, &display_url));
+        value["text"] = json!(state_inspect_text(
+            state,
+            path,
+            bytes,
+            encryption,
+            &display_url
+        ));
     }
 
+    value
+}
+
+fn state_summary_inspect_value(
+    summary: &ActiveOriginStateFileSummary,
+    path: &Path,
+    include_text: bool,
+) -> Value {
+    let display_url = display_url_without_query_or_fragment(&summary.source.url);
+    let mut source = json!({
+        "origin": summary.source.origin,
+        "displayUrl": display_url,
+    });
+    if let Some(session_id) = &summary.source.session_id {
+        source["sessionId"] = json!(session_id);
+    }
+    if let Some(profile_name) = &summary.source.profile_name {
+        source["profileName"] = json!(profile_name);
+    }
+
+    let mut value = json!({
+        "path": path.display().to_string(),
+        "schemaVersion": summary.schema_version,
+        "kind": summary.kind,
+        "createdAt": summary.created_at,
+        "source": source,
+        "counts": {
+            "cookies": summary.counts.cookies,
+            "localStorageKeys": summary.counts.local_storage_keys,
+            "sessionStorageKeys": summary.counts.session_storage_keys,
+        },
+        "bytes": summary.bytes,
+        "encryption": state_encryption_value(&summary.encryption),
+    });
+
+    if include_text {
+        value["text"] = json!(state_summary_inspect_text(summary, path, &display_url));
+    }
+
+    value
+}
+
+fn state_encryption_value(encryption: &StateFileEncryptionInfo) -> Value {
+    let mut value = json!({
+        "encrypted": encryption.encrypted,
+    });
+    if let Some(algorithm) = &encryption.algorithm {
+        value["algorithm"] = json!(algorithm);
+    }
     value
 }
 
@@ -6954,11 +7048,18 @@ fn state_inspect_text(
     state: &ActiveOriginStateFile,
     path: &Path,
     bytes: u64,
+    encryption: &StateFileEncryptionInfo,
     display_url: &str,
 ) -> String {
+    let encryption_label = if encryption.encrypted {
+        encryption.algorithm.as_deref().unwrap_or("encrypted")
+    } else {
+        "plaintext"
+    };
     let mut lines = vec![
         format!("State file: {}", path.display()),
         format!("Schema: {} {}", state.schema_version, state.kind),
+        format!("Encryption: {encryption_label}"),
         format!("Created: {}", state.created_at),
         format!("Origin: {}", state.source.origin),
         format!("URL: {display_url}"),
@@ -6976,6 +7077,47 @@ fn state_inspect_text(
             state.cookie_count(),
             state.local_storage_key_count(),
             state.session_storage_key_count()
+        ),
+        "Values: not shown by metadata-only inspect".to_string(),
+    ]);
+    lines.join("\n")
+}
+
+fn state_summary_inspect_text(
+    summary: &ActiveOriginStateFileSummary,
+    path: &Path,
+    display_url: &str,
+) -> String {
+    let encryption_label = if summary.encryption.encrypted {
+        summary
+            .encryption
+            .algorithm
+            .as_deref()
+            .unwrap_or("encrypted")
+    } else {
+        "plaintext"
+    };
+    let mut lines = vec![
+        format!("State file: {}", path.display()),
+        format!("Schema: {} {}", summary.schema_version, summary.kind),
+        format!("Encryption: {encryption_label}"),
+        format!("Created: {}", summary.created_at),
+        format!("Origin: {}", summary.source.origin),
+        format!("URL: {display_url}"),
+    ];
+    if let Some(profile_name) = &summary.source.profile_name {
+        lines.push(format!("Profile: {profile_name}"));
+    }
+    if let Some(session_id) = &summary.source.session_id {
+        lines.push(format!("Session: {session_id}"));
+    }
+    lines.extend([
+        format!("Size: {} bytes", summary.bytes),
+        format!(
+            "Counts: {} cookie(s), {} localStorage key(s), {} sessionStorage key(s)",
+            summary.counts.cookies,
+            summary.counts.local_storage_keys,
+            summary.counts.session_storage_keys
         ),
         "Values: not shown by metadata-only inspect".to_string(),
     ]);
@@ -7043,10 +7185,10 @@ fn list_project_state_files() -> Result<Vec<Value>> {
         if path.extension().and_then(|value| value.to_str()) != Some("json") {
             continue;
         }
-        let Ok(read) = read_state_file_with_metadata(&path) else {
+        let Ok(summary) = read_state_file_summary(&path) else {
             continue;
         };
-        states.push(state_list_entry(&path, &read.state, read.bytes));
+        states.push(state_list_entry(&path, &summary));
     }
     states.sort_by(|left, right| {
         let left_created = left.get("createdAt").and_then(Value::as_u64).unwrap_or(0);
@@ -7056,35 +7198,36 @@ fn list_project_state_files() -> Result<Vec<Value>> {
     Ok(states)
 }
 
-fn state_list_entry(path: &Path, state: &ActiveOriginStateFile, bytes: u64) -> Value {
+fn state_list_entry(path: &Path, summary: &ActiveOriginStateFileSummary) -> Value {
     let modified_at = fs::metadata(path)
         .ok()
         .and_then(|metadata| metadata.modified().ok())
         .and_then(system_time_ms);
     let mut source = json!({
-        "origin": state.source.origin,
-        "displayUrl": display_url_without_query_or_fragment(&state.source.url),
+        "origin": summary.source.origin,
+        "displayUrl": display_url_without_query_or_fragment(&summary.source.url),
     });
-    if let Some(profile_name) = &state.source.profile_name {
+    if let Some(profile_name) = &summary.source.profile_name {
         source["profileName"] = json!(profile_name);
     }
-    if let Some(session_id) = &state.source.session_id {
+    if let Some(session_id) = &summary.source.session_id {
         source["sessionId"] = json!(session_id);
     }
     let mut value = json!({
         "name": path.file_stem().and_then(|value| value.to_str()).unwrap_or("").to_string(),
         "fileName": path.file_name().and_then(|value| value.to_str()).unwrap_or("").to_string(),
         "path": path.display().to_string(),
-        "schemaVersion": state.schema_version,
-        "kind": state.kind,
-        "createdAt": state.created_at,
+        "schemaVersion": summary.schema_version,
+        "kind": summary.kind,
+        "createdAt": summary.created_at,
         "source": source,
         "counts": {
-            "cookies": state.cookie_count(),
-            "localStorageKeys": state.local_storage_key_count(),
-            "sessionStorageKeys": state.session_storage_key_count(),
+            "cookies": summary.counts.cookies,
+            "localStorageKeys": summary.counts.local_storage_keys,
+            "sessionStorageKeys": summary.counts.session_storage_keys,
         },
-        "bytes": bytes,
+        "bytes": summary.bytes,
+        "encryption": state_encryption_value(&summary.encryption),
     });
     if let Some(modified_at) = modified_at {
         value["modifiedAt"] = json!(modified_at);
@@ -7121,7 +7264,21 @@ fn state_list_text(states: &[Value]) -> String {
             .and_then(Value::as_str)
             .map(|profile| format!(" profile={profile}"))
             .unwrap_or_default();
-        lines.push(format!("- {name}{profile} origin={origin} path={path}"));
+        let encryption = state
+            .get("encryption")
+            .and_then(|value| value.get("encrypted"))
+            .and_then(Value::as_bool)
+            .map(|encrypted| {
+                if encrypted {
+                    " encrypted"
+                } else {
+                    " plaintext"
+                }
+            })
+            .unwrap_or("");
+        lines.push(format!(
+            "- {name}{profile}{encryption} origin={origin} path={path}"
+        ));
     }
     lines.join("\n")
 }
@@ -9613,9 +9770,11 @@ mod tests {
             .into(),
         };
 
-        let save = state_save_value(&state, Path::new("state.json"), 123);
+        let plaintext = StateFileEncryptionInfo::plaintext();
+        let save = state_save_value(&state, Path::new("state.json"), 123, &plaintext);
         let save_text = serde_json::to_string(&save).unwrap();
         assert!(save_text.contains("\"cookies\":1"));
+        assert!(save_text.contains("\"encryption\":{\"encrypted\":false}"));
         assert!(save_text.contains("\"displayUrl\":\"https://example.test/app\""));
         assert!(!save_text.contains("\"url\""));
         assert!(!save_text.contains("raw-cookie-secret"));
@@ -9627,10 +9786,12 @@ mod tests {
         let load = state_load_value(
             &state,
             Path::new("state.json"),
+            &plaintext,
             &json!({ "cookiesSet": 1, "reloaded": true }),
         );
         let load_text = serde_json::to_string(&load).unwrap();
         assert!(load_text.contains("\"cookiesSet\":1"));
+        assert!(load_text.contains("\"encryption\":{\"encrypted\":false}"));
         assert!(load_text.contains("\"displayUrl\":\"https://example.test/app\""));
         assert!(!load_text.contains("\"url\""));
         assert!(!load_text.contains("raw-cookie-secret"));
@@ -9640,7 +9801,13 @@ mod tests {
         assert!(!load_text.contains("fragment-secret"));
 
         for include_text in [true, false] {
-            let inspect = state_inspect_value(&state, Path::new("state.json"), 456, include_text);
+            let inspect = state_inspect_value(
+                &state,
+                Path::new("state.json"),
+                456,
+                &plaintext,
+                include_text,
+            );
             let inspect_text = serde_json::to_string(&inspect).unwrap();
             assert!(inspect_text.contains("\"cookies\":1"));
             assert!(inspect_text.contains("\"localStorageKeys\":1"));
@@ -9659,6 +9826,33 @@ mod tests {
             ] {
                 assert!(!inspect_text.contains(sentinel), "{sentinel}");
             }
+        }
+
+        let summary = ActiveOriginStateFileSummary {
+            schema_version: state.schema_version,
+            kind: state.kind.clone(),
+            created_at: state.created_at,
+            source: state.source.clone(),
+            counts: state.counts(),
+            bytes: 789,
+            encryption: StateFileEncryptionInfo::encrypted("AES-256-GCM"),
+        };
+        let summary_inspect = state_summary_inspect_value(&summary, Path::new("state.json"), true);
+        let summary_text = serde_json::to_string(&summary_inspect).unwrap();
+        assert!(summary_text.contains("\"encrypted\":true"));
+        assert!(summary_text.contains("AES-256-GCM"));
+        assert!(summary_text.contains("\"cookies\":1"));
+        for sentinel in [
+            "cookie-name-secret",
+            "raw-cookie-secret",
+            "local-key-secret",
+            "raw-local-secret",
+            "session-key-secret",
+            "raw-session-secret",
+            "query-secret",
+            "fragment-secret",
+        ] {
+            assert!(!summary_text.contains(sentinel), "{sentinel}");
         }
     }
 
