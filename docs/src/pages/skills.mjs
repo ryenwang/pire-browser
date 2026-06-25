@@ -8,10 +8,10 @@ const skillsBlocks = [
   h2("CLI Command", "cli-command"),
   code(`pire-browser skills list
 pire-browser skills list --json
-pire-browser skills cat core
-pire-browser skills cat core --json
 pire-browser skills get core
+pire-browser skills get core --json
 pire-browser skills get --all --json
+pire-browser skills cat core
 pire-browser skills path core
 pire-browser skills --help`),
   p("<code>skills get</code> is an agent-browser-style alias for <code>skills cat</code>. <code>skills path [name]</code> prints the installed skill directory when the skill is filesystem-backed. Agents retrieve skill content at runtime, so instructions match the installed package version instead of going stale. The JS launcher serves these skill commands and their help when possible, which keeps setup and repair guidance available even if the native binary is missing or stale."),

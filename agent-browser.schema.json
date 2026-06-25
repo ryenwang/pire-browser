@@ -26,6 +26,10 @@
       "type": "string",
       "description": "Default managed profile/session name."
     },
+    "state": {
+      "type": "string",
+      "description": "Default active-origin state file to preload before browser-control commands."
+    },
     "allowedDomains": {
       "description": "Default allowed-domain guardrail list.",
       "oneOf": [

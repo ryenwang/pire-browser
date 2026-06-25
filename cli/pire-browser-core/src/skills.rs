@@ -278,7 +278,10 @@ mod tests {
         assert!(content.content.contains("# Custom"));
         let path = skill_path_from_dir(root.path(), "custom").unwrap();
         assert_eq!(path.source, "filesystem");
-        assert_eq!(path.path, root.path().join("custom").to_string_lossy().to_string());
+        assert_eq!(
+            path.path,
+            root.path().join("custom").to_string_lossy().to_string()
+        );
     }
 
     #[test]

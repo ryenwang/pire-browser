@@ -13,15 +13,17 @@ pire-browser session cleanup
 pire-browser --session <uuid> snapshot -i
 pire-browser --session work open https://example.com
 pire-browser --session-name work open https://example.com
+AGENT_BROWSER_SESSION=work pire-browser snapshot -i
 pire-browser --session-name work snapshot -i
 pire-browser --session-name work close`),
-  p("<code>--session &lt;uuid&gt;</code> targets a strict live session id from <code>session list</code>. <code>--session &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION=&lt;name&gt;</code>, <code>--session-name &lt;name&gt;</code>, and <code>PIRE_BROWSER_SESSION_NAME=&lt;name&gt;</code> are named-profile aliases that may reuse or launch managed Firefox."),
+  p("<code>--session &lt;uuid&gt;</code> targets a strict live session id from <code>session list</code>. <code>--session &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION=&lt;name&gt;</code>, <code>AGENT_BROWSER_SESSION=&lt;name&gt;</code>, <code>--session-name &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION_NAME=&lt;name&gt;</code>, and <code>AGENT_BROWSER_SESSION_NAME=&lt;name&gt;</code> are named-profile aliases that may reuse or launch managed Firefox."),
   h2("Managed profiles", "managed-profiles"),
   code(`pire-browser profiles --json
 pire-browser profiles import /path/to/firefox-profile --name Work
 pire-browser profiles import /path/to/firefox-profile --name Work --overwrite
 pire-browser --profile Work open https://example.com
 PIRE_BROWSER_PROFILE=Work pire-browser snapshot -i
+AGENT_BROWSER_PROFILE=Work pire-browser snapshot -i
 pire-browser --profile ~/.myapp-profile open https://example.com`),
   p("<code>--profile &lt;name-or-path&gt;</code> reuses or launches a managed Firefox profile. Path-like values are mapped to stable managed Firefox profile names under the <code>pire-browser</code> data directory; they are not raw browser profile directories."),
   p("<code>profiles import</code> copies an existing Firefox profile into a managed profile for login continuity. It never mutates the source profile and future source changes do not sync. Close Firefox before importing so lock files and partially-written data are not copied; use <code>--overwrite</code> only after closing the managed profile being replaced."),
@@ -31,8 +33,9 @@ pire-browser --auto-connect state save ./.pire-state/app-work.json
 PIRE_BROWSER_ENCRYPTION_KEY=<64-hex-key> pire-browser --session-name work state save ./.pire-state/app-work.json
 AGENT_BROWSER_ENCRYPTION_KEY=<64-hex-key> pire-browser --session-name review state load ./.pire-state/app-work.json
 pire-browser --state ./.pire-state/app-work.json open https://app.example.com/dashboard
+AGENT_BROWSER_STATE=./.pire-state/app-work.json pire-browser open https://app.example.com/dashboard
 pire-browser --session-name review state load --require-inspected ./.pire-state/app-work.json`),
-  p("State files are plaintext by default for compatibility. Set <code>PIRE_BROWSER_ENCRYPTION_KEY</code> or <code>AGENT_BROWSER_ENCRYPTION_KEY</code> to a 64-character hex AES-256 key to save and load encrypted active-origin state files."),
+  p("State files are plaintext by default for compatibility. Set <code>PIRE_BROWSER_ENCRYPTION_KEY</code> or <code>AGENT_BROWSER_ENCRYPTION_KEY</code> to a 64-character hex AES-256 key to save and load encrypted active-origin state files. <code>PIRE_BROWSER_STATE</code> and the agent-browser-compatible <code>AGENT_BROWSER_STATE</code> preload active-origin state before browser-control commands when no explicit <code>--state</code> is present."),
 ];
 
 export default page({

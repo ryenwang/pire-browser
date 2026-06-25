@@ -569,11 +569,12 @@ Register a script for the next navigation:
 
 ```bash
 pire-browser open --init-script ./before-load.js https://example.com
+AGENT_BROWSER_INIT_SCRIPTS=./before-load.js pire-browser open https://example.com
 pire-browser addinitscript "window.__flag = true"
 pire-browser removeinitscript init1
 ```
 
-Use this only when the page needs before-load setup. `open --init-script` applies only to that navigation. `addinitscript` registers for future navigations in the current managed Firefox session and returns an id to pass to `removeinitscript`. These are Firefox WebExtension paths, so verify with a fresh snapshot or page state check after navigation.
+Use this only when the page needs before-load setup. `open --init-script` applies only to that navigation. `PIRE_BROWSER_INIT_SCRIPTS` and `AGENT_BROWSER_INIT_SCRIPTS` are OS path-lists that add document-start scripts to `open/goto/navigate <url>` when no explicit `--init-script` is present. `addinitscript` registers for future navigations in the current managed Firefox session and returns an id to pass to `removeinitscript`. These are Firefox WebExtension paths, so verify with a fresh snapshot or page state check after navigation.
 
 Open a local HTML file:
 
@@ -599,7 +600,7 @@ pire-browser --config ./ci-config.json open https://example.com
 PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com
 ```
 
-Config files use camelCase keys. Useful defaults include `json`, `profile`, `sessionName`, `allowedDomains`, `confirmActions`, `confirmInteractive`, `allowFileAccess`, `headed`, `headless`, `colorScheme`, `downloadPath`, `maxOutput`, and `contentBoundaries`. CLI flags override config defaults. Unknown keys are ignored.
+Config files use camelCase keys. Useful defaults include `json`, `profile`, `sessionName`, `session`, `state`, `allowedDomains`, `confirmActions`, `confirmInteractive`, `allowFileAccess`, `headed`, `headless`, `colorScheme`, `downloadPath`, `maxOutput`, and `contentBoundaries`. CLI flags override config defaults. Unknown keys are ignored.
 
 List and target managed profiles or live sessions:
 
@@ -609,12 +610,14 @@ pire-browser profiles import /path/to/firefox-profile --name Work
 pire-browser profiles import /path/to/firefox-profile --name Work --overwrite
 pire-browser --profile Work open https://example.com
 PIRE_BROWSER_PROFILE=Work pire-browser snapshot -i
+AGENT_BROWSER_PROFILE=Work pire-browser snapshot -i
 pire-browser session list --json
 pire-browser session attach <session-id>
 pire-browser --session <session-id> snapshot -i
 pire-browser --session agent1 open https://example.com
 pire-browser --session-name work open https://example.com
 PIRE_BROWSER_SESSION=agent1 pire-browser snapshot -i
+AGENT_BROWSER_SESSION=agent1 pire-browser snapshot -i
 pire-browser close
 pire-browser close --all
 ```
@@ -631,6 +634,7 @@ Save and reuse active-origin state:
 pire-browser --session work state save ./.pire-state/app-review.json
 pire-browser --auto-connect state save ./.pire-state/app-review.json
 pire-browser --state ./.pire-state/app-review.json open https://example.com/dashboard
+AGENT_BROWSER_STATE=./.pire-state/app-review.json pire-browser open https://example.com/dashboard
 pire-browser state list --json
 pire-browser state show app-review --json
 pire-browser state rename app-review app-ready
@@ -639,7 +643,7 @@ pire-browser state clear app-ready
 ```
 
 State files contain active-origin cookies and Web Storage. They are plaintext by default for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY` or the agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY` to a 64-character hex AES-256 key when saved state should be AES-256-GCM encrypted; keep that key out of logs and shell history. `state list`, `state show`, and `state inspect` are metadata-only and do not print cookie or storage values. Bare state names resolve inside `.pire-state`; explicit paths remain supported for save/load/show/rename. Use managed profiles or `profiles import` when IndexedDB, service workers, cross-origin SSO state, or full Firefox profile continuity matters.
-`--auto-connect state save <path>` saves from the selected live managed Firefox session. `--state <path> <command>` preloads the saved active-origin state before the requested browser command; follow it with `snapshot -i` if the page is noisy or still loading.
+`--auto-connect state save <path>` saves from the selected live managed Firefox session. `--state <path> <command>` preloads the saved active-origin state before the requested browser command; `PIRE_BROWSER_STATE` and `AGENT_BROWSER_STATE` supply the same default when no explicit `--state` is present. Follow it with `snapshot -i` if the page is noisy or still loading.
 
 Use the packaged schema for autocomplete when creating project configs:
 
@@ -775,9 +779,9 @@ pire-browser mcp --tools core
 pire-browser mcp --tools core,network
 pire-browser mcp --tools all
 pire-browser skills list
-pire-browser skills cat core
 pire-browser skills get core
 pire-browser skills get --all
+pire-browser skills cat core
 pire-browser skills path core
 ```
 

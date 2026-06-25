@@ -8,7 +8,7 @@ description: Use the installed pire-browser CLI to control Firefox safely with v
 For full guidance, run:
 
 ```bash
-pire-browser skills cat core
+pire-browser skills get core
 ```
 
 Use the installed skill content instead of copying repository maintainer docs into the prompt. The core skill is version matched to the installed CLI.

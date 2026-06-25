@@ -8,8 +8,9 @@ const mcpBlocks = [
 pire-browser mcp --tools core
 pire-browser mcp --tools core,network
 pire-browser mcp --tools core,state
+pire-browser mcp --tools core,react
 pire-browser mcp --tools all`),
-  p("Use the smallest MCP profile that fits the task. <code>core</code> is the default inspect-before-act workflow. Add comma-separated profiles only when a workflow needs more surface, such as <code>core,network</code> for request diagnostics or <code>core,state</code> for cookies, storage, auth, and state files. The <code>pire_browser_tools_profiles</code> tool describes available profiles in-band."),
+  p("Use the smallest MCP profile that fits the task. <code>core</code> is the default inspect-before-act workflow. Add comma-separated profiles only when a workflow needs more surface, such as <code>core,network</code> for request diagnostics, <code>core,state</code> for cookies, storage, auth, and state files, or <code>core,react</code> for React Fiber inspection. The <code>pire_browser_tools_profiles</code> tool describes available profiles in-band."),
   h2("Profiles", "profiles"),
   table(
     ["Profile", "Purpose"],

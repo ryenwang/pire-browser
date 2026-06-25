@@ -20,7 +20,8 @@ Use this for named sessions, profile reuse, persisted state, downloads, uploads,
 
 ## Audit
 
-- `PIRE_BROWSER_PROFILE` and `PIRE_BROWSER_SESSION` supply defaults only when no explicit flag is present.
+- `PIRE_BROWSER_PROFILE`/`AGENT_BROWSER_PROFILE`, `PIRE_BROWSER_SESSION`/`AGENT_BROWSER_SESSION`, and `PIRE_BROWSER_SESSION_NAME`/`AGENT_BROWSER_SESSION_NAME` supply defaults only when no explicit flag is present.
+- `PIRE_BROWSER_STATE` and `AGENT_BROWSER_STATE` preload active-origin state before browser-control commands when no explicit `--state` is present.
 - Path-like profile values map to managed Firefox profile names under the `pire-browser` data directory.
 - Profile import never mutates the source Firefox profile and future source changes do not sync. If import reports a lock file, ask the user to close Firefox before retrying. Use `--overwrite` only after closing the managed profile being replaced.
 - Current state schema is v1; unsupported future versions should fail clearly.

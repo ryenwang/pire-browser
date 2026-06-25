@@ -35,6 +35,7 @@ Skill commands use:
 - `pire-browser stream status`
 - `pire-browser stream disable`
 - `pire-browser skills list`
+- `pire-browser skills get core`
 - `pire-browser skills cat core`
 - `pire-browser profiles import <firefox-profile-dir> --name <managed-name>`
 

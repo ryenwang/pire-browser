@@ -565,11 +565,12 @@ entries. Missing browser signals are reported as unavailable.
 
 ```bash
 pire-browser open --init-script <path> <url>
+AGENT_BROWSER_INIT_SCRIPTS=./before-load.js pire-browser open <url>
 pire-browser addinitscript <js>
 pire-browser removeinitscript <identifier>
 ```
 
-`open --init-script` applies to one navigation. `addinitscript` registers a document-start script for future navigations in the current managed Firefox session and returns an identifier for `removeinitscript`.
+`open --init-script` applies to one navigation. `PIRE_BROWSER_INIT_SCRIPTS` and the agent-browser-compatible `AGENT_BROWSER_INIT_SCRIPTS` are OS path-lists that add document-start scripts to `open/goto/navigate <url>` when no explicit `--init-script` is present. `addinitscript` registers a document-start script for future navigations in the current managed Firefox session and returns an identifier for `removeinitscript`.
 
 ### Setup
 
@@ -597,10 +598,10 @@ pire-browser doctor --json
 ```bash
 pire-browser skills list
 pire-browser skills list --json
-pire-browser skills cat core
-pire-browser skills cat core --json
 pire-browser skills get core
+pire-browser skills get core --json
 pire-browser skills get --all --json
+pire-browser skills cat core
 pire-browser skills path core
 ```
 
@@ -791,7 +792,7 @@ pire-browser --session-name work open https://example.com
 pire-browser --session-name work close
 ```
 
-`--session <uuid>` targets a strict live session id from `session list`. `--session <name>`, `PIRE_BROWSER_SESSION=<name>`, `--session-name <name>`, and `PIRE_BROWSER_SESSION_NAME=<name>` are named-profile aliases that may reuse or launch managed Firefox.
+`--session <uuid>` targets a strict live session id from `session list`. `--session <name>`, `PIRE_BROWSER_SESSION=<name>`, `AGENT_BROWSER_SESSION=<name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION_NAME=<name>`, and `AGENT_BROWSER_SESSION_NAME=<name>` are named-profile aliases that may reuse or launch managed Firefox.
 
 ## Firefox Profile Reuse
 
@@ -827,10 +828,12 @@ pire-browser --session-name work open https://app.example.com/dashboard
 pire-browser --session-name work state save ./.pire-state/app-work.json
 pire-browser --auto-connect state save ./.pire-state/app-work.json
 pire-browser --state ./.pire-state/app-work.json open https://app.example.com/dashboard
+AGENT_BROWSER_STATE=./.pire-state/app-work.json pire-browser open https://app.example.com/dashboard
 pire-browser --session-name review state load --require-inspected ./.pire-state/app-work.json
 ```
 
 State files contain active-origin cookies, `localStorage`, and `sessionStorage`. By default they are plaintext for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY`, or the agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY`, to a 64-character hex AES-256 key before `state save` to write encrypted AES-256-GCM files and before `state load` to decrypt them. `state list`, `state show`, and non-recording `state inspect` remain metadata-only and do not print cookie or storage values. State files do not include saved passwords, full browser profiles, service workers, IndexedDB, or cross-origin SSO state. Use managed profiles or `profiles import` when IndexedDB, service workers, cross-origin SSO state, or full Firefox login continuity matters.
+`PIRE_BROWSER_STATE` and the agent-browser-compatible `AGENT_BROWSER_STATE` preload active-origin state before browser-control commands when no explicit `--state` is present.
 
 ## Security
 
@@ -1016,7 +1019,7 @@ pire-browser --config ./ci-config.json open https://example.com
 PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com
 ```
 
-Defaults are loaded from `~/.pire-browser/config.json`, `./pire-browser.json`, `PIRE_BROWSER_CONFIG`, and explicit `--config`, in that order. CLI flags override config defaults. Legacy config aliases are also accepted.
+Defaults are loaded from `~/.pire-browser/config.json`, `./pire-browser.json`, `PIRE_BROWSER_CONFIG`, and explicit `--config`, in that order. CLI flags override config defaults. Agent-browser-compatible aliases `~/.agent-browser/config.json`, `./agent-browser.json`, and `AGENT_BROWSER_CONFIG` are also accepted for existing installs.
 
 For editor autocomplete:
 
@@ -1025,6 +1028,7 @@ For editor autocomplete:
   "$schema": "./node_modules/pire-browser/pire-browser.schema.json",
   "json": true,
   "profile": "Work",
+  "state": "./.pire-state/work.json",
   "allowedDomains": ["app.example.com", "*.example.com"],
   "downloadPath": "./downloads",
   "plugins": [

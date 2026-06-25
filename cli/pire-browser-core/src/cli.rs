@@ -427,7 +427,9 @@ pub fn apply_config_defaults_with_options(
 
     let mut args = config_args_from_map(&merged, raw);
     push_session_env_defaults(&mut args, raw);
+    push_state_env_defaults(&mut args, raw);
     args.extend_from_slice(raw);
+    push_init_script_env_defaults(&mut args);
     Ok(ConfigApplyResult {
         args,
         warnings,
@@ -471,6 +473,185 @@ fn push_session_env_defaults_from_values(
         args.push("--session".to_string());
         args.push(value);
     }
+}
+
+fn push_state_env_defaults(args: &mut Vec<String>, raw: &[String]) {
+    push_state_env_defaults_from_value(
+        args,
+        raw,
+        env_var_nonempty_alias("PIRE_BROWSER_STATE", "AGENT_BROWSER_STATE"),
+    );
+}
+
+fn push_state_env_defaults_from_value(
+    args: &mut Vec<String>,
+    raw: &[String],
+    value: Option<String>,
+) {
+    if raw_has_any_flag(raw, &["--state"]) || raw_has_any_flag(args, &["--state"]) {
+        return;
+    }
+    if !command_allows_state_default(raw) {
+        return;
+    }
+    if let Some(value) = value {
+        args.push("--state".to_string());
+        args.push(value);
+    }
+}
+
+fn push_init_script_env_defaults(args: &mut Vec<String>) {
+    let value = env_var_nonempty_alias("PIRE_BROWSER_INIT_SCRIPTS", "AGENT_BROWSER_INIT_SCRIPTS");
+    push_init_script_env_defaults_from_value(args, value);
+}
+
+fn push_init_script_env_defaults_from_value(args: &mut Vec<String>, value: Option<String>) {
+    if raw_has_any_flag(args, &["--init-script"]) {
+        return;
+    }
+    let Some(value) = value else {
+        return;
+    };
+    let Some(command_index) = first_command_index(args) else {
+        return;
+    };
+    if !matches!(
+        args.get(command_index).map(String::as_str),
+        Some("open" | "goto" | "navigate")
+    ) {
+        return;
+    }
+    if !has_positional_after(
+        args,
+        command_index + 1,
+        &["--label", "--headers", "--enable"],
+    ) {
+        return;
+    }
+    let paths: Vec<String> = env::split_paths(&value)
+        .map(|path| path.to_string_lossy().trim().to_string())
+        .filter(|path| !path.is_empty())
+        .collect();
+    if paths.is_empty() {
+        return;
+    }
+    let insert_at = command_index + 1;
+    for path in paths.into_iter().rev() {
+        args.insert(insert_at, path);
+        args.insert(insert_at, "--init-script".to_string());
+    }
+}
+
+fn command_allows_state_default(raw: &[String]) -> bool {
+    let Some(index) = first_command_index(raw) else {
+        return false;
+    };
+    matches!(
+        raw[index].as_str(),
+        "open"
+            | "goto"
+            | "navigate"
+            | "read"
+            | "snapshot"
+            | "find"
+            | "click"
+            | "tap"
+            | "dblclick"
+            | "fill"
+            | "type"
+            | "press"
+            | "key"
+            | "keyboard"
+            | "keydown"
+            | "keyup"
+            | "hover"
+            | "focus"
+            | "mouse"
+            | "drag"
+            | "swipe"
+            | "select"
+            | "check"
+            | "uncheck"
+            | "scroll"
+            | "scrollintoview"
+            | "wait"
+            | "screenshot"
+            | "pdf"
+            | "get"
+            | "is"
+            | "eval"
+            | "console"
+            | "errors"
+            | "network"
+            | "trace"
+            | "record"
+            | "tab"
+            | "tabs"
+            | "back"
+            | "forward"
+            | "reload"
+            | "pushstate"
+            | "window"
+            | "frame"
+            | "dialog"
+            | "diff"
+            | "batch"
+            | "cookies"
+            | "storage"
+            | "set"
+            | "device"
+            | "clipboard"
+            | "auth"
+            | "download"
+            | "upload"
+            | "vitals"
+            | "react"
+            | "addinitscript"
+            | "removeinitscript"
+            | "highlight"
+    )
+}
+
+fn first_command_index(args: &[String]) -> Option<usize> {
+    let mut index = 0;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        if GLOBAL_VALUE_FLAGS.contains(&arg) {
+            index += 2;
+            continue;
+        }
+        if GLOBAL_BOOL_FLAGS.contains(&arg) {
+            index += 1;
+            if matches!(arg, "--headed" | "--headless" | "--content-boundaries")
+                && args
+                    .get(index)
+                    .and_then(|value| parse_bool_literal(value))
+                    .is_some()
+            {
+                index += 1;
+            }
+            continue;
+        }
+        return Some(index);
+    }
+    None
+}
+
+fn has_positional_after(args: &[String], start: usize, value_flags: &[&str]) -> bool {
+    let mut index = start;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        if value_flags.contains(&arg) {
+            index += 2;
+            continue;
+        }
+        if arg.starts_with('-') {
+            index += 1;
+            continue;
+        }
+        return true;
+    }
+    false
 }
 
 fn env_var_nonempty(name: &str) -> Option<String> {
@@ -625,6 +806,10 @@ fn config_args_from_map(config: &Map<String, Value>, raw: &[String]) -> Vec<Stri
         "--session",
         &["--session", "--session-name"],
     );
+    push_value_config(&mut args, config, raw, "state", "--state", &["--state"]);
+    if !command_allows_state_default(raw) {
+        remove_flag_and_value(&mut args, "--state");
+    }
     push_value_config(
         &mut args,
         config,
@@ -744,6 +929,20 @@ fn config_args_from_map(config: &Map<String, Value>, raw: &[String]) -> Vec<Stri
     push_value_config(&mut args, config, raw, "model", "--model", &["--model"]);
 
     args
+}
+
+fn remove_flag_and_value(args: &mut Vec<String>, flag: &str) {
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == flag {
+            args.remove(index);
+            if index < args.len() {
+                args.remove(index);
+            }
+            continue;
+        }
+        index += 1;
+    }
 }
 
 fn push_profile_config(args: &mut Vec<String>, config: &Map<String, Value>, raw: &[String]) {
@@ -2649,12 +2848,13 @@ Usage:
 
 Loads pire-browser JSON defaults before command parsing. Auto-discovered
 configs are loaded from ~/.pire-browser/config.json and ./pire-browser.json
-when present. Legacy config aliases are also accepted. Missing auto-discovered
-files are ignored. Malformed auto-discovered files print a warning and
-continue; explicit --config or PIRE_BROWSER_CONFIG paths must exist and contain
-a JSON object.
+when present. Agent-browser-compatible aliases ~/.agent-browser/config.json,
+./agent-browser.json, and AGENT_BROWSER_CONFIG are also accepted. Missing
+auto-discovered files are ignored. Malformed auto-discovered files print a
+warning and continue; explicit --config, PIRE_BROWSER_CONFIG, or
+AGENT_BROWSER_CONFIG paths must exist and contain a JSON object.
 
-Supported camelCase defaults include json, profile, sessionName, session, autoConnect, allowedDomains,
+Supported camelCase defaults include json, profile, sessionName, session, state, autoConnect, allowedDomains,
 noAllowedDomains, actionPolicy, confirmActions, confirmInteractive,
 allowFileAccess, headed, headless, colorScheme, proxy, proxyBypass,
 downloadPath, maxOutput, contentBoundaries, engine, provider, model, and
@@ -3879,6 +4079,61 @@ mod tests {
     }
 
     #[test]
+    fn applies_state_config_default_to_browser_commands_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("pire-browser.json");
+        fs::write(&config, r#"{ "state": "./.pire-state/app.json" }"#).unwrap();
+
+        let expanded = apply_config_defaults_with_options(
+            &s(&["open", "https://example.com"]),
+            config_options(Some(config.clone())),
+        )
+        .unwrap();
+        assert_eq!(
+            expanded.args[0..2],
+            s(&["--state", "./.pire-state/app.json"])
+        );
+        assert!(matches!(
+            parse_cli_args(&expanded.args).unwrap(),
+            LocalCommand::StateShortcut { .. }
+        ));
+
+        let explicit = apply_config_defaults_with_options(
+            &s(&[
+                "--state",
+                "./.pire-state/explicit.json",
+                "open",
+                "https://example.com",
+            ]),
+            config_options(Some(config.clone())),
+        )
+        .unwrap();
+        assert_eq!(
+            explicit.args,
+            s(&[
+                "--state",
+                "./.pire-state/explicit.json",
+                "open",
+                "https://example.com"
+            ])
+        );
+
+        let status = apply_config_defaults_with_options(
+            &s(&["status"]),
+            config_options(Some(config.clone())),
+        )
+        .unwrap();
+        assert_eq!(status.args, s(&["status"]));
+
+        let unknown = apply_config_defaults_with_options(
+            &s(&["made-up-command"]),
+            config_options(Some(config)),
+        )
+        .unwrap();
+        assert_eq!(unknown.args, s(&["made-up-command"]));
+    }
+
+    #[test]
     fn read_url_parses_as_local_no_browser_fetch() {
         assert_eq!(
             parse_cli_args(&s(&[
@@ -4451,6 +4706,112 @@ mod tests {
             Some("agent1".to_string()),
         );
         assert_eq!(args, s(&["--profile", "cli-profile"]));
+    }
+
+    #[test]
+    fn applies_state_env_default_to_browser_commands_only() {
+        let mut args = Vec::new();
+        push_state_env_defaults_from_value(
+            &mut args,
+            &s(&["open", "https://example.com"]),
+            Some("./.pire-state/env.json".to_string()),
+        );
+        assert_eq!(args, s(&["--state", "./.pire-state/env.json"]));
+
+        let mut args = s(&["--state", "./.pire-state/config.json"]);
+        push_state_env_defaults_from_value(
+            &mut args,
+            &s(&["open", "https://example.com"]),
+            Some("./.pire-state/env.json".to_string()),
+        );
+        assert_eq!(args, s(&["--state", "./.pire-state/config.json"]));
+
+        let mut args = Vec::new();
+        push_state_env_defaults_from_value(
+            &mut args,
+            &s(&["state", "list"]),
+            Some("./.pire-state/env.json".to_string()),
+        );
+        assert!(args.is_empty());
+
+        let mut args = Vec::new();
+        push_state_env_defaults_from_value(
+            &mut args,
+            &s(&["close"]),
+            Some("./.pire-state/env.json".to_string()),
+        );
+        assert!(args.is_empty());
+
+        let mut args = Vec::new();
+        push_state_env_defaults_from_value(
+            &mut args,
+            &s(&["made-up-command"]),
+            Some("./.pire-state/env.json".to_string()),
+        );
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn applies_init_script_env_defaults_to_navigation_commands_with_urls() {
+        let mut args = s(&["open", "https://example.com"]);
+        push_init_script_env_defaults_from_value(&mut args, Some("before-load.js".to_string()));
+        assert_eq!(
+            args,
+            s(&[
+                "open",
+                "--init-script",
+                "before-load.js",
+                "https://example.com"
+            ])
+        );
+
+        let mut args = s(&[
+            "--profile",
+            "Work",
+            "open",
+            "--label",
+            "docs",
+            "https://example.com",
+        ]);
+        push_init_script_env_defaults_from_value(&mut args, Some("init-a.js".to_string()));
+        assert_eq!(
+            args,
+            s(&[
+                "--profile",
+                "Work",
+                "open",
+                "--init-script",
+                "init-a.js",
+                "--label",
+                "docs",
+                "https://example.com"
+            ])
+        );
+
+        let mut args = s(&["open"]);
+        push_init_script_env_defaults_from_value(&mut args, Some("before-load.js".to_string()));
+        assert_eq!(args, s(&["open"]));
+
+        let mut args = s(&[
+            "open",
+            "--init-script",
+            "explicit.js",
+            "https://example.com",
+        ]);
+        push_init_script_env_defaults_from_value(&mut args, Some("before-load.js".to_string()));
+        assert_eq!(
+            args,
+            s(&[
+                "open",
+                "--init-script",
+                "explicit.js",
+                "https://example.com"
+            ])
+        );
+
+        let mut args = s(&["snapshot", "-i"]);
+        push_init_script_env_defaults_from_value(&mut args, Some("before-load.js".to_string()));
+        assert_eq!(args, s(&["snapshot", "-i"]));
     }
 
     #[test]
@@ -5763,6 +6124,13 @@ mod tests {
         assert!(help_text(Some("config"))
             .unwrap()
             .contains("PIRE_BROWSER_CONFIG"));
+        assert!(help_text(Some("config"))
+            .unwrap()
+            .contains("AGENT_BROWSER_CONFIG"));
+        assert!(help_text(Some("config"))
+            .unwrap()
+            .contains("agent-browser.json"));
+        assert!(help_text(Some("config")).unwrap().contains("state"));
         assert!(help_text(Some("config")).unwrap().contains("plugins"));
         assert!(help_text(Some("auth"))
             .unwrap()
