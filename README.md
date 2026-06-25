@@ -816,9 +816,10 @@ pire-browser --confirm-actions plugin:captcha:captcha.solve plugin run captcha c
 `plugin run` cannot invoke core plugin protocol paths directly. Use
 `auth login --credential-provider` for `credential.read`. Configured
 `launch.mutate` plugins run automatically before local Firefox launches and can
-append `launch.args` or set `launch.userAgent`; returned `launch.extensions`
-and `launch.initScripts` are reported as unsupported by the current Firefox
-backend. `browser.provider` remains discoverable but is not executed. In MCP,
+append `launch.args`, set `launch.userAgent`, or provide `launch.initScripts`
+for pre-navigation document-start scripts; returned `launch.extensions` are
+reported as unsupported by the current Firefox backend. `browser.provider`
+remains discoverable but is not executed. In MCP,
 add the `state` profile and call
 `pire_browser_plugin_list` / `pire_browser_plugin_show` before choosing a
 provider for `pire_browser_auth_login` with `credentialProvider`, `item`, and

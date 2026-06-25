@@ -599,10 +599,10 @@ pire-browser --confirm-actions plugin:captcha:captcha.solve plugin run captcha c
 
 `plugin run` cannot invoke core protocol paths directly. Configured
 `launch.mutate` plugins run automatically before local Firefox launches and can
-append `launch.args` or set `launch.userAgent`; returned `launch.extensions`
-and `launch.initScripts` are reported as unsupported by the current Firefox
-backend. `browser.provider` is discoverable but not executed by this Firefox
-backend.
+append `launch.args`, set `launch.userAgent`, or provide `launch.initScripts`
+for pre-navigation document-start scripts; returned `launch.extensions` are
+reported as unsupported by this Firefox backend. `browser.provider` is
+discoverable but not executed by this Firefox backend.
 Do not put vault tokens, passwords, or API keys in plugin args. Plugin stderr is
 suppressed. Use `--confirm-actions plugin:vault:credential.read` when provider
 access should require approval before the plugin runs. When using MCP, add the

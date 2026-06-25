@@ -304,7 +304,7 @@ pire-browser auth delete app
 # plugin list/show inspect configured plugins before running them.
 # Credential providers use configured agent-browser-compatible plugins with capability credential.read.
 # plugin run executes command.run/custom capabilities.
-# launch.mutate plugins run before local Firefox launches for args/userAgent.
+# launch.mutate plugins run before local Firefox launches for args/userAgent/initScripts.
 # browser.provider remains discoverable but not executed`),
 
   h2("Confirmation", "confirmation"),

@@ -252,6 +252,22 @@ struct LaunchPluginRuntime<'a> {
     ignored_global_flags: &'a [GlobalFlagWarning],
     approved_plugin_categories: &'a [String],
     warnings: &'a RefCell<Vec<Value>>,
+    init_scripts: &'a RefCell<Vec<LaunchPluginInitScript>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LaunchPluginInitScript {
+    plugin: String,
+    index: usize,
+    code: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LaunchMutation {
+    extra_args: Vec<String>,
+    user_agent: Option<String>,
+    init_scripts: Vec<LaunchPluginInitScript>,
+    warnings: Vec<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -791,6 +807,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 )?;
             }
             let launch_plugin_warnings = RefCell::new(Vec::new());
+            let launch_plugin_init_scripts = RefCell::new(Vec::new());
             let launch_runtime = LaunchPluginRuntime {
                 config: &config_map,
                 command_args: &launch_confirmation_args,
@@ -802,8 +819,9 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 ignored_global_flags: &[],
                 approved_plugin_categories: &[],
                 warnings: &launch_plugin_warnings,
+                init_scripts: &launch_plugin_init_scripts,
             };
-            let options = apply_launch_mutators(
+            let mut options = apply_launch_mutators(
                 LaunchOptions {
                     profile,
                     url,
@@ -815,8 +833,23 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 },
                 Some(&launch_runtime),
             )?;
+            let post_launch_url = if has_launch_plugin_init_scripts(Some(&launch_runtime)) {
+                options.url.take()
+            } else {
+                None
+            };
             let result = launch_firefox_with_lazy_setup(options)?;
+            apply_launch_plugin_init_scripts_after_launch(
+                &result.session.session_id,
+                post_launch_url.as_deref(),
+                &launch_plugin_init_scripts.borrow(),
+            )?;
             let mut text = launch_result_text(&result);
+            if let Some(url) = post_launch_url {
+                text.push_str(&format!(
+                    "\nOpened {url} with launch.mutate init script(s)."
+                ));
+            }
             for warning in &domain_decision.warnings {
                 text.push_str(&format!(
                     "\nWarning [{}]: {}",
@@ -1180,6 +1213,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             attach_color_scheme(&mut request, color_scheme.as_deref())?;
             attach_proxy_config(&mut request, proxy_config.as_ref())?;
             let launch_plugin_warnings = RefCell::new(Vec::new());
+            let launch_plugin_init_scripts = RefCell::new(Vec::new());
             let launch_runtime = LaunchPluginRuntime {
                 config: &config_map,
                 command_args: &args,
@@ -1191,6 +1225,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 ignored_global_flags: &ignored_global_flags,
                 approved_plugin_categories: &[],
                 warnings: &launch_plugin_warnings,
+                init_scripts: &launch_plugin_init_scripts,
             };
             let (response, response_session_id) = dispatch_remote_request_or_exit(
                 &target,
@@ -3093,7 +3128,7 @@ fn plugin_value(plugin: &CredentialProviderConfig) -> Value {
             "command.run": plugin.capabilities.iter().any(|capability| capability == "command.run"),
             "custom": runnable_custom
         },
-        "note": "pire-browser executes credential.read plugins through auth login --credential-provider, launch.mutate plugins before local Firefox launches for launch.args and launch.userAgent, and command.run/custom capabilities through plugin run. launch.extensions, launch.initScripts, and browser.provider are not executed by this Firefox backend."
+        "note": "pire-browser executes credential.read plugins through auth login --credential-provider, launch.mutate plugins before local Firefox launches for launch.args, launch.userAgent, and launch.initScripts, and command.run/custom capabilities through plugin run. launch.extensions and browser.provider are not executed by this Firefox backend."
     })
 }
 
@@ -3197,14 +3232,19 @@ fn apply_launch_mutators(
         maybe_require_launch_mutator_confirmation(runtime, &plugin, &options)?;
         let request = launch_mutate_request(&options);
         let response = run_plugin_protocol_request(&plugin, &request, "launch mutator")?;
-        let (extra_args, user_agent, warnings) =
-            parse_launch_mutation_response(&plugin, &response)?;
-        options.extra_args.extend(extra_args);
-        if let Some(user_agent) = user_agent {
+        let mutation = parse_launch_mutation_response(&plugin, &response)?;
+        options.extra_args.extend(mutation.extra_args);
+        if let Some(user_agent) = mutation.user_agent {
             options.user_agent = Some(user_agent);
         }
-        if !warnings.is_empty() {
-            runtime.warnings.borrow_mut().extend(warnings);
+        if !mutation.init_scripts.is_empty() {
+            runtime
+                .init_scripts
+                .borrow_mut()
+                .extend(mutation.init_scripts);
+        }
+        if !mutation.warnings.is_empty() {
+            runtime.warnings.borrow_mut().extend(mutation.warnings);
         }
     }
     Ok(options)
@@ -3232,9 +3272,14 @@ fn launch_mutate_request(options: &LaunchOptions) -> Value {
 fn parse_launch_mutation_response(
     plugin: &CredentialProviderConfig,
     response: &Value,
-) -> Result<(Vec<String>, Option<String>, Vec<Value>)> {
+) -> Result<LaunchMutation> {
     let Some(launch) = response.get("launch") else {
-        return Ok((Vec::new(), None, Vec::new()));
+        return Ok(LaunchMutation {
+            extra_args: Vec::new(),
+            user_agent: None,
+            init_scripts: Vec::new(),
+            warnings: Vec::new(),
+        });
     };
     let Some(launch) = launch.as_object() else {
         bail!(
@@ -3254,22 +3299,61 @@ fn parse_launch_mutation_response(
             redact_text(&plugin.name)
         ),
     };
+    let init_scripts = match launch.get("initScripts") {
+        Some(value) => launch_plugin_init_scripts_from_response(plugin, value)?,
+        None => Vec::new(),
+    };
     let mut warnings = Vec::new();
-    for field in ["extensions", "initScripts"] {
-        if launch_field_is_non_empty(launch.get(field)) {
-            warnings.push(json!({
-                "code": "PLUGIN_LAUNCH_FIELD_UNSUPPORTED",
-                "feature": "launch.mutate",
-                "plugin": &plugin.name,
-                "field": field,
-                "message": format!(
-                    "Launch mutator plugin `{}` returned launch.{field}, but the Firefox backend only applies launch.args and launch.userAgent in this release.",
-                    redact_text(&plugin.name)
-                )
-            }));
-        }
+    if launch_field_is_non_empty(launch.get("extensions")) {
+        warnings.push(json!({
+            "code": "PLUGIN_LAUNCH_FIELD_UNSUPPORTED",
+            "feature": "launch.mutate",
+            "plugin": &plugin.name,
+            "field": "extensions",
+            "message": format!(
+                "Launch mutator plugin `{}` returned launch.extensions, but the Firefox backend only applies launch.args, launch.userAgent, and launch.initScripts in this release.",
+                redact_text(&plugin.name)
+            )
+        }));
     }
-    Ok((extra_args, user_agent, warnings))
+    Ok(LaunchMutation {
+        extra_args,
+        user_agent,
+        init_scripts,
+        warnings,
+    })
+}
+
+fn launch_plugin_init_scripts_from_response(
+    plugin: &CredentialProviderConfig,
+    value: &Value,
+) -> Result<Vec<LaunchPluginInitScript>> {
+    let Some(array) = value.as_array() else {
+        bail!("plugin_malformed_response: launch.initScripts must be an array of strings");
+    };
+    let mut scripts = Vec::new();
+    for (index, item) in array.iter().enumerate() {
+        let Some(code) = item.as_str() else {
+            bail!("plugin_malformed_response: launch.initScripts must be an array of strings");
+        };
+        if code.trim().is_empty() {
+            continue;
+        }
+        if code.len() as u64 > MAX_INIT_SCRIPT_BYTES {
+            bail!(
+                "plugin_malformed_response: launch mutator `{}` launch.initScripts[{}] is larger than {} bytes",
+                redact_text(&plugin.name),
+                index,
+                MAX_INIT_SCRIPT_BYTES
+            );
+        }
+        scripts.push(LaunchPluginInitScript {
+            plugin: plugin.name.clone(),
+            index,
+            code: code.to_string(),
+        });
+    }
+    Ok(scripts)
 }
 
 fn value_as_string_array(value: &Value, field: &str) -> Result<Vec<String>> {
@@ -7096,6 +7180,7 @@ fn execute_confirmed_launch(
     }
     let approved_plugin_categories = approved_plugin_categories_from_record(record);
     let launch_plugin_warnings = RefCell::new(Vec::new());
+    let launch_plugin_init_scripts = RefCell::new(Vec::new());
     let launch_runtime = LaunchPluginRuntime {
         config: &config_result.config,
         command_args: &record.args,
@@ -7107,8 +7192,9 @@ fn execute_confirmed_launch(
         ignored_global_flags: &[],
         approved_plugin_categories: &approved_plugin_categories,
         warnings: &launch_plugin_warnings,
+        init_scripts: &launch_plugin_init_scripts,
     };
-    let options = apply_launch_mutators(
+    let mut options = apply_launch_mutators(
         LaunchOptions {
             profile,
             url,
@@ -7120,8 +7206,23 @@ fn execute_confirmed_launch(
         },
         Some(&launch_runtime),
     )?;
+    let post_launch_url = if has_launch_plugin_init_scripts(Some(&launch_runtime)) {
+        options.url.take()
+    } else {
+        None
+    };
     let result = launch_firefox_with_lazy_setup(options)?;
+    apply_launch_plugin_init_scripts_after_launch(
+        &result.session.session_id,
+        post_launch_url.as_deref(),
+        &launch_plugin_init_scripts.borrow(),
+    )?;
     let mut text = launch_result_text(&result);
+    if let Some(url) = post_launch_url {
+        text.push_str(&format!(
+            "\nOpened {url} with launch.mutate init script(s)."
+        ));
+    }
     for warning in launch_plugin_warnings.borrow().iter() {
         let code = warning
             .get("code")
@@ -7148,6 +7249,7 @@ fn execute_confirmed_remote(
     let confirmation_decision =
         confirmation_decision_from_context(record.confirmation_policy.as_ref());
     let launch_plugin_warnings = RefCell::new(Vec::new());
+    let launch_plugin_init_scripts = RefCell::new(Vec::new());
     let launch_runtime = LaunchPluginRuntime {
         config: &config_result.config,
         command_args: &record.args,
@@ -7159,6 +7261,7 @@ fn execute_confirmed_remote(
         ignored_global_flags: &[],
         approved_plugin_categories: &approved_plugin_categories,
         warnings: &launch_plugin_warnings,
+        init_scripts: &launch_plugin_init_scripts,
     };
     let request = build_command_request_with_captured_policies(
         record.args.clone(),
@@ -7196,7 +7299,24 @@ fn execute_confirmed_remote(
                     },
                     Some(&launch_runtime),
                 )?;
-                let _result = launch_firefox_with_lazy_setup(options)?;
+                let mut options = options;
+                options.url =
+                    launch_url_for_remote_args_after_mutators(&record.args, Some(&launch_runtime));
+                let launch_result = launch_firefox_with_lazy_setup(options)?;
+                if should_register_launch_plugin_init_scripts_after_launch(
+                    &record.args,
+                    Some(&launch_runtime),
+                ) {
+                    register_launch_plugin_init_scripts_for_session(
+                        &launch_result.session.session_id,
+                        launch_runtime.init_scripts.borrow().as_slice(),
+                    )?;
+                }
+                let request = request_with_launch_plugin_init_scripts(
+                    &request,
+                    &record.args,
+                    Some(&launch_runtime),
+                )?;
                 send_to_session(None, &request)
             }
             Err(err) => Err(err),
@@ -9304,8 +9424,142 @@ fn attach_init_scripts(request: &mut RpcRequest, args: &[String]) -> Result<()> 
     if scripts.is_empty() {
         return Ok(());
     }
-    if let Some(object) = request.params.as_object_mut() {
-        object.insert("initScripts".to_string(), Value::Array(scripts));
+    append_init_script_payloads(request, scripts)?;
+    Ok(())
+}
+
+fn append_init_script_payloads(request: &mut RpcRequest, scripts: Vec<Value>) -> Result<()> {
+    if scripts.is_empty() {
+        return Ok(());
+    }
+    let Some(object) = request.params.as_object_mut() else {
+        bail!("invalid_args: command request params must be an object to attach init scripts");
+    };
+    match object.get_mut("initScripts") {
+        Some(Value::Array(existing)) => existing.extend(scripts),
+        Some(_) => bail!("invalid_args: initScripts payload must be an array"),
+        None => {
+            object.insert("initScripts".to_string(), Value::Array(scripts));
+        }
+    }
+    Ok(())
+}
+
+fn launch_plugin_init_script_payloads(scripts: &[LaunchPluginInitScript]) -> Vec<Value> {
+    scripts
+        .iter()
+        .map(|script| {
+            json!({
+                "path": format!("plugin:{}:launch.mutate:{}", script.plugin, script.index),
+                "code": &script.code,
+            })
+        })
+        .collect()
+}
+
+fn has_launch_plugin_init_scripts(runtime: Option<&LaunchPluginRuntime<'_>>) -> bool {
+    runtime
+        .map(|runtime| !runtime.init_scripts.borrow().is_empty())
+        .unwrap_or(false)
+}
+
+fn should_attach_launch_plugin_init_scripts_to_request(
+    args: &[String],
+    scripts: &[LaunchPluginInitScript],
+) -> bool {
+    !scripts.is_empty()
+        && matches!(
+            args.first().map(String::as_str),
+            Some("open" | "goto" | "navigate")
+        )
+        && navigation_url_for_remote_args(args).is_some()
+}
+
+fn should_register_launch_plugin_init_scripts_after_launch(
+    args: &[String],
+    runtime: Option<&LaunchPluginRuntime<'_>>,
+) -> bool {
+    let Some(runtime) = runtime else {
+        return false;
+    };
+    let scripts = runtime.init_scripts.borrow();
+    !scripts.is_empty()
+        && !should_attach_launch_plugin_init_scripts_to_request(args, scripts.as_slice())
+}
+
+fn request_with_launch_plugin_init_scripts(
+    request: &RpcRequest,
+    args: &[String],
+    runtime: Option<&LaunchPluginRuntime<'_>>,
+) -> Result<RpcRequest> {
+    let Some(runtime) = runtime else {
+        return Ok(request.clone());
+    };
+    let scripts = runtime.init_scripts.borrow();
+    if !should_attach_launch_plugin_init_scripts_to_request(args, scripts.as_slice()) {
+        return Ok(request.clone());
+    }
+    let mut request = request.clone();
+    append_init_script_payloads(
+        &mut request,
+        launch_plugin_init_script_payloads(scripts.as_slice()),
+    )?;
+    Ok(request)
+}
+
+fn launch_url_for_remote_args_after_mutators(
+    args: &[String],
+    runtime: Option<&LaunchPluginRuntime<'_>>,
+) -> Option<String> {
+    if has_launch_plugin_init_scripts(runtime) {
+        None
+    } else {
+        launch_url_for_remote_args(args)
+    }
+}
+
+fn register_launch_plugin_init_scripts_for_session(
+    session_id: &str,
+    scripts: &[LaunchPluginInitScript],
+) -> Result<()> {
+    for script in scripts {
+        let request = build_command_request(vec!["addinitscript".to_string(), script.code.clone()]);
+        let (response, _) = send_to_session(Some(session_id), &request)?;
+        if !response.ok {
+            let error = response
+                .error
+                .map(|err| format!("{}: {}", err.code, err.message))
+                .unwrap_or_else(|| "unknown addinitscript failure".to_string());
+            bail!(
+                "plugin_launch_failed: failed to register launch.mutate init script from `{}`: {error}",
+                redact_text(&script.plugin)
+            );
+        }
+    }
+    Ok(())
+}
+
+fn apply_launch_plugin_init_scripts_after_launch(
+    session_id: &str,
+    post_launch_url: Option<&str>,
+    scripts: &[LaunchPluginInitScript],
+) -> Result<()> {
+    if scripts.is_empty() {
+        return Ok(());
+    }
+    if let Some(url) = post_launch_url {
+        let mut request = build_command_request(vec!["open".to_string(), url.to_string()]);
+        append_init_script_payloads(&mut request, launch_plugin_init_script_payloads(scripts))?;
+        let (response, _) = send_to_session(Some(session_id), &request)?;
+        if !response.ok {
+            let error = response
+                .error
+                .map(|err| format!("{}: {}", err.code, err.message))
+                .unwrap_or_else(|| "unknown open failure".to_string());
+            bail!("browser_launch_failed: failed to open launch URL with plugin init scripts: {error}");
+        }
+    } else {
+        register_launch_plugin_init_scripts_for_session(session_id, scripts)?;
     }
     Ok(())
 }
@@ -11622,9 +11876,20 @@ fn send_to_named_session(
         },
         launch_plugin_runtime,
     )?;
+    let mut options = options;
+    options.url = launch_url_for_remote_args_after_mutators(args, launch_plugin_runtime);
     let result = launch_firefox_with_lazy_setup(options)?;
     let session_id = result.session.session_id;
-    send_to_session(Some(&session_id), request)
+    let request = request_with_launch_plugin_init_scripts(request, args, launch_plugin_runtime)?;
+    if should_register_launch_plugin_init_scripts_after_launch(args, launch_plugin_runtime) {
+        if let Some(runtime) = launch_plugin_runtime {
+            register_launch_plugin_init_scripts_for_session(
+                &session_id,
+                runtime.init_scripts.borrow().as_slice(),
+            )?;
+        }
+    }
+    send_to_session(Some(&session_id), &request)
 }
 
 fn dispatch_remote_request_or_exit(
@@ -11693,6 +11958,9 @@ fn dispatch_remote_request_or_exit(
                         unreachable!();
                     }
                 };
+                let mut options = options;
+                options.url =
+                    launch_url_for_remote_args_after_mutators(args, launch_plugin_runtime);
                 let launch_result = match launch_firefox_with_lazy_setup(options) {
                     Ok(result) => result,
                     Err(err) => {
@@ -11705,11 +11973,39 @@ fn dispatch_remote_request_or_exit(
                         unreachable!();
                     }
                 };
-                let launch_result = wait_for_auto_launched_open_page(launch_result, args)?;
-                if let Some(response) = auto_launched_open_response(args, &launch_result) {
-                    Ok(response)
+                if should_register_launch_plugin_init_scripts_after_launch(
+                    args,
+                    launch_plugin_runtime,
+                ) {
+                    if let Some(runtime) = launch_plugin_runtime {
+                        register_launch_plugin_init_scripts_for_session(
+                            &launch_result.session.session_id,
+                            runtime.init_scripts.borrow().as_slice(),
+                        )?;
+                    }
+                }
+                let request =
+                    request_with_launch_plugin_init_scripts(request, args, launch_plugin_runtime)?;
+                if !has_launch_plugin_init_scripts(launch_plugin_runtime) {
+                    let launch_result = wait_for_auto_launched_open_page(launch_result, args)?;
+                    if let Some(response) = auto_launched_open_response(args, &launch_result) {
+                        Ok(response)
+                    } else {
+                        match send_to_session(None, &request) {
+                            Ok(result) => Ok(result),
+                            Err(err) => {
+                                exit_with_anyhow_error_with_domain_policy(
+                                    err,
+                                    json,
+                                    ignored_global_flags,
+                                    &domain_decision.warnings,
+                                )?;
+                                unreachable!();
+                            }
+                        }
+                    }
                 } else {
-                    match send_to_session(None, request) {
+                    match send_to_session(None, &request) {
                         Ok(result) => Ok(result),
                         Err(err) => {
                             exit_with_anyhow_error_with_domain_policy(
@@ -14032,7 +14328,7 @@ mod tests {
             capabilities: s(&["launch.mutate"]),
             timeout_ms: 2500,
         };
-        let (args, user_agent, warnings) = parse_launch_mutation_response(
+        let mutation = parse_launch_mutation_response(
             &plugin,
             &json!({
                 "protocol": PLUGIN_PROTOCOL,
@@ -14047,16 +14343,72 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(args, s(&["--disable-blink-features=AutomationControlled"]));
-        assert_eq!(user_agent.as_deref(), Some("mutated-agent/2.0"));
-        assert_eq!(warnings.len(), 2);
         assert_eq!(
-            warnings[0]["code"],
+            mutation.extra_args,
+            s(&["--disable-blink-features=AutomationControlled"])
+        );
+        assert_eq!(mutation.user_agent.as_deref(), Some("mutated-agent/2.0"));
+        assert_eq!(mutation.init_scripts.len(), 1);
+        assert_eq!(mutation.init_scripts[0].plugin, "stealth");
+        assert_eq!(mutation.init_scripts[0].index, 0);
+        assert!(mutation.init_scripts[0].code.contains("navigator"));
+        assert_eq!(mutation.warnings.len(), 1);
+        assert_eq!(
+            mutation.warnings[0]["code"],
             json!("PLUGIN_LAUNCH_FIELD_UNSUPPORTED")
         );
-        assert_eq!(warnings[0]["plugin"], json!("stealth"));
-        assert_eq!(warnings[0]["field"], json!("extensions"));
-        assert_eq!(warnings[1]["field"], json!("initScripts"));
+        assert_eq!(mutation.warnings[0]["plugin"], json!("stealth"));
+        assert_eq!(mutation.warnings[0]["field"], json!("extensions"));
+    }
+
+    #[test]
+    fn launch_plugin_init_scripts_attach_to_open_request_payload() {
+        let decision = domain_decision_from_request_context(None).unwrap();
+        let request = build_command_request_with_domain_policy(
+            s(&["open", "https://example.com"]),
+            &decision,
+        )
+        .unwrap();
+        let scripts = RefCell::new(vec![LaunchPluginInitScript {
+            plugin: "stealth".to_string(),
+            index: 0,
+            code: "window.__fromPlugin = true;".to_string(),
+        }]);
+        let warnings = RefCell::new(Vec::new());
+        let action_decision = action_decision_from_request_context(None).unwrap();
+        let confirmation_decision = confirmation_decision_from_context(None);
+        let config = Map::new();
+        let command_args = s(&["open", "https://example.com"]);
+        let runtime = LaunchPluginRuntime {
+            config: &config,
+            command_args: &command_args,
+            target: PendingConfirmationTarget::Default,
+            domain_decision: &decision,
+            action_decision: &action_decision,
+            confirmation_decision: &confirmation_decision,
+            json_output: false,
+            ignored_global_flags: &[],
+            approved_plugin_categories: &[],
+            warnings: &warnings,
+            init_scripts: &scripts,
+        };
+
+        let request =
+            request_with_launch_plugin_init_scripts(&request, &command_args, Some(&runtime))
+                .unwrap();
+
+        assert_eq!(
+            request.params["initScripts"][0]["path"],
+            "plugin:stealth:launch.mutate:0"
+        );
+        assert_eq!(
+            request.params["initScripts"][0]["code"],
+            "window.__fromPlugin = true;"
+        );
+        assert_eq!(
+            launch_url_for_remote_args_after_mutators(&command_args, Some(&runtime)),
+            None
+        );
     }
 
     #[test]
