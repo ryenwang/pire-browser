@@ -149,6 +149,11 @@ Use `get` and `is` after a fresh snapshot or semantic find when you need a
 specific value for verification. Re-run `snapshot -i` first if the page changed
 or the ref may be stale.
 
+Use `eval -b <base64-utf8-js>` or pipe JavaScript to `eval --stdin` when shell
+quoting would make an inline script brittle. Prefer targeted commands such as
+`get`, `is`, `find`, and `snapshot -i` when they can answer the question without
+custom JavaScript.
+
 When using MCP, prefer the agent-browser-style typed verification tools instead
 of the generic compatibility tools: `pire_browser_get_text`,
 `pire_browser_get_html`, `pire_browser_get_value`, `pire_browser_get_attr`,

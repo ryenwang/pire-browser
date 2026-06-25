@@ -2786,6 +2786,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "find" => FIND_HELP,
         "get" => GET_HELP,
         "is" => IS_HELP,
+        "eval" | "evaluate" => EVAL_HELP,
         "click" => CLICK_HELP,
         "tap" => TAP_HELP,
         "dblclick" => DBLCLICK_HELP,
@@ -3256,6 +3257,22 @@ Checks a target's current page state in the active Firefox tab. Selectors may be
 CSS selectors, refs from the latest snapshot or find output, `text=...`, or
 `xpath=...`. Re-run `snapshot -i` before using old refs after navigation or DOM
 changes.
+"##;
+
+const EVAL_HELP: &str = r##"
+Usage:
+  pire-browser eval <js>
+  pire-browser eval -b <base64-utf8-js>
+  pire-browser eval --base64 <base64-utf8-js>
+  echo "document.title" | pire-browser eval --stdin
+
+Runs JavaScript in the active Firefox page after the normal policy and
+confirmation checks. Use `-b`/`--base64` or `--stdin` for long scripts, scripts
+with shell-sensitive quoting, or generated snippets. Base64 input must decode to
+UTF-8 JavaScript. `--stdin` reads the entire piped input as the script.
+
+Prefer targeted commands such as `get`, `is`, `find`, or `snapshot -i` when
+they can answer the question without custom JavaScript.
 "##;
 
 const CLICK_HELP: &str = r##"
@@ -6920,6 +6937,10 @@ mod tests {
             .contains("get attr <sel> <attr>"));
         assert!(help_text(Some("get")).unwrap().contains("get title"));
         assert!(help_text(Some("is")).unwrap().contains("is visible <sel>"));
+        assert!(help_text(Some("eval")).unwrap().contains("eval -b"));
+        assert!(help_text(Some("evaluate"))
+            .unwrap()
+            .contains("eval --base64"));
         assert!(help_text(Some("mouse")).unwrap().contains("mouse wheel"));
         assert!(help_text(Some("swipe")).unwrap().contains("swipe down 500"));
         assert!(help_text(Some("swipe"))

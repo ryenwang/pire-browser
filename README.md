@@ -194,7 +194,7 @@ pire-browser screenshot --screenshot-dir ./shots
 pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80
 pire-browser pdf page.pdf            # Image-backed page PDF
 pire-browser snapshot -i             # Accessibility tree with refs
-pire-browser eval <js>               # Run JavaScript with policy checks
+pire-browser eval <js>               # Run JavaScript; supports -b and --stdin
 pire-browser setcontent '<h1>Hello</h1>' # Replace active page HTML for a repro
 pire-browser dashboard start         # Local status/session/preview/activity dashboard
 pire-browser dashboard start --background
@@ -220,6 +220,11 @@ Use `click <link-ref> --new-tab` or `click <link-ref> --new` when a link target
 should open in a new tab.
 
 PDF capture is available as an image-backed visual evidence file. Natural-language chat is available through `pire-browser chat` and the dashboard AI Chat panel when `AI_GATEWAY_API_KEY` is set; both run the same bounded command-plan loop through the normal CLI command paths. CDP connect is not implemented in the current Firefox backend. `stream enable/status/disable` provides an agent-browser-style control surface for a dashboard-backed WebSocket screenshot stream with basic mouse/keyboard/touch-shaped input events; native WebM video and Chrome DevTools screencast output remain unavailable.
+
+Use `eval -b <base64-utf8-js>` or pipe JavaScript to `eval --stdin` when shell
+quoting would make an inline script brittle. Prefer targeted commands such as
+`get`, `is`, `find`, and `snapshot -i` when they can answer the question without
+custom JavaScript.
 
 ### Read Agent-Friendly Text
 

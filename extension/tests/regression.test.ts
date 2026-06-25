@@ -348,6 +348,15 @@ describe("pire-browser command foundations", () => {
     expect(contentBody).toContain("Function condition satisfied");
   });
 
+  it("supports agent-browser-style eval base64 input", () => {
+    const body = background();
+    expect(body).toContain("function parseEvalScript(args: string[])");
+    expect(body).toContain('args[0] === "-b" || args[0] === "--base64"');
+    expect(body).toContain('args[0]?.startsWith("--base64=")');
+    expect(body).toContain("function decodeEvalBase64(value: string)");
+    expect(body).toContain("new TextDecoder().decode(bytes)");
+  });
+
   it("routes common legacy aliases and core actions", () => {
     const body = background();
     for (const command of [

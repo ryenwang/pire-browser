@@ -2421,12 +2421,49 @@
         return normalizeContentResponse(response);
     }
     async function evalCommand(args) {
-        const script = args.join(" ");
+        const parsed = parseEvalScript(args);
+        if ("error" in parsed)
+            return parsed;
+        const { script } = parsed;
         if (!script)
             return { error: { code: "InvalidArgumentError", message: "eval requires <js>" } };
         const tab = await targetTab();
         const response = await sendFrame(tab.tabId, undefined, { type: "eval", script });
         return normalizeContentResponse(response);
+    }
+    function parseEvalScript(args) {
+        if (args[0] === "-b" || args[0] === "--base64") {
+            if (args.length !== 2 || !args[1]) {
+                return { error: { code: "invalid_args", message: "eval -b requires exactly one base64 value" } };
+            }
+            return decodeEvalBase64(args[1]);
+        }
+        const inlineBase64 = args[0]?.startsWith("--base64=") ? args[0].slice("--base64=".length) : undefined;
+        if (inlineBase64 !== undefined) {
+            if (args.length !== 1 || !inlineBase64) {
+                return { error: { code: "invalid_args", message: "eval --base64=<value> requires exactly one base64 value" } };
+            }
+            return decodeEvalBase64(inlineBase64);
+        }
+        if (args.includes("--stdin")) {
+            return { error: { code: "invalid_args", message: "eval --stdin is handled by the CLI; pipe stdin to `pire-browser eval --stdin`." } };
+        }
+        return { script: args.join(" ") };
+    }
+    function decodeEvalBase64(value) {
+        try {
+            const binary = atob(value);
+            const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+            return { script: new TextDecoder().decode(bytes) };
+        }
+        catch (error) {
+            return {
+                error: {
+                    code: "invalid_args",
+                    message: `eval base64 input is invalid: ${error instanceof Error ? error.message : String(error)}`,
+                },
+            };
+        }
     }
     async function setContentCommand(args) {
         const html = args.join(" ");

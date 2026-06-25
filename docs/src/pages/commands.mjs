@@ -31,12 +31,13 @@ pire-browser screenshot [path]       # Capture screenshot evidence
 pire-browser pdf page.pdf            # Capture image-backed PDF evidence
 pire-browser snapshot -i             # Accessibility tree with refs
 pire-browser snapshot -i -C          # Include cursor-pointer custom controls
-pire-browser eval <js>               # Run JavaScript with policy checks
+pire-browser eval <js>               # Run JavaScript; supports -b and --stdin
 pire-browser setcontent '<main><h1>Hello</h1></main>' # Replace page HTML for a repro
 pire-browser close                   # Close targeted session`),
   p("Refs must usually be quoted in PowerShell, for example <code>pire-browser click '@e2'</code>. Re-run <code>snapshot -i</code> after navigation, DOM changes, dialogs, downloads, or failed actions. Use <code>snapshot -i -C</code> when custom clickable cards, menu rows, or cursor-pointer controls are missing from the default snapshot. If a click reports that the target is covered by another element, handle the covering element first, then re-snapshot before retrying."),
   p("<code>tap</code> uses the same Firefox WebExtension page-level click path as <code>click</code>; it is not native touch input or mobile browser chrome emulation. Use <code>click &lt;link-ref&gt; --new-tab</code> or <code>click &lt;link-ref&gt; --new</code> when a link target should open in a new tab. <code>swipe</code> maps touch direction to page scroll, so <code>swipe up</code> scrolls down. Use <code>scroll</code> when you want direct scroll direction."),
   p("<code>keyboard type</code>, <code>keyboard inserttext</code>, <code>keydown</code>, and <code>keyup</code> act at the current page focus. Click or focus the intended control first, then verify with <code>get value</code>, <code>snapshot -i</code>, or another targeted check."),
+  p("Use <code>eval -b &lt;base64-utf8-js&gt;</code> or pipe JavaScript to <code>eval --stdin</code> when shell quoting would make an inline script brittle. Prefer targeted <code>get</code>, <code>is</code>, <code>find</code>, and <code>snapshot -i</code> commands when they can answer the question without custom JavaScript."),
   code(`pire-browser screenshot page.png
 pire-browser screenshot --screenshot-dir ./shots page.png
 pire-browser screenshot --screenshot-dir ./shots

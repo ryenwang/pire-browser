@@ -1010,6 +1010,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             prepare_auth_password_stdin(&mut args)?;
             prepare_batch_stdin(&mut args)?;
             prepare_cookies_curl_imports(&mut args)?;
+            prepare_eval_input(&mut args)?;
             if let Some(result) = local_not_available_result(&args, json, &ignored_global_flags)? {
                 println!("{result}");
                 std::process::exit(exit_code_for_error("NotAvailableError"));
@@ -6025,6 +6026,7 @@ fn handle_state_shortcut(
     prepare_auth_password_stdin(&mut args)?;
     prepare_batch_stdin(&mut args)?;
     prepare_cookies_curl_imports(&mut args)?;
+    prepare_eval_input(&mut args)?;
     if args.is_empty() {
         exit_with_anyhow_error(
             anyhow::anyhow!("invalid_args: --state requires a browser command"),
@@ -9296,6 +9298,68 @@ fn cookies_set_uses_curl(args: &[String]) -> bool {
         ),
         (Some("cookies"), Some("set"))
     ) && args.iter().any(|arg| arg == "--curl")
+}
+
+fn prepare_eval_input(args: &mut Vec<String>) -> Result<()> {
+    if args.first().map(String::as_str) != Some("eval") {
+        return Ok(());
+    }
+    if eval_uses_stdin(args) {
+        if io::stdin().is_terminal() {
+            bail!("invalid_args: eval --stdin requires piped JavaScript on stdin");
+        }
+        let mut input = String::new();
+        io::stdin()
+            .read_to_string(&mut input)
+            .context("invalid_args: failed to read eval JavaScript from stdin")?;
+        return rewrite_eval_stdin(args, input);
+    }
+    rewrite_eval_base64(args)
+}
+
+fn eval_uses_stdin(args: &[String]) -> bool {
+    args.first().map(String::as_str) == Some("eval") && args.iter().any(|arg| arg == "--stdin")
+}
+
+fn rewrite_eval_stdin(args: &mut Vec<String>, script: String) -> Result<()> {
+    if !eval_uses_stdin(args) {
+        return Ok(());
+    }
+    if args.len() != 2 {
+        bail!("invalid_args: eval --stdin cannot be combined with inline JavaScript or base64 input");
+    }
+    *args = vec!["eval".to_string(), script];
+    Ok(())
+}
+
+fn rewrite_eval_base64(args: &mut Vec<String>) -> Result<()> {
+    if args.first().map(String::as_str) != Some("eval") || args.len() < 2 {
+        return Ok(());
+    }
+    let encoded = match args.get(1).map(String::as_str) {
+        Some("-b") | Some("--base64") => {
+            if args.len() != 3 {
+                bail!("invalid_args: eval -b requires exactly one base64 value");
+            }
+            args[2].clone()
+        }
+        Some(value) if value.starts_with("--base64=") => {
+            if args.len() != 2 {
+                bail!("invalid_args: eval --base64=<value> cannot be combined with inline JavaScript");
+            }
+            value["--base64=".len()..].to_string()
+        }
+        _ => return Ok(()),
+    };
+    if encoded.is_empty() {
+        bail!("invalid_args: eval base64 input cannot be empty");
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded.trim())
+        .context("invalid_args: eval base64 input is invalid")?;
+    let script = String::from_utf8(bytes).context("invalid_args: eval base64 input is not UTF-8")?;
+    *args = vec!["eval".to_string(), script];
+    Ok(())
 }
 
 fn cookies_curl_payload_from_cli_arg(value: &str) -> Result<Option<String>> {
@@ -13941,6 +14005,46 @@ mod tests {
             "--password-stdin",
         ]);
         assert!(rewrite_auth_password_stdin(&mut duplicate, "two".to_string()).is_err());
+    }
+
+    #[test]
+    fn rewrites_eval_base64_for_dispatch() {
+        use base64::Engine as _;
+
+        let encoded = base64::engine::general_purpose::STANDARD
+            .encode("document.querySelector('#app')?.textContent");
+        let mut args = vec!["eval".to_string(), "-b".to_string(), encoded.clone()];
+        rewrite_eval_base64(&mut args).unwrap();
+        assert_eq!(
+            args,
+            s(&["eval", "document.querySelector('#app')?.textContent"])
+        );
+
+        let mut long_flag = vec![
+            "eval".to_string(),
+            format!("--base64={encoded}"),
+        ];
+        rewrite_eval_base64(&mut long_flag).unwrap();
+        assert_eq!(
+            long_flag,
+            s(&["eval", "document.querySelector('#app')?.textContent"])
+        );
+
+        assert!(rewrite_eval_base64(&mut s(&["eval", "-b"])).is_err());
+        assert!(rewrite_eval_base64(&mut s(&["eval", "-b", "!!!"])).is_err());
+        let mut inline = s(&["eval", "document.title"]);
+        rewrite_eval_base64(&mut inline).unwrap();
+        assert_eq!(inline, s(&["eval", "document.title"]));
+    }
+
+    #[test]
+    fn rewrites_eval_stdin_for_dispatch() {
+        let mut args = s(&["eval", "--stdin"]);
+        rewrite_eval_stdin(&mut args, "document.title\n".to_string()).unwrap();
+        assert_eq!(args, s(&["eval", "document.title\n"]));
+
+        let mut combined = s(&["eval", "--stdin", "document.title"]);
+        assert!(rewrite_eval_stdin(&mut combined, "document.URL".to_string()).is_err());
     }
 
     #[test]
