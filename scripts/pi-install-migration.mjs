@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -13,8 +13,10 @@ export const KNOWN_LEGACY_PI_SOURCES = [
 ];
 
 const PACKAGE_SOURCE = "npm:pire-browser";
-export const DEFAULT_DELAY_MS = 100;
-export const DEFAULT_POLL_MS = 100;
+const PACKAGE_NAME = "pire-browser";
+const PACKAGE_EXTENSION_PATH = join("pi", "extensions", "pire-browser.ts");
+export const DEFAULT_DELAY_MS = 0;
+export const DEFAULT_POLL_MS = 50;
 const DEFAULT_TIMEOUT_MS = 30000;
 
 export function detectPiInstallContext(packageRoot) {
@@ -49,12 +51,19 @@ export function packageSource(entry) {
 
 export function isKnownLegacyPiSource(source) {
   const normalized = normalizeSource(source);
+  if (legacyRepoSlug(normalized) === "ryenwang/pire-browser") return true;
   return KNOWN_LEGACY_PI_SOURCES.some((candidate) => normalized === normalizeSource(candidate));
 }
 
 export function isPireBrowserNpmSource(source) {
   const normalized = normalizeSource(source);
   return normalized === PACKAGE_SOURCE || normalized === "npm:@ryenw/pire-browser";
+}
+
+export function isConflictingPireBrowserSource(source, settingsPath) {
+  if (isPireBrowserNpmSource(source)) return false;
+  if (isKnownLegacyPiSource(source)) return true;
+  return isLocalPireBrowserSource(source, settingsPath);
 }
 
 export function migratePiSettingsForKnownLegacySources(settingsPath, { requireNpmSource = true } = {}) {
@@ -80,30 +89,45 @@ export function migratePiSettingsForKnownLegacySources(settingsPath, { requireNp
   const removed = [];
   const packages = settings.packages.filter((entry) => {
     const source = packageSource(entry);
-    if (!isKnownLegacyPiSource(source)) return true;
+    if (!isConflictingPireBrowserSource(source, settingsPath)) return true;
     removed.push(source);
     return false;
   });
+  const removedShim = removeLegacyPireBrowserExtensionShim(settingsPath);
 
-  if (removed.length === 0) {
+  if (removed.length === 0 && !removedShim.removed) {
     return { changed: false, removed, reason: "no_legacy_source", settingsPath };
   }
 
-  const backupPath = `${settingsPath}.pire-browser-migration.bak`;
-  if (!existsSync(backupPath)) {
-    copyFileSync(settingsPath, backupPath);
+  let backupPath = null;
+  if (removed.length > 0) {
+    backupPath = `${settingsPath}.pire-browser-migration.bak`;
+    if (!existsSync(backupPath)) {
+      copyFileSync(settingsPath, backupPath);
+    }
+    settings.packages = packages;
+    writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
   }
 
-  settings.packages = packages;
-  writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
-  return { changed: true, removed, reason: "migrated", settingsPath, backupPath };
+  return {
+    changed: true,
+    removed,
+    removedShims: removedShim.removed ? [removedShim.shimPath] : [],
+    reason: "migrated",
+    settingsPath,
+    ...(backupPath ? { backupPath } : {}),
+    ...(removedShim.backupPath ? { shimBackupPath: removedShim.backupPath } : {}),
+  };
 }
 
 export function hasKnownLegacyPiSource(settingsPath) {
   if (!existsSync(settingsPath)) return false;
   try {
     const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
-    return Array.isArray(settings.packages) && settings.packages.some((entry) => isKnownLegacyPiSource(packageSource(entry)));
+    return (
+      Array.isArray(settings.packages) &&
+      settings.packages.some((entry) => isConflictingPireBrowserSource(packageSource(entry), settingsPath))
+    );
   } catch {
     return false;
   }
@@ -113,7 +137,6 @@ export function schedulePiPackageMigration(packageRoot, env = process.env) {
   if (env.PIRE_BROWSER_SKIP_PI_PACKAGE_MIGRATION === "1") return { scheduled: false, reason: "disabled" };
   const context = detectPiInstallContext(packageRoot);
   if (!context) return { scheduled: false, reason: "not_pi_managed" };
-  if (!hasKnownLegacyPiSource(context.settingsPath)) return { scheduled: false, reason: "no_legacy_source", ...context };
 
   const script = fileURLToPath(import.meta.url);
   const child = spawn(
@@ -142,12 +165,84 @@ export function schedulePiPackageMigration(packageRoot, env = process.env) {
 }
 
 function normalizeSource(source) {
-  return String(source ?? "")
+  let text = String(source ?? "")
     .trim()
     .replace(/\\/g, "/")
-    .replace(/\.git(?=(@|#|$))/i, "")
-    .replace(/[@#].*$/, "")
     .toLowerCase();
+  text = text.replace(/#.*$/, "");
+  text = text.replace(/\.git(?=(@|$))/i, "");
+  const lastPathSeparator = Math.max(text.lastIndexOf("/"), text.lastIndexOf(":"));
+  const refIndex = text.indexOf("@", lastPathSeparator + 1);
+  if (refIndex !== -1) text = text.slice(0, refIndex);
+  return text;
+}
+
+function legacyRepoSlug(source) {
+  let text = source;
+  if (text.startsWith("git:")) text = text.slice("git:".length);
+  if (text.startsWith("git+")) text = text.slice("git+".length);
+  text = text
+    .replace(/^https?:\/\/(?:www\.)?github\.com\//, "github.com/")
+    .replace(/^ssh:\/\/git@github\.com\//, "github.com/")
+    .replace(/^git@github\.com:/, "github.com/")
+    .replace(/^github:/, "github.com/");
+  if (text.startsWith("github.com/")) return text.slice("github.com/".length);
+  return "";
+}
+
+function isLocalPireBrowserSource(source, settingsPath) {
+  const raw = String(source ?? "").trim();
+  if (!raw || raw.startsWith("npm:") || raw.startsWith("git:") || /^[a-z]+:\/\//i.test(raw)) return false;
+  if (/^[\w.-]+\/[\w.-]+\/[\w./-]+$/i.test(raw) && !raw.startsWith(".") && !raw.includes(":")) {
+    return false;
+  }
+  const baseDir = dirname(settingsPath);
+  const candidatePath = resolve(baseDir, raw);
+  const packageRoot = localPackageRoot(candidatePath);
+  if (!packageRoot) return false;
+  try {
+    const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+    return packageJson?.name === PACKAGE_NAME && existsSync(join(packageRoot, PACKAGE_EXTENSION_PATH));
+  } catch {
+    return false;
+  }
+}
+
+function localPackageRoot(candidatePath) {
+  try {
+    const stat = statSync(candidatePath);
+    if (stat.isDirectory()) return candidatePath;
+    if (stat.isFile()) return dirname(candidatePath);
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function removeLegacyPireBrowserExtensionShim(settingsPath) {
+  const shimPath = join(dirname(settingsPath), "extensions", "pire-browser.ts");
+  if (!existsSync(shimPath)) return { removed: false, shimPath };
+  try {
+    const content = readFileSync(shimPath, "utf8");
+    if (!isLegacyPireBrowserExtensionShim(content)) return { removed: false, shimPath };
+    const backupPath = `${shimPath}.pire-browser-migration.bak`;
+    if (!existsSync(backupPath)) {
+      copyFileSync(shimPath, backupPath);
+    }
+    unlinkSync(shimPath);
+    return { removed: true, shimPath, backupPath };
+  } catch {
+    return { removed: false, shimPath };
+  }
+}
+
+function isLegacyPireBrowserExtensionShim(content) {
+  const normalized = String(content ?? "").replace(/\\/g, "/");
+  return (
+    normalized.includes("pathToFileURL") &&
+    normalized.includes("pi/extensions/pire-browser.ts") &&
+    normalized.includes("pire-browser")
+  );
 }
 
 function sleep(ms) {

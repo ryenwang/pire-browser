@@ -17,7 +17,7 @@ Use this when install, launch, native messaging, optional native package resolut
    - If following an agent-browser-style recipe, `pire-browser install --with-deps` and `doctor --fix --with-deps` may install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing. Linux remains guided/manual to avoid Snap/Flatpak Native Messaging failures.
    - If Firefox discovery fails, follow the platform repair command printed by the error. `--firefox-path` may point to the Firefox executable, a directory containing it, or `/Applications/Firefox.app` on macOS.
 3. If postinstall was skipped by `--ignore-scripts`, run setup or retry the browser command that needs auto-launch.
-4. If Pi reports a duplicate `pire-browser` tool from `npm:pire-browser` and a legacy GitHub source, wait a moment and rerun `pi`; if it remains, run `pi remove git:github.com/ryenwang/pire-browser` and then `pi install npm:pire-browser`.
+4. If Pi reports a duplicate `pire-browser` tool from `npm:pire-browser` and an older GitHub, local-checkout, or legacy shim source, wait a moment and rerun `pi`; if it remains, remove the older source shown in Pi's error and then run `pi install npm:pire-browser`.
 5. If optional native packages were skipped, reinstall with optional dependencies enabled.
 6. Verify setup with `pire-browser status`, `pire-browser doctor`, or a fresh browser command.
 

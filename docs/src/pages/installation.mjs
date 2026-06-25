@@ -16,8 +16,9 @@ npx pire-browser snapshot -i`),
   p("Then use via <code>npx</code> or <code>package.json</code> scripts."),
   h2("Pi package", "pi-package"),
   code(`pi install npm:pire-browser`),
-  p("If an older GitHub install is still registered, the npm package schedules a fast migration after Pi records the npm install. If Pi reports a duplicate <code>pire-browser</code> tool immediately after installation, wait a moment and rerun <code>pi</code>. If the conflict remains, remove the legacy GitHub install and reinstall the npm package."),
+  p("If an older GitHub, local-checkout, or Windows ZIP shim install is still registered, the npm package schedules a fast reconciliation after Pi records the npm install. If Pi reports a duplicate <code>pire-browser</code> tool immediately after installation, wait a moment and rerun <code>pi</code>. If the conflict remains, remove the older source shown in Pi's error and reinstall the npm package."),
   code(`pi remove git:github.com/ryenwang/pire-browser
+# or: pi remove /absolute/path/to/your/local/pire-browser-checkout
 pi install npm:pire-browser`),
   h2("From source", "from-source"),
   code(`git clone https://github.com/ryenwang/pire-browser

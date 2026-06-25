@@ -12,7 +12,7 @@ This inventory describes the source sets expected in a public installed `pire-br
 - `agent-browser.schema.json`: legacy packaged schema filename alias kept for existing configs; mirrors the supported config keys including `plugins`.
 - `skills/pire-browser/SKILL.md`: small discovery stub for skill installers and agents.
 - `skill-data/core/SKILL.md`: version-matched core skill served by `pire-browser skills cat core`.
-- `scripts/pi-postinstall.mjs`, `scripts/pi-install-migration.mjs`: best-effort postinstall setup and Pi GitHub-to-npm package migration hooks.
+- `scripts/pi-postinstall.mjs`, `scripts/pi-install-migration.mjs`: best-effort postinstall setup and Pi duplicate-source reconciliation hooks for npm, legacy GitHub/local installs, and old direct extension shims.
 - `LICENSE`: MIT license terms for the public package.
 - `README.md`: public package overview and human-facing install notes.
 
