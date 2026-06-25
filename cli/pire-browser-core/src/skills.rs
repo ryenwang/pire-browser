@@ -182,6 +182,8 @@ mod tests {
         assert!(skill.content.contains("pire-browser set credentials"));
         assert!(skill.content.contains("pire-browser set offline"));
         assert!(skill.content.contains("pire-browser vitals"));
+        assert!(skill.content.contains("pire-browser trace start"));
+        assert!(skill.content.contains("QA evidence bundle"));
         assert!(skill
             .content
             .contains("pire-browser open https://api.example.com --headers"));

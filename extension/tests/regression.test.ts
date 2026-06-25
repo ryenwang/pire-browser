@@ -781,6 +781,7 @@ describe("pire-browser command foundations", () => {
     expect(body).toContain('"DomainPolicyError"');
     expect(body).toContain('"snapshot"');
     expect(body).toContain('if (command === "vitals")');
+    expect(body).toContain('"trace",');
     expect(body).toContain('command === "clipboard"');
     expect(body).toContain('command === "state"');
     expect(body).toContain('command === "tab" || command === "tabs"');
@@ -911,6 +912,9 @@ describe("pire-browser command foundations", () => {
       ["wait"],
       ["wait", "--download", "file.txt"],
       ["screenshot"],
+      ["trace", "start"],
+      ["trace", "status"],
+      ["trace", "stop"],
       ["vitals"],
       ["vitals", "https://example.com"],
       ["react", "tree"],
@@ -1125,6 +1129,26 @@ describe("command shape parity", () => {
     expect(contentBody).toContain('"layout-shift"');
     expect(contentBody).toContain('"event"');
     expect(contentBody).toContain("function hydrationSummary");
+  });
+
+  it("supports Firefox trace evidence bundles", () => {
+    const body = background();
+    expect(body).toContain('case "trace":');
+    expect(body).toContain("return traceCommand(rest);");
+    expect(body).toContain("const traceRecordingsByTabId = new Map");
+    expect(body).toContain("async function traceCommand");
+    expect(body).toContain('if (args[0] === "start") return "start";');
+    expect(body).toContain('if (args[0] === "stop") return "stop";');
+    expect(body).toContain("Started trace recording");
+    expect(body).toContain("No trace recording is active for the current tab");
+    expect(body).toContain("async function traceBundle");
+    expect(body).toContain('kind: "pire-browser-firefox-trace"');
+    expect(body).toContain('source: "firefox-webextension"');
+    expect(body).toContain("networkHarForRecords(records, tab, { startedAt: recording.startedAt })");
+    expect(body).toContain('snapshotCommand(["-i", "-c"])');
+    expect(body).toContain("screenshotCommand([])");
+    expect(body).toContain("traceRecordingsByTabId.delete(tabId)");
+    expect(body).toContain("It is not a Chrome DevTools performance trace or CPU profile.");
   });
 
   it("supports best-effort React tree and inspect diagnostics", () => {

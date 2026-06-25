@@ -249,8 +249,11 @@ pire-browser console --json
 pire-browser console --clear
 pire-browser errors
 pire-browser errors --clear
-pire-browser highlight <sel>`),
-  p("Console, errors, and highlight are active-tab Firefox diagnostics. Trace capture, profiler, video recording, and DevTools inspect proxy are not available yet."),
+pire-browser highlight <sel>
+pire-browser trace start
+pire-browser trace status
+pire-browser trace stop trace.json`),
+  p("Console, errors, highlight, and trace bundles are active-tab Firefox diagnostics. <code>trace start</code> / <code>trace stop</code> writes a Firefox QA evidence bundle with console, page-error, network/HAR metadata, vitals, compact snapshot, and screenshot evidence. It is not a Chrome DevTools performance trace, CPU profile, or video recording."),
 
   h2("Auth vault", "auth-vault"),
   statusNote("auth"),

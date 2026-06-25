@@ -83,7 +83,7 @@ use crate::mcp::{run_mcp_server, McpToolsProfile};
 use crate::read::{read_url, ReadUrlOptions};
 
 const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] =
-    &["connect", "profiler", "record", "stream", "trace", "upgrade"];
+    &["connect", "profiler", "record", "stream", "upgrade"];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 struct PolicyArgsBundle {
@@ -869,6 +869,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             }
             let mut result = response.result.unwrap_or_else(|| json!({ "text": "ok" }));
             maybe_write_network_har(&args, &mut result)?;
+            maybe_write_trace_bundle(&args, &mut result)?;
             append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
             append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
             apply_output_guards(&mut result, &output_guards, json);
@@ -1095,6 +1096,55 @@ fn network_har_stop_without_output_path(args: &[String]) -> bool {
         return false;
     }
     first_positional_arg(&args[3..], &["--filter", "--type", "--method", "--status"]).is_none()
+}
+
+fn maybe_write_trace_bundle(args: &[String], result: &mut Value) -> Result<()> {
+    let Some(trace) = result.get("trace") else {
+        return Ok(());
+    };
+    let Some(path) = trace_output_path(args).or_else(|| default_trace_output_path(args)) else {
+        return Ok(());
+    };
+    if let Some(parent) = Path::new(&path)
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).with_context(|| {
+            format!("failed to create trace output directory {}", parent.display())
+        })?;
+    }
+    let body = serde_json::to_string_pretty(trace)?;
+    fs::write(&path, body).with_context(|| format!("failed to write trace output {}", path))?;
+    result["path"] = json!(path);
+    result["tracePath"] = json!(path);
+    result["text"] = json!(format!("Wrote trace bundle to {}", path));
+    Ok(())
+}
+
+fn trace_output_path(args: &[String]) -> Option<String> {
+    if args.first().map(String::as_str) != Some("trace")
+        || args.get(1).map(String::as_str) != Some("stop")
+    {
+        return None;
+    }
+    first_positional_arg(&args[2..], &[])
+}
+
+fn default_trace_output_path(args: &[String]) -> Option<String> {
+    if args.first().map(String::as_str) != Some("trace")
+        || args.get(1).map(String::as_str) != Some("stop")
+    {
+        return None;
+    }
+    if trace_output_path(args).is_some() {
+        return None;
+    }
+    Some(
+        std::env::temp_dir()
+            .join(format!("pire-browser-trace-{}.json", Uuid::new_v4()))
+            .to_string_lossy()
+            .to_string(),
+    )
 }
 
 fn print_config_warnings(warnings: &[ConfigWarning]) {
@@ -7025,6 +7075,7 @@ fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
                 | "auth"
                 | "download"
                 | "vitals"
+                | "trace"
                 | "react"
                 | "addinitscript"
                 | "removeinitscript"
@@ -7072,6 +7123,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "console"
             | "errors"
             | "network"
+            | "trace"
             | "tab"
             | "tabs"
             | "back"
@@ -7930,6 +7982,7 @@ mod tests {
             "window.__flag=true"
         ])));
         assert!(can_auto_launch_for_remote_args(&s(&["vitals"])));
+        assert!(can_auto_launch_for_remote_args(&s(&["trace", "start"])));
         assert!(!can_auto_launch_for_remote_args(&s(&["close"])));
         assert!(!can_auto_launch_for_remote_args(&s(&["unknown"])));
     }
@@ -8085,6 +8138,7 @@ mod tests {
             "upload",
             "diff",
             "vitals",
+            "trace",
             "react",
             "pdf",
             "addinitscript",
@@ -8101,13 +8155,14 @@ mod tests {
     }
 
     #[test]
-    fn formats_documented_not_available_json() {
-        let result = local_not_available_result(&s(&["trace", "start"]), true, &[])
-            .unwrap()
-            .unwrap();
-        assert!(result.contains("\"success\": false"));
-        assert!(result.contains("\"NotAvailableError\""));
-        assert!(result.contains("\"status\": \"not_supported\""));
+    fn trace_bundle_output_path_parses_stop_path() {
+        assert_eq!(
+            trace_output_path(&s(&["trace", "stop", "trace.json"])),
+            Some("trace.json".to_string())
+        );
+        assert_eq!(trace_output_path(&s(&["trace", "status"])), None);
+        assert!(default_trace_output_path(&s(&["trace", "stop"])).is_some());
+        assert!(default_trace_output_path(&s(&["trace", "stop", "trace.json"])).is_none());
     }
 
     #[test]

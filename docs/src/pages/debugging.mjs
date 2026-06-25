@@ -21,6 +21,13 @@ pire-browser snapshot -i`),
 pire-browser highlight '#submit'
 pire-browser screenshot highlighted-target.png`),
   p("Use highlight before screenshots when a QA report needs to show the intended element. The overlay is Firefox-specific and best-effort."),
+  h2("Trace bundle", "trace-bundle"),
+  code(`pire-browser trace start
+pire-browser open https://app.example.com
+pire-browser snapshot -i
+pire-browser trace status
+pire-browser trace stop trace.json`),
+  p("<code>trace start</code> / <code>trace stop</code> records a Firefox QA evidence bundle with WebExtension-observable console messages, page errors, network/HAR metadata, best-effort vitals, compact snapshot text, and screenshot evidence. It is not a Chrome DevTools performance trace, CPU profile, or video recording."),
   h2("Current debug alternatives", "current-debug-alternatives"),
   code(`pire-browser snapshot -i
 pire-browser get text <sel>
@@ -28,7 +35,7 @@ pire-browser get html <sel>
 pire-browser eval "document.title"
 pire-browser screenshot debug.png`),
   h2("Unavailable debug tools", "unavailable-debug-tools"),
-  list(["Trace capture", "Chrome DevTools inspect proxy", "CPU profiler", "Video recording"]),
+  list(["Chrome DevTools inspect proxy", "CPU profiler", "Video recording"]),
 ];
 
 export default page({

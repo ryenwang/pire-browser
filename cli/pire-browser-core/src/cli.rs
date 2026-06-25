@@ -2163,6 +2163,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "cookies" | "cookie" => COOKIES_HELP,
         "storage" => STORAGE_HELP,
         "network" => NETWORK_HELP,
+        "trace" => TRACE_HELP,
         "vitals" => VITALS_HELP,
         "react" => REACT_HELP,
         "highlight" => HIGHLIGHT_HELP,
@@ -2251,6 +2252,8 @@ Common commands:
   network requests                Show recent page network requests
   network har network.har         Export recent request metadata as HAR
   network route "**/api/**" --body '{}' Mock or block active-tab requests
+  trace start                     Start a Firefox QA evidence bundle
+  trace stop trace.json           Stop and write trace bundle JSON
   vitals [url]                    Measure best-effort Web Vitals for a page
   open --enable react-devtools <url>
                                   Open a React app with agent-browser-style opt-in
@@ -2742,6 +2745,21 @@ TTFB, FCP, LCP, CLS, INP, DOMContentLoaded, load, readyState, and hydration
 warnings seen in captured console/page-error records. Some Chrome Web Vitals
 entries may be unavailable in Firefox; unavailable metrics are reported
 explicitly instead of estimated.
+"##;
+
+const TRACE_HELP: &str = r##"
+Usage:
+  pire-browser trace start [--json]
+  pire-browser trace status [--json]
+  pire-browser trace stop [output.json] [--json]
+
+Records a Firefox QA evidence bundle for the active tab. `trace start` marks the
+beginning of the window, `trace status` reports whether recording is active, and
+`trace stop` writes a JSON bundle containing WebExtension-observable console
+messages, page errors, network request metadata/HAR, best-effort vitals,
+compact snapshot text, and screenshot evidence.
+
+This is not a Chrome DevTools performance trace, CPU profile, or video capture.
 "##;
 
 const REACT_HELP: &str = r##"
@@ -5162,6 +5180,13 @@ mod tests {
         assert!(help_text(Some("network"))
             .unwrap()
             .contains("network unroute [pattern-or-route-id]"));
+        assert!(help_text(Some("trace"))
+            .unwrap()
+            .contains("pire-browser trace stop [output.json]"));
+        assert!(help_text(Some("trace"))
+            .unwrap()
+            .contains("not a Chrome DevTools performance trace"));
+        assert!(help_text(None).unwrap().contains("trace start"));
         assert!(help_text(Some("vitals"))
             .unwrap()
             .contains("pire-browser vitals https://example.com"));

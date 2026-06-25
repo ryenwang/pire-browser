@@ -261,6 +261,14 @@ type NetworkRouteRule = {
   createdAt: number;
 };
 
+type TraceRecording = {
+  startedAt: number;
+  tabId: number;
+  agentId: string;
+  url?: string;
+  title?: string;
+};
+
 const HOST_NAME = "dev.pi.pire_browser";
 const CHUNK_SIZE = 700_000;
 const CLOSE_TEARDOWN_DELAY_MS = 0;
@@ -301,6 +309,7 @@ const networkRequestIdsByTabId = new Map<number, Set<string>>();
 const networkRequestLogIdsByTabId = new Map<number, string[]>();
 const lastNetworkActivityAtByTabId = new Map<number, number>();
 const networkHarRecordingStartedAtByTabId = new Map<number, number>();
+const traceRecordingsByTabId = new Map<number, TraceRecording>();
 const networkRoutes = new Map<string, NetworkRouteRule>();
 const networkRouteMatchesByRequestId = new Map<string, { routeId: string; action: "continue" | "abort" | "mock" }>();
 let offlineModeEnabled = false;
@@ -694,6 +703,11 @@ function actionPolicyCategoryName(args: string[]): string | null {
       if (subcommand === "snapshot" || subcommand === "screenshot") return "snapshot";
       if (subcommand === "url") return "navigate";
       return null;
+    case "trace":
+      if (subcommand === "start") return "state";
+      if (subcommand === "status") return "get";
+      if (subcommand === "stop") return "snapshot";
+      return null;
     case "addinitscript":
     case "removeinitscript":
       return "eval";
@@ -777,7 +791,6 @@ function notAvailableActionPolicyRoot(command: string) {
     "profiles",
     "record",
     "stream",
-    "trace",
     "upgrade",
   ].includes(command);
 }
@@ -900,6 +913,7 @@ function commandNeedsActivePageDomainCheck(args: string[]) {
       "upload",
       "set",
       "device",
+      "trace",
       "vitals",
       "react",
     ].includes(command ?? "")
@@ -1039,6 +1053,8 @@ async function executeCommand(
       return vitalsCommand(rest, domainPolicy);
     case "react":
       return reactCommand(rest);
+    case "trace":
+      return traceCommand(rest);
     case "addinitscript":
       return addInitScriptCommand(rest);
     case "removeinitscript":
@@ -1051,7 +1067,6 @@ async function executeCommand(
     case "upgrade":
     case "stream":
     case "dashboard":
-    case "trace":
     case "profiler":
     case "record":
     case "confirm":
@@ -3609,6 +3624,185 @@ function formatDebugRecords(kind: "console" | "errors", records: Record<string, 
   }).join("\n");
 }
 
+async function traceCommand(args: string[]) {
+  const mode = traceMode(args);
+  const commandArgs = traceCommandArgs(args, mode);
+  const invalid = invalidTraceArgs(commandArgs, mode);
+  if (invalid) return invalid;
+
+  const tab = await targetTab();
+  if (mode === "start") {
+    const startedAt = Date.now();
+    const recording: TraceRecording = {
+      startedAt,
+      tabId: tab.tabId,
+      agentId: tab.agentId,
+      url: tab.url,
+      title: tab.title,
+    };
+    traceRecordingsByTabId.set(tab.tabId, recording);
+    return {
+      text: `Started trace recording in ${tab.agentId}`,
+      traceRecording: traceRecordingStatus(tab, recording),
+      warnings: [traceFirefoxWarning()],
+    };
+  }
+
+  const recording = traceRecordingsByTabId.get(tab.tabId);
+  if (mode === "status") {
+    return {
+      text: recording ? `Trace recording active in ${tab.agentId}` : `No trace recording active in ${tab.agentId}`,
+      traceRecording: traceRecordingStatus(tab, recording),
+      warnings: [traceFirefoxWarning()],
+    };
+  }
+
+  if (!recording) {
+    return {
+      error: {
+        code: "invalid_state",
+        message: "No trace recording is active for the current tab. Run `trace start` before `trace stop`.",
+      },
+    };
+  }
+
+  const path = firstPositionalArg(commandArgs, []);
+  const stoppedAt = Date.now();
+  const trace = await traceBundle(tab, recording, stoppedAt);
+  traceRecordingsByTabId.delete(tab.tabId);
+  return {
+    text: path
+      ? `Prepared trace bundle with ${trace.network.count} request${trace.network.count === 1 ? "" : "s"} for ${path}`
+      : JSON.stringify(trace, null, 2),
+    trace,
+    path,
+    traceRecording: {
+      active: false,
+      startedAt: recording.startedAt,
+      stoppedAt,
+      durationMs: stoppedAt - recording.startedAt,
+      tabId: tab.tabId,
+      agentId: tab.agentId,
+    },
+    warnings: [traceFirefoxWarning()],
+  };
+}
+
+function traceMode(args: string[]): "start" | "status" | "stop" {
+  if (args[0] === "start") return "start";
+  if (args[0] === "stop") return "stop";
+  return "status";
+}
+
+function traceCommandArgs(args: string[], mode: "start" | "status" | "stop") {
+  return mode === "status" && args[0] !== "status" ? args : args.slice(1);
+}
+
+function invalidTraceArgs(args: string[], mode: "start" | "status" | "stop") {
+  const filtered = args.filter((arg) => arg !== "--json");
+  if (mode === "start" && filtered.length > 0) {
+    return { error: { code: "invalid_args", message: "trace start does not accept arguments; open a page before starting trace." } };
+  }
+  if (mode === "status" && filtered.length > 0) {
+    return { error: { code: "invalid_args", message: "trace status does not accept arguments" } };
+  }
+  if (mode === "stop") {
+    let positionalCount = 0;
+    for (const arg of filtered) {
+      if (arg.startsWith("--")) {
+        return { error: { code: "invalid_args", message: `trace stop does not support argument: ${arg}` } };
+      }
+      positionalCount += 1;
+      if (positionalCount > 1) {
+        return { error: { code: "invalid_args", message: `trace stop unexpected argument: ${arg}` } };
+      }
+    }
+  }
+  return null;
+}
+
+function traceRecordingStatus(tab: TabRecord, recording: TraceRecording | undefined) {
+  const now = Date.now();
+  return {
+    active: Boolean(recording),
+    startedAt: recording?.startedAt,
+    durationMs: recording ? now - recording.startedAt : undefined,
+    tabId: tab.tabId,
+    agentId: tab.agentId,
+    url: tab.url,
+    title: tab.title,
+  };
+}
+
+async function traceBundle(tab: TabRecord, recording: TraceRecording, stoppedAt: number) {
+  const records = networkRecordsForTab(tab.tabId)
+    .filter((record) => record.startedAt >= recording.startedAt)
+    .map(publicNetworkRecord);
+  return {
+    schemaVersion: 1,
+    kind: "pire-browser-firefox-trace",
+    source: "firefox-webextension",
+    startedAt: recording.startedAt,
+    stoppedAt,
+    durationMs: stoppedAt - recording.startedAt,
+    tab: {
+      tabId: tab.tabId,
+      agentId: tab.agentId,
+      startUrl: recording.url,
+      startTitle: recording.title,
+      url: tab.url,
+      title: tab.title,
+    },
+    console: await traceSection(() => debugLogCommand("console", [])),
+    errors: await traceSection(() => debugLogCommand("errors", [])),
+    network: {
+      count: records.length,
+      requests: records,
+      har: networkHarForRecords(records, tab, { startedAt: recording.startedAt }),
+      warning: networkHarMetadataWarning(),
+    },
+    vitals: await traceVitalsSection(tab),
+    snapshot: await traceSection(() => snapshotCommand(["-i", "-c"])),
+    screenshot: await traceSection(() => screenshotCommand([])),
+    warnings: [traceFirefoxWarning()],
+  };
+}
+
+async function traceSection(callback: () => Promise<Record<string, unknown>>) {
+  try {
+    const result = await callback();
+    return "error" in result ? { error: result.error } : result;
+  } catch (error) {
+    return traceSectionError(error);
+  }
+}
+
+async function traceVitalsSection(tab: TabRecord) {
+  try {
+    const response = await sendFrame(tab.tabId, 0, { type: "vitals" });
+    const result = normalizeContentResponse(response);
+    return "error" in result ? { error: result.error } : result;
+  } catch (error) {
+    return traceSectionError(error);
+  }
+}
+
+function traceSectionError(error: unknown) {
+  return {
+    error: {
+      code: "trace_section_failed",
+      message: error instanceof Error ? error.message : String(error),
+    },
+  };
+}
+
+function traceFirefoxWarning() {
+  return bestEffortWarning(
+    "trace",
+    "Firefox trace is a pire-browser QA evidence bundle built from WebExtension-observable console, error, network, vitals, snapshot, and screenshot data. It is not a Chrome DevTools performance trace or CPU profile."
+  );
+}
+
 async function vitalsCommand(args: string[], _domainPolicy: DomainPolicyContext | null) {
   const parsed = parseVitalsArgs(args);
   if ("error" in parsed) return parsed;
@@ -5979,6 +6173,7 @@ function clearNetworkStateForTab(tabId: number) {
     if (route.tabId === tabId) networkRoutes.delete(id);
   }
   networkHarRecordingStartedAtByTabId.delete(tabId);
+  traceRecordingsByTabId.delete(tabId);
   networkRequestLogIdsByTabId.delete(tabId);
   networkRequestIdsByTabId.delete(tabId);
   lastNetworkActivityAtByTabId.delete(tabId);

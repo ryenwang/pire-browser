@@ -193,10 +193,16 @@ pire-browser vitals
 pire-browser vitals https://app.example.com/dashboard
 pire-browser console --clear
 pire-browser errors --clear
+pire-browser trace start
+pire-browser trace status
+pire-browser trace stop trace.json
 ```
 
-Use `console`, `errors`, and `vitals` after navigation, login, or failed actions
-when the page looks stuck or broken. `vitals` reports best-effort TTFB, FCP,
+Use `console`, `errors`, `vitals`, and `trace` after navigation, login, or failed actions
+when the page looks stuck or broken. `trace start` / `trace stop` writes a Firefox
+QA evidence bundle with console, page-error, network/HAR metadata, vitals,
+compact snapshot, and screenshot evidence; it is not a Chrome DevTools
+performance trace or CPU profile. `vitals` reports best-effort TTFB, FCP,
 LCP, CLS, INP, DOMContentLoaded, load, readyState, and hydration-warning signals
 from Firefox Performance APIs. Unavailable Chrome-specific metrics are reported
 as unavailable. Console and error commands report Firefox WebExtension-captured

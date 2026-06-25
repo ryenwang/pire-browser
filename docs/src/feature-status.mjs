@@ -73,7 +73,7 @@ export const featureStatuses = {
   },
   debugging: {
     status: "partial",
-    summary: "`console`, `errors`, `highlight`, best-effort `vitals`, best-effort React Fiber tree/inspect, recent redacted command activity, and the local status/session/activity dashboard are available for Firefox workflows; trace capture, DevTools inspect proxy, live viewport streaming, profiler, React render profiling/Suspense detail, and video recording commands are not implemented.",
+    summary: "`console`, `errors`, `highlight`, Firefox trace QA bundles, best-effort `vitals`, best-effort React Fiber tree/inspect, recent redacted command activity, and the local status/session/activity dashboard are available for Firefox workflows; Chrome DevTools inspect proxy, live viewport streaming, profiler, React render profiling/Suspense detail, and video recording commands are not implemented.",
     sources: ["README.md", "extension/src/background.ts"],
   },
   dashboard: {
@@ -88,7 +88,7 @@ export const featureStatuses = {
   },
   profiler: {
     status: "not_available",
-    summary: "Chrome trace and CPU profiler artifacts require a backend that pire-browser does not ship today.",
+    summary: "`trace start` / `trace stop` writes a Firefox QA evidence bundle, but Chrome performance traces and CPU profiler artifacts require a backend that pire-browser does not ship today.",
     sources: ["README.md", "extension/src/background.ts"],
   },
   proxy: {
@@ -182,7 +182,7 @@ export const commandRootStatus = {
   tab: "available",
   tabs: "available",
   tap: "best_effort",
-  trace: "not_available",
+  trace: "best_effort",
   type: "available",
   uncheck: "available",
   upload: "best_effort",

@@ -280,6 +280,36 @@
       "source": "upstream"
     },
     {
+      "root": "trace",
+      "subcommand": "start",
+      "signature": "trace start",
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream",
+      "reason": "Firefox QA evidence bundle recording, not Chrome DevTools trace"
+    },
+    {
+      "root": "trace",
+      "subcommand": "status",
+      "signature": "trace status",
+      "category": "get",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream",
+      "reason": "Firefox QA evidence bundle recording, not Chrome DevTools trace"
+    },
+    {
+      "root": "trace",
+      "subcommand": "stop",
+      "signature": "trace stop [output.json]",
+      "category": "snapshot",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "source": "upstream",
+      "reason": "Firefox QA evidence bundle recording, not Chrome DevTools trace"
+    },
+    {
       "root": "vitals",
       "signature": "vitals [url]",
       "category": "get",

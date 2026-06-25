@@ -26,7 +26,6 @@ const RESERVED_NOT_AVAILABLE_ROOTS: &[&str] = &[
     "skill",
     "skills",
     "stream",
-    "trace",
     "upgrade",
 ];
 
@@ -299,6 +298,12 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
         "read" => "get",
         "diff" if matches!(subcommand, Some("snapshot" | "screenshot")) => "snapshot",
         "diff" if subcommand == Some("url") => "navigate",
+        "trace" => match subcommand {
+            Some("start") => "state",
+            Some("status") => "get",
+            Some("stop") => "snapshot",
+            _ => return CommandPolicyResolution::NotAvailable,
+        },
         "highlight" => "snapshot",
         "vitals" if has_vitals_url_arg(args) => "navigate",
         "vitals" => "get",
