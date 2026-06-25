@@ -1181,7 +1181,7 @@ async function executeCommand(
     case "wait":
       return waitCommand(rest);
     case "screenshot":
-      return screenshotCommand(rest);
+      return screenshotCommand(rest, params);
     case "get":
       return getCommand(rest);
     case "is":
@@ -1210,7 +1210,7 @@ async function executeCommand(
     case "dialog":
       return dialogCommand(rest);
     case "batch":
-      return batchCommand(rest, domainPolicy, actionPolicy, confirmationPolicy);
+      return batchCommand(rest, domainPolicy, actionPolicy, confirmationPolicy, params);
     case "cookies":
       return cookiesCommand(rest);
     case "storage":
@@ -3014,30 +3014,37 @@ function resolveNavigationUrl(input: string, baseUrl?: string) {
   }
 }
 
-async function screenshotCommand(args: string[]) {
+async function screenshotCommand(args: string[], params: Record<string, any> = {}) {
   const dir = valueAfter(args, "--screenshot-dir");
   const format = valueAfter(args, "--screenshot-format") === "jpeg" ? "jpeg" : "png";
   const quality = Number(valueAfter(args, "--screenshot-quality") ?? "92");
-  const positional = firstPositionalArg(args, ["--screenshot-dir", "--screenshot-format", "--screenshot-quality"]);
+  const positional = firstPositionalArg(args, ["--screenshot-dir", "--screenshot-format", "--screenshot-quality", "--hide-scrollbars"]);
   const generatedName = `pire-browser-screenshot-${Date.now()}.${format === "jpeg" ? "jpg" : "png"}`;
   const defaultScreenshotPath = !dir && !positional;
   const path = screenshotPathFor(dir, positional, generatedName);
   const annotate = args.includes("--annotate");
   const full = args.includes("--full");
+  const hideScrollbars = screenshotHideScrollbars(args, params);
   const tab = await targetTab();
   await activatePage(tab);
   let annotationResult: Record<string, any> | null = null;
   const annotationFrameId = selectedFrameIdForTab(tab.tabId);
-  if (annotate) {
-    const response = await sendFrame(tab.tabId, annotationFrameId, { type: "screenshot_annotate", fullPage: full });
-    const result = normalizeContentResponse(response);
-    if ("error" in result) return result;
-    annotationResult = addScreenshotAnnotationRefs(result as Record<string, any>, tab.tabId, annotationFrameId ?? 0);
-    await delay(50);
-  }
+  let scrollbarsHidden = false;
   let meta: Record<string, unknown>;
   let fullPage: Record<string, unknown> | undefined;
   try {
+    if (hideScrollbars) {
+      await setScreenshotScrollbarsHidden(tab.tabId, true);
+      scrollbarsHidden = true;
+      await delay(50);
+    }
+    if (annotate) {
+      const response = await sendFrame(tab.tabId, annotationFrameId, { type: "screenshot_annotate", fullPage: full });
+      const result = normalizeContentResponse(response);
+      if ("error" in result) return result;
+      annotationResult = addScreenshotAnnotationRefs(result as Record<string, any>, tab.tabId, annotationFrameId ?? 0);
+      await delay(50);
+    }
     const capture = full
       ? await captureFullPageScreenshot(tab, format, quality)
       : { dataUrl: await browser.tabs.captureVisibleTab(tab.windowId, { format, quality }), fullPage: undefined };
@@ -3045,6 +3052,9 @@ async function screenshotCommand(args: string[]) {
     const dataUrl = capture.dataUrl;
     meta = await sendScreenshotChunks(dataUrl);
   } finally {
+    if (scrollbarsHidden) {
+      await setScreenshotScrollbarsHidden(tab.tabId, false).catch(() => undefined);
+    }
     if (annotate) {
       await sendFrame(tab.tabId, selectedFrameIdForTab(tab.tabId), { type: "screenshot_clear_annotations" }).catch(() => undefined);
     }
@@ -3057,8 +3067,58 @@ async function screenshotCommand(args: string[]) {
     fullPage,
     annotated: annotate ? annotationResult?.annotated ?? 0 : undefined,
     annotations: annotate ? annotationResult?.annotations ?? [] : undefined,
+    hideScrollbars,
     warnings: mergeWarnings(annotationResult?.warnings),
   };
+}
+
+function screenshotHideScrollbars(args: string[], params: Record<string, any>) {
+  let hide = params.hideScrollbars !== false;
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--hide-scrollbars") {
+      const parsed = parseOptionalBooleanFlag(args[index + 1]);
+      if (typeof parsed === "boolean") {
+        hide = parsed;
+        index += 1;
+      } else {
+        hide = true;
+      }
+      continue;
+    }
+    if (arg.startsWith("--hide-scrollbars=")) {
+      const parsed = parseOptionalBooleanFlag(arg.slice("--hide-scrollbars=".length));
+      if (typeof parsed === "boolean") hide = parsed;
+    }
+  }
+  return hide;
+}
+
+function parseOptionalBooleanFlag(value: unknown): boolean | undefined {
+  if (typeof value !== "string") return undefined;
+  switch (value.trim().toLowerCase()) {
+    case "true":
+    case "1":
+    case "yes":
+    case "on":
+      return true;
+    case "false":
+    case "0":
+    case "no":
+    case "off":
+      return false;
+    default:
+      return undefined;
+  }
+}
+
+async function setScreenshotScrollbarsHidden(tabId: number, hidden: boolean) {
+  const frames = await framesForScope(tabId);
+  await Promise.all(
+    frames.map((frame) =>
+      sendFrame(tabId, frame.frameId, { type: "screenshot_scrollbars", hidden }).catch(() => undefined)
+    )
+  );
 }
 
 function addScreenshotAnnotationRefs(result: Record<string, any>, tabId: number, frameId: number) {
@@ -5852,14 +5912,21 @@ async function batchCommand(
   args: string[],
   domainPolicy: DomainPolicyContext | null,
   actionPolicy: ActionPolicyContext | null,
-  confirmationPolicy: ConfirmationPolicyContext | null
+  confirmationPolicy: ConfirmationPolicyContext | null,
+  params: Record<string, any> = {}
 ) {
   const bailOnError = args.includes("--bail");
   const commands = args.filter((arg) => arg !== "--bail");
   const results: Record<string, unknown>[] = [];
   for (const commandText of commands) {
     const commandArgs = splitCommand(commandText);
-    const result = await executeCommandWithPolicies(commandArgs, domainPolicy, actionPolicy, confirmationPolicy);
+    const result = await executeCommandWithPolicies(
+      commandArgs,
+      domainPolicy,
+      actionPolicy,
+      confirmationPolicy,
+      batchChildParams(commandArgs, params)
+    );
     results.push(batchStepResult(commandArgs, result));
     const errorCode = (result.error as RpcResponse["error"])?.code;
     if ("error" in result && (errorCode === "DomainPolicyError" || errorCode === "ActionPolicyError" || errorCode === "ConfirmationRequired")) {
@@ -5870,6 +5937,11 @@ async function batchCommand(
     }
   }
   return { text: `Ran ${results.length} batch command(s)`, results };
+}
+
+function batchChildParams(commandArgs: string[], params: Record<string, any>) {
+  if (commandArgs[0] !== "screenshot" || params.hideScrollbars === undefined) return {};
+  return { hideScrollbars: params.hideScrollbars };
 }
 
 function batchStepResult(command: string[], result: Record<string, unknown>) {

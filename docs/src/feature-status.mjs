@@ -53,7 +53,7 @@ export const featureStatuses = {
   },
   screenshots: {
     status: "partial",
-    summary: "Visible viewport PNG/JPEG screenshots, stitched `--full` captures, generated screenshot directories, best-effort numbered `--annotate` overlays, image-backed `pdf <path>` output, screenshot pixel diffing, and URL snapshot diffing with optional screenshot comparison are supported.",
+    summary: "Visible viewport PNG/JPEG screenshots, default hidden native scrollbars with `--hide-scrollbars false` opt-out, stitched `--full` captures, generated screenshot directories, best-effort numbered `--annotate` overlays, image-backed `pdf <path>` output, screenshot pixel diffing, and URL snapshot diffing with optional screenshot comparison are supported.",
     sources: ["README.md", "cli/pire-browser-core/src/cli.rs", "extension/src/background.ts"],
   },
   mouseAndDrag: {

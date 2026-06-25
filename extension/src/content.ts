@@ -159,6 +159,7 @@ browser.runtime.onMessage.addListener((message: any) => {
   if (message.type === "screenshot_annotate") return Promise.resolve(annotateScreenshot(Boolean(message.fullPage)));
   if (message.type === "screenshot_full_metrics") return Promise.resolve(screenshotFullMetrics());
   if (message.type === "screenshot_scroll") return screenshotScroll(Number(message.x ?? 0), Number(message.y ?? 0));
+  if (message.type === "screenshot_scrollbars") return Promise.resolve(setScreenshotScrollbarsHidden(Boolean(message.hidden)));
   if (message.type === "screenshot_clear_annotations") return Promise.resolve(clearScreenshotAnnotationsResult());
   if (message.type === "scroll") {
     return Promise.resolve(scrollPage(String(message.direction ?? "down"), Number(message.pixels ?? 900), message.selector));
@@ -742,6 +743,27 @@ function annotateScreenshot(fullPage = false) {
 function clearScreenshotAnnotationsResult() {
   const cleared = clearScreenshotAnnotations();
   return { text: `Cleared ${cleared} screenshot annotation overlay(s)`, cleared, dialogs: drainDialogs() };
+}
+
+const SCREENSHOT_SCROLLBAR_STYLE_ID = "pire-browser-screenshot-hide-scrollbars";
+
+function setScreenshotScrollbarsHidden(hidden: boolean) {
+  const existing = document.getElementById(SCREENSHOT_SCROLLBAR_STYLE_ID);
+  if (!hidden) {
+    existing?.remove();
+    return { text: "Restored screenshot scrollbars", hidden: false, dialogs: drainDialogs() };
+  }
+  if (!existing) {
+    const style = document.createElement("style");
+    style.id = SCREENSHOT_SCROLLBAR_STYLE_ID;
+    style.textContent = [
+      "* { scrollbar-width: none !important; -ms-overflow-style: none !important; }",
+      "*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }",
+    ].join("\n");
+    const root = document.head || document.documentElement || document.body;
+    if (root) root.appendChild(style);
+  }
+  return { text: "Hid screenshot scrollbars", hidden: true, dialogs: drainDialogs() };
 }
 
 function screenshotFullMetrics() {

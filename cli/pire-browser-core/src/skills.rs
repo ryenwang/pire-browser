@@ -231,6 +231,9 @@ mod tests {
         assert!(skill.content.contains("pire-browser mouse move"));
         assert!(skill.content.contains("pire-browser drag"));
         assert!(skill.content.contains("pire-browser pdf"));
+        assert!(skill
+            .content
+            .contains("pire-browser screenshot --hide-scrollbars false"));
         assert!(skill.content.contains("pire-browser set viewport"));
         assert!(skill.content.contains("pire-browser device"));
         assert!(skill.content.contains("pire-browser set device"));
@@ -269,6 +272,9 @@ mod tests {
         assert!(skill.content.contains("pire-browser skills get dogfood"));
         assert!(skill.content.contains("pire-browser skills get --all"));
         assert!(skill.content.contains("pire-browser skills path core"));
+        assert!(skill.content.contains("hideScrollbars"));
+        assert!(skill.content.contains("PIRE_BROWSER_HIDE_SCROLLBARS"));
+        assert!(skill.content.contains("AGENT_BROWSER_HIDE_SCROLLBARS"));
         assert!(skill
             .content
             .contains("Do not inspect installed source code"));

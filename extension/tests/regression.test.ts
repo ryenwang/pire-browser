@@ -929,11 +929,20 @@ describe("pire-browser command foundations", () => {
     expect(backgroundBody).toContain("Use these @e refs for follow-up click/fill/get commands.");
     expect(backgroundBody).toContain("await delay(50)");
     expect(backgroundBody).toContain("captureVisibleTab");
+    expect(backgroundBody).toContain("function screenshotHideScrollbars");
+    expect(backgroundBody).toContain('params.hideScrollbars !== false');
+    expect(backgroundBody).toContain('"--hide-scrollbars"');
+    expect(backgroundBody).toContain('type: "screenshot_scrollbars"');
+    expect(backgroundBody).toContain("setScreenshotScrollbarsHidden(tab.tabId, false)");
     expect(backgroundBody).toContain('type: "screenshot_clear_annotations"');
     expect(backgroundBody).toContain("function screenshotPathFor");
     expect(backgroundBody).toContain("const defaultScreenshotPath = !dir && !positional");
     expect(backgroundBody).toContain("screenshotDefaultPath: defaultScreenshotPath || undefined");
     expect(backgroundBody).toContain("const name = positional && !/[\\\\/]/.test(positional) ? positional : positional ? undefined : generatedName");
+    expect(contentBody).toContain('if (message.type === "screenshot_scrollbars") return Promise.resolve(setScreenshotScrollbarsHidden(Boolean(message.hidden)));');
+    expect(contentBody).toContain("function setScreenshotScrollbarsHidden");
+    expect(contentBody).toContain("scrollbar-width: none");
+    expect(contentBody).toContain("existing?.remove()");
     expect(contentBody).toContain('if (message.type === "screenshot_annotate") return Promise.resolve(annotateScreenshot(Boolean(message.fullPage)));');
     expect(contentBody).toContain('data-pire-browser-screenshot-annotation');
     expect(contentBody).toContain('Annotated ${annotations.length} ${fullPage ? "document" : "visible"} element(s)');
@@ -1012,9 +1021,12 @@ describe("pire-browser command foundations", () => {
     expect(body).toContain('"upload"');
     expect(body).toContain("function explicitNonHttpScheme");
     expect(body).toContain("function normalizePolicyHost");
-    expect(body).toContain("batchCommand(rest, domainPolicy, actionPolicy, confirmationPolicy)");
+    expect(body).toContain("batchCommand(rest, domainPolicy, actionPolicy, confirmationPolicy, params)");
     expect(body).toContain("const commandArgs = splitCommand(commandText)");
-    expect(body).toContain("executeCommandWithPolicies(commandArgs, domainPolicy, actionPolicy, confirmationPolicy)");
+    expect(body).toContain("executeCommandWithPolicies(");
+    expect(body).toContain("batchChildParams(commandArgs, params)");
+    expect(body).toContain("function batchChildParams(commandArgs: string[], params: Record<string, any>)");
+    expect(body).toContain("hideScrollbars: params.hideScrollbars");
     expect(body).toContain("Maintainer note: update this list whenever a command reads");
   });
 

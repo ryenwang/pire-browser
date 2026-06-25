@@ -32,8 +32,9 @@ pire-browser keyboard type "hello"       # Type at current focus
 pire-browser get text '@e1'              # Get text content
 pire-browser is visible '@e1'            # Check element state
 pire-browser screenshot                  # Save to generated path
-pire-browser screenshot page.png         # Save to specific path
+pire-browser screenshot page.png         # Save to specific path; hides scrollbars
 pire-browser close`),
+  p("Screenshots hide native scrollbars by default for stable visual evidence. Use <code>pire-browser screenshot --hide-scrollbars false page.png</code> when scrollbar presence matters."),
   h2("Traditional selectors", "traditional-selectors"),
   p("CSS selectors and semantic locators also work:"),
   code(`pire-browser click "#submit"

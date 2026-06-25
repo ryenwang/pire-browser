@@ -132,7 +132,7 @@ pire-browser click '@e2'                    # Click by ref from snapshot
 pire-browser fill '@e3' "test@example.com"  # Fill by ref
 pire-browser press Enter                    # Press a key at current focus
 pire-browser get text '@e1'                 # Get text by ref
-pire-browser screenshot page.png
+pire-browser screenshot page.png            # Hides native scrollbars by default
 pire-browser close
 ```
 
@@ -190,6 +190,7 @@ pire-browser drag <src> <dst>        # Drag and drop with page-level events
 pire-browser upload <sel> <files>    # Upload files to inputs or dropzones
 pire-browser screenshot [path]       # Screenshot
 pire-browser screenshot --annotate   # Annotated screenshot with numbered element labels
+pire-browser screenshot --hide-scrollbars false # Keep native scrollbars visible
 pire-browser screenshot --screenshot-dir ./shots
 pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80
 pire-browser pdf page.pdf            # Image-backed page PDF
@@ -963,6 +964,7 @@ Use `-C`/`--cursor-interactive` when a page uses clickable `div`s, custom contro
 pire-browser screenshot page.png
 pire-browser screenshot --full full-page.png
 pire-browser screenshot --annotate annotated.png
+pire-browser screenshot --hide-scrollbars false page.png
 pire-browser screenshot --screenshot-dir ./shots
 pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80 page.jpg
 pire-browser pdf page.pdf
@@ -970,6 +972,7 @@ pire-browser pdf viewport.pdf --viewport
 ```
 
 `--full` scrolls and stitches the page into one full-document image. `--annotate` temporarily draws numbered overlays for actionable elements before capture and clears them afterwards.
+Screenshots hide native scrollbars by default for agent-browser-style stable evidence. Pass `--hide-scrollbars false` when scrollbar presence is part of the evidence.
 `pdf <path>` captures a full-page screenshot and embeds it into a one-page PDF. Use it for visual evidence; text is not selectable and print CSS is not applied.
 
 ## Options
@@ -996,6 +999,7 @@ pire-browser pdf viewport.pdf --viewport
 --screenshot-dir <path>         # Default screenshot output directory
 --screenshot-quality <n>        # JPEG quality 0-100
 --screenshot-format <fmt>       # png or jpeg
+--hide-scrollbars <bool>        # Hide native scrollbars during screenshots; default true
 --content-boundaries            # Wrap page output in boundary markers
 --max-output <chars>            # Truncate page output to N characters
 --allowed-domains <list>        # Comma-separated allowed domain patterns
@@ -1125,6 +1129,7 @@ For editor autocomplete:
   "state": "./.pire-state/work.json",
   "allowedDomains": ["app.example.com", "*.example.com"],
   "downloadPath": "./downloads",
+  "hideScrollbars": true,
   "args": "-private-window",
   "userAgent": "qa-bot/1.0",
   "plugins": [
@@ -1136,6 +1141,8 @@ For editor autocomplete:
   ]
 }
 ```
+
+Use `"hideScrollbars": false`, `PIRE_BROWSER_HIDE_SCROLLBARS=0`, or the agent-browser-compatible `AGENT_BROWSER_HIDE_SCROLLBARS=0` when screenshot evidence should preserve native scrollbars. CLI `--hide-scrollbars false` overrides config and environment defaults.
 
 ## Default Timeout
 

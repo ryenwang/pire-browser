@@ -27,9 +27,10 @@ pire-browser screenshot --screenshot-dir ./shots
 pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80 page.jpg
 pire-browser screenshot --full page.png      # Scroll and stitch full page
 pire-browser screenshot --annotate page.png  # Adds best-effort numbered visible-element overlays
+pire-browser screenshot --hide-scrollbars false page.png
 pire-browser pdf page.pdf
 pire-browser pdf viewport.pdf --viewport`),
-  p("<code>--full</code> scrolls and stitches the page into one full-document image. <code>--annotate</code> temporarily draws numbered overlays for actionable elements before capture and clears them afterwards. <code>pdf &lt;path&gt;</code> embeds a screenshot into a one-page image-backed PDF for visual evidence; text is not selectable and print CSS is not applied. <code>--screenshot-dir</code> writes the explicit filename there, or generates a timestamped filename in that directory when no filename is provided. Relative screenshot paths resolve from the command's current working directory."),
+  p("<code>--full</code> scrolls and stitches the page into one full-document image. <code>--annotate</code> temporarily draws numbered overlays for actionable elements before capture and clears them afterwards. Native scrollbars are hidden during screenshot capture by default for stable visual evidence; pass <code>--hide-scrollbars false</code> when scrollbar presence is part of the report. <code>pdf &lt;path&gt;</code> embeds a screenshot into a one-page image-backed PDF for visual evidence; text is not selectable and print CSS is not applied. <code>--screenshot-dir</code> writes the explicit filename there, or generates a timestamped filename in that directory when no filename is provided. Relative screenshot paths resolve from the command's current working directory."),
 ];
 
 export default page({

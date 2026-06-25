@@ -13,8 +13,9 @@ pire-browser record stop recording-dir`),
   h2("Screenshot capture", "screenshot-capture"),
   code(`pire-browser screenshot page.png
 pire-browser screenshot --screenshot-dir ./shots page.png
+pire-browser screenshot --hide-scrollbars false page.png
 pire-browser pdf page.pdf`),
-  p("The current Firefox backend also captures visible viewport screenshots, stitched full-page screenshots, and image-backed PDF evidence."),
+  p("The current Firefox backend also captures visible viewport screenshots, stitched full-page screenshots, and image-backed PDF evidence. Screenshot capture hides native scrollbars by default; pass <code>--hide-scrollbars false</code> when scrollbar visibility is part of the evidence."),
 ];
 
 export default page({

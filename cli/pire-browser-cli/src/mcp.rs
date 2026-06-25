@@ -991,6 +991,10 @@ fn tool_command_args(
             if optional_bool(object, "annotate")? {
                 args.push("--annotate".to_string());
             }
+            if let Some(hide_scrollbars) = optional_bool_value(object, "hideScrollbars")? {
+                args.push("--hide-scrollbars".to_string());
+                args.push(hide_scrollbars.to_string());
+            }
             if let Some(dir) = optional_string(object, "screenshotDir")? {
                 args.push("--screenshot-dir".to_string());
                 args.push(dir);
@@ -2436,6 +2440,17 @@ fn optional_bool(object: &Map<String, Value>, key: &str) -> std::result::Result<
     optional_bool_default(object, key, false)
 }
 
+fn optional_bool_value(
+    object: &Map<String, Value>,
+    key: &str,
+) -> std::result::Result<Option<bool>, String> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(*value)),
+        Some(_) => Err(format!("{key} must be a boolean")),
+    }
+}
+
 fn optional_bool_default(
     object: &Map<String, Value>,
     key: &str,
@@ -3035,6 +3050,7 @@ fn core_tools() -> Vec<Value> {
                     ("path", string_prop("Optional output path.")),
                     ("full", bool_prop("Capture full page when possible.")),
                     ("annotate", bool_prop("Add numbered visible-element overlays.")),
+                    ("hideScrollbars", bool_prop("Hide native scrollbars during capture; pass false to keep them visible.")),
                     ("screenshotDir", string_prop("Directory for generated screenshot names.")),
                     ("format", string_prop("png or jpeg.")),
                     ("quality", number_prop("JPEG quality.")),
@@ -5583,6 +5599,39 @@ mod tests {
                 "snapshot -i",
                 "screenshot \"result path.png\"",
                 "get url"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_screenshot",
+            &json!({
+                "path": "page.png",
+                "full": true,
+                "annotate": true,
+                "hideScrollbars": false,
+                "screenshotDir": "shots",
+                "format": "jpeg",
+                "quality": 80
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "screenshot",
+                "page.png",
+                "--full",
+                "--annotate",
+                "--hide-scrollbars",
+                "false",
+                "--screenshot-dir",
+                "shots",
+                "--screenshot-format",
+                "jpeg",
+                "--screenshot-quality",
+                "80"
             ]
         );
 

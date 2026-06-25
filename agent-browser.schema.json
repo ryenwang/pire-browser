@@ -60,6 +60,10 @@
       "type": "boolean",
       "description": "Disable page-shimmed dialog auto-handling for command requests."
     },
+    "hideScrollbars": {
+      "type": "boolean",
+      "description": "Hide native scrollbars during screenshot capture. Defaults to true; set false to keep them visible."
+    },
     "allowFileAccess": {
       "type": "boolean",
       "description": "Accept local file URLs for supported local-file workflows."

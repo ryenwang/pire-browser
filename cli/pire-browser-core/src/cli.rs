@@ -383,6 +383,7 @@ const GLOBAL_BOOL_FLAGS: &[&str] = &[
     "--headed",
     "--headless",
     "--no-auto-dialog",
+    "--hide-scrollbars",
     "--allow-file-access",
     "--auto-connect",
     "--confirm-interactive",
@@ -651,7 +652,11 @@ fn first_command_index(args: &[String]) -> Option<usize> {
             index += 1;
             if matches!(
                 arg,
-                "--headed" | "--headless" | "--content-boundaries" | "--no-auto-dialog"
+                "--headed"
+                    | "--headless"
+                    | "--content-boundaries"
+                    | "--no-auto-dialog"
+                    | "--hide-scrollbars"
             ) && args
                 .get(index)
                 .and_then(|value| parse_bool_literal(value))
@@ -887,6 +892,14 @@ fn config_args_from_map(config: &Map<String, Value>, raw: &[String]) -> Vec<Stri
         "--no-auto-dialog",
         &["--no-auto-dialog"],
     );
+    push_bool_value_config(
+        &mut args,
+        config,
+        raw,
+        "hideScrollbars",
+        "--hide-scrollbars",
+        &["--hide-scrollbars"],
+    );
     push_bool_config(&mut args, config, raw, "json", "--json", &["--json"]);
     push_bool_config(
         &mut args,
@@ -1047,6 +1060,24 @@ fn push_bool_config(
     }
 }
 
+fn push_bool_value_config(
+    args: &mut Vec<String>,
+    config: &Map<String, Value>,
+    raw: &[String],
+    key: &str,
+    flag: &str,
+    override_flags: &[&str],
+) {
+    if raw_has_any_flag(raw, override_flags) {
+        return;
+    }
+    let Some(value) = config.get(key).and_then(Value::as_bool) else {
+        return;
+    };
+    args.push(flag.to_string());
+    args.push(value.to_string());
+}
+
 fn push_boolish_config(
     args: &mut Vec<String>,
     config: &Map<String, Value>,
@@ -1123,9 +1154,9 @@ fn raw_has_any_flag(raw: &[String], flags: &[&str]) -> bool {
 }
 
 fn parse_bool_literal(value: &str) -> Option<bool> {
-    match value.to_ascii_lowercase().as_str() {
-        "true" => Some(true),
-        "false" => Some(false),
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Some(true),
+        "false" | "0" | "no" | "off" => Some(false),
         _ => None,
     }
 }
@@ -1180,7 +1211,11 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             args.remove(0);
             let effective_flag = if matches!(
                 first.as_str(),
-                "--headed" | "--headless" | "--content-boundaries" | "--no-auto-dialog"
+                "--headed"
+                    | "--headless"
+                    | "--content-boundaries"
+                    | "--no-auto-dialog"
+                    | "--hide-scrollbars"
             ) {
                 if let Some(value) = args.first().and_then(|value| parse_bool_literal(value)) {
                     args.remove(0);
@@ -1192,6 +1227,8 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                         "--headed".to_string()
                     } else if first == "--no-auto-dialog" {
                         "--auto-dialog".to_string()
+                    } else if first == "--hide-scrollbars" {
+                        "--show-scrollbars".to_string()
                     } else {
                         first.clone()
                     }
@@ -3080,8 +3117,8 @@ AGENT_BROWSER_CONFIG paths must exist and contain a JSON object.
 
 Supported camelCase defaults include json, profile, sessionName, session,
 state, autoConnect, allowedDomains, noAllowedDomains, actionPolicy,
-confirmActions, confirmInteractive, noAutoDialog, allowFileAccess, headed,
-headless, colorScheme, proxy, proxyBypass, args, userAgent, downloadPath,
+confirmActions, confirmInteractive, noAutoDialog, hideScrollbars,
+allowFileAccess, headed, headless, colorScheme, proxy, proxyBypass, args, userAgent, downloadPath,
 maxOutput, contentBoundaries, engine, provider, model, and plugins. `plugins` configures
 credential-provider and command/custom integrations; `plugin add` can write
 entries, but configured plugins do not synthesize CLI flags. CLI flags override
@@ -4038,7 +4075,9 @@ afterwards. `--screenshot-dir` writes the explicit filename there, or generates
 a timestamped filename in that directory when no filename is provided. Relative
 paths resolve from the command's current working directory. With no path or
 directory, screenshots are written under the local pire-browser data
-`screenshots/` directory and the resolved path is printed.
+`screenshots/` directory and the resolved path is printed. Native scrollbars
+are hidden during screenshot capture by default for agent-browser-style stable
+evidence; pass `--hide-scrollbars false` to keep them visible.
 "##;
 
 const TABS_HELP: &str = r##"
@@ -4246,6 +4285,11 @@ pub fn build_command_request(args: Vec<String>) -> RpcRequest {
             object.insert("autoDialog".to_string(), json!(auto_dialog));
         }
     }
+    if let Some(hide_scrollbars) = effective_hide_scrollbars_from_env() {
+        if let Some(object) = params.as_object_mut() {
+            object.insert("hideScrollbars".to_string(), json!(hide_scrollbars));
+        }
+    }
     RpcRequest {
         id: Uuid::new_v4().to_string(),
         method: "command".to_string(),
@@ -4255,6 +4299,16 @@ pub fn build_command_request(args: Vec<String>) -> RpcRequest {
 
 fn effective_auto_dialog_from_env() -> Option<bool> {
     env::var("PIRE_BROWSER_AUTO_DIALOG_EFFECTIVE")
+        .ok()
+        .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => Some(true),
+            "0" | "false" | "no" | "off" => Some(false),
+            _ => None,
+        })
+}
+
+fn effective_hide_scrollbars_from_env() -> Option<bool> {
+    env::var("PIRE_BROWSER_HIDE_SCROLLBARS_EFFECTIVE")
         .ok()
         .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
             "1" | "true" | "yes" | "on" => Some(true),
@@ -5431,6 +5485,45 @@ mod tests {
     }
 
     #[test]
+    fn hide_scrollbars_global_flag_is_screenshot_preference_without_ignored_warning() {
+        let parsed = parse_cli_args(&s(&[
+            "--hide-scrollbars",
+            "false",
+            "screenshot",
+            "page.png",
+            "--json",
+        ]))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["screenshot", "page.png"])
+            }
+        );
+
+        let parsed_zero =
+            parse_cli_args(&s(&["--hide-scrollbars", "0", "screenshot", "--json"])).unwrap();
+        assert_eq!(
+            parsed_zero,
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: true,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["screenshot"])
+            }
+        );
+    }
+
+    #[test]
     fn accepts_content_boundaries_as_bool_global_flag() {
         let parsed = parse_cli_args(&s(&["--content-boundaries", "snapshot", "--json"])).unwrap();
         assert_eq!(
@@ -5520,6 +5613,42 @@ mod tests {
                 confirmation_policy: default_confirmation_policy(),
                 args: s(&["open"])
             }
+        );
+    }
+
+    #[test]
+    fn applies_hide_scrollbars_config_default_with_false_opt_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let disabled = dir.path().join("disabled.json");
+        fs::write(&disabled, r#"{ "hideScrollbars": false }"#).unwrap();
+        let expanded =
+            apply_config_defaults_with_options(&s(&["screenshot"]), config_options(Some(disabled)))
+                .unwrap();
+        assert_eq!(
+            &expanded.args[..2],
+            &["--hide-scrollbars".to_string(), "false".to_string()]
+        );
+        assert_eq!(
+            parse_cli_args(&expanded.args).unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Default,
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["screenshot"])
+            }
+        );
+
+        let enabled = dir.path().join("enabled.json");
+        fs::write(&enabled, r#"{ "hideScrollbars": true }"#).unwrap();
+        let expanded =
+            apply_config_defaults_with_options(&s(&["screenshot"]), config_options(Some(enabled)))
+                .unwrap();
+        assert_eq!(
+            &expanded.args[..2],
+            &["--hide-scrollbars".to_string(), "true".to_string()]
         );
     }
 
@@ -6768,9 +6897,15 @@ mod tests {
             .unwrap()
             .contains("agent-browser-style"));
         assert!(help_text(Some("update")).unwrap().contains("update check"));
+        assert!(help_text(Some("screenshot"))
+            .unwrap()
+            .contains("--hide-scrollbars false"));
         assert!(help_text(Some("config"))
             .unwrap()
             .contains("PIRE_BROWSER_CONFIG"));
+        assert!(help_text(Some("config"))
+            .unwrap()
+            .contains("hideScrollbars"));
         assert!(help_text(Some("config"))
             .unwrap()
             .contains("AGENT_BROWSER_CONFIG"));

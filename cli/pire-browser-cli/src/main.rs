@@ -329,6 +329,8 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
     let launch_headless = launch_headless_from_effective_args(&config_result.args);
     let auto_dialog = auto_dialog_from_effective_args(&config_result.args);
     set_effective_auto_dialog_env(auto_dialog);
+    let hide_scrollbars = hide_scrollbars_from_effective_args(&config_result.args);
+    set_effective_hide_scrollbars_env(hide_scrollbars);
     let color_scheme = color_scheme_from_effective_args(&config_result.args)?;
     let proxy_config = proxy_config_from_effective_args(&config_result.args)?;
     let output_guards = output_guard_options_from_effective_args(&config_result.args)?;
@@ -1888,7 +1890,7 @@ fn auto_dialog_from_effective_args_and_env(
                 }
             }
             flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" => {
+            "--headed" | "--headless" | "--hide-scrollbars" => {
                 i += 1;
                 if raw
                     .get(i)
@@ -1912,6 +1914,55 @@ fn set_effective_auto_dialog_env(auto_dialog: bool) {
     );
 }
 
+fn hide_scrollbars_from_effective_args(raw: &[String]) -> bool {
+    let env_hide_scrollbars = non_empty_env("PIRE_BROWSER_HIDE_SCROLLBARS")
+        .or_else(|| non_empty_env("AGENT_BROWSER_HIDE_SCROLLBARS"))
+        .map(|value| parse_boolish(&value));
+    hide_scrollbars_from_effective_args_and_env(raw, env_hide_scrollbars)
+}
+
+fn hide_scrollbars_from_effective_args_and_env(
+    raw: &[String],
+    env_hide_scrollbars: Option<bool>,
+) -> bool {
+    let mut hide_scrollbars = env_hide_scrollbars.unwrap_or(true);
+    let mut i = 0;
+    while i < raw.len() {
+        match raw[i].as_str() {
+            "--hide-scrollbars" => {
+                i += 1;
+                if let Some(value) = raw.get(i).and_then(|value| parse_bool_literal(value)) {
+                    hide_scrollbars = value;
+                    i += 1;
+                } else {
+                    hide_scrollbars = true;
+                }
+            }
+            flag if is_output_guard_value_global_flag(flag) => i += 2,
+            "--headed" | "--headless" | "--no-auto-dialog" | "--content-boundaries" => {
+                i += 1;
+                if raw
+                    .get(i)
+                    .and_then(|value| parse_bool_literal(value))
+                    .is_some()
+                {
+                    i += 1;
+                }
+            }
+            flag if is_output_guard_bool_global_flag(flag) => i += 1,
+            _ => i += 1,
+        }
+    }
+    hide_scrollbars
+}
+
+fn set_effective_hide_scrollbars_env(hide_scrollbars: bool) {
+    std::env::set_var(
+        "PIRE_BROWSER_HIDE_SCROLLBARS_EFFECTIVE",
+        if hide_scrollbars { "1" } else { "0" },
+    );
+}
+
 fn download_path_override_from_args_and_env(raw: &[String]) -> Result<Option<PathBuf>> {
     let Some(value) = download_path_override_from_args(raw)
         .or_else(|| non_empty_env("PIRE_BROWSER_DOWNLOAD_PATH"))
@@ -1928,7 +1979,7 @@ fn download_path_override_from_args(raw: &[String]) -> Option<String> {
         match raw[i].as_str() {
             "--download-path" => return raw.get(i + 1).cloned(),
             flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" | "--no-auto-dialog" => {
+            "--headed" | "--headless" | "--no-auto-dialog" | "--hide-scrollbars" => {
                 i += 1;
                 if raw
                     .get(i)
@@ -1961,7 +2012,7 @@ fn launch_extra_args_from_args(raw: &[String]) -> Option<String> {
         match raw[i].as_str() {
             "--args" => return raw.get(i + 1).cloned(),
             flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" | "--no-auto-dialog" => {
+            "--headed" | "--headless" | "--no-auto-dialog" | "--hide-scrollbars" => {
                 i += 1;
                 if raw
                     .get(i)
@@ -1999,7 +2050,7 @@ fn user_agent_override_from_args(raw: &[String]) -> Option<String> {
         match raw[i].as_str() {
             "--user-agent" => return raw.get(i + 1).cloned(),
             flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" | "--no-auto-dialog" => {
+            "--headed" | "--headless" | "--no-auto-dialog" | "--hide-scrollbars" => {
                 i += 1;
                 if raw
                     .get(i)
@@ -2022,7 +2073,7 @@ fn firefox_path_override_from_args(raw: &[String]) -> Option<String> {
         match raw[i].as_str() {
             "--executable-path" => return raw.get(i + 1).cloned(),
             flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" | "--no-auto-dialog" => {
+            "--headed" | "--headless" | "--no-auto-dialog" | "--hide-scrollbars" => {
                 i += 1;
                 if raw
                     .get(i)
@@ -2095,7 +2146,7 @@ fn output_guard_options_from_effective_args_and_env(
                 }
                 i += 2;
             }
-            "--headed" | "--headless" | "--no-auto-dialog" => {
+            "--headed" | "--headless" | "--no-auto-dialog" | "--hide-scrollbars" => {
                 i += 1;
                 if raw
                     .get(i)
@@ -2185,6 +2236,7 @@ fn is_output_guard_bool_global_flag(flag: &str) -> bool {
         flag,
         "--json"
             | "--no-auto-dialog"
+            | "--hide-scrollbars"
             | "--allow-file-access"
             | "--auto-connect"
             | "--confirm-interactive"
@@ -8168,7 +8220,7 @@ fn color_scheme_from_effective_args(args: &[String]) -> Result<Option<String>> {
             | "-v" => {
                 index += 1;
             }
-            "--headed" | "--headless" | "--no-auto-dialog" => {
+            "--headed" | "--headless" | "--no-auto-dialog" | "--hide-scrollbars" => {
                 if args
                     .get(index + 1)
                     .is_some_and(|value| matches!(value.as_str(), "true" | "false"))
@@ -8220,7 +8272,7 @@ where
                 }
                 index += 2;
             }
-            "--headed" | "--headless" | "--no-auto-dialog" => {
+            "--headed" | "--headless" | "--no-auto-dialog" | "--hide-scrollbars" => {
                 index += 1;
                 if args
                     .get(index)
@@ -12646,6 +12698,23 @@ mod tests {
     }
 
     #[test]
+    fn hide_scrollbars_resolves_from_env_config_and_cli() {
+        assert!(hide_scrollbars_from_effective_args_and_env(&[], None));
+        assert!(!hide_scrollbars_from_effective_args_and_env(
+            &[],
+            Some(false)
+        ));
+        assert!(!hide_scrollbars_from_effective_args_and_env(
+            &s(&["--hide-scrollbars", "false", "screenshot", "page.png"]),
+            Some(true)
+        ));
+        assert!(hide_scrollbars_from_effective_args_and_env(
+            &s(&["--hide-scrollbars", "1", "screenshot"]),
+            Some(false)
+        ));
+    }
+
+    #[test]
     fn command_request_carries_effective_auto_dialog_setting() {
         let _guard = ENV_LOCK.lock().unwrap();
         std::env::remove_var("PIRE_BROWSER_AUTO_DIALOG_EFFECTIVE");
@@ -12666,6 +12735,29 @@ mod tests {
             json!(true)
         );
         std::env::remove_var("PIRE_BROWSER_AUTO_DIALOG_EFFECTIVE");
+    }
+
+    #[test]
+    fn command_request_carries_effective_hide_scrollbars_setting() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("PIRE_BROWSER_HIDE_SCROLLBARS_EFFECTIVE");
+        assert!(build_command_request(s(&["screenshot"]))
+            .params
+            .get("hideScrollbars")
+            .is_none());
+
+        set_effective_hide_scrollbars_env(false);
+        assert_eq!(
+            build_command_request(s(&["screenshot"])).params["hideScrollbars"],
+            json!(false)
+        );
+
+        set_effective_hide_scrollbars_env(true);
+        assert_eq!(
+            build_command_request(s(&["screenshot"])).params["hideScrollbars"],
+            json!(true)
+        );
+        std::env::remove_var("PIRE_BROWSER_HIDE_SCROLLBARS_EFFECTIVE");
     }
 
     #[test]

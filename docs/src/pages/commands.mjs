@@ -44,8 +44,10 @@ pire-browser screenshot --screenshot-dir ./shots
 pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80 page.jpg
 pire-browser screenshot --full page.png       # Scroll and stitch full page
 pire-browser screenshot --annotate page.png   # Adds best-effort numbered visible-element overlays
+pire-browser screenshot --hide-scrollbars false page.png
 pire-browser pdf page.pdf
 pire-browser pdf viewport.pdf --viewport`),
+  p("Screenshot capture hides native scrollbars by default for stable evidence. Pass <code>--hide-scrollbars false</code> when the scrollbar itself is part of the UI state you need to show."),
   code(`pire-browser snapshot -i
 pire-browser click '@e4'
 pire-browser diff snapshot
@@ -458,6 +460,7 @@ pire-browser setcontent '<main><h1>Hello</h1></main>'`),
 --confirm-interactive         # TTY confirmation prompt
 --executable-path <path>      # Custom Firefox executable
 --color-scheme <mode>         # dark, light, or auto page color-scheme override
+--hide-scrollbars <bool>      # Hide native scrollbars during screenshots; default true
 --json                        # Structured output where supported
 --debug                       # Extra diagnostic output`),
 

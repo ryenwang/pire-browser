@@ -454,11 +454,12 @@ pire-browser highlight '#submit'
 pire-browser screenshot submit-highlight.png
 pire-browser screenshot --full full-page.png
 pire-browser screenshot --annotate numbered-elements.png
+pire-browser screenshot --hide-scrollbars false page-with-scrollbars.png
 pire-browser pdf page.pdf
 pire-browser screenshot --screenshot-dir screenshots
 ```
 
-Use `highlight <target>` with the same refs, selectors, text, and semantic targets you would use for `click` or `fill`. Use `screenshot --full` when the report needs the whole page, `screenshot --annotate` when numbered element evidence is more useful than a single target overlay, and `pdf <path>` when the report needs a portable visual evidence file. `pdf` embeds a screenshot into a one-page image-backed PDF; text is not selectable and print CSS is not applied. `screenshot` with no path writes a generated file under the local `pire-browser/screenshots` data directory and prints the resolved path. `--screenshot-dir <dir>` generates a timestamped filename inside that directory when no filename is provided. Relative screenshot paths resolve from the command's current working directory. These are visual QA helpers; styling is Firefox-specific, so do not rely on pixel-identical annotation behavior across browsers.
+Use `highlight <target>` with the same refs, selectors, text, and semantic targets you would use for `click` or `fill`. Use `screenshot --full` when the report needs the whole page, `screenshot --annotate` when numbered element evidence is more useful than a single target overlay, and `pdf <path>` when the report needs a portable visual evidence file. Screenshots hide native scrollbars by default for stable agent-browser-style evidence; pass `--hide-scrollbars false` when scrollbar presence is part of the UI state. `pdf` embeds a screenshot into a one-page image-backed PDF; text is not selectable and print CSS is not applied. `screenshot` with no path writes a generated file under the local `pire-browser/screenshots` data directory and prints the resolved path. `--screenshot-dir <dir>` generates a timestamped filename inside that directory when no filename is provided. Relative screenshot paths resolve from the command's current working directory. These are visual QA helpers; styling is Firefox-specific, so do not rely on pixel-identical annotation behavior across browsers.
 
 Set a default download directory when download location matters:
 
@@ -659,6 +660,7 @@ Capture screenshots:
 
 ```bash
 pire-browser screenshot page.png
+pire-browser screenshot --hide-scrollbars false page-with-scrollbars.png
 pire-browser pdf page.pdf
 ```
 
@@ -671,13 +673,15 @@ pire-browser --config ./ci-config.json open https://example.com
 PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com
 ```
 
-Config files use camelCase keys. Useful defaults include `json`, `profile`, `sessionName`, `session`, `state`, `allowedDomains`, `confirmActions`, `confirmInteractive`, `noAutoDialog`, `allowFileAccess`, `headed`, `headless`, `colorScheme`, `args`, `userAgent`, `downloadPath`, `maxOutput`, and `contentBoundaries`. CLI flags override config defaults. Unknown keys are ignored.
+Config files use camelCase keys. Useful defaults include `json`, `profile`, `sessionName`, `session`, `state`, `allowedDomains`, `confirmActions`, `confirmInteractive`, `noAutoDialog`, `hideScrollbars`, `allowFileAccess`, `headed`, `headless`, `colorScheme`, `args`, `userAgent`, `downloadPath`, `maxOutput`, and `contentBoundaries`. CLI flags override config defaults. Unknown keys are ignored.
 
 Use `--headless`, `PIRE_BROWSER_HEADLESS=1`, `AGENT_BROWSER_HEADLESS=1`, or `headless: true` in config for CI-style runs. Headless applies when a command launches a new managed Firefox session; existing live sessions keep their current mode.
 
 Use `--args "<comma-or-newline-separated Firefox args>"`, `PIRE_BROWSER_ARGS`, `AGENT_BROWSER_ARGS`, or `args` in config when a newly launched managed session needs raw Firefox launch args. Use `--user-agent "<value>"`, `PIRE_BROWSER_USER_AGENT`, `AGENT_BROWSER_USER_AGENT`, or `userAgent` in config when the new managed profile needs a Firefox User-Agent override. Existing live sessions keep their current launch context; close/relaunch the managed session before relying on these settings. If the User-Agent matters, verify with `pire-browser eval "navigator.userAgent"` or app-visible behavior after launch.
 
 Use `--no-auto-dialog`, `PIRE_BROWSER_NO_AUTO_DIALOG=1`, `AGENT_BROWSER_NO_AUTO_DIALOG=1`, or `noAutoDialog: true` in config only when you need agent-browser-style debugging with the page dialog shim disabled. Native Firefox page dialogs may block until handled manually.
+
+Use `--hide-scrollbars false`, `PIRE_BROWSER_HIDE_SCROLLBARS=0`, `AGENT_BROWSER_HIDE_SCROLLBARS=0`, or `hideScrollbars: false` in config only when screenshot evidence should preserve native scrollbars. The default hides them for stable visual comparisons.
 
 List and target managed profiles or live sessions:
 
