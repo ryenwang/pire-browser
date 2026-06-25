@@ -285,17 +285,20 @@ echo "pass" | pire-browser auth save app --url https://example.com/login --usern
 pire-browser auth login app
 pire-browser plugin list
 pire-browser plugin show vault
+pire-browser plugin run captcha captcha.solve --payload '{"siteKey":"abc","url":"https://example.com"}'
 pire-browser auth login app --credential-provider vault --item "My App" --url https://example.com/login
 pire-browser --confirm-actions plugin:vault:credential.read auth login app --credential-provider vault --item "My App"
+pire-browser --confirm-actions plugin:captcha:captcha.solve plugin run captcha captcha.solve --payload '{"siteKey":"abc"}'
 pire-browser auth list
 pire-browser auth show app
 pire-browser auth delete app
 # set credentials covers session-only HTTP Basic auth.
 # --password-stdin avoids putting saved auth passwords in shell history.
 # Auth profiles are stored in the encrypted local auth vault.
-# plugin list/show inspect configured plugins without running them.
+# plugin list/show inspect configured plugins before running them.
 # Credential providers use configured agent-browser-compatible plugins with capability credential.read.
-# browser.provider, launch.mutate, and command.run plugins are discoverable but not executed yet`),
+# plugin run executes command.run/custom capabilities.
+# browser.provider and launch.mutate plugins are discoverable but not executed yet`),
 
   h2("Confirmation", "confirmation"),
   code(`pire-browser --confirm-actions eval eval "document.title"

@@ -778,14 +778,24 @@ return `credential` with `username`, `password`, `url`, and optional
 plugin error text are suppressed in this core login path to reduce accidental
 secret exposure. Use `--confirm-actions plugin:vault:credential.read` when a
 user approval gate should run before the provider is invoked. `plugin list` and
-`plugin show <name>` are read-only agent-browser-style discovery commands; they
-report configured capabilities and clearly mark non-credential capabilities such
-as `browser.provider`, `launch.mutate`, and `command.run` as discoverable but not
-executed by the Firefox backend yet. In MCP, add the `state` profile and call
+`plugin show <name>` are agent-browser-style discovery commands; they report
+configured capabilities before a plugin is run. `plugin run <name> <capability>
+--payload <json>` executes plugins that declare `command.run` plus the requested
+custom capability:
+
+```bash
+pire-browser plugin run captcha captcha.solve --payload '{"siteKey":"abc","url":"https://example.com"}'
+pire-browser --confirm-actions plugin:captcha:captcha.solve plugin run captcha captcha.solve --payload '{"siteKey":"abc"}'
+```
+
+`plugin run` cannot invoke core plugin protocol paths directly. Use
+`auth login --credential-provider` for `credential.read`; `browser.provider` and
+`launch.mutate` remain discoverable but are not executed by this Firefox
+backend yet. In MCP, add the `state` profile and call
 `pire_browser_plugin_list` / `pire_browser_plugin_show` before choosing a
 provider for `pire_browser_auth_login` with `credentialProvider`, `item`, and
-`url`. Do not claim login success until a fresh
-snapshot, URL, or page state confirms it.
+`url`. Do not claim login success until a fresh snapshot, URL, or page state
+confirms it.
 
 ### Proxy authentication
 

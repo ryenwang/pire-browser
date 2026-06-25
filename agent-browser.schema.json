@@ -121,7 +121,7 @@
     },
     "plugins": {
       "type": "array",
-      "description": "Configured agent-browser-compatible local plugins. Credential providers must declare capability credential.read.",
+      "description": "Configured agent-browser-compatible local plugins. Credential providers declare credential.read; command/custom plugins declare command.run and their custom capability.",
       "items": {
         "type": "object",
         "additionalProperties": true,
@@ -130,7 +130,7 @@
           "name": {
             "type": "string",
             "minLength": 1,
-            "description": "Plugin name used by --credential-provider."
+            "description": "Plugin name used by --credential-provider or plugin run."
           },
           "command": {
             "type": "string",
@@ -145,12 +145,12 @@
           "capabilities": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Plugin capabilities such as credential.read."
+            "description": "Plugin capabilities such as credential.read, command.run, or a custom capability like captcha.solve."
           },
           "timeoutMs": {
             "type": "integer",
             "minimum": 1,
-            "description": "Credential-provider timeout in milliseconds."
+            "description": "Plugin timeout in milliseconds."
           }
         }
       }

@@ -95,6 +95,9 @@ use crate::read::{read_url, ReadUrlOptions};
 const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &["connect", "upgrade"];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PLUGIN_PROTOCOL: &str = "agent-browser.plugin.v1";
+const CORE_PLUGIN_CAPABILITIES: &[&str] = &["credential.read", "browser.provider", "launch.mutate"];
+const CORE_PLUGIN_REQUEST_TYPES: &[&str] =
+    &["credential.resolve", "browser.launch", "browser.close"];
 const CREDENTIAL_PROVIDER_TIMEOUT_MS: u64 = 10_000;
 const CHAT_DEFAULT_BASE_URL: &str = "https://ai-gateway.vercel.sh";
 const CHAT_DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4.6";
@@ -325,6 +328,28 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         }
         LocalCommand::PluginShow { name, json } => {
             handle_plugin_show(&config_map, &name, json)?;
+        }
+        LocalCommand::PluginRun {
+            name,
+            capability,
+            payload,
+            json,
+            ignored_global_flags,
+            confirmation_policy,
+        } => {
+            if let Err(err) = handle_plugin_run(
+                &config_map,
+                &name,
+                &capability,
+                payload,
+                json,
+                &ignored_global_flags,
+                &confirmation_policy,
+                false,
+            ) {
+                exit_with_anyhow_error(err, json, &ignored_global_flags)?;
+                unreachable!();
+            }
         }
         LocalCommand::Chat {
             json,
@@ -2364,6 +2389,67 @@ fn handle_plugin_show(config: &Map<String, Value>, name: &str, json_output: bool
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+fn handle_plugin_run(
+    config: &Map<String, Value>,
+    name: &str,
+    capability: &str,
+    payload: Value,
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    confirmation_policy: &ConfirmationPolicyArgs,
+    interactively_approved: bool,
+) -> Result<()> {
+    let plugin = configured_plugin(name, config)?;
+    validate_plugin_run_capability(&plugin, capability)?;
+    let confirmation_args = plugin_run_confirmation_args(name, capability, &payload)?;
+    let domain_decision = resolve_domain_policy_or_exit(
+        &DomainPolicyArgs::default(),
+        json_output,
+        ignored_global_flags,
+    )?;
+    let action_decision = resolve_action_policy_or_exit(
+        &ActionPolicyArgs::default(),
+        json_output,
+        ignored_global_flags,
+    )?;
+    let confirmation_decision = resolve_confirmation_policy_or_exit(
+        confirmation_policy,
+        json_output,
+        ignored_global_flags,
+    )?;
+    if !interactively_approved {
+        maybe_require_plugin_run_confirmation(
+            &confirmation_args,
+            json_output,
+            ignored_global_flags,
+            &domain_decision,
+            &action_decision,
+            &confirmation_decision,
+            &plugin,
+            capability,
+            &payload,
+        )?;
+    }
+    let request = plugin_run_request(capability, payload);
+    let response = run_plugin_protocol_request(&plugin, &request, "plugin")?;
+    let mut redacted_response = response.clone();
+    redact_json_value(&mut redacted_response);
+    let value = json!({
+        "text": format!(
+            "Plugin `{}` ran capability `{}`.",
+            redact_text(&plugin.name),
+            redact_text(capability)
+        ),
+        "plugin": plugin_value(&plugin),
+        "capability": capability,
+        "requestType": capability,
+        "response": redacted_response
+    });
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
 fn configured_plugins(config: &Map<String, Value>) -> Result<Vec<CredentialProviderConfig>> {
     let plugins = credential_plugins_value(config)?;
     let Some(array) = plugins.as_array() else {
@@ -2375,8 +2461,41 @@ fn configured_plugins(config: &Map<String, Value>) -> Result<Vec<CredentialProvi
         .collect::<Result<Vec<_>>>()
 }
 
+fn configured_plugin(
+    plugin_name: &str,
+    config: &Map<String, Value>,
+) -> Result<CredentialProviderConfig> {
+    let plugins = configured_plugins(config)?;
+    let mut names = Vec::new();
+    for plugin in plugins {
+        names.push(plugin.name.clone());
+        if plugin.name == plugin_name {
+            return Ok(plugin);
+        }
+    }
+    if names.is_empty() {
+        bail!(
+            "plugin_not_configured: no plugins are configured; add a plugins array to pire-browser.json or set AGENT_BROWSER_PLUGINS"
+        );
+    }
+    bail!(
+        "plugin_not_configured: plugin `{}` is not configured; available plugins: {}",
+        redact_text(plugin_name),
+        names
+            .iter()
+            .map(|name| redact_text(name))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
 fn plugin_value(plugin: &CredentialProviderConfig) -> Value {
     let (supported, unsupported) = plugin_capability_support(plugin);
+    let runnable_custom = supported
+        .iter()
+        .filter(|capability| is_custom_plugin_capability(capability))
+        .cloned()
+        .collect::<Vec<_>>();
     json!({
         "name": plugin.name,
         "protocol": PLUGIN_PROTOCOL,
@@ -2390,18 +2509,23 @@ fn plugin_value(plugin: &CredentialProviderConfig) -> Value {
             "credential.read": plugin.capabilities.iter().any(|capability| capability == "credential.read"),
             "browser.provider": false,
             "launch.mutate": false,
-            "command.run": false
+            "command.run": plugin.capabilities.iter().any(|capability| capability == "command.run"),
+            "custom": runnable_custom
         },
-        "note": "pire-browser currently executes credential.read plugins through auth login --credential-provider. Other agent-browser plugin capabilities are discoverable but not executed by this Firefox backend yet."
+        "note": "pire-browser executes credential.read plugins through auth login --credential-provider and command.run/custom capabilities through plugin run. browser.provider and launch.mutate are discoverable but not executed by this Firefox backend yet."
     })
 }
 
 fn plugin_capability_support(plugin: &CredentialProviderConfig) -> (Vec<String>, Vec<String>) {
-    plugin
+    let has_command_run = plugin
         .capabilities
         .iter()
-        .cloned()
-        .partition(|capability| capability == "credential.read")
+        .any(|capability| capability == "command.run");
+    plugin.capabilities.iter().cloned().partition(|capability| {
+        capability == "credential.read"
+            || capability == "command.run"
+            || (has_command_run && is_custom_plugin_capability(capability))
+    })
 }
 
 fn plugin_list_text(plugins: &[CredentialProviderConfig]) -> String {
@@ -6051,6 +6175,11 @@ fn execute_confirmed_record(record: PendingConfirmation, json_output: bool) -> R
                 json_output,
             )
         }
+        Some("plugin") | Some("plugins")
+            if record.args.get(1).map(String::as_str) == Some("run") =>
+        {
+            execute_confirmed_plugin_run(record, json_output)
+        }
         _ => execute_confirmed_remote(
             record,
             target,
@@ -6258,6 +6387,36 @@ fn execute_confirmed_auth_login(
     append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json_output)?;
     println!("{}", format_cli_result(&result, json_output)?);
     Ok(())
+}
+
+fn execute_confirmed_plugin_run(record: PendingConfirmation, json_output: bool) -> Result<()> {
+    let config_result = apply_config_defaults(&record.args)?;
+    match parse_cli_args(&config_result.args)? {
+        LocalCommand::PluginRun {
+            name,
+            capability,
+            payload,
+            ignored_global_flags,
+            confirmation_policy,
+            ..
+        } => {
+            if let Err(err) = handle_plugin_run(
+                &config_result.config,
+                &name,
+                &capability,
+                payload,
+                json_output,
+                &ignored_global_flags,
+                &confirmation_policy,
+                true,
+            ) {
+                exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+                unreachable!();
+            }
+            Ok(())
+        }
+        _ => bail!("invalid_args: confirmed record is not a plugin run command"),
+    }
 }
 
 fn execute_confirmed_download(
@@ -7605,6 +7764,100 @@ fn run_credential_provider(
             "url": options.url.clone(),
         }
     });
+    run_plugin_protocol_request(provider, &request, "credential provider")
+}
+
+fn plugin_run_request(capability: &str, payload: Value) -> Value {
+    json!({
+        "protocol": PLUGIN_PROTOCOL,
+        "type": capability,
+        "capability": capability,
+        "request": payload
+    })
+}
+
+fn plugin_run_confirmation_args(
+    name: &str,
+    capability: &str,
+    payload: &Value,
+) -> Result<Vec<String>> {
+    Ok(vec![
+        "plugin".to_string(),
+        "run".to_string(),
+        name.to_string(),
+        capability.to_string(),
+        "--payload".to_string(),
+        serde_json::to_string(payload)?,
+    ])
+}
+
+fn validate_plugin_run_capability(
+    plugin: &CredentialProviderConfig,
+    capability: &str,
+) -> Result<()> {
+    if !valid_plugin_category_part(plugin.name.as_str()) {
+        bail!(
+            "invalid_args: plugin name `{}` cannot be used with plugin run because confirmation categories allow only letters, numbers, '.', '-', and '_'",
+            redact_text(&plugin.name)
+        );
+    }
+    if !valid_plugin_category_part(capability) {
+        bail!(
+            "invalid_args: plugin run capability `{}` must use only letters, numbers, '.', '-', and '_'",
+            redact_text(capability)
+        );
+    }
+    if CORE_PLUGIN_CAPABILITIES.contains(&capability)
+        || CORE_PLUGIN_REQUEST_TYPES.contains(&capability)
+    {
+        bail!(
+            "unsupported_command: plugin run cannot invoke core capability or protocol request `{}`; use the dedicated command path instead",
+            redact_text(capability)
+        );
+    }
+    let has_command_run = plugin
+        .capabilities
+        .iter()
+        .any(|configured| configured == "command.run");
+    if !has_command_run {
+        bail!(
+            "unsupported_command: plugin `{}` does not declare command.run",
+            redact_text(&plugin.name)
+        );
+    }
+    if capability != "command.run"
+        && !plugin
+            .capabilities
+            .iter()
+            .any(|configured| configured == capability)
+    {
+        bail!(
+            "unsupported_command: plugin `{}` does not declare capability `{}`",
+            redact_text(&plugin.name),
+            redact_text(capability)
+        );
+    }
+    Ok(())
+}
+
+fn is_custom_plugin_capability(capability: &str) -> bool {
+    capability != "command.run"
+        && !CORE_PLUGIN_CAPABILITIES.contains(&capability)
+        && !CORE_PLUGIN_REQUEST_TYPES.contains(&capability)
+}
+
+fn valid_plugin_category_part(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+}
+
+fn run_plugin_protocol_request(
+    provider: &CredentialProviderConfig,
+    request: &Value,
+    role: &str,
+) -> Result<Value> {
     let request_bytes = serde_json::to_vec(&request)?;
     let mut child = Command::new(&provider.command)
         .args(&provider.args)
@@ -7614,38 +7867,38 @@ fn run_credential_provider(
         .spawn()
         .with_context(|| {
             format!(
-                "plugin_launch_failed: failed to start credential provider `{}`",
-                redact_text(&provider.name)
+                "plugin_launch_failed: failed to start {role} `{}`",
+                redact_text(&provider.name),
             )
         })?;
     if let Some(mut stdin) = child.stdin.take() {
         stdin
             .write_all(&request_bytes)
-            .context("plugin_failed: failed to send credential request to provider")?;
+            .with_context(|| format!("plugin_failed: failed to send request to {role}"))?;
     }
     let started_at = Instant::now();
     loop {
         if child
             .try_wait()
-            .context("plugin_failed: failed while waiting for credential provider")?
+            .with_context(|| format!("plugin_failed: failed while waiting for {role}"))?
             .is_some()
         {
             let output = child
                 .wait_with_output()
-                .context("plugin_failed: failed to read credential provider output")?;
+                .with_context(|| format!("plugin_failed: failed to read {role} output"))?;
             if !output.status.success() {
                 bail!(
-                    "plugin_failed: credential provider `{}` exited unsuccessfully",
+                    "plugin_failed: {role} `{}` exited unsuccessfully",
                     redact_text(&provider.name)
                 );
             }
-            return parse_plugin_response(&output.stdout, &provider.name);
+            return parse_plugin_response_for_role(&output.stdout, &provider.name, role);
         }
         if started_at.elapsed() > Duration::from_millis(provider.timeout_ms) {
             let _ = child.kill();
             let _ = child.wait();
             bail!(
-                "plugin_timeout: credential provider `{}` did not respond within {}ms",
+                "plugin_timeout: {role} `{}` did not respond within {}ms",
                 redact_text(&provider.name),
                 provider.timeout_ms
             );
@@ -7654,22 +7907,27 @@ fn run_credential_provider(
     }
 }
 
+#[cfg(test)]
 fn parse_plugin_response(stdout: &[u8], provider_name: &str) -> Result<Value> {
+    parse_plugin_response_for_role(stdout, provider_name, "credential provider")
+}
+
+fn parse_plugin_response_for_role(stdout: &[u8], provider_name: &str, role: &str) -> Result<Value> {
     let response: Value = serde_json::from_slice(stdout).map_err(|_| {
         anyhow::anyhow!(
-            "plugin_malformed_response: credential provider `{}` did not write valid JSON to stdout",
+            "plugin_malformed_response: {role} `{}` did not write valid JSON to stdout",
             redact_text(provider_name)
         )
     })?;
     if response.get("protocol").and_then(Value::as_str) != Some(PLUGIN_PROTOCOL) {
         bail!(
-            "plugin_protocol_error: credential provider `{}` returned an unsupported protocol",
+            "plugin_protocol_error: {role} `{}` returned an unsupported protocol",
             redact_text(provider_name)
         );
     }
     if response.get("success").and_then(Value::as_bool) != Some(true) {
         bail!(
-            "plugin_failed: credential provider `{}` returned an unsuccessful response",
+            "plugin_failed: {role} `{}` returned an unsuccessful response",
             redact_text(provider_name)
         );
     }
@@ -7791,6 +8049,56 @@ fn maybe_require_credential_provider_confirmation(
             })),
         },
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn maybe_require_plugin_run_confirmation(
+    args: &[String],
+    json_output: bool,
+    ignored_global_flags: &[GlobalFlagWarning],
+    domain_decision: &DomainPolicyDecision,
+    action_decision: &ActionPolicyDecision,
+    confirmation_decision: &ConfirmationPolicyDecision,
+    plugin: &CredentialProviderConfig,
+    capability: &str,
+    payload: &Value,
+) -> Result<bool> {
+    let category = plugin_confirmation_category(&plugin.name, capability)?;
+    if !confirmation_decision.requires(&category) {
+        return Ok(false);
+    }
+    let mut redacted_payload = payload.clone();
+    redact_json_value(&mut redacted_payload);
+    require_confirmation_for_category_or_exit(
+        &category,
+        args,
+        ConfirmationGate {
+            confirmation_decision,
+            target: PendingConfirmationTarget::Default,
+            domain_decision,
+            action_decision,
+            json_output,
+            ignored_global_flags,
+            metadata: Some(json!({
+                "plugin": plugin.name.clone(),
+                "capability": capability,
+                "payload": redacted_payload,
+            })),
+        },
+    )
+}
+
+fn plugin_confirmation_category(plugin_name: &str, capability: &str) -> Result<String> {
+    if !valid_plugin_category_part(plugin_name) || !valid_plugin_category_part(capability) {
+        bail!(
+            "invalid_args: plugin confirmation category parts must use only letters, numbers, '.', '-', and '_'"
+        );
+    }
+    Ok(format!(
+        "plugin:{}:{}",
+        plugin_name.to_ascii_lowercase(),
+        capability
+    ))
 }
 
 fn auth_profile_result_value(
@@ -12454,11 +12762,16 @@ mod tests {
                     "name": "cloud-browser",
                     "command": "agent-browser-plugin-cloud-browser",
                     "capabilities": ["browser.provider"]
+                },
+                {
+                    "name": "captcha",
+                    "command": "agent-browser-plugin-captcha",
+                    "capabilities": ["command.run", "captcha.solve"]
                 }
             ]),
         );
         let plugins = configured_plugins(&config).unwrap();
-        assert_eq!(plugins.len(), 2);
+        assert_eq!(plugins.len(), 3);
 
         let vault = plugin_value(&plugins[0]);
         assert_eq!(vault["name"], json!("vault"));
@@ -12475,13 +12788,70 @@ mod tests {
         );
         assert_eq!(cloud["execution"]["credential.read"], json!(false));
 
+        let captcha = plugin_value(&plugins[2]);
+        assert_eq!(
+            captcha["supportedCapabilities"],
+            json!(["command.run", "captcha.solve"])
+        );
+        assert_eq!(captcha["unsupportedCapabilities"], json!([]));
+        assert_eq!(captcha["execution"]["command.run"], json!(true));
+        assert_eq!(captcha["execution"]["custom"], json!(["captcha.solve"]));
+
         let list_text = plugin_list_text(&plugins);
         assert!(list_text.contains("vault [credential.read]"));
         assert!(list_text.contains("cloud-browser [none; unsupported here: browser.provider]"));
+        assert!(list_text.contains("captcha [command.run, captcha.solve]"));
 
         let show_text = plugin_show_text(&plugins[1]);
         assert!(show_text.contains("Plugin: cloud-browser"));
         assert!(show_text.contains("Discoverable but not executed here: browser.provider"));
+    }
+
+    #[test]
+    fn plugin_run_request_and_capability_validation_follow_agent_browser_shape() {
+        let plugin = CredentialProviderConfig {
+            name: "captcha".to_string(),
+            command: "agent-browser-plugin-captcha".to_string(),
+            args: Vec::new(),
+            capabilities: s(&["command.run", "captcha.solve"]),
+            timeout_ms: 2500,
+        };
+        validate_plugin_run_capability(&plugin, "captcha.solve").unwrap();
+        validate_plugin_run_capability(&plugin, "command.run").unwrap();
+        assert!(validate_plugin_run_capability(&plugin, "credential.read")
+            .unwrap_err()
+            .to_string()
+            .contains("core capability"));
+        assert!(validate_plugin_run_capability(&plugin, "browser.launch")
+            .unwrap_err()
+            .to_string()
+            .contains("core capability"));
+        assert!(
+            validate_plugin_run_capability(&plugin, "captcha.unsupported")
+                .unwrap_err()
+                .to_string()
+                .contains("does not declare capability")
+        );
+
+        let missing_command_run = CredentialProviderConfig {
+            name: "captcha".to_string(),
+            command: "agent-browser-plugin-captcha".to_string(),
+            args: Vec::new(),
+            capabilities: s(&["captcha.solve"]),
+            timeout_ms: 2500,
+        };
+        assert!(
+            validate_plugin_run_capability(&missing_command_run, "captcha.solve")
+                .unwrap_err()
+                .to_string()
+                .contains("does not declare command.run")
+        );
+
+        let request = plugin_run_request("captcha.solve", json!({"siteKey": "abc"}));
+        assert_eq!(request["protocol"], json!(PLUGIN_PROTOCOL));
+        assert_eq!(request["type"], json!("captcha.solve"));
+        assert_eq!(request["capability"], json!("captcha.solve"));
+        assert_eq!(request["request"], json!({"siteKey": "abc"}));
     }
 
     #[test]

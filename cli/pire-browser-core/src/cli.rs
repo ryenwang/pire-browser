@@ -173,6 +173,14 @@ pub enum LocalCommand {
         name: String,
         json: bool,
     },
+    PluginRun {
+        name: String,
+        capability: String,
+        payload: Value,
+        json: bool,
+        ignored_global_flags: Vec<GlobalFlagWarning>,
+        confirmation_policy: ConfirmationPolicyArgs,
+    },
     Chat {
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
@@ -1346,6 +1354,54 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 return Ok(LocalCommand::PluginShow {
                     name,
                     json: json_output,
+                });
+            }
+            "run" => {
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                let Some(name) = args.first().cloned() else {
+                    bail!("invalid_args: plugin run requires <name> <capability>");
+                };
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                let Some(capability) = args.first().cloned() else {
+                    bail!("invalid_args: plugin run requires <name> <capability>");
+                };
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                let mut payload = json!({});
+                let mut i = 0;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--json" => {
+                            json_output = true;
+                            i += 1;
+                        }
+                        "--payload" => {
+                            i += 1;
+                            let Some(raw_payload) = args.get(i) else {
+                                bail!("invalid_args: plugin run --payload requires JSON");
+                            };
+                            payload = serde_json::from_str(raw_payload).map_err(|err| {
+                                anyhow::anyhow!(
+                                    "invalid_args: plugin run --payload must be valid JSON: {err}"
+                                )
+                            })?;
+                            i += 1;
+                        }
+                        other if other.starts_with('-') => {
+                            bail!("unsupported plugin run option: {other}");
+                        }
+                        other => bail!("unsupported plugin run argument: {other}"),
+                    }
+                }
+                return Ok(LocalCommand::PluginRun {
+                    name,
+                    capability,
+                    payload,
+                    json: json_output,
+                    ignored_global_flags,
+                    confirmation_policy,
                 });
             }
             other if other.starts_with('-') => bail!("unsupported plugin option: {other}"),
@@ -2811,6 +2867,8 @@ Common commands:
                                   Resolve credentials through a configured plugin
   plugin list                     List configured agent-browser protocol plugins
   plugin show vault               Show one configured plugin without running it
+  plugin run captcha captcha.solve --payload '{"siteKey":"abc"}'
+                                  Run a command.run/custom plugin capability
   clipboard read                  Read text from the system clipboard
   skills list                     List installed agent skills
   skills cat core                 Print the version-matched core agent skill
@@ -3685,17 +3743,21 @@ const PLUGIN_HELP: &str = r##"
 Usage:
   pire-browser plugin list [--json]
   pire-browser plugin show <name> [--json]
+  pire-browser plugin run <name> <capability> [--payload <json>] [--json]
 
-Lists or inspects configured agent-browser protocol plugins without running
-them. Plugin entries come from the `plugins` array in pire-browser config files
-or from PIRE_BROWSER_PLUGINS / AGENT_BROWSER_PLUGINS. This read-only surface
-matches agent-browser's discovery workflow so agents can see available
-credential-provider plugins before using `auth login --credential-provider`.
+Lists, inspects, or explicitly runs configured agent-browser protocol plugins.
+Plugin entries come from the `plugins` array in pire-browser config files or
+from PIRE_BROWSER_PLUGINS / AGENT_BROWSER_PLUGINS. Use list/show before choosing
+a plugin.
 
-Current built-in execution support is limited to `credential.read` providers
-through `auth login --credential-provider`; browser.provider, launch.mutate, and
-generic command.run plugins are reported but not executed by this Firefox
-backend yet.
+`credential.read` providers run through `auth login --credential-provider`.
+`plugin run` executes plugins that declare `command.run` and the requested
+custom capability, for example `captcha.solve`. It cannot invoke core plugin
+capabilities or protocol request types directly. Use `auth login
+--credential-provider` for `credential.read`; `browser.provider` and
+`launch.mutate` are still discoverable but not executed by this Firefox backend.
+Use `--confirm-actions plugin:<name>:<capability>` when a plugin capability
+should require user approval before it runs. Plugin stderr is suppressed.
 "##;
 
 const STATE_HELP: &str = r##"
@@ -5728,9 +5790,47 @@ mod tests {
                 json: true
             }
         );
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "--confirm-actions",
+                "plugin:captcha:captcha.solve",
+                "plugin",
+                "run",
+                "captcha",
+                "captcha.solve",
+                "--payload",
+                r#"{"siteKey":"abc","url":"https://example.com"}"#,
+                "--json"
+            ]))
+            .unwrap(),
+            LocalCommand::PluginRun {
+                name: "captcha".to_string(),
+                capability: "captcha.solve".to_string(),
+                payload: json!({"siteKey": "abc", "url": "https://example.com"}),
+                json: true,
+                ignored_global_flags: vec![],
+                confirmation_policy: ConfirmationPolicyArgs {
+                    confirm_actions: Some("plugin:captcha:captcha.solve".to_string()),
+                    confirm_interactive: false,
+                }
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["plugins", "run", "echo", "command.run"])).unwrap(),
+            LocalCommand::PluginRun {
+                name: "echo".to_string(),
+                capability: "command.run".to_string(),
+                payload: json!({}),
+                json: false,
+                ignored_global_flags: vec![],
+                confirmation_policy: default_confirmation_policy()
+            }
+        );
         assert!(parse_cli_args(&s(&["plugin", "show"])).is_err());
         assert!(parse_cli_args(&s(&["plugin", "add", "agent-browser-plugin-vault"])).is_err());
         assert!(parse_cli_args(&s(&["plugin", "run", "vault"])).is_err());
+        assert!(parse_cli_args(&s(&["plugin", "run", "vault", "x", "--payload"])).is_err());
+        assert!(parse_cli_args(&s(&["plugin", "run", "vault", "x", "--payload", "{"])).is_err());
     }
 
     #[test]
@@ -6262,6 +6362,7 @@ mod tests {
         assert!(text.contains("auth login app --credential-provider vault"));
         assert!(text.contains("plugin list"));
         assert!(text.contains("plugin show vault"));
+        assert!(text.contains("plugin run captcha captcha.solve"));
         assert_eq!(help_text(Some("commands")), Some(text));
         assert!(help_text(Some("status")).unwrap().contains("status"));
         assert!(help_text(Some("install"))
@@ -6296,9 +6397,10 @@ mod tests {
         assert!(help_text(Some("plugin"))
             .unwrap()
             .contains("plugin show <name>"));
-        assert!(help_text(Some("plugins"))
+        assert!(help_text(Some("plugin"))
             .unwrap()
-            .contains("credential.read"));
+            .contains("plugin run <name> <capability>"));
+        assert!(help_text(Some("plugins")).unwrap().contains("command.run"));
         assert!(help_text(Some("config")).unwrap().contains("autoConnect"));
         assert!(help_text(Some("config")).unwrap().contains("proxyBypass"));
         assert!(help_text(Some("state"))

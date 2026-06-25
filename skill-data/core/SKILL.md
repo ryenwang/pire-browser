@@ -579,7 +579,30 @@ pire-browser auth login app --credential-provider vault --item "My App" --url ht
 pire-browser snapshot -i --compact
 ```
 
-Credential providers use the agent-browser plugin protocol with capability `credential.read`; configure them in `pire-browser.json` / `agent-browser.json` under `plugins`, or set `AGENT_BROWSER_PLUGINS` / `PIRE_BROWSER_PLUGINS` to the same JSON array. Use CLI `plugin list` / `plugin show <name>` to inspect configured plugins without running them. These commands report configured capabilities and mark non-credential capabilities such as `browser.provider`, `launch.mutate`, and `command.run` as discoverable but not executed by the Firefox backend yet. Do not put vault tokens or passwords in plugin args. Use `--confirm-actions plugin:vault:credential.read` when provider access should require approval before the plugin runs. When using MCP, add the `state` profile and inspect providers with `pire_browser_plugin_list` / `pire_browser_plugin_show` before `pire_browser_auth_login`; only call `pire_browser_auth_save` with user-approved credentials, and use `pire_browser_auth_login` with `credentialProvider`, `item`, and `url` for configured vault providers. Always verify login with a fresh snapshot, URL, or page state before reporting success.
+Credential providers use the agent-browser plugin protocol with capability
+`credential.read`; configure them in `pire-browser.json` / `agent-browser.json`
+under `plugins`, or set `AGENT_BROWSER_PLUGINS` / `PIRE_BROWSER_PLUGINS` to the
+same JSON array. Use CLI `plugin list` / `plugin show <name>` to inspect
+configured plugins before running one. Use `auth login --credential-provider`
+for `credential.read` providers. Use `plugin run <name> <capability> --payload
+<json>` for plugins that declare `command.run` plus a custom capability:
+
+```bash
+pire-browser plugin run captcha captcha.solve --payload '{"siteKey":"abc","url":"https://example.com"}'
+pire-browser --confirm-actions plugin:captcha:captcha.solve plugin run captcha captcha.solve --payload '{"siteKey":"abc"}'
+```
+
+`plugin run` cannot invoke core protocol paths directly. `browser.provider` and
+`launch.mutate` are discoverable but not executed by this Firefox backend yet.
+Do not put vault tokens, passwords, or API keys in plugin args. Plugin stderr is
+suppressed. Use `--confirm-actions plugin:vault:credential.read` when provider
+access should require approval before the plugin runs. When using MCP, add the
+`state` profile and inspect providers with `pire_browser_plugin_list` /
+`pire_browser_plugin_show` before `pire_browser_auth_login`; only call
+`pire_browser_auth_save` with user-approved credentials, and use
+`pire_browser_auth_login` with `credentialProvider`, `item`, and `url` for
+configured vault providers. Always verify login with a fresh snapshot, URL, or
+page state before reporting success.
 
 Open tabs and windows:
 
