@@ -2148,6 +2148,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "get" => GET_HELP,
         "is" => IS_HELP,
         "click" => CLICK_HELP,
+        "tap" => TAP_HELP,
         "dblclick" => DBLCLICK_HELP,
         "fill" => FILL_HELP,
         "type" => TYPE_HELP,
@@ -2225,6 +2226,7 @@ Common commands:
   diff screenshot --baseline before.png Compare current screenshot to baseline
   diff url <url1> <url2>           Compare two URLs by snapshot
   click '@e4'                     Click a ref from snapshot/find output
+  tap '@e4'                       Tap/click a ref from snapshot/find output
   dblclick '@e4'                  Double-click a ref from snapshot/find output
   fill '@e2' "text"               Fill a ref from snapshot/find output
   type '@e2' "text"               Type into a ref from snapshot/find output
@@ -2515,6 +2517,16 @@ Usage:
   pire-browser click "#submit"
 
 Clicks a ref or selector. If a ref is stale, rerun snapshot -i or find.
+"##;
+
+const TAP_HELP: &str = r##"
+Usage:
+  pire-browser tap '@e4'
+  pire-browser tap "#submit"
+
+Best-effort agent-browser-style alias for click. This dispatches the same
+Firefox WebExtension page-level click path as `click`; it is not native touch
+input or mobile browser emulation. If a ref is stale, rerun snapshot -i or find.
 "##;
 
 const DBLCLICK_HELP: &str = r##"
@@ -4933,6 +4945,7 @@ mod tests {
     fn help_text_includes_ref_quoting_guidance() {
         let text = help_text(None).unwrap();
         assert!(text.contains("click '@e4'"));
+        assert!(text.contains("tap '@e4'"));
         assert!(text.contains("dblclick '@e4'"));
         assert!(text.contains("keyboard type \"hello\""));
         assert!(text.contains("keyboard inserttext \"hello\""));
@@ -4978,6 +4991,9 @@ mod tests {
             .contains("Alias for setup"));
         assert!(help_text(Some("install")).unwrap().contains("Firefox.app"));
         assert!(help_text(Some("install")).unwrap().contains("--with-deps"));
+        assert!(help_text(Some("tap"))
+            .unwrap()
+            .contains("pire-browser tap '@e4'"));
         assert!(help_text(Some("setup"))
             .unwrap()
             .contains("directory containing the"));

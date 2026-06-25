@@ -69,7 +69,8 @@ pire-browser get value '<input-ref>'
 current page focus. Click or focus the intended control first. Use `type
 <target> <text>` or `fill <target> <text>` when you have a selector/ref and do
 not need focused keyboard edges. Use `dblclick <target>` when the UI requires a
-double-click:
+double-click. Use `tap <target>` only as a best-effort alias for `click
+<target>`; it is not native touch input or mobile browser emulation.
 
 ```bash
 pire-browser snapshot -i
@@ -392,10 +393,11 @@ pire-browser mouse move 80 80
 pire-browser mouse down
 pire-browser mouse up
 pire-browser mouse wheel 400
+pire-browser tap '<target-ref>'
 pire-browser drag '<source-ref>' '<target-ref>'
 ```
 
-Mouse and drag commands are Firefox WebExtension paths. They dispatch page events, not native OS cursor movement or browser-chrome drag state, so verify with page state afterwards.
+Mouse, tap, and drag commands are Firefox WebExtension paths. They dispatch page events, not native OS cursor movement, native touch input, or browser-chrome drag state, so verify with page state afterwards.
 
 Save and reuse a simple login form profile:
 
@@ -517,7 +519,7 @@ close, and skill guidance. Add comma-separated profiles only when needed:
 and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair, safe
 upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/vitals,
 `tabs` for tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
-helpers. `react` is accepted for compatibility but currently has no React
+helpers including click-equivalent `pire_browser_tap`. `react` is accepted for compatibility but currently has no React
 DevTools introspection tools. Use `all` only when the host can tolerate the full
 tool surface. The `pire_browser_tools_profiles` MCP tool returns this profile
 list in-band.
@@ -534,7 +536,8 @@ For MCP guardrails and launch context, prefer typed common fields over
 `executablePath`. Use typed `pire_browser_open.headers` and
 `pire_browser_open.initScriptPaths` when a navigation needs one-shot request
 headers or pre-navigation init scripts. Prefer `pire_browser_open` for normal
-launch/navigation; add the `debug` profile and use `pire_browser_launch` only
+launch/navigation; use `pire_browser_tap` only when an agent-browser-style tap
+recipe means click-equivalent page interaction. Add the `debug` profile and use `pire_browser_launch` only
 for lower-level launch diagnostics. Use debug-profile `pire_browser_install`
 only when the user wants explicit native-host setup or repair, and
 `pire_browser_upgrade` only when the user wants package update. Use

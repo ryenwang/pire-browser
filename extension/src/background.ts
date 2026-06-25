@@ -657,6 +657,7 @@ function actionPolicyCategoryName(args: string[]): string | null {
       return subcommand === "new" ? "navigate" : null;
     case "click":
     case "dblclick":
+    case "tap":
       return "click";
     case "fill":
     case "type":
@@ -773,7 +774,6 @@ function notAvailableActionPolicyRoot(command: string) {
     "record",
     "stream",
     "swipe",
-    "tap",
     "trace",
     "upgrade",
   ].includes(command);
@@ -861,6 +861,7 @@ function commandNeedsActivePageDomainCheck(args: string[]) {
       "find",
       "click",
       "dblclick",
+      "tap",
       "fill",
       "type",
       "press",
@@ -947,6 +948,7 @@ async function executeCommand(
     case "find":
       return findCommand(rest);
     case "click":
+    case "tap":
       return clickCommand(rest);
     case "dblclick":
       return targetActionCommand("dblclick", rest);
@@ -1048,7 +1050,6 @@ async function executeCommand(
     case "pdf":
     case "connect":
     case "device":
-    case "tap":
     case "swipe":
       return notAvailable(command, "This command is not supported by the Firefox WebExtension backend yet.");
     case "close":

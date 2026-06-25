@@ -24,6 +24,13 @@
       "expectedDecision": "deny"
     },
     {
+      "name": "tap maps to click",
+      "args": ["tap", "@e1"],
+      "policy": { "default": "deny", "allow": ["click"] },
+      "expectedCategory": "click",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "eval denied by explicit deny",
       "args": ["eval", "document.title"],
       "policy": { "default": "allow", "deny": ["eval"] },

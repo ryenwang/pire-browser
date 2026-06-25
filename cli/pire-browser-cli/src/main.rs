@@ -83,8 +83,7 @@ use crate::mcp::{run_mcp_server, McpToolsProfile};
 use crate::read::{read_url, ReadUrlOptions};
 
 const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &[
-    "connect", "device", "profiler", "react", "record", "stream", "swipe", "tap", "trace",
-    "upgrade",
+    "connect", "device", "profiler", "react", "record", "stream", "swipe", "trace", "upgrade",
 ];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -6985,6 +6984,7 @@ fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
                 | "snapshot"
                 | "find"
                 | "click"
+                | "tap"
                 | "dblclick"
                 | "fill"
                 | "type"
@@ -7041,6 +7041,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "snapshot"
             | "find"
             | "click"
+            | "tap"
             | "dblclick"
             | "fill"
             | "type"
@@ -7108,6 +7109,7 @@ fn command_suggestions(command: &str) -> Vec<String> {
         "snapshot",
         "find",
         "click",
+        "tap",
         "fill",
         "wait",
         "pushstate",
@@ -7901,6 +7903,7 @@ mod tests {
             "https://example.com"
         ])));
         assert!(can_auto_launch_for_remote_args(&s(&["snapshot", "-i"])));
+        assert!(can_auto_launch_for_remote_args(&s(&["tap", "@e1"])));
         assert!(can_auto_launch_for_remote_args(&s(&["tabs", "list"])));
         assert!(can_auto_launch_for_remote_args(&s(&["download", "@e1"])));
         assert!(can_auto_launch_for_remote_args(&s(&[
@@ -8034,6 +8037,7 @@ mod tests {
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"pdf"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"open"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"click"));
+        assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"tap"));
     }
 
     #[test]
@@ -8055,6 +8059,7 @@ mod tests {
             "navigate",
             "read",
             "click",
+            "tap",
             "fill",
             "snapshot",
             "tab",

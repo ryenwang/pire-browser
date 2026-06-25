@@ -159,7 +159,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "mobile",
             bits: PROFILE_MOBILE,
-            description: "Viewport, device preset, geolocation, media/offline settings, keyboard, mouse, scroll, and screenshot helpers.",
+            description: "Viewport, device preset, geolocation, media/offline settings, keyboard, tap-as-click, mouse, scroll, and screenshot helpers.",
         },
         McpProfileDescriptor {
             name: "react",
@@ -204,6 +204,7 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_mouse_up"
         | "pire_browser_mouse_wheel"
         | "pire_browser_scroll" => PROFILE_CORE | PROFILE_MOBILE,
+        "pire_browser_tap" => PROFILE_CORE | PROFILE_MOBILE,
         "pire_browser_open"
         | "pire_browser_read"
         | "pire_browser_snapshot"
@@ -419,7 +420,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade for safe package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval, confirmation follow-up, basic tabs, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Prefer pire_browser_open for normal launch/navigation; add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade for safe package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when network, cookies/storage/auth/state, debugging, tabs/frames/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -732,6 +733,10 @@ fn tool_command_args(
         }
         (_, "pire_browser_click") => {
             args.push("click".to_string());
+            args.push(required_string(object, "selector")?);
+        }
+        (_, "pire_browser_tap") => {
+            args.push("tap".to_string());
             args.push(required_string(object, "selector")?);
         }
         (_, "pire_browser_double_click") => {
@@ -2360,6 +2365,13 @@ fn core_tools() -> Vec<Value> {
             "Click",
             "Click a ref or selector from the current page.",
             tool_schema(vec![("selector", string_prop("Ref or selector to click."))], &["selector"]),
+            false,
+        ),
+        tool(
+            "pire_browser_tap",
+            "Tap",
+            "Agent-browser-style tap alias for clicking a ref or selector. This is not native touch input.",
+            tool_schema(vec![("selector", string_prop("Ref or selector to tap/click."))], &["selector"]),
             false,
         ),
         tool(
@@ -4030,6 +4042,7 @@ mod tests {
             assert!(tools.iter().any(|tool| tool["name"] == name), "{name}");
         }
         assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_find"));
+        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_tap"));
         assert!(tools
             .iter()
             .any(|tool| tool["name"] == "pire_browser_double_click"));
@@ -4320,6 +4333,7 @@ mod tests {
         assert!(mobile
             .iter()
             .any(|tool| tool["name"] == "pire_browser_screenshot"));
+        assert!(mobile.iter().any(|tool| tool["name"] == "pire_browser_tap"));
 
         let combined = mcp_tools(McpToolsProfile::parse("core,network").unwrap());
         assert!(combined
@@ -5042,6 +5056,14 @@ mod tests {
             args,
             vec!["--json", "scroll", "down", "400", "--selector", "#panel"]
         );
+
+        let args = tool_command_args(
+            "pire_browser_tap",
+            &json!({ "selector": "@e7" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "tap", "@e7"]);
 
         let args = tool_command_args(
             "pire_browser_double_click",
@@ -6057,6 +6079,10 @@ mod tests {
     fn rejects_invalid_tool_arguments() {
         let error =
             tool_command_args("pire_browser_click", &json!({}), McpToolsProfile::Core).unwrap_err();
+        assert!(error.contains("selector is required"));
+
+        let error =
+            tool_command_args("pire_browser_tap", &json!({}), McpToolsProfile::Core).unwrap_err();
         assert!(error.contains("selector is required"));
 
         let error = tool_command_args(

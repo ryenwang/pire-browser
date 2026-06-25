@@ -880,6 +880,7 @@ describe("pire-browser command foundations", () => {
       ["snapshot"],
       ["find", "label", "Email"],
       ["click", "@e1"],
+      ["tap", "@e1"],
       ["dblclick", "@e1"],
       ["fill", "@e1", "x"],
       ["type", "@e1", "x"],

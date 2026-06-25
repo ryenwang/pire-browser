@@ -172,6 +172,15 @@
       "source": "upstream"
     },
     {
+      "root": "tap",
+      "signature": "tap <target>",
+      "category": "click",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "extension",
+      "source": "upstream",
+      "reason": "best-effort alias for click; not native touch input"
+    },
+    {
       "root": "dblclick",
       "signature": "dblclick <target>",
       "category": "click",
@@ -807,14 +816,6 @@
     }
   ],
   "reservedFutureEntries": [
-    {
-      "root": "tap",
-      "signature": "tap <target>",
-      "category": "click",
-      "implementationStatus": "reserved",
-      "enforcementLocus": "extension",
-      "source": "upstream"
-    },
     {
       "root": "drag",
       "signature": "drag <source> <target>",

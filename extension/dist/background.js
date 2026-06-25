@@ -375,6 +375,7 @@
                 return subcommand === "new" ? "navigate" : null;
             case "click":
             case "dblclick":
+            case "tap":
                 return "click";
             case "fill":
             case "type":
@@ -509,7 +510,6 @@
             "record",
             "stream",
             "swipe",
-            "tap",
             "trace",
             "upgrade",
         ].includes(command);
@@ -594,6 +594,7 @@
             "find",
             "click",
             "dblclick",
+            "tap",
             "fill",
             "type",
             "press",
@@ -681,6 +682,7 @@
             case "find":
                 return findCommand(rest);
             case "click":
+            case "tap":
                 return clickCommand(rest);
             case "dblclick":
                 return targetActionCommand("dblclick", rest);
@@ -782,7 +784,6 @@
             case "pdf":
             case "connect":
             case "device":
-            case "tap":
             case "swipe":
                 return notAvailable(command, "This command is not supported by the Firefox WebExtension backend yet.");
             case "close":

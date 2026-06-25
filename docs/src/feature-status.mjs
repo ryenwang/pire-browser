@@ -53,7 +53,7 @@ export const featureStatuses = {
   },
   mouseAndDrag: {
     status: "best_effort",
-    summary: "`mouse` and `drag` dispatch page-level Firefox WebExtension events; they are not native OS cursor or browser-chrome drag control.",
+    summary: "`tap` is a click-equivalent alias, and `mouse`/`drag` dispatch page-level Firefox WebExtension events; they are not native OS cursor, native touch input, or browser-chrome drag control.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/cli.rs"],
   },
   initScripts: {
@@ -181,7 +181,7 @@ export const commandRootStatus = {
   swipe: "not_available",
   tab: "available",
   tabs: "available",
-  tap: "not_available",
+  tap: "best_effort",
   trace: "not_available",
   type: "available",
   uncheck: "available",
