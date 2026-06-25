@@ -3557,11 +3557,11 @@ dashboard process state file so `dashboard status` and `dashboard stop` can
 inspect or stop it later.
 
 The dashboard shows setup status, live sessions, managed profiles, a live
-read-only viewport preview, recent redacted command activity, and current
-capability notes. The preview polls Firefox visible-viewport screenshots; it
-does not provide WebSocket streaming, remote input events, or native WebM video.
-Use snapshots, screenshots, and recording bundles for machine-readable visual
-evidence.
+read-only viewport preview, optional AI Gateway chat, recent redacted command
+activity, and current capability notes. The preview polls Firefox
+visible-viewport screenshots. Dashboard chat uses the same bounded command loop
+as `pire-browser chat` and is non-streaming. WebSocket viewport streaming,
+remote input events, and native WebM video are not implemented.
 "##;
 
 const MCP_HELP: &str = r##"
@@ -5865,7 +5865,10 @@ mod tests {
             .contains("local dashboard server"));
         assert!(help_text(Some("dashboard"))
             .unwrap()
-            .contains("polls Firefox visible-viewport screenshots"));
+            .contains("optional AI Gateway chat"));
+        assert!(help_text(Some("dashboard"))
+            .unwrap()
+            .contains("non-streaming"));
         assert!(help_text(Some("mcp")).unwrap().contains("smallest tools"));
         assert!(help_text(Some("mcp")).unwrap().contains("core,network"));
         assert!(help_text(Some("mcp")).unwrap().contains("network"));

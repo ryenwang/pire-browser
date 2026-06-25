@@ -2985,12 +2985,14 @@ fn run_dashboard_server(port: u16, json_output: bool, mode: &str) -> Result<()> 
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
-                if let Err(err) = serve_dashboard_stream(&mut stream) {
-                    eprintln!(
-                        "dashboard request failed: {}",
-                        redact_text(&format!("{err:#}"))
-                    );
-                }
+                thread::spawn(move || {
+                    if let Err(err) = serve_dashboard_stream(&mut stream) {
+                        eprintln!(
+                            "dashboard request failed: {}",
+                            redact_text(&format!("{err:#}"))
+                        );
+                    }
+                });
             }
             Err(err) => eprintln!(
                 "dashboard connection failed: {}",
@@ -3233,27 +3235,75 @@ fn terminate_dashboard_process(pid: u32) -> Result<()> {
 }
 
 fn serve_dashboard_stream(stream: &mut TcpStream) -> Result<()> {
-    let request = read_dashboard_request_path(stream)?;
-    let response = dashboard_response_for_path(request.as_deref().unwrap_or("/"));
+    let request = read_dashboard_request(stream)?;
+    let response = dashboard_response_for_request(&request.unwrap_or_else(DashboardRequest::root));
     write_dashboard_response(stream, &response)?;
     Ok(())
 }
 
-fn read_dashboard_request_path(stream: &mut TcpStream) -> Result<Option<String>> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DashboardRequest {
+    method: String,
+    path: String,
+    body: String,
+}
+
+impl DashboardRequest {
+    fn root() -> Self {
+        Self {
+            method: "GET".to_string(),
+            path: "/".to_string(),
+            body: String::new(),
+        }
+    }
+}
+
+fn read_dashboard_request(stream: &mut TcpStream) -> Result<Option<DashboardRequest>> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut line = String::new();
     reader.read_line(&mut line)?;
-    Ok(dashboard_path_from_request_line(&line))
+    let Some((method, path)) = dashboard_method_path_from_request_line(&line) else {
+        return Ok(None);
+    };
+    let mut content_length = 0usize;
+    loop {
+        line.clear();
+        reader.read_line(&mut line)?;
+        if line == "\r\n" || line == "\n" || line.is_empty() {
+            break;
+        }
+        if let Some(value) = line
+            .split_once(':')
+            .and_then(|(name, value)| name.eq_ignore_ascii_case("content-length").then_some(value))
+        {
+            content_length = value.trim().parse::<usize>().unwrap_or(0).min(128 * 1024);
+        }
+    }
+    let mut body = vec![0; content_length];
+    if content_length > 0 {
+        reader.read_exact(&mut body)?;
+    }
+    Ok(Some(DashboardRequest {
+        method,
+        path,
+        body: String::from_utf8_lossy(&body).to_string(),
+    }))
 }
 
+#[cfg(test)]
 fn dashboard_path_from_request_line(line: &str) -> Option<String> {
-    let mut parts = line.split_whitespace();
-    let method = parts.next()?;
+    let (method, path) = dashboard_method_path_from_request_line(line)?;
     if method != "GET" && method != "HEAD" {
         return Some("/__method_not_allowed__".to_string());
     }
+    Some(path)
+}
+
+fn dashboard_method_path_from_request_line(line: &str) -> Option<(String, String)> {
+    let mut parts = line.split_whitespace();
+    let method = parts.next()?.to_string();
     let path = parts.next()?;
-    Some(path.split('?').next().unwrap_or(path).to_string())
+    Some((method, path.split('?').next().unwrap_or(path).to_string()))
 }
 
 struct DashboardResponse {
@@ -3263,8 +3313,8 @@ struct DashboardResponse {
     body: String,
 }
 
-fn dashboard_response_for_path(path: &str) -> DashboardResponse {
-    match path {
+fn dashboard_response_for_request(request: &DashboardRequest) -> DashboardResponse {
+    match request.path.as_str() {
         "/" | "/index.html" => DashboardResponse {
             status: 200,
             reason: "OK",
@@ -3272,6 +3322,9 @@ fn dashboard_response_for_path(path: &str) -> DashboardResponse {
             body: dashboard_index_html(),
         },
         "/api/status" => {
+            if request.method != "GET" && request.method != "HEAD" {
+                return dashboard_method_not_allowed_response();
+            }
             match dashboard_status_value().and_then(|value| format_cli_result(&value, true)) {
                 Ok(body) => DashboardResponse {
                     status: 200,
@@ -3295,6 +3348,9 @@ fn dashboard_response_for_path(path: &str) -> DashboardResponse {
             }
         }
         path if path == "/api/preview" || path.starts_with("/api/preview/") => {
+            if request.method != "GET" && request.method != "HEAD" {
+                return dashboard_method_not_allowed_response();
+            }
             let session_id = dashboard_preview_session_id(path);
             match dashboard_preview_value(session_id.as_deref())
                 .and_then(|value| format_cli_result(&value, true))
@@ -3320,24 +3376,65 @@ fn dashboard_response_for_path(path: &str) -> DashboardResponse {
                 },
             }
         }
+        "/api/chat" => {
+            if request.method != "POST" {
+                return dashboard_method_not_allowed_response();
+            }
+            match dashboard_chat_value(&request.body)
+                .and_then(|value| format_cli_result(&value, true))
+            {
+                Ok(body) => DashboardResponse {
+                    status: 200,
+                    reason: "OK",
+                    content_type: "application/json; charset=utf-8",
+                    body,
+                },
+                Err(err) => DashboardResponse {
+                    status: dashboard_chat_error_status(&err),
+                    reason: dashboard_chat_error_reason(&err),
+                    content_type: "application/json; charset=utf-8",
+                    body: serde_json::to_string_pretty(&json!({
+                        "success": false,
+                        "error": {
+                            "code": dashboard_chat_error_code(&err),
+                            "message": redact_text(&format!("{err:#}")),
+                        }
+                    }))
+                    .unwrap_or_else(|_| "{\"success\":false}".to_string()),
+                },
+            }
+        }
         "/favicon.ico" => DashboardResponse {
             status: 204,
             reason: "No Content",
             content_type: "text/plain; charset=utf-8",
             body: String::new(),
         },
-        "/__method_not_allowed__" => DashboardResponse {
-            status: 405,
-            reason: "Method Not Allowed",
-            content_type: "text/plain; charset=utf-8",
-            body: "Method not allowed".to_string(),
-        },
+        "/__method_not_allowed__" => dashboard_method_not_allowed_response(),
         _ => DashboardResponse {
             status: 404,
             reason: "Not Found",
             content_type: "text/plain; charset=utf-8",
             body: "Not found".to_string(),
         },
+    }
+}
+
+#[cfg(test)]
+fn dashboard_response_for_path(path: &str) -> DashboardResponse {
+    dashboard_response_for_request(&DashboardRequest {
+        method: "GET".to_string(),
+        path: path.to_string(),
+        body: String::new(),
+    })
+}
+
+fn dashboard_method_not_allowed_response() -> DashboardResponse {
+    DashboardResponse {
+        status: 405,
+        reason: "Method Not Allowed",
+        content_type: "text/plain; charset=utf-8",
+        body: "Method not allowed".to_string(),
     }
 }
 
@@ -3386,8 +3483,22 @@ fn dashboard_capabilities_value() -> Value {
         "readOnlyViewportPreview": true,
         "screenshotSequenceRecording": true,
         "videoRecording": false,
-        "activityFeed": true
+        "activityFeed": true,
+        "aiChat": true,
+        "aiChatEnabled": dashboard_ai_chat_enabled(),
+        "aiChatGateway": non_empty_env("AI_GATEWAY_URL")
+            .or_else(|| non_empty_env("AI_GATEWAY_BASE_URL"))
+            .or_else(|| non_empty_env("OPENAI_BASE_URL"))
+            .unwrap_or_else(|| CHAT_DEFAULT_BASE_URL.to_string()),
+        "aiChatModel": non_empty_env("AI_GATEWAY_MODEL")
+            .or_else(|| non_empty_env("PIRE_BROWSER_MODEL"))
+            .or_else(|| non_empty_env("AGENT_BROWSER_MODEL"))
+            .unwrap_or_else(|| CHAT_DEFAULT_MODEL.to_string())
     })
+}
+
+fn dashboard_ai_chat_enabled() -> bool {
+    non_empty_env("AI_GATEWAY_API_KEY").is_some() || non_empty_env("VERCEL_OIDC_TOKEN").is_some()
 }
 
 fn dashboard_preview_session_id(path: &str) -> Option<String> {
@@ -3446,6 +3557,84 @@ fn dashboard_preview_value(session_id: Option<&str>) -> Result<Value> {
     }))
 }
 
+fn dashboard_chat_value(body: &str) -> Result<Value> {
+    let payload: Value =
+        serde_json::from_str(body).context("dashboard_chat_invalid_request: expected JSON body")?;
+    let instruction = payload
+        .get("message")
+        .or_else(|| payload.get("instruction"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("dashboard_chat_invalid_request: message is required"))?;
+    let max_steps = payload
+        .get("maxSteps")
+        .or_else(|| payload.get("max_steps"))
+        .and_then(Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok())
+        .unwrap_or(5)
+        .clamp(1, 20);
+    let mut raw_args = Vec::new();
+    if let Some(session_id) = payload
+        .get("sessionId")
+        .or_else(|| payload.get("session"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        raw_args.push("--session".to_string());
+        raw_args.push(session_id.to_string());
+    }
+    raw_args.push("chat".to_string());
+    let config_result = apply_config_defaults(&raw_args)?;
+    let chat_config = resolve_chat_config(&config_result.config, &config_result.args)?;
+    let mut result = run_chat_once(&chat_config, instruction, max_steps)?;
+    result["dashboardChat"] = json!({
+        "source": "dashboard",
+        "enabled": true,
+        "model": chat_config.model,
+        "gatewayUrl": chat_config.base_url,
+        "apiKeySource": chat_config.api_key_source,
+        "maxSteps": max_steps,
+        "sessionId": payload.get("sessionId").or_else(|| payload.get("session")).cloned().unwrap_or(Value::Null),
+        "streaming": false
+    });
+    Ok(result)
+}
+
+fn dashboard_chat_error_code(err: &anyhow::Error) -> &'static str {
+    let text = format!("{err:#}");
+    if text.contains("missing_ai_gateway_credentials") {
+        "missing_ai_gateway_credentials"
+    } else if text.contains("dashboard_chat_invalid_request") {
+        "dashboard_chat_invalid_request"
+    } else if text.contains("chat_request_failed") {
+        "dashboard_chat_request_failed"
+    } else if text.contains("chat_malformed") {
+        "dashboard_chat_malformed_response"
+    } else {
+        "dashboard_chat_failed"
+    }
+}
+
+fn dashboard_chat_error_status(err: &anyhow::Error) -> u16 {
+    match dashboard_chat_error_code(err) {
+        "missing_ai_gateway_credentials" => 401,
+        "dashboard_chat_invalid_request" => 400,
+        "dashboard_chat_request_failed" => 502,
+        _ => 500,
+    }
+}
+
+fn dashboard_chat_error_reason(err: &anyhow::Error) -> &'static str {
+    match dashboard_chat_error_status(err) {
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        502 => "Bad Gateway",
+        _ => "Internal Server Error",
+    }
+}
+
 fn dashboard_index_html() -> String {
     r#"<!doctype html>
 <html lang="en">
@@ -3479,6 +3668,14 @@ fn dashboard_index_html() -> String {
     .preview-frame img { display: block; max-width: 100%; height: auto; }
     button { border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 6px; padding: 6px 10px; background: Canvas; color: CanvasText; cursor: pointer; }
     button:hover { background: color-mix(in srgb, Canvas 86%, CanvasText 14%); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .chat-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+    .chat-form textarea { min-height: 72px; resize: vertical; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 6px; padding: 8px; background: Canvas; color: CanvasText; font: inherit; }
+    .chat-log { display: grid; gap: 10px; margin-top: 12px; max-height: 360px; overflow: auto; }
+    .chat-message { border: 1px solid color-mix(in srgb, CanvasText 14%, transparent); border-radius: 6px; padding: 9px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .chat-message.user { background: color-mix(in srgb, Canvas 90%, #2563eb 10%); }
+    .chat-message.assistant { background: color-mix(in srgb, Canvas 92%, #16833a 8%); }
+    .chat-message.error { background: color-mix(in srgb, Canvas 90%, #c0262d 10%); }
   </style>
 </head>
 <body>
@@ -3512,6 +3709,15 @@ fn dashboard_index_html() -> String {
         </div>
       </div>
       <div class="panel">
+        <h2>AI Chat</h2>
+        <p class="note" id="chat-status">Checking AI Gateway configuration...</p>
+        <form class="chat-form" id="chat-form">
+          <textarea id="chat-input" placeholder="Open example.com and summarize the page"></textarea>
+          <button id="chat-send" type="submit">Send</button>
+        </form>
+        <div class="chat-log" id="chat-log"></div>
+      </div>
+      <div class="panel">
         <h2>Recent Activity</h2>
         <div id="activity"></div>
       </div>
@@ -3537,6 +3743,8 @@ fn dashboard_index_html() -> String {
     let previewSessionId = null;
     let previewInFlight = false;
     let previewLive = true;
+    let chatEnabled = false;
+    let chatInFlight = false;
     function table(rows, columns) {
       if (!rows.length) return "<p class='note'>None.</p>";
       const head = columns.map(([key, label]) => `<th>${label}</th>`).join("");
@@ -3551,6 +3759,12 @@ fn dashboard_index_html() -> String {
       text("sessions-count", data.sessions.length);
       text("profiles-count", data.profiles.length);
       text("activity-count", (data.activity || []).length);
+      chatEnabled = Boolean(data.dashboard.capabilities?.aiChatEnabled);
+      text("chat-status", chatEnabled
+        ? `AI Gateway enabled. Model: ${data.dashboard.capabilities.aiChatModel || "default"}`
+        : "Set AI_GATEWAY_API_KEY, then restart the dashboard to enable chat.");
+      document.getElementById("chat-send").disabled = !chatEnabled || chatInFlight;
+      document.getElementById("chat-input").disabled = !chatEnabled || chatInFlight;
       previewSessionId = data.sessions[0]?.sessionId || null;
       if (!previewSessionId) {
         text("preview-meta", "No live session.");
@@ -3605,6 +3819,38 @@ fn dashboard_index_html() -> String {
         text("updated", "Dashboard refresh failed: " + error.message);
       }
     }
+    function addChatMessage(kind, body) {
+      const node = document.createElement("div");
+      node.className = "chat-message " + kind;
+      node.textContent = body;
+      document.getElementById("chat-log").appendChild(node);
+      node.scrollIntoView({ block: "end" });
+    }
+    async function sendChat(message) {
+      if (!message.trim() || chatInFlight) return;
+      chatInFlight = true;
+      document.getElementById("chat-send").disabled = true;
+      document.getElementById("chat-input").disabled = true;
+      addChatMessage("user", message);
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message, maxSteps: 5, sessionId: previewSessionId })
+        });
+        const payload = await response.json();
+        if (!response.ok || payload.success === false) throw new Error(payload.error?.message || "chat failed");
+        const data = payload.data || payload;
+        addChatMessage("assistant", data.text || data.chat?.final || "Done.");
+        refresh();
+      } catch (error) {
+        addChatMessage("error", error.message);
+      } finally {
+        chatInFlight = false;
+        document.getElementById("chat-send").disabled = !chatEnabled;
+        document.getElementById("chat-input").disabled = !chatEnabled;
+      }
+    }
     document.getElementById("preview-toggle").addEventListener("click", () => {
       previewLive = !previewLive;
       text("preview-status", previewLive ? "On" : "Paused");
@@ -3613,6 +3859,13 @@ fn dashboard_index_html() -> String {
     });
     document.getElementById("preview-refresh").addEventListener("click", () => {
       refreshPreview(previewSessionId);
+    });
+    document.getElementById("chat-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const input = document.getElementById("chat-input");
+      const message = input.value;
+      input.value = "";
+      sendChat(message);
     });
     refresh();
     setInterval(refresh, 2500);
@@ -10410,6 +10663,8 @@ mod tests {
             value["dashboard"]["capabilities"]["activityFeed"],
             json!(true)
         );
+        assert_eq!(value["dashboard"]["capabilities"]["aiChat"], json!(true));
+        assert!(value["dashboard"]["capabilities"]["aiChatEnabled"].is_boolean());
     }
 
     #[test]
@@ -10430,6 +10685,10 @@ mod tests {
             dashboard_path_from_request_line("POST /api/status HTTP/1.1\r\n").as_deref(),
             Some("/__method_not_allowed__")
         );
+        assert_eq!(
+            dashboard_method_path_from_request_line("POST /api/chat HTTP/1.1\r\n"),
+            Some(("POST".to_string(), "/api/chat".to_string()))
+        );
         assert!(dashboard_path_from_request_line("").is_none());
     }
 
@@ -10446,6 +10705,9 @@ mod tests {
         assert!(index
             .body
             .contains("setInterval(tickPreview, PREVIEW_INTERVAL_MS)"));
+        assert!(index.body.contains("AI Chat"));
+        assert!(index.body.contains("/api/chat"));
+        assert!(index.body.contains("AI_GATEWAY_API_KEY"));
         assert!(index.body.contains("Recent Activity"));
         assert!(index
             .body
@@ -10457,6 +10719,26 @@ mod tests {
 
         let method = dashboard_response_for_path("/__method_not_allowed__");
         assert_eq!(method.status, 405);
+    }
+
+    #[test]
+    fn dashboard_chat_endpoint_requires_post_and_valid_json() {
+        let get_response = dashboard_response_for_request(&DashboardRequest {
+            method: "GET".to_string(),
+            path: "/api/chat".to_string(),
+            body: String::new(),
+        });
+        assert_eq!(get_response.status, 405);
+
+        let invalid_response = dashboard_response_for_request(&DashboardRequest {
+            method: "POST".to_string(),
+            path: "/api/chat".to_string(),
+            body: "{}".to_string(),
+        });
+        assert_eq!(invalid_response.status, 400);
+        assert!(invalid_response
+            .body
+            .contains("dashboard_chat_invalid_request"));
     }
 
     #[test]

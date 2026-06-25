@@ -104,6 +104,9 @@ for JSON command plans, runs those commands through normal `pire-browser` CLI
 paths, and feeds observations back until a final answer or the bounded step
 limit. Prefer direct commands or MCP typed tools when you already know the next
 browser action; chat adds model latency and requires `AI_GATEWAY_API_KEY`.
+The dashboard AI Chat panel uses the same loop, forwards the currently previewed
+session when one exists, and returns the final answer after the loop finishes;
+streamed dashboard chat updates are not available yet.
 
 Read documents, docs pages, and article text before falling back to snapshots:
 
@@ -273,8 +276,8 @@ Use snapshots, targeted get/is checks, console/errors, and vitals for supporting
 evidence.
 
 Start the local dashboard when a human or agent needs a quick view of setup,
-live sessions, managed profiles, a live read-only viewport preview, and recent
-command activity:
+live sessions, managed profiles, a live read-only viewport preview, optional
+AI Gateway chat, and recent command activity:
 
 ```bash
 pire-browser dashboard start
@@ -289,8 +292,9 @@ The dashboard is a localhost server. Without `--background`, stop it with
 `Ctrl+C`; with `--background`, manage it with `dashboard status` and
 `dashboard stop`. It shows install health, live sessions, managed profiles, a
 bounded redacted command activity feed, a live read-only preview for the
-selected session, and capability notes. The preview polls visible-viewport
-screenshots from the Firefox extension. For scripts, use:
+selected session, optional non-streaming dashboard chat, and capability notes.
+The preview polls visible-viewport screenshots from the Firefox extension. For
+scripts, use:
 
 ```bash
 pire-browser activity list --json

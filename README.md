@@ -193,7 +193,7 @@ not native touch input or mobile browser chrome emulation. `swipe` maps touch
 direction to page scroll (`swipe up` scrolls down); use `scroll` when you want
 direct scroll direction.
 
-PDF capture is available as an image-backed visual evidence file. Natural-language chat is available through `pire-browser chat` when `AI_GATEWAY_API_KEY` is set; it runs a bounded command-plan loop through the normal CLI command paths. CDP connect and WebSocket viewport streaming are not implemented in the current Firefox backend. The dashboard does provide a live read-only viewport preview by polling visible-viewport screenshots.
+PDF capture is available as an image-backed visual evidence file. Natural-language chat is available through `pire-browser chat` and the dashboard AI Chat panel when `AI_GATEWAY_API_KEY` is set; both run the same bounded command-plan loop through the normal CLI command paths. CDP connect and WebSocket viewport streaming are not implemented in the current Firefox backend. The dashboard does provide a live read-only viewport preview by polling visible-viewport screenshots.
 
 ### Read Agent-Friendly Text
 
@@ -946,7 +946,8 @@ run `confirm`, `deny`, `chat`, `mcp`, or `dashboard` automatically.
 
 Start a localhost dashboard when you want a quick view of install
 health, live sessions, managed profiles, a live read-only viewport preview,
-recent redacted command activity, and current capability notes:
+optional AI Gateway chat, recent redacted command activity, and current
+capability notes:
 
 ```bash
 pire-browser dashboard start
@@ -986,6 +987,12 @@ pire-browser session list --json
 pire-browser profiles --json
 pire-browser doctor --json
 ```
+
+When `AI_GATEWAY_API_KEY` is available before the dashboard starts, the AI Chat
+panel is enabled. It sends the typed instruction to the same bounded
+AI Gateway-backed command loop as `pire-browser chat`, forwards the currently
+previewed session when one exists, and returns the final answer after the loop
+finishes. Dashboard chat does not stream intermediate model tokens yet.
 
 ## Configuration
 

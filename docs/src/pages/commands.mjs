@@ -351,7 +351,7 @@ pire-browser dashboard start --port 0 --json
 pire-browser dashboard status --json
 pire-browser dashboard stop
 pire-browser activity list --json`),
-  p("Starts a localhost status dashboard. It shows install health, live sessions, managed profiles, a live read-only polling viewport preview, recent redacted command activity, and capability notes. Without <code>--background</code>, press <code>Ctrl+C</code> in the terminal to stop it. With <code>--background</code>, use <code>dashboard status</code> and <code>dashboard stop</code>. WebSocket viewport streaming is still not available in the Firefox backend; use <code>record start</code> / <code>record stop</code> for screenshot-sequence evidence."),
+  p("Starts a localhost status dashboard. It shows install health, live sessions, managed profiles, a live read-only polling viewport preview, optional AI Gateway chat, recent redacted command activity, and capability notes. Without <code>--background</code>, press <code>Ctrl+C</code> in the terminal to stop it. With <code>--background</code>, use <code>dashboard status</code> and <code>dashboard stop</code>. The chat panel uses the same bounded command loop as <code>pire-browser chat</code> when <code>AI_GATEWAY_API_KEY</code> is set, but does not stream responses yet. WebSocket viewport streaming is still not available in the Firefox backend; use <code>record start</code> / <code>record stop</code> for screenshot-sequence evidence."),
 
   h2("Doctor", "doctor"),
   code(`pire-browser doctor
@@ -371,7 +371,7 @@ pire-browser -v chat "fill the search box with cats and press Enter"
 pire-browser --model anthropic/claude-sonnet-4.6 chat "take a screenshot"
 pire-browser chat --max-steps 8
 pire-browser chat`),
-  p("<code>chat</code> is an agent-browser-style natural-language loop backed by Vercel AI Gateway. The model returns JSON command plans, pire-browser executes those commands through the normal CLI path, and observations are sent back until the model returns a final answer or the bounded step limit is reached. Bare <code>chat</code> starts a small terminal REPL; type <code>quit</code> to exit. Set <code>AI_GATEWAY_API_KEY</code>; optional <code>AI_GATEWAY_MODEL</code> and <code>AI_GATEWAY_URL</code> override the defaults."),
+  p("<code>chat</code> is an agent-browser-style natural-language loop backed by Vercel AI Gateway. The model returns JSON command plans, pire-browser executes those commands through the normal CLI path, and observations are sent back until the model returns a final answer or the bounded step limit is reached. Bare <code>chat</code> starts a small terminal REPL; type <code>quit</code> to exit. Set <code>AI_GATEWAY_API_KEY</code>; optional <code>AI_GATEWAY_MODEL</code> and <code>AI_GATEWAY_URL</code> override the defaults. The dashboard AI Chat panel uses this same loop and forwards the currently previewed session when one exists."),
 
   h2("MCP", "mcp"),
   statusNote("mcp"),

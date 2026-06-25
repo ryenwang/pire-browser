@@ -33,7 +33,7 @@ export const featureStatuses = {
   },
   chat: {
     status: "best_effort",
-    summary: "`chat` provides an agent-browser-style natural-language browser loop through Vercel AI Gateway when `AI_GATEWAY_API_KEY` is set. It asks the model for JSON command plans, executes child commands through normal CLI paths with policy/session globals forwarded, and returns a final answer after observations or the bounded step limit. Dashboard chat streaming remains future work.",
+    summary: "`chat` provides an agent-browser-style natural-language browser loop through Vercel AI Gateway when `AI_GATEWAY_API_KEY` is set. It asks the model for JSON command plans, executes child commands through normal CLI paths with policy/session globals forwarded, and returns a final answer after observations or the bounded step limit. The dashboard includes a non-streaming AI Chat panel that uses the same loop and forwards the currently previewed session when available. Streaming model tokens and step updates remain future work.",
     sources: ["README.md", "docs/src/pages/commands.mjs", "cli/pire-browser-cli/src/main.rs", "cli/pire-browser-core/src/cli.rs"],
   },
   managedProfiles: {
@@ -83,7 +83,7 @@ export const featureStatuses = {
   },
   dashboard: {
     status: "partial",
-    summary: "`dashboard start` serves a localhost dashboard for install health, live sessions, managed profiles, a live read-only polling viewport preview, a bounded redacted command activity feed, and capability notes. `dashboard start --background`, `dashboard status`, and `dashboard stop` provide agent-browser-style lifecycle control. Use `record start` / `record stop` for screenshot-sequence QA evidence. WebSocket viewport streaming, dashboard-created sessions, remote input events, and native WebM/video recording are not implemented yet.",
+    summary: "`dashboard start` serves a localhost dashboard for install health, live sessions, managed profiles, a live read-only polling viewport preview, optional non-streaming AI Gateway chat, a bounded redacted command activity feed, and capability notes. `dashboard start --background`, `dashboard status`, and `dashboard stop` provide agent-browser-style lifecycle control. Use `record start` / `record stop` for screenshot-sequence QA evidence. WebSocket viewport streaming, streamed chat updates, dashboard-created sessions, remote input events, and native WebM/video recording are not implemented yet.",
     sources: ["README.md", "docs/src/pages/dashboard.mjs", "cli/pire-browser-cli/src/main.rs", "cli/pire-browser-core/src/cli.rs"],
   },
   dialogs: {
