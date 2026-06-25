@@ -163,6 +163,7 @@ browser.runtime.onMessage.addListener((message: any) => {
   if (message.type === "vitals") return Promise.resolve(pageVitals());
   if (message.type === "react_tree") return Promise.resolve(reactTree(message.selector, message.maxDepth));
   if (message.type === "react_inspect") return Promise.resolve(reactInspect(String(message.target ?? ""), message.locator));
+  if (message.type === "react_renders") return Promise.resolve(reactRenders(String(message.action ?? "")));
   if (message.type === "react_suspense") return Promise.resolve(reactSuspense(Boolean(message.onlyDynamic)));
   if (message.type === "eval") return Promise.resolve(evalScript(String(message.script ?? "")));
   if (message.type === "pushstate") return pushStateNavigation(String(message.url ?? ""));
@@ -1984,6 +1985,48 @@ function reactInspect(target: string, locator?: Locator) {
   };
 }
 
+function reactRenders(action: string) {
+  const recorder = reactRenderRecorder();
+  if (!recorder) {
+    return {
+      error: {
+        code: "ReactDevtoolsHookNotInstalled",
+        message:
+          "React render recording requires the React hook to be installed before page JavaScript runs. Close the managed browser and reopen the app with `pire-browser open --enable react-devtools <url>`.",
+      },
+      dialogs: drainDialogs(),
+    };
+  }
+  if (action === "start") {
+    const profile = callReactRenderRecorder(recorder, "start");
+    if ("error" in profile) return { ...profile, dialogs: drainDialogs() };
+    return {
+      text: `Started React render recording for ${location.href}`,
+      url: location.href,
+      title: document.title,
+      profile,
+      warnings: [reactBestEffortWarning()],
+      dialogs: drainDialogs(),
+    };
+  }
+  if (action === "stop") {
+    const profile = callReactRenderRecorder(recorder, "stop");
+    if ("error" in profile) return { ...profile, dialogs: drainDialogs() };
+    return {
+      text: formatReactRenderProfile(profile),
+      url: location.href,
+      title: document.title,
+      profile,
+      warnings: [reactBestEffortWarning()],
+      dialogs: drainDialogs(),
+    };
+  }
+  return {
+    error: { code: "invalid_args", message: "react renders requires start or stop" },
+    dialogs: drainDialogs(),
+  };
+}
+
 function reactSuspense(onlyDynamic: boolean) {
   const result = collectReactSuspenseBoundaries(undefined);
   if ("error" in result) return { ...result, dialogs: drainDialogs() };
@@ -2009,6 +2052,71 @@ function reactSuspense(onlyDynamic: boolean) {
     warnings: [reactBestEffortWarning()],
     dialogs: drainDialogs(),
   };
+}
+
+function reactRenderRecorder() {
+  const pageWindow = pageObject(window) as Record<string, any>;
+  const recorder = pageWindow.__PIRE_BROWSER_REACT_RENDER_RECORDER__;
+  if (!recorder || typeof recorder !== "object") return null;
+  return recorder;
+}
+
+function callReactRenderRecorder(recorder: Record<string, any>, action: "start" | "stop"):
+  | Record<string, any>
+  | { error: { code: string; message: string } } {
+  const method = recorder[action];
+  if (typeof method !== "function") {
+    return {
+      error: {
+        code: "ReactDevtoolsHookNotInstalled",
+        message: "The React render recorder is not available in the current page. Reopen with `pire-browser open --enable react-devtools <url>`.",
+      },
+    };
+  }
+  try {
+    const result = method.call(recorder);
+    return cloneReactRenderProfile(result);
+  } catch (error) {
+    return {
+      error: {
+        code: "ReactRenderRecordingFailed",
+        message: errorMessage(error),
+      },
+    };
+  }
+}
+
+function cloneReactRenderProfile(value: unknown): Record<string, any> | { error: { code: string; message: string } } {
+  try {
+    return JSON.parse(JSON.stringify(value ?? {}));
+  } catch {
+    return {
+      error: {
+        code: "ReactRenderRecordingFailed",
+        message: "React render profile could not be serialized.",
+      },
+    };
+  }
+}
+
+function formatReactRenderProfile(profile: Record<string, any>) {
+  const lines = [`React render profile for ${location.href} (best effort)`];
+  lines.push(`Commits: ${Number(profile.commitCount ?? 0)} over ${Number(profile.durationMs ?? 0)}ms`);
+  lines.push(`Component renders: ${Number(profile.componentRenderCount ?? 0)}`);
+  if (profile.capped) lines.push("Profile was capped; only the most recent commits are included.");
+  const topComponents = Array.isArray(profile.topComponents) ? profile.topComponents : [];
+  if (topComponents.length) {
+    lines.push("Top components:");
+    for (const component of topComponents.slice(0, 10)) {
+      const name = typeof component.name === "string" ? component.name : "Anonymous";
+      const renders = Number(component.renders ?? 0);
+      const duration = Number(component.actualDuration ?? 0).toFixed(2);
+      lines.push(`  ${name} renders=${renders} actualDuration=${duration}ms`);
+    }
+  } else {
+    lines.push("No component renders were recorded.");
+  }
+  return lines.join("\n");
 }
 
 function collectReactComponents(selector?: unknown):
@@ -2039,7 +2147,7 @@ function collectReactComponents(selector?: unknown):
       error: {
         code: "ReactNotFound",
         message:
-          "No React Fiber data was found in the current page. Open a React app, wait for it to render, then retry. This Firefox backend uses best-effort Fiber expandos and does not install the full React DevTools hook.",
+          "No React Fiber data was found in the current page. Open a React app, wait for it to render, then retry. For render recording, reopen with `pire-browser open --enable react-devtools <url>` before page JavaScript runs.",
       },
     };
   }
@@ -2107,7 +2215,7 @@ function collectReactSuspenseBoundaries(selector?: unknown):
       error: {
         code: "ReactNotFound",
         message:
-          "No React Fiber data was found in the current page. Open a React app, wait for it to render, then retry. This Firefox backend uses best-effort Fiber expandos and does not install the full React DevTools hook.",
+          "No React Fiber data was found in the current page. Open a React app, wait for it to render, then retry. For render recording, reopen with `pire-browser open --enable react-devtools <url>` before page JavaScript runs.",
       },
     };
   }
@@ -2411,7 +2519,7 @@ function reactDevtoolsHookPresent() {
 function reactBestEffortWarning() {
   return bestEffortWarning(
     "react",
-    "React commands use best-effort Firefox Fiber introspection. Render profiling requires full React DevTools integration and is not implemented; Suspense detection is limited to DOM-attached Fiber data visible to Firefox content scripts."
+    "React commands use best-effort Firefox Fiber introspection. Render recording requires `open --enable react-devtools` before page JavaScript runs and is limited to commit data visible through the lightweight Firefox hook."
   );
 }
 

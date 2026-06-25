@@ -389,6 +389,8 @@ pire-browser react tree
 pire-browser react tree --selector "#root" --depth 3
 pire-browser react inspect r1
 pire-browser react inspect '@e1'
+pire-browser react renders start
+pire-browser react renders stop
 pire-browser react suspense
 pire-browser react suspense --only-dynamic
 pire-browser vitals

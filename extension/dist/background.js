@@ -417,6 +417,8 @@
             case "vitals":
                 return firstPositionalArg(args.slice(1), []) ? "navigate" : "get";
             case "react":
+                if (subcommand === "renders")
+                    return args[2] === "start" ? "state" : "get";
                 return subcommand === "tree" || subcommand === "inspect" || subcommand === "suspense" ? "get" : null;
             case "network":
                 if (subcommand === "requests")
@@ -872,7 +874,10 @@
         }
         const label = valueAfter(args, "--label");
         const newTab = args.includes("--new") || args.includes("--new-tab");
-        const registered = await registerInitScripts(initScripts.scripts);
+        const openInitScripts = enableOption.reactDevtools
+            ? [reactDevtoolsHookInitScript(), ...initScripts.scripts]
+            : initScripts.scripts;
+        const registered = await registerInitScripts(openInitScripts);
         if ("error" in registered)
             return registered;
         const headerScope = parsedHeaders.provided ? setHeadersForUrl(url, parsedHeaders.headers) : null;
@@ -883,7 +888,7 @@
         let tab;
         const warnings = mergeWarnings(params.proxyWarnings, registered.warnings);
         if (enableOption.reactDevtools) {
-            warnings.push(bestEffortWarning("react", "open --enable react-devtools is accepted for agent-browser command-shape compatibility. The Firefox backend uses best-effort Fiber introspection and does not install the full React DevTools hook."));
+            warnings.push(bestEffortWarning("react", "Installed a best-effort React DevTools-compatible hook before navigation. Firefox render recording uses this lightweight hook plus Fiber data, not the full React DevTools extension."));
         }
         try {
             const existingFileTab = isFileUrl(url) ? await existingTabForUrl(url, active) : null;
@@ -976,6 +981,186 @@
             scripts.push({ path: candidate.path, code: candidate.code });
         }
         return { scripts };
+    }
+    function reactDevtoolsHookInitScript() {
+        return {
+            path: "react-devtools-hook",
+            code: `(() => {
+  if (window.__PIRE_BROWSER_REACT_RENDER_RECORDER__) return;
+  const existing = window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+  const state = {
+    nextRendererId: 1,
+    renderers: {},
+    recording: false,
+    startedAt: 0,
+    stoppedAt: 0,
+    commits: [],
+    maxCommits: 200,
+    maxComponentsPerCommit: 300,
+  };
+  const hook = existing && typeof existing === "object" ? existing : {};
+  const originalInject = typeof hook.inject === "function" ? hook.inject.bind(hook) : null;
+  const originalCommit = typeof hook.onCommitFiberRoot === "function" ? hook.onCommitFiberRoot.bind(hook) : null;
+  if (!hook.renderers || typeof hook.renderers.set !== "function") hook.renderers = new Map();
+  hook.supportsFiber = true;
+  hook.inject = function(renderer) {
+    let rendererId;
+    if (originalInject) {
+      try {
+        rendererId = originalInject(renderer);
+      } catch {
+        rendererId = undefined;
+      }
+    }
+    if (typeof rendererId !== "number") rendererId = state.nextRendererId++;
+    state.nextRendererId = Math.max(state.nextRendererId, rendererId + 1);
+    try {
+      hook.renderers.set(rendererId, renderer);
+    } catch {}
+    state.renderers[String(rendererId)] = rendererSummary(renderer);
+    return rendererId;
+  };
+  hook.onCommitFiberRoot = function(rendererId, root, priorityLevel, didError) {
+    if (state.recording) recordCommit(rendererId, root, didError);
+    if (originalCommit) {
+      try {
+        return originalCommit(rendererId, root, priorityLevel, didError);
+      } catch {}
+    }
+    return undefined;
+  };
+  window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = hook;
+  window.__PIRE_BROWSER_REACT_RENDER_RECORDER__ = {
+    start() {
+      state.recording = true;
+      state.startedAt = Date.now();
+      state.stoppedAt = 0;
+      state.commits = [];
+      return profile(false);
+    },
+    stop() {
+      if (!state.recording) return { error: { code: "ReactRenderRecordingNotActive", message: "No React render recording is active. Run react renders start first." } };
+      state.recording = false;
+      state.stoppedAt = Date.now();
+      return profile(true);
+    },
+    status() {
+      return profile(false);
+    }
+  };
+  function recordCommit(rendererId, root, didError) {
+    const fiberRoot = root && (root.current || root._internalRoot?.current || root);
+    const components = collectComponents(fiberRoot);
+    const commit = {
+      id: state.commits.length + 1,
+      at: Date.now(),
+      rendererId: typeof rendererId === "number" ? rendererId : null,
+      didError: Boolean(didError),
+      componentCount: components.length,
+      components,
+    };
+    state.commits.push(commit);
+    if (state.commits.length > state.maxCommits) state.commits.shift();
+  }
+  function collectComponents(rootFiber) {
+    const out = [];
+    const stack = rootFiber ? [rootFiber] : [];
+    const seen = new Set();
+    while (stack.length && out.length < state.maxComponentsPerCommit) {
+      const fiber = stack.pop();
+      if (!fiber || seen.has(fiber)) continue;
+      seen.add(fiber);
+      if (fiber.sibling) stack.push(fiber.sibling);
+      if (fiber.child) stack.push(fiber.child);
+      if (!isComponentFiber(fiber)) continue;
+      const actualDuration = finiteNumber(fiber.actualDuration);
+      const selfDuration = finiteNumber(fiber.selfBaseDuration);
+      const flags = finiteNumber(fiber.flags) || 0;
+      const rendered = actualDuration > 0 || flags !== 0;
+      if (!rendered) continue;
+      out.push({
+        name: fiberDisplayName(fiber),
+        key: fiber.key == null ? null : String(fiber.key),
+        actualDuration,
+        selfDuration,
+        flags,
+        source: fiberSource(fiber),
+      });
+    }
+    return out;
+  }
+  function profile(stopped) {
+    const components = {};
+    for (const commit of state.commits) {
+      for (const component of commit.components) {
+        const key = component.name || "Anonymous";
+        const entry = components[key] || { name: key, renders: 0, actualDuration: 0, selfDuration: 0 };
+        entry.renders += 1;
+        entry.actualDuration += component.actualDuration || 0;
+        entry.selfDuration += component.selfDuration || 0;
+        components[key] = entry;
+      }
+    }
+    const topComponents = Object.values(components)
+      .sort((left, right) => (right.renders - left.renders) || (right.actualDuration - left.actualDuration) || String(left.name).localeCompare(String(right.name)))
+      .slice(0, 25);
+    const stoppedAt = stopped ? state.stoppedAt : Date.now();
+    return {
+      recording: state.recording,
+      startedAt: state.startedAt || null,
+      stoppedAt: stopped ? state.stoppedAt : null,
+      durationMs: state.startedAt ? Math.max(0, stoppedAt - state.startedAt) : 0,
+      commitCount: state.commits.length,
+      componentRenderCount: topComponents.reduce((sum, component) => sum + component.renders, 0),
+      rendererCount: Object.keys(state.renderers).length,
+      renderers: state.renderers,
+      commits: state.commits,
+      topComponents,
+      capped: state.commits.length >= state.maxCommits,
+    };
+  }
+  function isComponentFiber(fiber) {
+    const type = fiber.elementType || fiber.type;
+    if (!type || typeof type === "string") return false;
+    if (typeof type === "function") return true;
+    return typeof type === "object" && Boolean(type.displayName || type.render || type.type);
+  }
+  function fiberDisplayName(fiber) {
+    return typeName(fiber.elementType || fiber.type) || typeName(fiber.type) || "Anonymous";
+  }
+  function typeName(type) {
+    if (!type) return "";
+    if (typeof type === "string") return type;
+    if (typeof type === "function") return type.displayName || type.name || "Anonymous";
+    if (typeof type === "object") {
+      if (typeof type.displayName === "string" && type.displayName) return type.displayName;
+      if (type.render) return typeName(type.render) || "ForwardRef";
+      if (type.type) return typeName(type.type);
+    }
+    return "";
+  }
+  function rendererSummary(renderer) {
+    if (!renderer || typeof renderer !== "object") return {};
+    return {
+      bundleType: renderer.bundleType,
+      version: typeof renderer.version === "string" ? renderer.version : undefined,
+      rendererPackageName: typeof renderer.rendererPackageName === "string" ? renderer.rendererPackageName : undefined,
+    };
+  }
+  function fiberSource(fiber) {
+    const source = fiber && fiber._debugSource;
+    if (!source || typeof source !== "object") return null;
+    return {
+      fileName: typeof source.fileName === "string" ? source.fileName : undefined,
+      lineNumber: typeof source.lineNumber === "number" ? source.lineNumber : undefined,
+      columnNumber: typeof source.columnNumber === "number" ? source.columnNumber : undefined,
+    };
+  }
+  function finiteNumber(value) {
+    return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  }
+})();`,
+        };
     }
     async function registerInitScripts(scripts) {
         if (scripts.length === 0)
@@ -3768,6 +3953,15 @@
             const result = normalizeContentResponse(response);
             return "error" in result ? result : { ...result, tab };
         }
+        if (subcommand === "renders") {
+            const parsed = parseReactRendersArgs(rest);
+            if ("error" in parsed)
+                return parsed;
+            const tab = await targetTab();
+            const response = await sendFrame(tab.tabId, targetFrameIdForTab(tab.tabId), { type: "react_renders", action: parsed.action }, { staleOnFrameRoutingError: true });
+            const result = normalizeContentResponse(response);
+            return "error" in result ? result : { ...result, tab };
+        }
         if (subcommand === "suspense") {
             const parsed = parseReactSuspenseArgs(rest);
             if ("error" in parsed)
@@ -3777,10 +3971,7 @@
             const result = normalizeContentResponse(response);
             return "error" in result ? result : { ...result, tab };
         }
-        if (subcommand === "renders") {
-            return notAvailable(`react ${subcommand}`, "react renders requires full React DevTools render profiling integration and is not supported by the Firefox WebExtension backend yet.");
-        }
-        return { error: { code: "invalid_args", message: "react requires tree, inspect <fiberId|target>, or suspense" } };
+        return { error: { code: "invalid_args", message: "react requires tree, inspect <fiberId|target>, renders start|stop, or suspense" } };
     }
     function parseReactTreeArgs(args) {
         let selector;
@@ -3849,6 +4040,18 @@
         if ("error" in locator)
             return { error: { code: locator.error.code, message: locator.error.message } };
         return { target: actualTarget, locator: locator.locator, frameId: locator.frameId };
+    }
+    function parseReactRendersArgs(args) {
+        const action = firstPositionalArg(args, []);
+        if (action !== "start" && action !== "stop") {
+            return { error: { code: "invalid_args", message: "react renders requires start or stop" } };
+        }
+        for (const arg of args) {
+            if (arg === action || arg === "--json")
+                continue;
+            return { error: { code: "invalid_args", message: `Unsupported react renders option: ${arg}` } };
+        }
+        return { action };
     }
     function parseReactSuspenseArgs(args) {
         let onlyDynamic = false;

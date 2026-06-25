@@ -164,7 +164,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "react",
             bits: PROFILE_REACT,
-            description: "Best-effort Firefox React Fiber tree, inspect, and Suspense tools, plus Web Vitals. Render profiling requires full React DevTools integration and is not implemented yet.",
+            description: "Best-effort Firefox React Fiber tree, inspect, render recording, and Suspense tools, plus Web Vitals.",
         },
         McpProfileDescriptor {
             name: "all",
@@ -298,7 +298,11 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_record_status"
         | "pire_browser_record_stop"
         | "pire_browser_vitals" => PROFILE_DEBUG | PROFILE_REACT,
-        "pire_browser_react_tree" | "pire_browser_react_inspect" | "pire_browser_react_suspense" => PROFILE_REACT,
+        "pire_browser_react_tree"
+        | "pire_browser_react_inspect"
+        | "pire_browser_react_renders_start"
+        | "pire_browser_react_renders_stop"
+        | "pire_browser_react_suspense" => PROFILE_REACT,
         "pire_browser_dialog_status"
         | "pire_browser_dialog_accept"
         | "pire_browser_dialog_dismiss" => PROFILE_DEBUG | PROFILE_TABS,
@@ -1184,6 +1188,16 @@ fn tool_command_args(
             args.push("react".to_string());
             args.push("inspect".to_string());
             args.push(required_string(object, "target")?);
+        }
+        (_, "pire_browser_react_renders_start") => {
+            args.push("react".to_string());
+            args.push("renders".to_string());
+            args.push("start".to_string());
+        }
+        (_, "pire_browser_react_renders_stop") => {
+            args.push("react".to_string());
+            args.push("renders".to_string());
+            args.push("stop".to_string());
         }
         (_, "pire_browser_react_suspense") => {
             args.push("react".to_string());
@@ -3055,6 +3069,20 @@ fn core_tools() -> Vec<Value> {
             true,
         ),
         tool(
+            "pire_browser_react_renders_start",
+            "Start React render recording",
+            "Begin best-effort React render recording for the active page. Open with react-devtools first.",
+            tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_react_renders_stop",
+            "Stop React render recording",
+            "Stop best-effort React render recording and return the render profile.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
             "pire_browser_react_suspense",
             "React Suspense",
             "Show best-effort React Suspense boundaries from Firefox Fiber data.",
@@ -4638,6 +4666,12 @@ mod tests {
             .any(|tool| tool["name"] == "pire_browser_react_inspect"));
         assert!(react
             .iter()
+            .any(|tool| tool["name"] == "pire_browser_react_renders_start"));
+        assert!(react
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_react_renders_stop"));
+        assert!(react
+            .iter()
             .any(|tool| tool["name"] == "pire_browser_react_suspense"));
         assert!(react
             .iter()
@@ -5857,6 +5891,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "react", "inspect", "r1"]);
+
+        let args = tool_command_args(
+            "pire_browser_react_renders_start",
+            &json!({}),
+            McpToolsProfile::React,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "react", "renders", "start"]);
+
+        let args = tool_command_args(
+            "pire_browser_react_renders_stop",
+            &json!({}),
+            McpToolsProfile::React,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "react", "renders", "stop"]);
 
         let args = tool_command_args(
             "pire_browser_react_suspense",

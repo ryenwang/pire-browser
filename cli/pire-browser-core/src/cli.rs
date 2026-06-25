@@ -2382,6 +2382,8 @@ Common commands:
                                   Open a React app with agent-browser-style opt-in
   react tree                      Show best-effort React component tree
   react inspect r1                Inspect React props, hooks, state, and source
+  react renders start             Begin best-effort React render recording
+  react renders stop              Stop and print React render profile
   react suspense                  Show best-effort React Suspense boundaries
   highlight '#submit'             Draw a visible overlay around a target
   device "iPhone 14"              Best-effort device viewport preset
@@ -2983,23 +2985,27 @@ Usage:
   pire-browser react inspect r1
   pire-browser react inspect '@e1'
   pire-browser react inspect '#root button'
+  pire-browser react renders start
+  pire-browser react renders stop [--json]
   pire-browser react suspense
   pire-browser react suspense --only-dynamic
 
 Inspects React components in the active Firefox tab. The command names mirror
 agent-browser's React workflow, but the Firefox backend is best-effort: it reads
-React Fiber data attached to DOM nodes and does not install the full React
-DevTools hook. `open --enable react-devtools` is accepted for command-shape
-compatibility and reports that limitation as a warning.
+React Fiber data attached to DOM nodes and uses a lightweight hook rather than
+the full React DevTools extension. `open --enable react-devtools` is accepted
+for command-shape compatibility and installs that hook before page JavaScript
+runs.
 
 Use `react tree` to get fresh component ids such as r1, then inspect a current
 id with `react inspect r1`. Component ids are derived from the current page tree,
 so rerun `react tree` after navigation, route changes, or large DOM updates.
 `react inspect` also accepts refs from `snapshot -i` or CSS selectors and
-inspects the nearest owning React component. Use `react suspense` for best-effort
-Suspense boundary state from DOM-attached Fiber data; `--only-dynamic` shows
-currently fallback/dehydrated boundaries. Render recording is not implemented
-yet.
+inspects the nearest owning React component. Use `react renders start` before the
+interaction of interest, then `react renders stop` to print a best-effort render
+profile. Use `react suspense` for best-effort Suspense boundary state from
+DOM-attached Fiber data; `--only-dynamic` shows currently fallback/dehydrated
+boundaries.
 "##;
 
 const HIGHLIGHT_HELP: &str = r##"
@@ -3457,8 +3463,8 @@ installed skill guidance. Add comma-separated profiles when needed: `network`,
 lower-level launch, install/repair, safe upgrade, typed batch, doctor/activity
 diagnostics, console/errors, dialogs, highlight, and vitals. Agent-browser-style
 action/tab/frame aliases are available alongside older compatible names. The
-`react` profile exposes best-effort Firefox React Fiber tree/inspect/Suspense
-tools and vitals; render profiling is not implemented yet.
+`react` profile exposes best-effort Firefox React Fiber tree/inspect/render
+recording/Suspense tools and vitals.
 Use `all` for every currently implemented MCP tool. The server defaults to MCP
 protocol 2025-11-25 and accepts older supported client protocol versions during
 initialization. Tool discovery is paginated for large profiles.
@@ -5548,10 +5554,16 @@ mod tests {
             .contains("pire-browser react inspect r1"));
         assert!(help_text(Some("react"))
             .unwrap()
+            .contains("pire-browser react renders start"));
+        assert!(help_text(Some("react"))
+            .unwrap()
+            .contains("pire-browser react renders stop [--json]"));
+        assert!(help_text(Some("react"))
+            .unwrap()
             .contains("pire-browser react suspense --only-dynamic"));
         assert!(help_text(Some("react")).unwrap().contains("best-effort"));
-        assert!(help_text(Some("react")).unwrap().contains("Render recording is not implemented"));
         assert!(help_text(None).unwrap().contains("react tree"));
+        assert!(help_text(None).unwrap().contains("react renders start"));
         assert!(help_text(None).unwrap().contains("react suspense"));
         assert!(help_text(Some("highlight"))
             .unwrap()

@@ -233,18 +233,21 @@ pire-browser react tree
 pire-browser react tree --selector "#root" --depth 3
 pire-browser react inspect r1
 pire-browser react inspect '@e1'
+pire-browser react renders start
+# interact with the page
+pire-browser react renders stop
 pire-browser react suspense
 pire-browser react suspense --only-dynamic
 ```
 
-`react tree`, `react inspect`, and `react suspense` mirror agent-browser's
-command shape through best-effort Firefox Fiber data attached to DOM nodes. `open --enable
-react-devtools` is accepted for compatibility and reports that pire-browser does
-not install the full React DevTools hook. Re-run `react tree` after navigation,
-route changes, or large DOM updates before using an `rN` id. Use `react suspense
---only-dynamic` to focus on currently fallback/dehydrated boundaries visible
-through DOM-attached Fiber data. Render recording is not implemented yet; use
-snapshots, targeted get/is checks, console/errors, and vitals for supporting
+`react tree`, `react inspect`, `react renders`, and `react suspense` mirror
+agent-browser's command shape through best-effort Firefox Fiber data attached to
+DOM nodes plus a lightweight hook installed by `open --enable react-devtools`.
+Re-run `react tree` after navigation, route changes, or large DOM updates before
+using an `rN` id. Start render recording before the interaction of interest, then
+stop it for the profile. Use `react suspense --only-dynamic` to focus on
+currently fallback/dehydrated boundaries visible through DOM-attached Fiber data.
+Use snapshots, targeted get/is checks, console/errors, and vitals for supporting
 evidence.
 
 Start the local dashboard when a human or agent needs a quick view of setup,
@@ -618,7 +621,7 @@ and state files including typed clipboard tools, `debug` for lower-level launch,
 upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/vitals,
 `tabs` for tab/frame/window controls, and `mobile` for viewport/device/geo/media/mouse
 helpers including click-equivalent `pire_browser_tap` and touch-direction page-scroll `pire_browser_swipe`. `react` exposes best-effort typed React Fiber tools
-(`pire_browser_react_tree`, `pire_browser_react_inspect`, `pire_browser_react_suspense`) plus vitals. Use `all`
+(`pire_browser_react_tree`, `pire_browser_react_inspect`, `pire_browser_react_renders_start`, `pire_browser_react_renders_stop`, `pire_browser_react_suspense`) plus vitals. Use `all`
 only when the host can tolerate the full tool surface. The
 `pire_browser_tools_profiles` MCP tool returns this profile list in-band.
 The MCP server defaults to protocol `2025-11-25` and accepts older supported

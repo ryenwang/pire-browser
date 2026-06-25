@@ -73,7 +73,7 @@ export const featureStatuses = {
   },
   debugging: {
     status: "partial",
-    summary: "`console`, `errors`, `highlight`, Firefox trace QA bundles, screenshot-sequence recording bundles, best-effort `vitals`, best-effort React Fiber tree/inspect/Suspense, recent redacted command activity, and the local status/session/activity dashboard with live read-only polling viewport preview are available for Firefox workflows; Chrome DevTools inspect proxy, WebSocket viewport streaming, profiler, React render profiling, and native WebM/video recording are not implemented.",
+    summary: "`console`, `errors`, `highlight`, Firefox trace QA bundles, screenshot-sequence recording bundles, best-effort `vitals`, best-effort React Fiber tree/inspect/render recording/Suspense, recent redacted command activity, and the local status/session/activity dashboard with live read-only polling viewport preview are available for Firefox workflows; Chrome DevTools inspect proxy, WebSocket viewport streaming, profiler, and native WebM/video recording are not implemented.",
     sources: ["README.md", "extension/src/background.ts"],
   },
   dashboard: {

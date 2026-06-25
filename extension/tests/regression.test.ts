@@ -936,6 +936,8 @@ describe("pire-browser command foundations", () => {
       ["vitals", "https://example.com"],
       ["react", "tree"],
       ["react", "inspect", "r1"],
+      ["react", "renders", "start"],
+      ["react", "renders", "stop"],
       ["react", "suspense", "--only-dynamic"],
       ["get", "title"],
       ["is", "visible", "@e1"],
@@ -1087,6 +1089,15 @@ describe("command shape parity", () => {
     expect(body).toContain('firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers", "--enable"])');
   });
 
+  it("installs a lightweight React hook for enabled React workflows", () => {
+    const body = background();
+    expect(body).toContain("reactDevtoolsHookInitScript()");
+    expect(body).toContain("__REACT_DEVTOOLS_GLOBAL_HOOK__");
+    expect(body).toContain("__PIRE_BROWSER_REACT_RENDER_RECORDER__");
+    expect(body).toContain("onCommitFiberRoot");
+    expect(body).toContain("Installed a best-effort React DevTools-compatible hook before navigation");
+  });
+
   it("supports best-effort runtime init script registration and removal", () => {
     const body = background();
     expect(body).toContain('case "addinitscript":');
@@ -1187,27 +1198,33 @@ describe("command shape parity", () => {
     expect(body).toContain("visualRecordingsByTabId.delete(tabId)");
   });
 
-  it("supports best-effort React tree, inspect, and Suspense diagnostics", () => {
+  it("supports best-effort React tree, inspect, renders, and Suspense diagnostics", () => {
     const body = background();
     expect(body).toContain('case "react":');
     expect(body).toContain("return reactCommand(rest);");
     expect(body).toContain("async function reactCommand");
     expect(body).toContain('type: "react_tree"');
     expect(body).toContain('type: "react_inspect"');
+    expect(body).toContain('type: "react_renders"');
     expect(body).toContain('type: "react_suspense"');
     expect(body).toContain("parseReactTreeArgs");
     expect(body).toContain("parseReactInspectArgs");
+    expect(body).toContain("parseReactRendersArgs");
     expect(body).toContain("parseReactSuspenseArgs");
+    expect(body).toContain('subcommand === "renders"');
     expect(body).toContain('subcommand === "suspense"');
     expect(body).toContain('arg === "--only-dynamic"');
     expect(body).toContain('firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers", "--enable"])');
-    expect(body).toContain("open --enable react-devtools is accepted");
-    expect(body).toContain('if (subcommand === "renders")');
+    expect(body).toContain("Installed a best-effort React DevTools-compatible hook before navigation");
 
     const contentBody = content();
     expect(contentBody).toContain('message.type === "react_tree"');
     expect(contentBody).toContain('message.type === "react_inspect"');
+    expect(contentBody).toContain('message.type === "react_renders"');
     expect(contentBody).toContain('message.type === "react_suspense"');
+    expect(contentBody).toContain("function reactRenders");
+    expect(contentBody).toContain("function formatReactRenderProfile");
+    expect(contentBody).toContain("ReactDevtoolsHookNotInstalled");
     expect(contentBody).toContain("function collectReactComponents");
     expect(contentBody).toContain("function collectReactSuspenseBoundaries");
     expect(contentBody).toContain("function isReactSuspenseFiber");
@@ -1218,7 +1235,7 @@ describe("command shape parity", () => {
     expect(contentBody).toContain("function reactHooks");
     expect(contentBody).toContain("ReactNotFound");
     expect(contentBody).toContain("best-effort Firefox Fiber introspection");
-    expect(contentBody).toContain("Suspense detection is limited to DOM-attached Fiber data");
+    expect(contentBody).toContain("Render recording requires `open --enable react-devtools`");
   });
 
   it("supports text-based snapshot diffs", () => {
