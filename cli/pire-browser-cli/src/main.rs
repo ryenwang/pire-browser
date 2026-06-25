@@ -78,6 +78,7 @@ use pire_browser_core::upload::{
 };
 use serde_json::{json, Map, Value};
 use sha1::{Digest as Sha1Digest, Sha1};
+use std::cell::RefCell;
 use std::fs;
 use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -238,6 +239,19 @@ struct CredentialProviderResolution {
     profile: AuthProfile,
     provider: CredentialProviderConfig,
     item_ref: Option<String>,
+}
+
+struct LaunchPluginRuntime<'a> {
+    config: &'a Map<String, Value>,
+    command_args: &'a [String],
+    target: PendingConfirmationTarget,
+    domain_decision: &'a DomainPolicyDecision,
+    action_decision: &'a ActionPolicyDecision,
+    confirmation_decision: &'a ConfirmationPolicyDecision,
+    json_output: bool,
+    ignored_global_flags: &'a [GlobalFlagWarning],
+    approved_plugin_categories: &'a [String],
+    warnings: &'a RefCell<Vec<Value>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -760,9 +774,11 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             }
             let confirmation_decision =
                 resolve_confirmation_policy_or_exit(&confirmation_policy, false, &[])?;
+            let launch_confirmation_args =
+                launch_args_for_confirmation(&profile, &url, &firefox_path);
             if url.is_some() {
                 require_confirmation_or_exit(
-                    &launch_args_for_confirmation(&profile, &url, &firefox_path),
+                    &launch_confirmation_args,
                     ConfirmationGate {
                         confirmation_decision: &confirmation_decision,
                         target: PendingConfirmationTarget::Default,
@@ -774,21 +790,46 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                     },
                 )?;
             }
-            let result = launch_firefox_with_lazy_setup(LaunchOptions {
-                profile,
-                url,
-                firefox_path,
-                download_dir: download_path_override.clone(),
-                headless: launch_headless,
-                extra_args: launch_extra_args.clone(),
-                user_agent: user_agent_override.clone(),
-            })?;
+            let launch_plugin_warnings = RefCell::new(Vec::new());
+            let launch_runtime = LaunchPluginRuntime {
+                config: &config_map,
+                command_args: &launch_confirmation_args,
+                target: PendingConfirmationTarget::Default,
+                domain_decision: &domain_decision,
+                action_decision: &action_decision,
+                confirmation_decision: &confirmation_decision,
+                json_output: false,
+                ignored_global_flags: &[],
+                approved_plugin_categories: &[],
+                warnings: &launch_plugin_warnings,
+            };
+            let options = apply_launch_mutators(
+                LaunchOptions {
+                    profile,
+                    url,
+                    firefox_path,
+                    download_dir: download_path_override.clone(),
+                    headless: launch_headless,
+                    extra_args: launch_extra_args.clone(),
+                    user_agent: user_agent_override.clone(),
+                },
+                Some(&launch_runtime),
+            )?;
+            let result = launch_firefox_with_lazy_setup(options)?;
             let mut text = launch_result_text(&result);
             for warning in &domain_decision.warnings {
                 text.push_str(&format!(
                     "\nWarning [{}]: {}",
                     warning.code, warning.message
                 ));
+            }
+            for warning in launch_plugin_warnings.borrow().iter() {
+                let code = warning
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .unwrap_or("PLUGIN_LAUNCH_WARNING");
+                let message = warning.get("message").and_then(Value::as_str).unwrap_or("");
+                text.push_str(&format!("\nWarning [{code}]: {message}"));
             }
             println!("{text}");
         }
@@ -1138,6 +1179,19 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             let mut request = request;
             attach_color_scheme(&mut request, color_scheme.as_deref())?;
             attach_proxy_config(&mut request, proxy_config.as_ref())?;
+            let launch_plugin_warnings = RefCell::new(Vec::new());
+            let launch_runtime = LaunchPluginRuntime {
+                config: &config_map,
+                command_args: &args,
+                target: pending_target_from_session_target(&target),
+                domain_decision: &domain_decision,
+                action_decision: &action_decision,
+                confirmation_decision: &confirmation_decision,
+                json_output: json,
+                ignored_global_flags: &ignored_global_flags,
+                approved_plugin_categories: &[],
+                warnings: &launch_plugin_warnings,
+            };
             let (response, response_session_id) = dispatch_remote_request_or_exit(
                 &target,
                 &args,
@@ -1150,6 +1204,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 launch_headless,
                 &launch_extra_args,
                 user_agent_override.as_deref(),
+                Some(&launch_runtime),
             )?;
             if !response.ok {
                 let error = response
@@ -1183,6 +1238,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             maybe_write_trace_bundle(&args, &mut result)?;
             maybe_write_profiler_profile(&args, &mut result)?;
             maybe_write_recording_manifest(&args, &mut result)?;
+            append_launch_plugin_warnings(&mut result, &launch_plugin_warnings.borrow(), !json);
             append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json)?;
             append_ignored_global_flag_warnings(&mut result, &ignored_global_flags);
             apply_output_guards(&mut result, &output_guards, json);
@@ -3033,11 +3089,11 @@ fn plugin_value(plugin: &CredentialProviderConfig) -> Value {
         "execution": {
             "credential.read": plugin.capabilities.iter().any(|capability| capability == "credential.read"),
             "browser.provider": false,
-            "launch.mutate": false,
+            "launch.mutate": plugin.capabilities.iter().any(|capability| capability == "launch.mutate"),
             "command.run": plugin.capabilities.iter().any(|capability| capability == "command.run"),
             "custom": runnable_custom
         },
-        "note": "pire-browser executes credential.read plugins through auth login --credential-provider and command.run/custom capabilities through plugin run. browser.provider and launch.mutate are discoverable but not executed by this Firefox backend yet."
+        "note": "pire-browser executes credential.read plugins through auth login --credential-provider, launch.mutate plugins before local Firefox launches for launch.args and launch.userAgent, and command.run/custom capabilities through plugin run. launch.extensions, launch.initScripts, and browser.provider are not executed by this Firefox backend."
     })
 }
 
@@ -3048,6 +3104,7 @@ fn plugin_capability_support(plugin: &CredentialProviderConfig) -> (Vec<String>,
         .any(|capability| capability == "command.run");
     plugin.capabilities.iter().cloned().partition(|capability| {
         capability == "credential.read"
+            || capability == "launch.mutate"
             || capability == "command.run"
             || (has_command_run && is_custom_plugin_capability(capability))
     })
@@ -3121,6 +3178,187 @@ fn plugin_show_text(plugin: &CredentialProviderConfig) -> String {
         unsupported,
         plugin.timeout_ms
     )
+}
+
+fn apply_launch_mutators(
+    mut options: LaunchOptions,
+    runtime: Option<&LaunchPluginRuntime<'_>>,
+) -> Result<LaunchOptions> {
+    let Some(runtime) = runtime else {
+        return Ok(options);
+    };
+    let plugins = configured_plugins(runtime.config)?;
+    for plugin in plugins.into_iter().filter(|plugin| {
+        plugin
+            .capabilities
+            .iter()
+            .any(|capability| capability == "launch.mutate")
+    }) {
+        maybe_require_launch_mutator_confirmation(runtime, &plugin, &options)?;
+        let request = launch_mutate_request(&options);
+        let response = run_plugin_protocol_request(&plugin, &request, "launch mutator")?;
+        let (extra_args, user_agent, warnings) =
+            parse_launch_mutation_response(&plugin, &response)?;
+        options.extra_args.extend(extra_args);
+        if let Some(user_agent) = user_agent {
+            options.user_agent = Some(user_agent);
+        }
+        if !warnings.is_empty() {
+            runtime.warnings.borrow_mut().extend(warnings);
+        }
+    }
+    Ok(options)
+}
+
+fn launch_mutate_request(options: &LaunchOptions) -> Value {
+    json!({
+        "protocol": PLUGIN_PROTOCOL,
+        "type": "launch.mutate",
+        "capability": "launch.mutate",
+        "request": {
+            "browser": "firefox",
+            "engine": "firefox",
+            "profileName": &options.profile,
+            "url": &options.url,
+            "headless": options.headless,
+            "launch": {
+                "args": &options.extra_args,
+                "userAgent": &options.user_agent,
+            }
+        }
+    })
+}
+
+fn parse_launch_mutation_response(
+    plugin: &CredentialProviderConfig,
+    response: &Value,
+) -> Result<(Vec<String>, Option<String>, Vec<Value>)> {
+    let Some(launch) = response.get("launch") else {
+        return Ok((Vec::new(), None, Vec::new()));
+    };
+    let Some(launch) = launch.as_object() else {
+        bail!(
+            "plugin_malformed_response: launch mutator `{}` response launch field must be an object",
+            redact_text(&plugin.name)
+        );
+    };
+    let extra_args = match launch.get("args") {
+        Some(value) => value_as_string_array(value, "launch.args")?,
+        None => Vec::new(),
+    };
+    let user_agent = match launch.get("userAgent") {
+        Some(Value::String(value)) if !value.trim().is_empty() => Some(value.trim().to_string()),
+        Some(Value::String(_)) | Some(Value::Null) | None => None,
+        Some(_) => bail!(
+            "plugin_malformed_response: launch mutator `{}` launch.userAgent must be a string",
+            redact_text(&plugin.name)
+        ),
+    };
+    let mut warnings = Vec::new();
+    for field in ["extensions", "initScripts"] {
+        if launch_field_is_non_empty(launch.get(field)) {
+            warnings.push(json!({
+                "code": "PLUGIN_LAUNCH_FIELD_UNSUPPORTED",
+                "feature": "launch.mutate",
+                "plugin": &plugin.name,
+                "field": field,
+                "message": format!(
+                    "Launch mutator plugin `{}` returned launch.{field}, but the Firefox backend only applies launch.args and launch.userAgent in this release.",
+                    redact_text(&plugin.name)
+                )
+            }));
+        }
+    }
+    Ok((extra_args, user_agent, warnings))
+}
+
+fn value_as_string_array(value: &Value, field: &str) -> Result<Vec<String>> {
+    let Some(array) = value.as_array() else {
+        bail!("plugin_malformed_response: {field} must be an array of strings");
+    };
+    let mut strings = Vec::new();
+    for item in array {
+        let Some(text) = item.as_str() else {
+            bail!("plugin_malformed_response: {field} must be an array of strings");
+        };
+        if !text.trim().is_empty() {
+            strings.push(text.to_string());
+        }
+    }
+    Ok(strings)
+}
+
+fn launch_field_is_non_empty(value: Option<&Value>) -> bool {
+    match value {
+        Some(Value::Array(array)) => !array.is_empty(),
+        Some(Value::String(value)) => !value.trim().is_empty(),
+        Some(Value::Null) | None => false,
+        Some(_) => true,
+    }
+}
+
+fn maybe_require_launch_mutator_confirmation(
+    runtime: &LaunchPluginRuntime<'_>,
+    plugin: &CredentialProviderConfig,
+    options: &LaunchOptions,
+) -> Result<bool> {
+    let category = plugin_confirmation_category(&plugin.name, "launch.mutate")?;
+    if runtime
+        .approved_plugin_categories
+        .iter()
+        .any(|approved| approved == &category)
+    {
+        return Ok(false);
+    }
+    if !runtime.confirmation_decision.requires(&category) {
+        return Ok(false);
+    }
+    require_confirmation_for_category_or_exit(
+        &category,
+        runtime.command_args,
+        ConfirmationGate {
+            confirmation_decision: runtime.confirmation_decision,
+            target: runtime.target.clone(),
+            domain_decision: runtime.domain_decision,
+            action_decision: runtime.action_decision,
+            json_output: runtime.json_output,
+            ignored_global_flags: runtime.ignored_global_flags,
+            metadata: Some(json!({
+                "plugin": plugin.name.clone(),
+                "capability": "launch.mutate",
+                "launch": {
+                    "profileName": &options.profile,
+                    "url": &options.url,
+                    "headless": options.headless,
+                    "args": &options.extra_args,
+                    "userAgent": &options.user_agent,
+                }
+            })),
+        },
+    )
+}
+
+fn approved_plugin_categories_from_record(record: &PendingConfirmation) -> Vec<String> {
+    record
+        .category
+        .starts_with("plugin:")
+        .then(|| record.category.clone())
+        .into_iter()
+        .collect()
+}
+
+fn append_launch_plugin_warnings(result: &mut Value, warnings: &[Value], include_text: bool) {
+    for warning in warnings {
+        if include_text {
+            let code = warning
+                .get("code")
+                .and_then(Value::as_str)
+                .unwrap_or("PLUGIN_LAUNCH_WARNING");
+            let message = warning.get("message").and_then(Value::as_str).unwrap_or("");
+            append_warning_text_value(result, code, message);
+        }
+        append_warning_value(result, warning.clone());
+    }
 }
 
 fn handle_chat_command(
@@ -5807,6 +6045,7 @@ fn handle_state_shortcut(
             launch_headless,
             launch_extra_args,
             user_agent_override,
+            None,
         ),
         SessionTarget::Default => match send_to_session(None, &request) {
             Ok(result) => Ok(result),
@@ -6566,6 +6805,7 @@ fn send_download_request(
             launch_headless,
             launch_extra_args,
             user_agent_override,
+            None,
         ),
         SessionTarget::Default => match send_to_session(None, request) {
             Ok(result) => Ok(result),
@@ -6811,6 +7051,11 @@ fn execute_confirmed_launch(
     action_decision: &ActionPolicyDecision,
 ) -> Result<()> {
     ensure_action_allowed(action_decision, &record.args)?;
+    let config_result = apply_config_defaults(&record.args)?;
+    let launch_extra_args = launch_extra_args_from_args_and_env(&config_result.args)?;
+    let user_agent_override = user_agent_override_from_args_and_env(&config_result.args);
+    let confirmation_decision =
+        confirmation_decision_from_context(record.confirmation_policy.as_ref());
     let mut profile = "Default".to_string();
     let mut url = None;
     let mut firefox_path = None;
@@ -6849,16 +7094,43 @@ fn execute_confirmed_launch(
         }
         i += 1;
     }
-    let result = launch_firefox_with_lazy_setup(LaunchOptions {
-        profile,
-        url,
-        firefox_path,
-        download_dir: None,
-        headless: false,
-        extra_args: Vec::new(),
-        user_agent: None,
-    })?;
-    println!("{}", launch_result_text(&result));
+    let approved_plugin_categories = approved_plugin_categories_from_record(record);
+    let launch_plugin_warnings = RefCell::new(Vec::new());
+    let launch_runtime = LaunchPluginRuntime {
+        config: &config_result.config,
+        command_args: &record.args,
+        target: record.target.clone(),
+        domain_decision,
+        action_decision,
+        confirmation_decision: &confirmation_decision,
+        json_output: false,
+        ignored_global_flags: &[],
+        approved_plugin_categories: &approved_plugin_categories,
+        warnings: &launch_plugin_warnings,
+    };
+    let options = apply_launch_mutators(
+        LaunchOptions {
+            profile,
+            url,
+            firefox_path,
+            download_dir: None,
+            headless: false,
+            extra_args: launch_extra_args,
+            user_agent: user_agent_override,
+        },
+        Some(&launch_runtime),
+    )?;
+    let result = launch_firefox_with_lazy_setup(options)?;
+    let mut text = launch_result_text(&result);
+    for warning in launch_plugin_warnings.borrow().iter() {
+        let code = warning
+            .get("code")
+            .and_then(Value::as_str)
+            .unwrap_or("PLUGIN_LAUNCH_WARNING");
+        let message = warning.get("message").and_then(Value::as_str).unwrap_or("");
+        text.push_str(&format!("\nWarning [{code}]: {message}"));
+    }
+    println!("{text}");
     Ok(())
 }
 
@@ -6869,6 +7141,25 @@ fn execute_confirmed_remote(
     action_decision: ActionPolicyDecision,
     json_output: bool,
 ) -> Result<()> {
+    let config_result = apply_config_defaults(&record.args)?;
+    let launch_extra_args = launch_extra_args_from_args_and_env(&config_result.args)?;
+    let user_agent_override = user_agent_override_from_args_and_env(&config_result.args);
+    let approved_plugin_categories = approved_plugin_categories_from_record(&record);
+    let confirmation_decision =
+        confirmation_decision_from_context(record.confirmation_policy.as_ref());
+    let launch_plugin_warnings = RefCell::new(Vec::new());
+    let launch_runtime = LaunchPluginRuntime {
+        config: &config_result.config,
+        command_args: &record.args,
+        target: record.target.clone(),
+        domain_decision: &domain_decision,
+        action_decision: &action_decision,
+        confirmation_decision: &confirmation_decision,
+        json_output,
+        ignored_global_flags: &[],
+        approved_plugin_categories: &approved_plugin_categories,
+        warnings: &launch_plugin_warnings,
+    };
     let request = build_command_request_with_captured_policies(
         record.args.clone(),
         record.domain_policy.clone(),
@@ -6885,22 +7176,27 @@ fn execute_confirmed_remote(
             None,
             None,
             false,
-            &[],
-            None,
+            &launch_extra_args,
+            user_agent_override.as_deref(),
+            Some(&launch_runtime),
         ),
         SessionTarget::Default => match send_to_session(None, &request) {
             Ok(result) => Ok(result),
             Err(err) if should_auto_launch_remote(None, &record.args, &err) => {
                 cleanup_stale_sessions(now_ms())?;
-                let _result = launch_firefox_with_lazy_setup(LaunchOptions {
-                    profile: "Default".to_string(),
-                    url: launch_url_for_remote_args(&record.args),
-                    firefox_path: None,
-                    download_dir: None,
-                    headless: false,
-                    extra_args: Vec::new(),
-                    user_agent: None,
-                })?;
+                let options = apply_launch_mutators(
+                    LaunchOptions {
+                        profile: "Default".to_string(),
+                        url: launch_url_for_remote_args(&record.args),
+                        firefox_path: None,
+                        download_dir: None,
+                        headless: false,
+                        extra_args: launch_extra_args.clone(),
+                        user_agent: user_agent_override.clone(),
+                    },
+                    Some(&launch_runtime),
+                )?;
+                let _result = launch_firefox_with_lazy_setup(options)?;
                 send_to_session(None, &request)
             }
             Err(err) => Err(err),
@@ -6914,6 +7210,7 @@ fn execute_confirmed_remote(
         &domain_decision.warnings,
     )?;
     let mut result = result;
+    append_launch_plugin_warnings(&mut result, &launch_plugin_warnings.borrow(), !json_output);
     append_domain_policy_warnings(&mut result, &domain_decision.warnings, !json_output)?;
     println!("{}", format_cli_result(&result, json_output)?);
     if is_controlled_close_command(&record.args) {
@@ -8109,6 +8406,7 @@ fn dispatch_auth_profile_login(
         launch_headless,
         launch_extra_args,
         user_agent_override,
+        None,
     )?;
     if !response.ok {
         let error = response
@@ -9537,6 +9835,7 @@ fn capture_diff_screenshot_current(
         launch_headless,
         launch_extra_args,
         user_agent_override,
+        None,
     )?;
     if !response.ok {
         let error = response
@@ -10012,6 +10311,7 @@ fn execute_remote_value_with_policies(
         launch_headless,
         launch_extra_args,
         user_agent_override,
+        None,
     )?;
     response_result_or_exit_with_domain_policy(
         response,
@@ -11287,6 +11587,7 @@ fn send_to_named_session(
     launch_headless: bool,
     launch_extra_args: &[String],
     user_agent_override: Option<&str>,
+    launch_plugin_runtime: Option<&LaunchPluginRuntime<'_>>,
 ) -> Result<(RpcResponse, String)> {
     validate_profile_name(profile_name)?;
     cleanup_stale_sessions(now_ms())?;
@@ -11309,15 +11610,19 @@ fn send_to_named_session(
     if let Some(url) = launch_url_for_remote_args(args) {
         ensure_url_allowed(domain_policy, &url)?;
     }
-    let result = launch_firefox_with_lazy_setup(LaunchOptions {
-        profile: profile_name.to_string(),
-        url: launch_url_for_remote_args(args),
-        firefox_path: firefox_path_override.map(ToString::to_string),
-        download_dir: download_path_override.map(Path::to_path_buf),
-        headless: launch_headless,
-        extra_args: launch_extra_args.to_vec(),
-        user_agent: user_agent_override.map(ToString::to_string),
-    })?;
+    let options = apply_launch_mutators(
+        LaunchOptions {
+            profile: profile_name.to_string(),
+            url: launch_url_for_remote_args(args),
+            firefox_path: firefox_path_override.map(ToString::to_string),
+            download_dir: download_path_override.map(Path::to_path_buf),
+            headless: launch_headless,
+            extra_args: launch_extra_args.to_vec(),
+            user_agent: user_agent_override.map(ToString::to_string),
+        },
+        launch_plugin_runtime,
+    )?;
+    let result = launch_firefox_with_lazy_setup(options)?;
     let session_id = result.session.session_id;
     send_to_session(Some(&session_id), request)
 }
@@ -11334,6 +11639,7 @@ fn dispatch_remote_request_or_exit(
     launch_headless: bool,
     launch_extra_args: &[String],
     user_agent_override: Option<&str>,
+    launch_plugin_runtime: Option<&LaunchPluginRuntime<'_>>,
 ) -> Result<(RpcResponse, String)> {
     let dispatch_result = match target {
         SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
@@ -11347,6 +11653,7 @@ fn dispatch_remote_request_or_exit(
             launch_headless,
             launch_extra_args,
             user_agent_override,
+            launch_plugin_runtime,
         ),
         SessionTarget::Default => match send_to_session(None, request) {
             Ok(result) => Ok(result),
@@ -11363,15 +11670,30 @@ fn dispatch_remote_request_or_exit(
                         unreachable!();
                     }
                 }
-                let launch_result = match launch_firefox_with_lazy_setup(LaunchOptions {
-                    profile: "Default".to_string(),
-                    url: launch_url_for_remote_args(args),
-                    firefox_path: firefox_path_override.map(ToString::to_string),
-                    download_dir: download_path_override.map(Path::to_path_buf),
-                    headless: launch_headless,
-                    extra_args: launch_extra_args.to_vec(),
-                    user_agent: user_agent_override.map(ToString::to_string),
-                }) {
+                let options = match apply_launch_mutators(
+                    LaunchOptions {
+                        profile: "Default".to_string(),
+                        url: launch_url_for_remote_args(args),
+                        firefox_path: firefox_path_override.map(ToString::to_string),
+                        download_dir: download_path_override.map(Path::to_path_buf),
+                        headless: launch_headless,
+                        extra_args: launch_extra_args.to_vec(),
+                        user_agent: user_agent_override.map(ToString::to_string),
+                    },
+                    launch_plugin_runtime,
+                ) {
+                    Ok(options) => options,
+                    Err(err) => {
+                        exit_with_anyhow_error_with_domain_policy(
+                            err,
+                            json,
+                            ignored_global_flags,
+                            &domain_decision.warnings,
+                        )?;
+                        unreachable!();
+                    }
+                };
+                let launch_result = match launch_firefox_with_lazy_setup(options) {
                     Ok(result) => result,
                     Err(err) => {
                         exit_with_anyhow_error_with_domain_policy(
@@ -13641,6 +13963,10 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("core capability"));
+        assert!(validate_plugin_run_capability(&plugin, "launch.mutate")
+            .unwrap_err()
+            .to_string()
+            .contains("core capability"));
         assert!(validate_plugin_run_capability(&plugin, "browser.launch")
             .unwrap_err()
             .to_string()
@@ -13671,6 +13997,83 @@ mod tests {
         assert_eq!(request["type"], json!("captcha.solve"));
         assert_eq!(request["capability"], json!("captcha.solve"));
         assert_eq!(request["request"], json!({"siteKey": "abc"}));
+    }
+
+    #[test]
+    fn launch_mutate_request_and_response_apply_supported_fields() {
+        let options = LaunchOptions {
+            profile: "Work".to_string(),
+            url: Some("https://example.com".to_string()),
+            firefox_path: None,
+            download_dir: None,
+            headless: true,
+            extra_args: s(&["-private-window"]),
+            user_agent: Some("base-agent/1.0".to_string()),
+        };
+        let request = launch_mutate_request(&options);
+        assert_eq!(request["protocol"], json!(PLUGIN_PROTOCOL));
+        assert_eq!(request["type"], json!("launch.mutate"));
+        assert_eq!(request["capability"], json!("launch.mutate"));
+        assert_eq!(request["request"]["browser"], json!("firefox"));
+        assert_eq!(request["request"]["profileName"], json!("Work"));
+        assert_eq!(
+            request["request"]["launch"]["args"],
+            json!(["-private-window"])
+        );
+        assert_eq!(
+            request["request"]["launch"]["userAgent"],
+            json!("base-agent/1.0")
+        );
+
+        let plugin = CredentialProviderConfig {
+            name: "stealth".to_string(),
+            command: "agent-browser-plugin-stealth".to_string(),
+            args: Vec::new(),
+            capabilities: s(&["launch.mutate"]),
+            timeout_ms: 2500,
+        };
+        let (args, user_agent, warnings) = parse_launch_mutation_response(
+            &plugin,
+            &json!({
+                "protocol": PLUGIN_PROTOCOL,
+                "success": true,
+                "launch": {
+                    "args": ["--disable-blink-features=AutomationControlled"],
+                    "userAgent": "mutated-agent/2.0",
+                    "extensions": ["/tmp/extension"],
+                    "initScripts": ["Object.defineProperty(navigator, 'webdriver', { get: () => undefined })"]
+                }
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(args, s(&["--disable-blink-features=AutomationControlled"]));
+        assert_eq!(user_agent.as_deref(), Some("mutated-agent/2.0"));
+        assert_eq!(warnings.len(), 2);
+        assert_eq!(
+            warnings[0]["code"],
+            json!("PLUGIN_LAUNCH_FIELD_UNSUPPORTED")
+        );
+        assert_eq!(warnings[0]["plugin"], json!("stealth"));
+        assert_eq!(warnings[0]["field"], json!("extensions"));
+        assert_eq!(warnings[1]["field"], json!("initScripts"));
+    }
+
+    #[test]
+    fn launch_mutate_capability_is_reported_as_supported_execution() {
+        let plugin = CredentialProviderConfig {
+            name: "stealth".to_string(),
+            command: "agent-browser-plugin-stealth".to_string(),
+            args: Vec::new(),
+            capabilities: s(&["launch.mutate"]),
+            timeout_ms: 2500,
+        };
+        let value = plugin_value(&plugin);
+        assert_eq!(value["supportedCapabilities"], json!(["launch.mutate"]));
+        assert_eq!(value["unsupportedCapabilities"], json!([]));
+        assert_eq!(value["execution"]["launch.mutate"], json!(true));
+        assert!(plugin_list_text(&[plugin.clone()]).contains("stealth [launch.mutate]"));
+        assert!(plugin_show_text(&plugin).contains("Supported by pire-browser: launch.mutate"));
     }
 
     #[test]

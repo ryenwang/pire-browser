@@ -3863,8 +3863,10 @@ directly. Use `--no-manifest --capability <name>` when a plugin has no manifest.
 `plugin run` executes plugins that declare `command.run` and the requested
 custom capability, for example `captcha.solve`. It cannot invoke core plugin
 capabilities or protocol request types directly. Use `auth login
---credential-provider` for `credential.read`; `browser.provider` and
-`launch.mutate` are still discoverable but not executed by this Firefox backend.
+--credential-provider` for `credential.read`. Configured `launch.mutate`
+plugins run before local Firefox launches and can append `launch.args` or set
+`launch.userAgent`; `browser.provider` is discoverable but not executed by this
+Firefox backend.
 Use `--confirm-actions plugin:<name>:<capability>` when a plugin capability
 should require user approval before it runs. Plugin stderr is suppressed.
 "##;
