@@ -102,7 +102,7 @@ pire-browser mcp --tools all`),
 9. Use console/errors/dialog/highlight/vitals/network tools when a page is stuck, blocked, or needs evidence.
 10. Use auth tools only with user-approved credentials. For external vaults, prefer pire_browser_auth_login with credentialProvider/item/url fields over extraArgs, then verify login with a fresh snapshot, URL, or page state.
 11. Use cookies/storage/state tools only when needed for user-approved state debugging or auth handoff; cookie import payloads and values may contain secrets.
-12. Use debug-profile pire_browser_stream_enable/status/disable when the user wants a dashboard-backed live preview service. It reports dashboard HTTP polling and not full WebSocket frame streaming.
+12. Use debug-profile pire_browser_record_start/status/restart/stop for screenshot-sequence QA evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable when the user wants a dashboard-backed live preview service. It reports dashboard HTTP polling and not full WebSocket frame streaming.
 13. Use debug-profile pire_browser_install only when the user wants explicit native-host setup or repair; pass withDeps only for agent-browser-style dependency setup. On Windows/macOS it may install Firefox when missing; on Linux it reports non-Snap/non-Flatpak guidance. Use pire_browser_upgrade only when the user wants package update.
 14. Keep pire_browser_status and plain pire_browser_doctor observational.
 15. Use debug-profile pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output.

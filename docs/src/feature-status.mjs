@@ -83,7 +83,7 @@ export const featureStatuses = {
   },
   dashboard: {
     status: "partial",
-    summary: "`dashboard start` serves a localhost dashboard for install health, live sessions, managed profiles, a live read-only polling viewport preview, optional non-streaming AI Gateway chat, a bounded redacted command activity feed, and capability notes. `dashboard start --background`, `dashboard status`, `dashboard stop`, and `stream enable/status/disable` provide agent-browser-style lifecycle control for the dashboard-backed preview service. Use `record start` / `record stop` for screenshot-sequence QA evidence. Full WebSocket viewport streaming, streamed chat updates, dashboard-created sessions, remote input events, and native WebM/video recording are not implemented yet.",
+    summary: "`dashboard start` serves a localhost dashboard for install health, live sessions, managed profiles, a live read-only polling viewport preview, optional non-streaming AI Gateway chat, a bounded redacted command activity feed, and capability notes. `dashboard start --background`, `dashboard status`, `dashboard stop`, and `stream enable/status/disable` provide agent-browser-style lifecycle control for the dashboard-backed preview service. Use `record start`, `record restart`, and `record stop` for screenshot-sequence QA evidence. Full WebSocket viewport streaming, streamed chat updates, dashboard-created sessions, remote input events, and native WebM/video recording are not implemented yet.",
     sources: ["README.md", "docs/src/pages/dashboard.mjs", "cli/pire-browser-cli/src/main.rs", "cli/pire-browser-core/src/cli.rs"],
   },
   dialogs: {

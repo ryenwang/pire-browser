@@ -252,7 +252,7 @@ pire-browser stream status
 pire-browser stream disable
 
 # Full WebSocket viewport streaming is not available in the current Firefox backend.
-# Use record start/stop when a screenshot-sequence evidence bundle is enough.`, "bash"),
+# Use record start/restart/stop when a screenshot-sequence evidence bundle is enough.`, "bash"),
   p("<code>stream enable</code> starts the dashboard-backed preview service in the background. <code>stream status --json</code> reports <code>transport: \"dashboard-http-polling\"</code>, <code>liveViewportKind: \"polling-screenshot-preview\"</code>, and <code>webSocketStreaming: false</code>."),
 
   h2("Debug", "debug"),
@@ -270,9 +270,11 @@ pire-browser profiler start
 pire-browser profiler status
 pire-browser profiler stop profile.json
 pire-browser record start
+pire-browser record start recording-dir https://app.example.com
 pire-browser record status
+pire-browser record restart next-recording-dir
 pire-browser record stop recording-dir`),
-  p("Console, errors, highlight, trace bundles, profiler bundles, stream preview controls, and screenshot-sequence recordings are active-tab Firefox diagnostics. <code>trace start</code> / <code>trace stop</code> writes a Firefox QA evidence bundle with console, page-error, network/HAR metadata, vitals, compact snapshot, and screenshot evidence. <code>profiler start</code> / <code>profiler stop</code> writes Chrome Trace Event-shaped JSON from Firefox Performance Timeline entries. <code>record start</code> / <code>record stop</code> writes bounded visible-viewport PNG frames plus <code>recording.json</code>. These are not Chrome DevTools CPU profiles, native WebM video, or full WebSocket live viewport streams."),
+  p("Console, errors, highlight, trace bundles, profiler bundles, stream preview controls, and screenshot-sequence recordings are active-tab Firefox diagnostics. <code>trace start</code> / <code>trace stop</code> writes a Firefox QA evidence bundle with console, page-error, network/HAR metadata, vitals, compact snapshot, and screenshot evidence. <code>profiler start</code> / <code>profiler stop</code> writes Chrome Trace Event-shaped JSON from Firefox Performance Timeline entries. <code>record start [output-dir] [url]</code>, <code>record restart [output-dir] [url]</code>, and <code>record stop [output-dir]</code> write bounded visible-viewport PNG frames plus <code>recording.json</code>. These are not Chrome DevTools CPU profiles, native WebM video, or full WebSocket live viewport streams."),
 
   h2("Auth vault", "auth-vault"),
   statusNote("auth"),
@@ -355,7 +357,7 @@ pire-browser dashboard start --port 0 --json
 pire-browser dashboard status --json
 pire-browser dashboard stop
 pire-browser activity list --json`),
-  p("Starts a localhost status dashboard. It shows install health, live sessions, managed profiles, a live read-only polling viewport preview, optional AI Gateway chat, recent redacted command activity, and capability notes. Without <code>--background</code>, press <code>Ctrl+C</code> in the terminal to stop it. With <code>--background</code>, use <code>dashboard status</code> and <code>dashboard stop</code>. The chat panel uses the same bounded command loop as <code>pire-browser chat</code> when <code>AI_GATEWAY_API_KEY</code> is set, but does not stream responses yet. WebSocket viewport streaming is still not available in the Firefox backend; use <code>record start</code> / <code>record stop</code> for screenshot-sequence evidence."),
+  p("Starts a localhost status dashboard. It shows install health, live sessions, managed profiles, a live read-only polling viewport preview, optional AI Gateway chat, recent redacted command activity, and capability notes. Without <code>--background</code>, press <code>Ctrl+C</code> in the terminal to stop it. With <code>--background</code>, use <code>dashboard status</code> and <code>dashboard stop</code>. The chat panel uses the same bounded command loop as <code>pire-browser chat</code> when <code>AI_GATEWAY_API_KEY</code> is set, but does not stream responses yet. WebSocket viewport streaming is still not available in the Firefox backend; use <code>record start</code>, <code>record restart</code>, and <code>record stop</code> for screenshot-sequence evidence."),
 
   h2("Doctor", "doctor"),
   code(`pire-browser doctor

@@ -2725,7 +2725,8 @@ Common commands:
   trace stop trace.json           Stop and write trace bundle JSON
   profiler start                  Start Firefox performance profiling
   profiler stop profile.json      Stop and write trace-event JSON
-  record start                    Start screenshot-sequence recording
+  record start [recording-dir]    Start screenshot-sequence recording
+  record restart recording-dir    Stop current recording and start the next
   record stop recording-dir       Stop and write frame evidence
   vitals [url]                    Measure best-effort Web Vitals for a page
   open --enable react-devtools <url>
@@ -3367,15 +3368,19 @@ content scripts. This is not a Chrome DevTools CPU profile or sampling profiler.
 
 const RECORD_HELP: &str = r##"
 Usage:
-  pire-browser record start [--interval-ms 1000] [--max-frames 60] [--json]
+  pire-browser record start [output-dir] [url] [--interval-ms 1000] [--max-frames 60] [--json]
   pire-browser record status [--json]
   pire-browser record stop [output-dir] [--json]
+  pire-browser record restart [output-dir] [url] [--interval-ms 1000] [--max-frames 60] [--json]
 
 Records a bounded Firefox screenshot-sequence evidence bundle for the active
-tab. `record start` begins capturing visible viewport PNG frames,
-`record status` reports the active frame count, and `record stop` writes frame
-images plus `recording.json` under the output directory. If no output directory
-is provided, a generated `pire-browser-recording-<timestamp>` directory is used.
+tab. `record start` begins capturing visible viewport PNG frames. It can accept
+an output directory for a later bare `record stop`, and an optional URL to open
+before capturing the first frame. `record status` reports the active frame
+count, `record stop` writes frame images plus `recording.json` under the output
+directory, and `record restart` stops the current recording if present before
+starting another. If no output directory is provided when a bundle is written, a
+generated `pire-browser-recording-<timestamp>` directory is used.
 
 This is not native WebM video, WebSocket viewport streaming, or Chrome DevTools
 screencast output.
@@ -6112,6 +6117,7 @@ mod tests {
         assert!(text.contains("stream status|disable"));
         assert!(text.contains("diff snapshot"));
         assert!(text.contains("highlight '#submit'"));
+        assert!(text.contains("record restart recording-dir"));
         assert!(text.contains("device \"iPhone 14\""));
         assert!(text.contains("install [--with-deps] [--firefox-path <path>]"));
         assert!(text.contains("upgrade"));
@@ -6291,6 +6297,9 @@ mod tests {
         assert!(help_text(Some("record"))
             .unwrap()
             .contains("pire-browser record stop [output-dir]"));
+        assert!(help_text(Some("record"))
+            .unwrap()
+            .contains("pire-browser record restart [output-dir] [url]"));
         assert!(help_text(Some("record"))
             .unwrap()
             .contains("not native WebM video"));

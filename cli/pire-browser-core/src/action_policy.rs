@@ -311,7 +311,7 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
         "record" => match subcommand {
             Some("start") => "state",
             Some("status") | None => "get",
-            Some("stop") => "snapshot",
+            Some("stop" | "restart") => "snapshot",
             _ => return CommandPolicyResolution::NotAvailable,
         },
         "highlight" => "snapshot",
@@ -948,6 +948,7 @@ mod tests {
             vec!["record", "start"],
             vec!["record", "status"],
             vec!["record", "stop"],
+            vec!["record", "restart", "recording-dir"],
             vec!["react", "tree"],
             vec!["react", "inspect", "r1"],
             vec!["network"],

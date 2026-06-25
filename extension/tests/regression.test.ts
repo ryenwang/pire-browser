@@ -1108,6 +1108,7 @@ describe("pire-browser command foundations", () => {
       ["record", "start"],
       ["record", "status"],
       ["record", "stop"],
+      ["record", "restart", "recording-dir"],
       ["vitals"],
       ["vitals", "https://example.com"],
       ["react", "tree"],
@@ -1399,7 +1400,14 @@ describe("command shape parity", () => {
     expect(body).toContain("async function recordCommand");
     expect(body).toContain('if (args[0] === "start") return "start";');
     expect(body).toContain('if (args[0] === "stop") return "stop";');
+    expect(body).toContain('if (args[0] === "restart") return "restart";');
     expect(body).toContain("Started screenshot-sequence recording");
+    expect(body).toContain("function startVisualRecording");
+    expect(body).toContain("function stopVisualRecordingCommand");
+    expect(body).toContain("parseRecordStartPositionals");
+    expect(body).toContain("looksLikeRecordUrl");
+    expect(body).toContain("previousRecording");
+    expect(body).toContain("requestedOutputDir");
     expect(body).toContain("No recording is active for the current tab");
     expect(body).toContain("async function captureRecordingFrame");
     expect(body).toContain("browser.tabs.captureVisibleTab(tab.windowId, { format: \"png\" })");

@@ -16,11 +16,13 @@ pire-browser stream disable`),
   h2("Evidence alternatives", "evidence-alternatives"),
   code(`pire-browser screenshot page.png
 pire-browser record start
+pire-browser record start recording-dir https://app.example.com
+pire-browser record restart next-recording-dir
 pire-browser record stop recording-dir
 pire-browser dashboard start --background
 pire-browser status --json
 pire-browser session list --json`),
-  p("Use screenshots, screenshot-sequence recording bundles, and status output for scriptable evidence. The dashboard-backed preview does not provide remote input events or native WebM video."),
+  p("Use screenshots, screenshot-sequence recording bundles, and status output for scriptable evidence. <code>record restart</code> stops the current screenshot sequence if present and starts the next one. The dashboard-backed preview does not provide remote input events or native WebM video."),
 ];
 
 export default page({

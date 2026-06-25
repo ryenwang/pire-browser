@@ -94,6 +94,13 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "record restart maps to snapshot",
+      "args": ["record", "restart", "recording"],
+      "policy": { "default": "deny", "allow": ["snapshot"] },
+      "expectedCategory": "snapshot",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "vitals maps to get",
       "args": ["vitals"],
       "policy": { "default": "deny", "allow": ["get"] },

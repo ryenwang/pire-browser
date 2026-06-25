@@ -497,7 +497,9 @@ pire-browser profiler start
 pire-browser profiler status
 pire-browser profiler stop profile.json
 pire-browser record start
+pire-browser record start recording-dir https://app.example.com
 pire-browser record status
+pire-browser record restart next-recording-dir
 pire-browser record stop recording-dir
 ```
 
@@ -507,12 +509,13 @@ compact snapshot, and screenshot evidence. It is not a Chrome DevTools
 performance trace or CPU profile. `profiler start` / `profiler stop` writes
 Chrome Trace Event-shaped JSON from Firefox Performance Timeline entries so
 agents can inspect navigation, resource, paint, mark, measure, and long-entry
-timing evidence. It is not Chrome DevTools CPU sampling. `record start` /
-`record stop` records a bounded screenshot-sequence evidence bundle for the
-active tab and writes frame PNGs plus `recording.json`. It is not native WebM
-video, live viewport streaming, or Chrome DevTools screencast output. Chrome
-DevTools inspect proxy and CPU sampling profiler are not implemented in the
-current Firefox backend.
+timing evidence. It is not Chrome DevTools CPU sampling. `record start` can
+also accept an output directory and optional URL, and `record restart` stops the
+current recording if present before starting another. The recording commands
+write bounded visible-viewport PNG frames plus `recording.json`; they are not
+native WebM video, live viewport streaming, or Chrome DevTools screencast
+output. Chrome DevTools inspect proxy and CPU sampling profiler are not
+implemented in the current Firefox backend.
 
 ### Navigation
 
@@ -1000,6 +1003,7 @@ evidence, page-state verification, and scriptable observability:
 
 ```bash
 pire-browser record start
+pire-browser record restart next-recording-dir
 pire-browser record stop recording-dir
 pire-browser status
 pire-browser status --json
@@ -1188,6 +1192,8 @@ pire-browser stream status --json
 pire-browser stream disable
 pire-browser screenshot page.png
 pire-browser record start
+pire-browser record start recording-dir https://app.example.com
+pire-browser record restart next-recording-dir
 pire-browser record stop recording-dir
 pire-browser status --json
 pire-browser session list --json
@@ -1199,8 +1205,11 @@ machine-readable capability fields such as `webSocketStreaming: false`,
 `liveViewportKind: "polling-screenshot-preview"`.
 
 `record start` captures bounded visible-viewport PNG frames from the active
-Firefox tab. `record stop [output-dir]` writes the frames plus `recording.json`.
-This is useful QA evidence, not native WebM video or WebSocket viewport streaming.
+Firefox tab, optionally after opening a URL and with a default output directory
+for a later bare `record stop`. `record restart [output-dir] [url]` stops the
+current recording if present and starts another. `record stop [output-dir]`
+writes the frames plus `recording.json`. This is useful QA evidence, not native
+WebM video or WebSocket viewport streaming.
 
 ## Architecture
 

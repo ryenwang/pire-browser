@@ -37,11 +37,13 @@ pire-browser profiler stop profile.json`),
   p("<code>profiler start</code> / <code>profiler stop</code> writes Chrome Trace Event-shaped JSON from Firefox Performance Timeline entries. Use it for navigation, resource, paint, mark, measure, and long-entry timing evidence. It is not Chrome DevTools CPU sampling or a full renderer timeline."),
   h2("Recording bundle", "recording-bundle"),
   code(`pire-browser record start
+pire-browser record start recording-dir https://app.example.com
 pire-browser open https://app.example.com
 pire-browser snapshot -i
 pire-browser record status
+pire-browser record restart next-recording-dir
 pire-browser record stop recording-dir`),
-  p("<code>record start</code> / <code>record stop</code> records bounded visible-viewport PNG frames for the active Firefox tab and writes frame files plus <code>recording.json</code>. It is a screenshot-sequence QA evidence bundle, not native WebM video, WebSocket viewport streaming, or Chrome DevTools screencast output."),
+  p("<code>record start [output-dir] [url]</code>, <code>record restart [output-dir] [url]</code>, and <code>record stop [output-dir]</code> record bounded visible-viewport PNG frames for the active Firefox tab and write frame files plus <code>recording.json</code>. It is a screenshot-sequence QA evidence bundle, not native WebM video, WebSocket viewport streaming, or Chrome DevTools screencast output."),
   h2("Current debug alternatives", "current-debug-alternatives"),
   code(`pire-browser snapshot -i
 pire-browser get text <sel>

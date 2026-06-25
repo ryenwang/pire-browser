@@ -346,6 +346,7 @@ type VisualRecording = {
   agentId: string;
   url?: string;
   title?: string;
+  outputDir?: string;
   intervalMs: number;
   maxFrames: number;
   active: boolean;
@@ -356,7 +357,7 @@ type VisualRecording = {
 };
 
 type CommandErrorResult = { error: { code: string; message: string } };
-type RecordStartArgs = { intervalMs: number; maxFrames: number };
+type RecordStartArgs = { intervalMs: number; maxFrames: number; outputDir?: string; url?: string };
 type RecordStopArgs = { outputDir?: string };
 type RecordValueResult = { value: number };
 
@@ -831,7 +832,7 @@ function actionPolicyCategoryName(args: string[]): string | null {
     case "record":
       if (subcommand === "start") return "state";
       if (subcommand === "status" || !subcommand) return "get";
-      if (subcommand === "stop") return "snapshot";
+      if (subcommand === "stop" || subcommand === "restart") return "snapshot";
       return null;
     case "addinitscript":
     case "removeinitscript":
@@ -4447,27 +4448,29 @@ async function recordCommand(args: string[]) {
   if (mode === "start") {
     const parsed = parseRecordStartArgs(recordFilteredArgs(commandArgs));
     if ("error" in parsed) return parsed;
+    return startVisualRecording(parsed);
+  }
+
+  if (mode === "restart") {
+    const parsed = parseRecordStartArgs(recordFilteredArgs(commandArgs));
+    if ("error" in parsed) return parsed;
     const tab = await targetTab();
-    const existing = visualRecordingsByTabId.get(tab.tabId);
-    if (existing) clearVisualRecordingTimer(existing);
-    const recording: VisualRecording = {
-      startedAt: Date.now(),
-      tabId: tab.tabId,
-      agentId: tab.agentId,
-      url: tab.url,
-      title: tab.title,
-      intervalMs: parsed.intervalMs,
-      maxFrames: parsed.maxFrames,
-      active: true,
-      frames: [],
-    };
-    visualRecordingsByTabId.set(tab.tabId, recording);
-    await captureRecordingFrame(recording);
-    recording.timer = setInterval(() => void captureRecordingFrame(recording), recording.intervalMs);
+    const stopped = visualRecordingsByTabId.has(tab.tabId)
+      ? await stopVisualRecordingCommand({
+          tab,
+          parsed: {},
+          missingIsError: false,
+        })
+      : null;
+    const started = await startVisualRecording(parsed);
+    if ("error" in started) return started;
     return {
-      text: `Started screenshot-sequence recording in ${tab.agentId}`,
-      recording: recordingStatus(tab, recording),
-      warnings: [recordFirefoxWarning()],
+      ...started,
+      text: stopped
+        ? `${(stopped as any).text}\n${(started as any).text}`
+        : `No previous recording active in ${tab.agentId}\n${(started as any).text}`,
+      previousRecording: stopped ? (stopped as any).recording : undefined,
+      warnings: mergeWarnings((stopped as any)?.warnings, (started as any).warnings),
     };
   }
 
@@ -4485,15 +4488,57 @@ async function recordCommand(args: string[]) {
 
   const parsed = parseRecordStopArgs(recordFilteredArgs(commandArgs));
   if ("error" in parsed) return parsed;
+  return await stopVisualRecordingCommand({ parsed, missingIsError: true }) ?? {
+    error: {
+      code: "invalid_state",
+      message: "No recording is active for the current tab. Run `record start` before `record stop`.",
+    },
+  };
+}
+
+async function startVisualRecording(parsed: RecordStartArgs) {
+  const opened = parsed.url ? await openCommand([parsed.url], "open") : null;
+  if (opened && "error" in opened) return opened;
   const tab = await targetTab();
   const existing = visualRecordingsByTabId.get(tab.tabId);
+  if (existing) clearVisualRecordingTimer(existing);
+  const recording: VisualRecording = {
+    startedAt: Date.now(),
+    tabId: tab.tabId,
+    agentId: tab.agentId,
+    url: tab.url,
+    title: tab.title,
+    outputDir: parsed.outputDir,
+    intervalMs: parsed.intervalMs,
+    maxFrames: parsed.maxFrames,
+    active: true,
+    frames: [],
+  };
+  visualRecordingsByTabId.set(tab.tabId, recording);
+  await captureRecordingFrame(recording);
+  recording.timer = setInterval(() => void captureRecordingFrame(recording), recording.intervalMs);
+  return {
+    text: `Started screenshot-sequence recording in ${tab.agentId}${parsed.outputDir ? ` (output: ${parsed.outputDir})` : ""}`,
+    recording: recordingStatus(tab, recording),
+    open: opened ? resultSummary(opened) : undefined,
+    warnings: mergeWarnings(opened ? (opened as any).warnings : undefined, [recordFirefoxWarning()]),
+  };
+}
+
+async function stopVisualRecordingCommand(options: {
+  parsed: RecordStopArgs;
+  tab?: TabRecord;
+  missingIsError: boolean;
+}) {
+  const tab = options.tab ?? await targetTab();
+  const existing = visualRecordingsByTabId.get(tab.tabId);
   if (!existing) {
-    return {
+    return options.missingIsError ? {
       error: {
         code: "invalid_state",
         message: "No recording is active for the current tab. Run `record start` before `record stop`.",
       },
-    };
+    } : null;
   }
 
   clearVisualRecordingTimer(existing);
@@ -4501,7 +4546,7 @@ async function recordCommand(args: string[]) {
   existing.active = false;
   existing.stoppedReason = existing.stoppedReason ?? "stopped";
   const stoppedAt = Date.now();
-  const outputDir = parsed.outputDir ?? `pire-browser-recording-${stoppedAt}`;
+  const outputDir = options.parsed.outputDir ?? existing.outputDir ?? `pire-browser-recording-${stoppedAt}`;
   const frames = await materializeRecordingFrames(existing, outputDir);
   visualRecordingsByTabId.delete(tab.tabId);
   return {
@@ -4517,6 +4562,7 @@ async function recordCommand(args: string[]) {
       durationMs: stoppedAt - existing.startedAt,
       intervalMs: existing.intervalMs,
       maxFrames: existing.maxFrames,
+      requestedOutputDir: existing.outputDir,
       stoppedReason: existing.stoppedReason,
       frameCount: frames.length,
       tab: {
@@ -4534,13 +4580,14 @@ async function recordCommand(args: string[]) {
   };
 }
 
-function recordMode(args: string[]): "start" | "status" | "stop" {
+function recordMode(args: string[]): "start" | "status" | "stop" | "restart" {
   if (args[0] === "start") return "start";
   if (args[0] === "stop") return "stop";
+  if (args[0] === "restart") return "restart";
   return "status";
 }
 
-function recordCommandArgs(args: string[], mode: "start" | "status" | "stop") {
+function recordCommandArgs(args: string[], mode: "start" | "status" | "stop" | "restart") {
   return mode === "status" && args[0] !== "status" ? args : args.slice(1);
 }
 
@@ -4558,6 +4605,7 @@ function parseRecordStatusArgs(args: string[]): Record<string, never> | CommandE
 function parseRecordStartArgs(args: string[]): RecordStartArgs | CommandErrorResult {
   let intervalMs = 1000;
   let maxFrames = 60;
+  const positional: string[] = [];
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
     if (arg === "--interval-ms") {
@@ -4576,9 +4624,29 @@ function parseRecordStartArgs(args: string[]): RecordStartArgs | CommandErrorRes
       maxFrames = parsed.value;
       continue;
     }
-    return { error: { code: "invalid_args", message: `record start does not support argument: ${arg}` } };
+    if (arg.startsWith("--")) return { error: { code: "invalid_args", message: `record start does not support argument: ${arg}` } };
+    positional.push(arg);
+    if (positional.length > 2) {
+      return { error: { code: "invalid_args", message: `record start unexpected argument: ${arg}` } };
+    }
   }
-  return { intervalMs, maxFrames };
+  const positionalResult = parseRecordStartPositionals(positional);
+  if ("error" in positionalResult) return positionalResult;
+  return { intervalMs, maxFrames, ...positionalResult };
+}
+
+function parseRecordStartPositionals(args: string[]): { outputDir?: string; url?: string } | CommandErrorResult {
+  if (args.length === 0) return {};
+  if (args.length === 1) return looksLikeRecordUrl(args[0]) ? { url: args[0] } : { outputDir: args[0] };
+  const [outputDir, url] = args;
+  if (looksLikeRecordUrl(outputDir) && !looksLikeRecordUrl(url)) {
+    return { error: { code: "invalid_args", message: "record start expects <output-dir> before optional <url>" } };
+  }
+  return { outputDir, url };
+}
+
+function looksLikeRecordUrl(value: string) {
+  return /^(https?:|file:|about:)/i.test(value) || /^[\w.-]+\.[a-z]{2,}([/:?#]|$)/i.test(value);
 }
 
 function parseRecordStopArgs(args: string[]): RecordStopArgs | CommandErrorResult {
@@ -4609,6 +4677,7 @@ function recordingStatus(tab: TabRecord, recording: VisualRecording | undefined)
     active: Boolean(recording?.active),
     startedAt: recording?.startedAt,
     durationMs: recording ? now - recording.startedAt : undefined,
+    outputDir: recording?.outputDir,
     intervalMs: recording?.intervalMs,
     maxFrames: recording?.maxFrames,
     frameCount: recording?.frames.length ?? 0,

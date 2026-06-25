@@ -228,7 +228,9 @@ pire-browser profiler start
 pire-browser profiler status
 pire-browser profiler stop profile.json
 pire-browser record start
+pire-browser record start recording-dir https://app.example.com
 pire-browser record status
+pire-browser record restart next-recording-dir
 pire-browser record stop recording-dir
 ```
 
@@ -240,10 +242,12 @@ evidence; it is not a Chrome DevTools performance trace or CPU profile.
 `profiler start` / `profiler stop` writes Chrome Trace Event-shaped JSON from
 Firefox Performance Timeline entries for navigation, resource, paint, mark,
 measure, and long-entry timing evidence; it is not Chrome DevTools CPU sampling
-or a full renderer timeline. `record start` / `record stop` writes bounded
-visible-viewport PNG frames plus `recording.json` as a screenshot-sequence QA
-evidence bundle; it is not native WebM video, live viewport streaming, or Chrome
-DevTools screencast output. `vitals` reports best-effort TTFB, FCP, LCP, CLS,
+or a full renderer timeline. `record start [output-dir] [url]`, `record status`,
+`record restart [output-dir] [url]`, and `record stop [output-dir]` write
+bounded visible-viewport PNG frames plus `recording.json` as a
+screenshot-sequence QA evidence bundle; they are not native WebM video, live
+viewport streaming, or Chrome DevTools screencast output. `vitals` reports
+best-effort TTFB, FCP, LCP, CLS,
 INP, DOMContentLoaded, load, readyState, and hydration-warning signals from
 Firefox Performance APIs. Unavailable Chrome-specific metrics are reported as
 unavailable. Console and error commands report Firefox WebExtension-captured

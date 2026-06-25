@@ -305,6 +305,7 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_record_start"
         | "pire_browser_record_status"
         | "pire_browser_record_stop"
+        | "pire_browser_record_restart"
         | "pire_browser_vitals" => PROFILE_DEBUG | PROFILE_REACT,
         "pire_browser_stream_enable"
         | "pire_browser_stream_status"
@@ -443,7 +444,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open/goto/navigate, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open, pire_browser_goto, or pire_browser_navigate for normal launch/navigation; use enableReactDevtools on those tools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed HTTP polling live preview; it is not full WebSocket frame streaming yet. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when request/response waits, network diagnostics, cookies/storage/auth/state, Firefox profile import, debugging, tab labels/frames/dialogs/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open/goto/navigate, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, and pire_browser_skills_get_core. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open, pire_browser_goto, or pire_browser_navigate for normal launch/navigation; use enableReactDevtools on those tools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop/restart for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed HTTP polling live preview; it is not full WebSocket frame streaming yet. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when request/response waits, network diagnostics, cookies/storage/auth/state, Firefox profile import, debugging, tab labels/frames/dialogs/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
     })
 }
 
@@ -1159,6 +1160,34 @@ fn tool_command_args(
         (_, "pire_browser_record_start") => {
             args.push("record".to_string());
             args.push("start".to_string());
+            if let Some(output_dir) =
+                optional_string(object, "outputDir")?.or(optional_string(object, "path")?)
+            {
+                args.push(output_dir);
+            }
+            if let Some(url) = optional_string(object, "url")? {
+                args.push(url);
+            }
+            if let Some(interval_ms) = optional_u64(object, "intervalMs")? {
+                args.push("--interval-ms".to_string());
+                args.push(interval_ms.to_string());
+            }
+            if let Some(max_frames) = optional_u64(object, "maxFrames")? {
+                args.push("--max-frames".to_string());
+                args.push(max_frames.to_string());
+            }
+        }
+        (_, "pire_browser_record_restart") => {
+            args.push("record".to_string());
+            args.push("restart".to_string());
+            if let Some(output_dir) =
+                optional_string(object, "outputDir")?.or(optional_string(object, "path")?)
+            {
+                args.push(output_dir);
+            }
+            if let Some(url) = optional_string(object, "url")? {
+                args.push(url);
+            }
             if let Some(interval_ms) = optional_u64(object, "intervalMs")? {
                 args.push("--interval-ms".to_string());
                 args.push(interval_ms.to_string());
@@ -3160,9 +3189,28 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_record_start",
             "Start recording",
-            "Start bounded Firefox screenshot-sequence evidence recording for the active tab.",
+            "Start bounded Firefox screenshot-sequence evidence recording for the active tab; optionally set the later output directory and open a URL first.",
             tool_schema(
                 vec![
+                    ("outputDir", string_prop("Optional default output directory for a later bare record stop.")),
+                    ("path", string_prop("Compatibility alias for outputDir.")),
+                    ("url", string_prop("Optional URL to open before the first frame is captured.")),
+                    ("intervalMs", number_prop("Frame interval in milliseconds, from 250 to 10000.")),
+                    ("maxFrames", number_prop("Maximum frame count, from 1 to 120.")),
+                ],
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "pire_browser_record_restart",
+            "Restart recording",
+            "Stop the active screenshot-sequence recording if present, then start another; optional outputDir/path and url apply to the new recording.",
+            tool_schema(
+                vec![
+                    ("outputDir", string_prop("Optional default output directory for the new recording.")),
+                    ("path", string_prop("Compatibility alias for outputDir.")),
+                    ("url", string_prop("Optional URL to open before the new recording's first frame is captured.")),
                     ("intervalMs", number_prop("Frame interval in milliseconds, from 250 to 10000.")),
                     ("maxFrames", number_prop("Maximum frame count, from 1 to 120.")),
                 ],
@@ -4880,6 +4928,9 @@ mod tests {
             .any(|tool| tool["name"] == "pire_browser_record_stop"));
         assert!(debug
             .iter()
+            .any(|tool| tool["name"] == "pire_browser_record_restart"));
+        assert!(debug
+            .iter()
             .any(|tool| tool["name"] == "pire_browser_stream_enable"));
         assert!(debug
             .iter()
@@ -6194,7 +6245,7 @@ mod tests {
 
         let args = tool_command_args(
             "pire_browser_record_start",
-            &json!({ "intervalMs": 500, "maxFrames": 5 }),
+            &json!({ "outputDir": "recording-next", "url": "https://example.test", "intervalMs": 500, "maxFrames": 5 }),
             McpToolsProfile::Debug,
         )
         .unwrap();
@@ -6204,10 +6255,31 @@ mod tests {
                 "--json",
                 "record",
                 "start",
+                "recording-next",
+                "https://example.test",
                 "--interval-ms",
                 "500",
                 "--max-frames",
                 "5"
+            ]
+        );
+
+        let args = tool_command_args(
+            "pire_browser_record_restart",
+            &json!({ "path": "recording-next", "url": "https://example.test", "intervalMs": 750 }),
+            McpToolsProfile::Debug,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "record",
+                "restart",
+                "recording-next",
+                "https://example.test",
+                "--interval-ms",
+                "750"
             ]
         );
 

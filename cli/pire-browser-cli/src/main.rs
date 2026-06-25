@@ -3859,7 +3859,7 @@ fn dashboard_index_html() -> String {
       </div>
       <div class="panel">
         <h2>Capability Notes</h2>
-        <p class="note">This dashboard shows setup status, live sessions, managed profiles, a live read-only viewport preview, and a bounded redacted command activity feed. The live preview polls visible-viewport screenshots from the Firefox extension. WebSocket viewport streaming, remote input events, and native WebM video recording are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>record start</code> / <code>record stop</code>, <code>status</code>, and <code>doctor</code> for machine-readable evidence.</p>
+        <p class="note">This dashboard shows setup status, live sessions, managed profiles, a live read-only viewport preview, and a bounded redacted command activity feed. The live preview polls visible-viewport screenshots from the Firefox extension. WebSocket viewport streaming, remote input events, and native WebM video recording are not implemented in the current Firefox backend; use <code>snapshot -i</code>, <code>screenshot</code>, <code>record start</code>, <code>record restart</code>, <code>record stop</code>, <code>status</code>, and <code>doctor</code> for machine-readable evidence.</p>
       </div>
     </section>
   </main>
