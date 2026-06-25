@@ -21,10 +21,10 @@ pire-browser network route "**/api/config**" --body '{"ready":true}'
 pire-browser network route "*" --abort --resource-type script
 pire-browser network unroute "*"
 pire-browser network requests --clear`),
-  p("These are Firefox-backed guardrails, extension-applied proxy settings, request-header helpers, network-idle waits, recent active-tab request diagnostics with redacted request/response headers and redacted/truncated outgoing request bodies when Firefox exposes them, agent-browser-style HAR start/stop, direct HAR export, and best-effort route interception. Route rules are scoped to the active tab. Body mocks use a WebExtension redirect, so they are useful for QA flows but are not full CDP response fulfillment."),
+  p("These are Firefox-backed guardrails, extension-applied proxy settings, request-header helpers, network-idle waits, recent active-tab request diagnostics with redacted request/response headers, redacted/truncated outgoing request bodies, and bounded redacted text-like response previews when Firefox exposes them, agent-browser-style HAR start/stop, direct HAR export, and best-effort route interception. Route rules are scoped to the active tab. Body mocks use a WebExtension redirect, so they are useful for QA flows but are not full CDP response fulfillment."),
   h2("Remaining gaps", "remaining-gaps"),
   list([
-    "Response body inspection and raw cookie/header/body secrets.",
+    "Full response-body inspection for binary, compressed, streaming, or very large payloads, plus raw cookie/header/body secrets.",
     "Full CDP-style route fulfillment with arbitrary status, headers, and streaming bodies.",
     "TLS-ignore launch flags.",
   ]),

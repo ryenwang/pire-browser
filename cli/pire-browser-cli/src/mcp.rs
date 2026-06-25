@@ -139,7 +139,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "network",
             bits: PROFILE_NETWORK,
-            description: "Headers, credentials, offline toggle, network request inspection with redacted request/response headers and safe request-body previews, HAR export, and route/unroute controls.",
+            description: "Headers, credentials, offline toggle, network request inspection with redacted request/response headers, safe request-body previews, bounded response previews, HAR export, and route/unroute controls.",
         },
         McpProfileDescriptor {
             name: "state",
@@ -3614,21 +3614,21 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_network_request",
             "Network request detail",
-            "Return metadata, redacted request/response headers, and redacted/truncated outgoing request bodies when Firefox exposes them for one recorded network request.",
+            "Return metadata, redacted request/response headers, redacted/truncated outgoing request bodies, and bounded text-like response previews when Firefox exposes them for one recorded network request.",
             tool_schema(vec![("requestId", string_prop("Recorded request id."))], &["requestId"]),
             true,
         ),
         tool(
             "pire_browser_network_har_start",
             "Start HAR recording",
-            "Start active-tab HAR recording with redacted headers and safe request-body previews.",
+            "Start active-tab HAR recording with redacted headers, safe request-body previews, and bounded response previews.",
             tool_schema(vec![], &[]),
             false,
         ),
         tool(
             "pire_browser_network_har_stop",
             "Stop HAR recording",
-            "Stop active-tab HAR recording with redacted headers, safe request-body previews, and optionally write a HAR file.",
+            "Stop active-tab HAR recording with redacted headers, safe request-body previews, bounded response previews, and optionally write a HAR file.",
             tool_schema(vec![("path", string_prop("Optional output HAR path."))], &[]),
             false,
         ),

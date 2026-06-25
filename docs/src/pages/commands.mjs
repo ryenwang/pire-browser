@@ -202,7 +202,7 @@ pire-browser network route "**/api/config**" --body '{"ready":true}'
 pire-browser network route "*" --abort --resource-type script
 pire-browser network unroute "*"
 pire-browser network requests --clear`),
-  p("The current network-related surface is cooperative domain allowlists, extension-applied proxy settings, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics with redacted request/response headers and redacted/truncated outgoing request bodies when Firefox exposes them, agent-browser-style HAR start/stop, direct HAR export, and best-effort active-tab route interception for mocks or aborts. Full CDP-style response control plus response body and raw cookie/header/body secret inspection remain outside the current Firefox runtime."),
+  p("The current network-related surface is cooperative domain allowlists, extension-applied proxy settings, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics with redacted request/response headers, redacted/truncated outgoing request bodies, and bounded redacted text-like response previews when Firefox exposes them, agent-browser-style HAR start/stop, direct HAR export, and best-effort active-tab route interception for mocks or aborts. Full CDP-style response control plus raw cookie/header/body secret inspection remain outside the current Firefox runtime."),
 
   h2("Tabs & frames", "tabs-frames"),
   code(`pire-browser tab list

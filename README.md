@@ -395,7 +395,7 @@ pire-browser network unroute "*"
 pire-browser network requests --clear
 ```
 
-The network surface is Firefox-backed: cooperative domain allowlists, extension-applied proxy settings, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics, agent-browser-style `network har start` / `network har stop`, direct HAR export, and best-effort active-tab route interception. `network request <requestId>` and HAR export include redacted request/response headers and redacted/truncated outgoing request bodies when Firefox exposes them; response bodies, cookie values, and raw secrets are not captured.
+The network surface is Firefox-backed: cooperative domain allowlists, extension-applied proxy settings, origin-scoped request headers, active-tab network-idle waiting, recent request diagnostics, agent-browser-style `network har start` / `network har stop`, direct HAR export, and best-effort active-tab route interception. `network request <requestId>` and HAR export include redacted request/response headers, redacted/truncated outgoing request bodies, and bounded redacted text-like response previews when Firefox exposes them; cookie values, binary bodies, and raw secrets are not captured.
 
 ### Tabs & Windows
 

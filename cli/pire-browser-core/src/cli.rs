@@ -3049,9 +3049,9 @@ matching requests, or mock with a simple body redirect. Use `network unroute`
 before returning to normal behavior. `network har start` and `network har stop`
 match agent-browser's recording loop; `network har [path]` exports currently
 captured records directly. HAR output is built from Firefox WebExtension
-records; request/response headers and captured outgoing request bodies are
-redacted/truncated, while response bodies, cookies, and raw secrets are not
-captured.
+records; request/response headers, captured outgoing request bodies, and
+bounded text-like response previews are redacted/truncated when available.
+Cookies, binary bodies, streaming payloads, and raw secrets are not captured.
 Full CDP-style response control is not supported on the Firefox WebExtension
 backend.
 "##;
@@ -5807,7 +5807,7 @@ mod tests {
             .contains("network har stop [output.har]"));
         assert!(help_text(Some("network"))
             .unwrap()
-            .contains("captured outgoing request bodies are"));
+            .contains("bounded text-like response previews"));
         assert!(help_text(Some("network"))
             .unwrap()
             .contains("network route <pattern> --body"));

@@ -355,10 +355,11 @@ it as QA/debug control rather than full CDP response capture. Use `network har s
 before a flow and `network har stop <path>` afterward when you need a
 portable request timeline artifact. `network har <path>` also exports the
 current recent request log directly. Network detail and HAR output may include
-redacted request/response headers plus redacted/truncated outgoing request
-bodies when Firefox exposes them. Use that request-body preview to debug API
-submissions and form posts, but do not treat it as full response-body capture:
-response bodies, cookies, and raw header/body secrets are not captured.
+redacted request/response headers, redacted/truncated outgoing request bodies,
+and bounded redacted text-like response previews when Firefox exposes them. Use
+these previews to debug API submissions, form posts, and response payloads, but
+do not treat them as full CDP network capture: cookies, binary bodies, streaming
+payloads, and raw header/body secrets are not captured.
 
 Set a responsive viewport before QA screenshots:
 

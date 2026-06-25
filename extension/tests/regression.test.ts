@@ -29,6 +29,7 @@ type ConfirmationPolicyErrorForCommand = (
 type CookieImportParser = (payload: string) => { cookies: { name: string; value: string; secure?: boolean }[] } | { error: { message: string } };
 type CookieImportTargetUrl = (activeUrl?: string, domain?: string) => { url: string; host: string } | { error: { message: string } };
 type HeaderSanitizer = (headers: { name: string; value?: string }[]) => { name: string; value: string; redacted?: boolean }[];
+type NetworkResponseTextClassifier = (contentType: string | undefined, text: string) => boolean;
 type NetworkBodyCapture = (details: { requestBody?: unknown }) => {
   kind: string;
   text?: string;
@@ -213,6 +214,22 @@ function loadNetworkBodyCapture(): NetworkBodyCapture {
   runInNewContext(js, sandbox);
   if (!sandbox.__captureNetworkRequestBody) throw new Error("network body capture did not load");
   return sandbox.__captureNetworkRequestBody;
+}
+
+function loadNetworkResponseTextClassifier(): NetworkResponseTextClassifier {
+  const body = backgroundSource();
+  const start = body.indexOf("function isTextLikeNetworkResponse(");
+  const end = body.indexOf("\nfunction captureNetworkRequestBody(", start);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  const source = body.slice(start, end);
+  const js = transpileModule(`${source}\nthis.__isTextLikeNetworkResponse = isTextLikeNetworkResponse;`, {
+    compilerOptions: { module: ModuleKind.ES2020, target: ScriptTarget.ES2020 },
+  }).outputText;
+  const sandbox: { __isTextLikeNetworkResponse?: NetworkResponseTextClassifier } = {};
+  runInNewContext(js, sandbox);
+  if (!sandbox.__isTextLikeNetworkResponse) throw new Error("network response classifier did not load");
+  return sandbox.__isTextLikeNetworkResponse;
 }
 
 describe("compiled MV2 scripts", () => {
@@ -419,14 +436,15 @@ describe("pire-browser command foundations", () => {
     const body = background();
     const capture = loadNetworkBodyCapture();
 
+    expect(body).toContain('["requestBody", "blocking"]');
     expect(body).toContain('["requestBody"]');
     expect(body).toContain("const requestBody = captureNetworkRequestBody(details);");
     expect(body).toContain("requestBody: record.requestBody");
     expect(body).toContain("requestBodySize: record.requestBody?.size");
     expect(body).toContain("formatNetworkRequestBody(record.requestBody)");
     expect(body).toContain("postData: harPostData(record)");
-    expect(body).toContain("request bodies are redacted/truncated when Firefox exposes them");
-    expect(body).toContain("response bodies are not captured");
+    expect(body).toContain("request bodies, and bounded text-like response previews are redacted/truncated");
+    expect(body).toContain("binary bodies, streaming payloads, and raw secrets are not captured");
 
     const jsonBody = capture({
       requestBody: {
@@ -479,6 +497,38 @@ describe("pire-browser command foundations", () => {
     expect(formBody?.fields).toContainEqual({ name: "password", value: "[REDACTED]", redacted: true });
     expect(formBody?.fields?.find((field) => field.name === "notes")).toMatchObject({ truncated: true });
     expect(formBody?.text).not.toContain("secret");
+  });
+
+  it("captures response-body previews through a pass-through stream filter", () => {
+    const body = background();
+    const isTextLike = loadNetworkResponseTextClassifier();
+
+    expect(body).toContain("function attachNetworkResponseBodyFilter");
+    expect(body).toContain("browser.webRequest.filterResponseData(record.requestId)");
+    expect(body).toContain("appendNetworkResponseBodyChunk(state, event?.data)");
+    expect(body).toContain("filter.write(event.data)");
+    expect(body).toContain("filter.close()");
+    expect(body).toContain("filter.disconnect()");
+    expect(body).toContain("completeNetworkResponseBodyCapture(state)");
+    expect(body).toContain("saveNetworkResponseBody(state.requestId");
+    expect(body).toContain("responseBody: record.responseBody");
+    expect(body).toContain("formatNetworkResponseBody(record.responseBody)");
+    expect(body).toContain("content: harResponseContent(record)");
+    expect(body).toContain("content.text = record.responseBody.text");
+    expect(body).toContain("MAX_NETWORK_RESPONSE_BODY_TEXT_LENGTH");
+    expect(body).toContain("[binary response body omitted]");
+    expect(body).toContain('networkHeaderValueByName(current.responseHeaders, "content-encoding")');
+    expect(body).toContain('`[${contentEncoding} response body omitted]`');
+    expect(body).toContain('record.routeAction === "abort" || record.routeAction === "mock"');
+    expect(body).toContain("const route = matchingNetworkRoute(details);");
+    expect(body).toContain("if (route?.abort || route?.body !== undefined) return false;");
+
+    expect(isTextLike("application/json", "{\"ok\":true}")).toBe(true);
+    expect(isTextLike("text/html", "<main>ready</main>")).toBe(true);
+    expect(isTextLike("application/problem+json", "{\"error\":\"bad\"}")).toBe(true);
+    expect(isTextLike("application/octet-stream", "plain-looking but binary typed")).toBe(false);
+    expect(isTextLike(undefined, "plain response text")).toBe(true);
+    expect(isTextLike(undefined, "abc\u0000def")).toBe(false);
   });
 
   it("routes keydown and keyup as focused edge events instead of press-compatible warnings", () => {
@@ -1457,12 +1507,14 @@ describe("command shape parity", () => {
     expect(body).toContain("function networkHarForRecords");
     expect(body).toContain("function networkHarEntry");
     expect(body).toContain("function harQueryString");
-    expect(body).toContain("Firefox WebExtension export; request/response headers are redacted");
-    expect(body).toContain("request bodies are redacted/truncated when Firefox exposes them");
+    expect(body).toContain("Firefox WebExtension export; request/response headers, request bodies");
+    expect(body).toContain("request bodies, and bounded text-like response previews are redacted/truncated");
     expect(body).toContain("postData: harPostData(record)");
-    expect(body).toContain("content: {");
+    expect(body).toContain("content: harResponseContent(record)");
+    expect(body).toContain("function harResponseContent");
+    expect(body).toContain("content.text = record.responseBody.text");
     expect(body).toContain("HAR export is built from Firefox WebExtension request metadata.");
-    expect(body).toContain("captured request bodies are redacted");
+    expect(body).toContain("captured request bodies, and bounded text-like response previews are redacted/truncated");
     expect(body).toContain('"network requires requests|request|route|unroute|har|export-har"');
   });
 
