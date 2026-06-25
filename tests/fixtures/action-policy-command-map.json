@@ -323,6 +323,17 @@
       "category": "state",
       "implementationStatus": "implemented",
       "enforcementLocus": "both",
+      "aliasRule": "compatibility spelling for device <name>",
+      "source": "upstream"
+    },
+    {
+      "root": "device",
+      "subcommand": null,
+      "signature": "device <name>",
+      "category": "state",
+      "implementationStatus": "implemented",
+      "enforcementLocus": "both",
+      "aliasRule": "agent-browser-style alias for set device <name>",
       "source": "upstream"
     },
     {

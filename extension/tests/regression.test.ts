@@ -588,7 +588,9 @@ describe("pire-browser command foundations", () => {
 
   it("implements set device as a best-effort viewport preset", () => {
     const body = background();
-    expect(body).toContain('if (subcommand === "device") return setDeviceCommand(rest);');
+    expect(body).toContain('case "device":');
+    expect(body).toContain('return setDeviceCommand(rest, "device");');
+    expect(body).toContain('if (subcommand === "device") return setDeviceCommand(rest, "set device");');
     expect(body).toContain("const DEVICE_PROFILES");
     expect(body).toContain('"iPhone 14"');
     expect(body).toContain('"Pixel 7"');
@@ -900,6 +902,7 @@ describe("pire-browser command foundations", () => {
       ["swipe", "up"],
       ["set", "viewport", "1280", "720"],
       ["set", "device", "iPhone 14"],
+      ["device", "iPhone 14"],
       ["set", "geo", "37.7749", "-122.4194"],
       ["set", "media", "dark"],
       ["set", "headers", "{\"X-Custom-Header\":\"value\"}"],

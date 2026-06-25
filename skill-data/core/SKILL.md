@@ -294,6 +294,7 @@ Set a responsive viewport before QA screenshots:
 pire-browser set viewport 1280 720
 pire-browser snapshot -i --compact
 pire-browser screenshot desktop.png
+pire-browser device "iPhone 14"
 pire-browser set device "iPhone 14"
 pire-browser set geo 37.7749 -122.4194
 pire-browser snapshot -i --compact
@@ -301,10 +302,10 @@ pire-browser swipe up 500
 pire-browser screenshot mobile.png
 ```
 
-`set viewport`, `set device`, `set geo`, `tap`, and `swipe` are Firefox best-effort paths. Viewport and device settings resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `set device` reports a preset User-Agent/touch/scale profile but does not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. `swipe` maps touch direction to page scroll and is not native touch input. `set geo` installs a page-level `navigator.geolocation` shim for managed Firefox pages; it does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state.
+`set viewport`, `device`, `set geo`, `tap`, and `swipe` are Firefox best-effort paths. Viewport and device settings resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `device <name>` is the agent-browser-style spelling; `set device <name>` remains compatible. Device presets report a User-Agent/touch/scale profile but do not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. `swipe` maps touch direction to page scroll and is not native touch input. `set geo` installs a page-level `navigator.geolocation` shim for managed Firefox pages; it does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state.
 
 When using MCP, prefer the typed setting tools (`pire_browser_set_viewport`,
-`pire_browser_set_device`, `pire_browser_set_geo`, `pire_browser_set_headers`,
+`pire_browser_device`, `pire_browser_set_device`, `pire_browser_set_geo`, `pire_browser_set_headers`,
 `pire_browser_set_credentials`, `pire_browser_set_media`, and
 `pire_browser_set_offline`) instead of raw command strings.
 

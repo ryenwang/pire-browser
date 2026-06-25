@@ -82,9 +82,8 @@ use uuid::Uuid;
 use crate::mcp::{run_mcp_server, McpToolsProfile};
 use crate::read::{read_url, ReadUrlOptions};
 
-const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] = &[
-    "connect", "device", "profiler", "record", "stream", "trace", "upgrade",
-];
+const DOCUMENTED_NOT_AVAILABLE_ROOTS: &[&str] =
+    &["connect", "profiler", "record", "stream", "trace", "upgrade"];
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 struct PolicyArgsBundle {
@@ -7021,6 +7020,7 @@ fn can_auto_launch_for_remote_args(args: &[String]) -> bool {
                 | "cookies"
                 | "storage"
                 | "set"
+                | "device"
                 | "clipboard"
                 | "auth"
                 | "download"
@@ -7086,6 +7086,7 @@ fn is_supported_remote_command(command: &str) -> bool {
             | "cookies"
             | "storage"
             | "set"
+            | "device"
             | "clipboard"
             | "auth"
             | "download"
@@ -7918,6 +7919,10 @@ mod tests {
         assert!(can_auto_launch_for_remote_args(&s(&[
             "set", "headers", "{}"
         ])));
+        assert!(can_auto_launch_for_remote_args(&s(&[
+            "device",
+            "iPhone 14"
+        ])));
         assert!(can_auto_launch_for_remote_args(&s(&["pdf", "page.pdf"])));
         assert!(can_auto_launch_for_remote_args(&s(&["drag", "@e1", "@e2"])));
         assert!(can_auto_launch_for_remote_args(&s(&[
@@ -8045,6 +8050,7 @@ mod tests {
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"click"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"tap"));
         assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"swipe"));
+        assert!(!DOCUMENTED_NOT_AVAILABLE_ROOTS.contains(&"device"));
     }
 
     #[test]
@@ -8155,6 +8161,7 @@ mod tests {
             "auth",
             "download",
             "upload",
+            "device",
             "addinitscript",
             "removeinitscript",
             "session",

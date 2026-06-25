@@ -2167,6 +2167,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "react" => REACT_HELP,
         "highlight" => HIGHLIGHT_HELP,
         "set" => SET_HELP,
+        "device" => DEVICE_HELP,
         "mouse" => MOUSE_HELP,
         "swipe" => SWIPE_HELP,
         "drag" => DRAG_HELP,
@@ -2256,6 +2257,7 @@ Common commands:
   react tree                      Show best-effort React component tree
   react inspect r1                Inspect React props, hooks, state, and source
   highlight '#submit'             Draw a visible overlay around a target
+  device "iPhone 14"              Best-effort device viewport preset
   set viewport 1280 720           Approximate the active page viewport
   mouse move 80 80                Dispatch page mouse events at viewport coords
   swipe up 500                    Best-effort mobile swipe as page scroll
@@ -2779,6 +2781,7 @@ element the agent is inspecting or about to act on.
 const SET_HELP: &str = r##"
 Usage:
   pire-browser set viewport <w> <h> [scale]
+  pire-browser device "iPhone 14"
   pire-browser set device "iPhone 14"
   pire-browser set geo <lat> <lng>
   pire-browser set headers <json>
@@ -2792,10 +2795,11 @@ innerHeight. Firefox WebExtensions cannot enforce deviceScaleFactor or exact
 CDP viewport metrics; `scale` is accepted and reported with a best-effort
 warning.
 
-`set device <name>` applies a best-effort preset viewport for common devices
-such as iPhone 14, iPhone 15 Pro, Pixel 7, Galaxy S22, and iPad. User-Agent,
-touch, mobile browser chrome, and exact deviceScaleFactor are reported but not
-enforced on the Firefox backend.
+`device <name>` applies a best-effort preset viewport for common devices such as
+iPhone 14, iPhone 15 Pro, Pixel 7, Galaxy S22, and iPad. `set device <name>` is
+a compatibility spelling for the same behavior. User-Agent, touch, mobile
+browser chrome, and exact deviceScaleFactor are reported but not enforced on
+the Firefox backend.
 
 `set geo <lat> <lng>` installs a best-effort page-level geolocation shim for
 managed Firefox pages. It updates navigator.geolocation for future navigations
@@ -2819,6 +2823,21 @@ override for the managed session.
 tabs. It cancels future network requests, but does not fully emulate CDP
 offline mode: navigator.onLine, service worker cache behavior, DNS, and socket
 state are not controlled.
+"##;
+
+const DEVICE_HELP: &str = r##"
+Usage:
+  pire-browser device "iPhone 14"
+  pire-browser set device "iPhone 14"
+
+Applies a best-effort preset viewport for common devices such as iPhone 14,
+iPhone 15 Pro, Pixel 7, Galaxy S22, and iPad. This is an agent-browser-style
+alias for `set device <name>`.
+
+Firefox WebExtensions resize the managed Firefox window to approximate the
+requested content viewport. User-Agent, touch, mobile browser chrome, and exact
+deviceScaleFactor are reported but not enforced, so verify measured
+page.innerWidth/page.innerHeight before relying on pixel-perfect screenshots.
 "##;
 
 const MOUSE_HELP: &str = r##"
@@ -5012,6 +5031,7 @@ mod tests {
         assert!(text.contains("network har"));
         assert!(text.contains("diff snapshot"));
         assert!(text.contains("highlight '#submit'"));
+        assert!(text.contains("device \"iPhone 14\""));
         assert!(text.contains("install [--with-deps] [--firefox-path <path>]"));
         assert!(text.contains("upgrade"));
         assert!(text.contains("--config ./ci-config.json open <url>"));
@@ -5164,6 +5184,9 @@ mod tests {
             .contains("set viewport <w> <h> [scale]"));
         assert!(help_text(Some("set"))
             .unwrap()
+            .contains("device \"iPhone 14\""));
+        assert!(help_text(Some("set"))
+            .unwrap()
             .contains("set device \"iPhone 14\""));
         assert!(help_text(Some("set"))
             .unwrap()
@@ -5177,6 +5200,9 @@ mod tests {
         assert!(help_text(Some("set"))
             .unwrap()
             .contains("set offline on|off"));
+        assert!(help_text(Some("device"))
+            .unwrap()
+            .contains("agent-browser-style"));
         assert!(help_text(Some("find"))
             .unwrap()
             .contains("find text \"Save\" --exact"));

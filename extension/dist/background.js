@@ -474,6 +474,8 @@
                 if (subcommand === "headers" || subcommand === "offline" || subcommand === "credentials")
                     return "network";
                 return "state";
+            case "device":
+                return "state";
             case "download":
                 return "download";
             case "upload":
@@ -505,7 +507,6 @@
         return [
             "connect",
             "dashboard",
-            "device",
             "install",
             "profiler",
             "profiles",
@@ -630,6 +631,7 @@
             "download",
             "upload",
             "set",
+            "device",
             "vitals",
             "react",
         ].includes(command ?? "")) {
@@ -776,6 +778,8 @@
                 return removeInitScriptCommand(rest);
             case "set":
                 return setCommand(rest);
+            case "device":
+                return setDeviceCommand(rest, "device");
             case "install":
             case "upgrade":
             case "stream":
@@ -789,7 +793,6 @@
             case "profiles":
             case "pdf":
             case "connect":
-            case "device":
                 return notAvailable(command, "This command is not supported by the Firefox WebExtension backend yet.");
             case "close":
             case "quit":
@@ -2368,7 +2371,7 @@
         if (subcommand === "media")
             return setMediaCommand(rest);
         if (subcommand === "device")
-            return setDeviceCommand(rest);
+            return setDeviceCommand(rest, "set device");
         if (subcommand === "offline")
             return setOfflineCommand(rest);
         if (subcommand === "credentials")
@@ -2389,11 +2392,11 @@
             warnings: resized.warnings,
         };
     }
-    async function setDeviceCommand(args) {
-        const parsed = parseDeviceArgs(args);
+    async function setDeviceCommand(args, commandName = "set device") {
+        const parsed = parseDeviceArgs(args, commandName);
         if ("error" in parsed)
             return parsed;
-        const resized = await resizeViewport(parsed.profile.width, parsed.profile.height, parsed.profile.scale, "set device");
+        const resized = await resizeViewport(parsed.profile.width, parsed.profile.height, parsed.profile.scale, commandName);
         const page = resized.viewport.page;
         return {
             text: `Device ${parsed.profile.name} requested ${parsed.profile.width}x${parsed.profile.height} scale ${parsed.profile.scale}; measured ${page?.innerWidth ?? "unknown"}x${page?.innerHeight ?? "unknown"}`,
@@ -2415,7 +2418,7 @@
                 },
             },
             viewport: resized.viewport,
-            warnings: mergeWarnings(resized.warnings, bestEffortWarning("set device", "Firefox WebExtensions approximate device emulation by resizing the content viewport only. User-Agent, touch events, mobile browser chrome, and deviceScaleFactor are reported but not enforced.")),
+            warnings: mergeWarnings(resized.warnings, bestEffortWarning(commandName, "Firefox WebExtensions approximate device emulation by resizing the content viewport only. User-Agent, touch events, mobile browser chrome, and deviceScaleFactor are reported but not enforced.")),
         };
     }
     async function resizeViewport(width, height, scale, feature) {
@@ -2937,16 +2940,16 @@
         }
         return { width, height, scale };
     }
-    function parseDeviceArgs(args) {
+    function parseDeviceArgs(args, commandName = "set device") {
         if (args.some((arg) => arg.startsWith("-") && arg !== "--json")) {
-            return { error: { code: "InvalidArgumentError", message: "set device does not support options" } };
+            return { error: { code: "InvalidArgumentError", message: `${commandName} does not support options` } };
         }
         const name = args.filter((arg) => arg !== "--json").join(" ").trim();
         if (!name) {
             return {
                 error: {
                     code: "InvalidArgumentError",
-                    message: `set device requires <name>. Supported devices: ${supportedDeviceNames()}`,
+                    message: `${commandName} requires <name>. Supported devices: ${supportedDeviceNames()}`,
                 },
             };
         }

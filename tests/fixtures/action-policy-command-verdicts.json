@@ -178,6 +178,13 @@
       "expectedDecision": "allow"
     },
     {
+      "name": "device maps to state",
+      "args": ["device", "iPhone 14"],
+      "policy": { "default": "deny", "allow": ["state"] },
+      "expectedCategory": "state",
+      "expectedDecision": "allow"
+    },
+    {
       "name": "set geo maps to state",
       "args": ["set", "geo", "37.7749", "-122.4194"],
       "policy": { "default": "deny", "allow": ["state"] },

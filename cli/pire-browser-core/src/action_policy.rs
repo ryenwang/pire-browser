@@ -19,7 +19,6 @@ const ACTION_CATEGORIES: &[&str] = &[
 const RESERVED_NOT_AVAILABLE_ROOTS: &[&str] = &[
     "connect",
     "dashboard",
-    "device",
     "install",
     "profiler",
     "profiles",
@@ -353,6 +352,7 @@ pub fn resolve_command_policy(args: &[String]) -> CommandPolicyResolution {
             Some("viewport" | "device" | "media" | "geo") => "state",
             _ => return CommandPolicyResolution::NotAvailable,
         },
+        "device" => "state",
         "clipboard" => match subcommand {
             Some("read") => "get",
             Some("write" | "copy") => "state",

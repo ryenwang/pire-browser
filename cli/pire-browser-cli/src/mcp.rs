@@ -311,7 +311,8 @@ fn tool_profile_bits(name: &str) -> u16 {
         "pire_browser_add_init_script" | "pire_browser_remove_init_script" => {
             PROFILE_CORE | PROFILE_DEBUG
         }
-        "pire_browser_set_viewport"
+        "pire_browser_device"
+        | "pire_browser_set_viewport"
         | "pire_browser_set_device"
         | "pire_browser_set_geo"
         | "pire_browser_set_media" => PROFILE_MOBILE,
@@ -1304,6 +1305,10 @@ fn tool_command_args(
         }
         (_, "pire_browser_set_device") => {
             args.push("set".to_string());
+            args.push("device".to_string());
+            args.push(required_string(object, "name")?);
+        }
+        (_, "pire_browser_device") => {
             args.push("device".to_string());
             args.push(required_string(object, "name")?);
         }
@@ -3174,9 +3179,16 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_device",
+            "Device preset",
+            "Agent-browser-style alias for a best-effort viewport device preset such as iPhone 14, Pixel 7, Galaxy S22, or iPad.",
+            tool_schema(vec![("name", string_prop("Device preset name."))], &["name"]),
+            false,
+        ),
+        tool(
             "pire_browser_set_device",
             "Set device preset",
-            "Apply a best-effort viewport preset such as iPhone 14, Pixel 7, Galaxy S22, or iPad.",
+            "Compatibility spelling for pire_browser_device; applies a best-effort viewport preset such as iPhone 14, Pixel 7, Galaxy S22, or iPad.",
             tool_schema(vec![("name", string_prop("Device preset name."))], &["name"]),
             false,
         ),
@@ -4408,6 +4420,9 @@ mod tests {
         assert!(mobile
             .iter()
             .any(|tool| tool["name"] == "pire_browser_screenshot"));
+        assert!(mobile
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_device"));
         assert!(mobile.iter().any(|tool| tool["name"] == "pire_browser_tap"));
         assert!(mobile
             .iter()
@@ -5603,6 +5618,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args, vec!["--json", "set", "device", "iPhone 14"]);
+
+        let args = tool_command_args(
+            "pire_browser_device",
+            &json!({ "name": "iPhone 14" }),
+            McpToolsProfile::Mobile,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "device", "iPhone 14"]);
 
         let args = tool_command_args(
             "pire_browser_set_geo",
