@@ -18,10 +18,12 @@ npx pire-browser snapshot -i`),
 pire-browser doctor --json`),
   p("Use this only when Firefox is missing or setup fails. <code>install --with-deps</code> is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux. <code>doctor --json</code> reports concrete <code>nextActions</code> when setup needs repair."),
   h2("Migrating from old GitHub/local installs", "migrating-from-old-github-local-installs"),
-  p("Most users can skip this. If an older GitHub, local-checkout, or Windows ZIP shim install is still registered, the npm package schedules a fast reconciliation after Pi records the npm install. It removes old settings entries, removes old direct extension shims, and quarantines verified old Pi-managed GitHub checkouts. If Pi reports a duplicate <code>pire-browser</code> tool immediately after installation, wait a moment and rerun <code>pi</code>. If the conflict remains, remove the older source shown in Pi's error and reinstall the npm package."),
-  code(`pi remove git:github.com/ryenwang/pire-browser
-# or: pi remove /absolute/path/to/your/local/pire-browser-checkout
-pi install npm:pire-browser`),
+  p("Most users can skip this. If Pi reports that <code>npm:pire-browser</code> conflicts with an older GitHub, local-checkout, or ZIP-era install, inspect and repair the duplicate registration from a normal terminal."),
+  code(`pire-browser pi conflicts
+pire-browser pi repair`),
+  p("If <code>pire-browser</code> is not on PATH because Pi cannot start, use the package directly."),
+  code(`npx -y pire-browser@latest pi repair`),
+  p("<code>pi repair</code> is the deterministic recovery path. The npm postinstall cleanup is best-effort and may not run when lifecycle scripts are skipped. Verified local checkout entries are reported but left in place unless you rerun with <code>--include-local</code>."),
   h2("From source", "from-source"),
   code(`git clone https://github.com/ryenwang/pire-browser
 cd pire-browser

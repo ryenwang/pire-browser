@@ -6,6 +6,7 @@ import {
   DEFAULT_DELAY_MS,
   DEFAULT_POLL_MS,
   detectPiInstallContext,
+  inspectPiSettingsForConflicts,
   migratePiSettingsForKnownLegacySources,
   runWorker,
   shouldRetryMigrationReason,
@@ -101,7 +102,7 @@ describe("Pi install migration helper", () => {
     expect(settings.packages).toEqual([{ source: "npm:pire-browser" }]);
   });
 
-  it("removes local path installs that resolve to the same pire-browser package", () => {
+  it("reports local path installs without removing them by default", () => {
     const root = tempDir();
     const settingsPath = join(root, ".pi", "agent", "settings.json");
     const localPackage = join(root, "browser-automation");
@@ -128,14 +129,66 @@ describe("Pi install migration helper", () => {
     const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
 
     expect(result).toMatchObject({
+      changed: false,
+      removed: [],
+      localSkipped: ["../../browser-automation"],
+      reason: "local_conflicts_skipped",
+    });
+    expect(settings.packages).toEqual([
+      "../../browser-automation",
+      { source: "npm:pire-browser" },
+      { source: "../../other-package" },
+    ]);
+  });
+
+  it("removes verified local path installs only with includeLocal and an npm replacement", () => {
+    const root = tempDir();
+    const settingsPath = join(root, ".pi", "agent", "settings.json");
+    const localPackage = join(root, "browser-automation");
+    mkdirSync(join(root, ".pi", "agent"), { recursive: true });
+    mkdirSync(join(localPackage, "pi", "extensions"), { recursive: true });
+    writeFileSync(join(localPackage, "package.json"), `${JSON.stringify({ name: "pire-browser" })}\n`);
+    writeFileSync(join(localPackage, "pi", "extensions", "pire-browser.ts"), "");
+    writeFileSync(
+      settingsPath,
+      `${JSON.stringify(
+        {
+          packages: ["../../browser-automation", { source: "npm:pire-browser" }],
+        },
+        null,
+        2
+      )}\n`
+    );
+
+    const result = migratePiSettingsForKnownLegacySources(settingsPath, { includeLocal: true });
+    const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+
+    expect(result).toMatchObject({
       changed: true,
       removed: ["../../browser-automation"],
       reason: "migrated",
     });
-    expect(settings.packages).toEqual([
-      { source: "npm:pire-browser" },
-      { source: "../../other-package" },
-    ]);
+    expect(settings.packages).toEqual([{ source: "npm:pire-browser" }]);
+  });
+
+  it("does not remove verified local path installs without an npm replacement", () => {
+    const root = tempDir();
+    const settingsPath = join(root, ".pi", "agent", "settings.json");
+    const localPackage = join(root, "browser-automation");
+    mkdirSync(join(root, ".pi", "agent"), { recursive: true });
+    mkdirSync(join(localPackage, "pi", "extensions"), { recursive: true });
+    writeFileSync(join(localPackage, "package.json"), `${JSON.stringify({ name: "pire-browser" })}\n`);
+    writeFileSync(join(localPackage, "pi", "extensions", "pire-browser.ts"), "");
+    writeFileSync(settingsPath, `${JSON.stringify({ packages: ["../../browser-automation"] })}\n`);
+
+    const result = migratePiSettingsForKnownLegacySources(settingsPath, { includeLocal: true });
+    const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+
+    expect(result).toMatchObject({
+      changed: false,
+      reason: "missing_npm_source",
+    });
+    expect(settings.packages).toEqual(["../../browser-automation"]);
   });
 
   it("removes legacy direct extension shims from old Windows zip installs", () => {
@@ -164,6 +217,84 @@ export default async function(pi) {
     });
     expect(existsSync(shimPath)).toBe(false);
     expect(existsSync(`${shimPath}.pire-browser-migration.bak`)).toBe(true);
+  });
+
+  it("inspects legacy package, shim, and managed directory conflicts without mutating", () => {
+    const root = tempDir();
+    const settingsPath = join(root, ".pi", "agent", "settings.json");
+    const shimPath = join(root, ".pi", "agent", "extensions", "pire-browser.ts");
+    const legacyPackage = join(root, ".pi", "agent", "git", "github.com", "ryenwang", "pire-browser");
+    mkdirSync(join(root, ".pi", "agent", "extensions"), { recursive: true });
+    mkdirSync(join(legacyPackage, "pi", "extensions"), { recursive: true });
+    writeFileSync(
+      settingsPath,
+      `${JSON.stringify({
+        packages: [{ source: "git:github.com/ryenwang/pire-browser" }, { source: "npm:pire-browser" }],
+      })}\n`
+    );
+    writeFileSync(
+      shimPath,
+      `import { pathToFileURL } from "node:url";
+export default async function(pi) {
+  return import(pathToFileURL("C:/pire/pi/extensions/pire-browser.ts").href);
+}
+`
+    );
+    writeFileSync(join(legacyPackage, "package.json"), `${JSON.stringify({ name: "pire-browser" })}\n`);
+    writeFileSync(join(legacyPackage, "pi", "extensions", "pire-browser.ts"), "");
+
+    const inspection = inspectPiSettingsForConflicts(settingsPath);
+
+    expect(inspection.conflicts.map((conflict) => conflict.kind)).toEqual([
+      "legacy-github",
+      "zip-shim",
+      "managed-github-dir",
+    ]);
+    expect(existsSync(shimPath)).toBe(true);
+    expect(existsSync(legacyPackage)).toBe(true);
+  });
+
+  it("dry-runs repair without writing settings, removing shims, or quarantining directories", () => {
+    const root = tempDir();
+    const settingsPath = join(root, ".pi", "agent", "settings.json");
+    const shimPath = join(root, ".pi", "agent", "extensions", "pire-browser.ts");
+    const legacyPackage = join(root, ".pi", "agent", "git", "github.com", "ryenwang", "pire-browser");
+    mkdirSync(join(root, ".pi", "agent", "extensions"), { recursive: true });
+    mkdirSync(join(legacyPackage, "pi", "extensions"), { recursive: true });
+    writeFileSync(
+      settingsPath,
+      `${JSON.stringify({
+        packages: [{ source: "git:github.com/ryenwang/pire-browser" }, { source: "npm:pire-browser" }],
+      })}\n`
+    );
+    writeFileSync(
+      shimPath,
+      `import { pathToFileURL } from "node:url";
+export default async function(pi) {
+  return import(pathToFileURL("C:/pire/pi/extensions/pire-browser.ts").href);
+}
+`
+    );
+    writeFileSync(join(legacyPackage, "package.json"), `${JSON.stringify({ name: "pire-browser" })}\n`);
+    writeFileSync(join(legacyPackage, "pi", "extensions", "pire-browser.ts"), "");
+
+    const result = migratePiSettingsForKnownLegacySources(settingsPath, { dryRun: true });
+    const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+
+    expect(result).toMatchObject({
+      changed: false,
+      dryRun: true,
+      wouldChange: true,
+      removed: ["git:github.com/ryenwang/pire-browser"],
+      removedShims: [shimPath],
+      quarantinedDirs: [legacyPackage],
+    });
+    expect(settings.packages).toEqual([
+      { source: "git:github.com/ryenwang/pire-browser" },
+      { source: "npm:pire-browser" },
+    ]);
+    expect(existsSync(shimPath)).toBe(true);
+    expect(existsSync(legacyPackage)).toBe(true);
   });
 
   it("quarantines verified legacy Pi-managed GitHub package directories", () => {

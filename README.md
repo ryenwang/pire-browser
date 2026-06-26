@@ -55,13 +55,20 @@ pire-browser doctor --json
 
 ### Migrating From Old GitHub/Local Installs
 
-Most users can skip this. If you previously installed from GitHub, from a local checkout, or through an old Windows ZIP shim, the npm installer reconciles known duplicate `pire-browser` sources after Pi records the npm install. It removes old settings entries, removes old direct extension shims, and quarantines the old Pi-managed GitHub checkout after verifying it is the `pire-browser` package. If Pi reports a duplicate `pire-browser` tool immediately after installation, wait a moment and rerun `pi`. If the conflict remains, remove the older source shown in Pi's error, then reinstall the npm package:
+Most users can skip this. If Pi reports that `npm:pire-browser` conflicts with an older GitHub, local-checkout, or ZIP-era install, inspect and repair the duplicate registration from a normal terminal:
 
 ```bash
-pi remove git:github.com/ryenwang/pire-browser
-# or: pi remove /absolute/path/to/your/local/pire-browser-checkout
-pi install npm:pire-browser
+pire-browser pi conflicts
+pire-browser pi repair
 ```
+
+If `pire-browser` is not on PATH because Pi cannot start, use the package directly:
+
+```bash
+npx -y pire-browser@latest pi repair
+```
+
+`pi repair` is the deterministic recovery path. The npm postinstall cleanup is best-effort and may not run when lifecycle scripts are skipped. It removes known legacy GitHub/package entries and old ZIP shims after `npm:pire-browser` is recorded, quarantines verified old Pi-managed GitHub checkouts, and writes a repair report under the pire-browser data directory. Verified local checkout entries are reported but left in place unless you rerun with `--include-local`.
 
 ### From Source
 

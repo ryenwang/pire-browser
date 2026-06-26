@@ -11,9 +11,13 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  inspectPiSettingsForConflicts,
+  migratePiSettingsForKnownLegacySources,
+} from "../scripts/pi-install-migration.mjs";
 import { resolveNativeBinary, rootDir, rootPackageJson } from "../scripts/platform.mjs";
 
 const root = rootDir();
@@ -58,6 +62,24 @@ root alias. Set PIRE_BROWSER_SKILLS_DIR or AGENT_BROWSER_SKILLS_DIR to override
 the skill directory during local development.
 `;
 
+const LAUNCHER_PI_HELP = `
+Usage:
+  pire-browser pi conflicts [--json] [--scope global|project|both] [--settings <path>]
+  pire-browser pi repair [--json] [--dry-run] [--scope global|project|both] [--settings <path>] [--include-local]
+
+Inspects and repairs duplicate Pi package registrations for pire-browser without
+requiring the native binary. This does not run Pi itself. Use conflicts first to
+see old GitHub/local/ZIP-era registrations, then repair to remove safe legacy
+entries after npm:pire-browser is present.
+
+Exit codes: conflicts exits 0 when inspection completes, even if conflicts are
+found. repair exits 0 for successful repair, no-op, dry-run, missing npm source,
+or advisory-scope conflicts; inspect JSON data.remainingConflicts, target
+reason, and nextActions to know whether the install is fully resolved. Nonzero
+is reserved for invalid args, explicit settings read/parse errors, settings
+write failures, or required quarantine failures.
+`;
+
 export function main(args = process.argv.slice(2)) {
   if (args[0] === "update") {
     if (wantsLauncherHelp(args.slice(1))) {
@@ -77,6 +99,9 @@ export function main(args = process.argv.slice(2)) {
 
   const skillsResult = handleLauncherSkills(args);
   if (skillsResult !== null) return skillsResult;
+
+  const piResult = handleLauncherPi(args);
+  if (piResult !== null) return piResult;
 
   maybeStartBackgroundUpdateCheck(args);
   const resolved = resolveNativeBinary({ root });
@@ -354,6 +379,345 @@ function normalizeSkillText(text) {
   return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
+export function handleLauncherPi(args, options = {}) {
+  const output = options.output ?? console.log;
+  const error = options.error ?? console.error;
+  if (args[0] !== "pi") return null;
+
+  const piArgs = args.slice(1);
+  if (wantsLauncherHelp(piArgs)) {
+    output(LAUNCHER_PI_HELP.trim());
+    return 0;
+  }
+  const subcommand = piArgs.shift() ?? "conflicts";
+  if (!["conflicts", "repair"].includes(subcommand)) {
+    return outputPiError(`unsupported pi command: ${subcommand}; try \`pire-browser pi conflicts\``, false, output, error);
+  }
+
+  const parsed = parsePiCommandArgs(subcommand, piArgs);
+  if (!parsed.ok) return outputPiError(parsed.message, parsed.json, output, error);
+  return subcommand === "conflicts"
+    ? runPiConflicts(parsed.options, output, error)
+    : runPiRepair(parsed.options, output, error);
+}
+
+function parsePiCommandArgs(subcommand, args) {
+  const options = {
+    json: false,
+    dryRun: false,
+    includeLocal: false,
+    scope: subcommand === "repair" ? "global" : "both",
+    settingsPath: null,
+  };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--json") options.json = true;
+    else if (arg === "--dry-run" && subcommand === "repair") options.dryRun = true;
+    else if (arg === "--include-local" && subcommand === "repair") options.includeLocal = true;
+    else if (arg === "--scope") {
+      const scope = args[index + 1];
+      if (!["global", "project", "both"].includes(scope)) {
+        return { ok: false, json: options.json, message: "pi command requires --scope global|project|both" };
+      }
+      options.scope = scope;
+      index += 1;
+    } else if (arg === "--settings") {
+      const settingsPath = args[index + 1];
+      if (!settingsPath || settingsPath.startsWith("-")) {
+        return { ok: false, json: options.json, message: "pi command requires --settings <path>" };
+      }
+      options.settingsPath = resolve(settingsPath);
+      index += 1;
+    } else {
+      return { ok: false, json: options.json, message: `unsupported pi ${subcommand} option: ${arg}` };
+    }
+  }
+  return { ok: true, options };
+}
+
+function runPiConflicts(options, output, error) {
+  const targets = resolvePiSettingsTargets(options);
+  const inspections = targets.map((target) => inspectPiTarget(target));
+  const explicitError = inspections.find((inspection) => inspection.explicit && isInvalidInspection(inspection));
+  if (explicitError) {
+    return outputPiError(
+      settingsInspectionError(explicitError),
+      options.json,
+      output,
+      error,
+      explicitError,
+      "settings_unavailable"
+    );
+  }
+  const data = piConflictData(inspections);
+  if (options.json) output(JSON.stringify({ success: true, data, warnings: [] }, null, 2));
+  else output(formatPiConflictsPlain(data));
+  return 0;
+}
+
+function runPiRepair(options, output, error) {
+  const primaryTargets = resolvePiSettingsTargets(options);
+  const advisoryTargets = options.settingsPath ? [] : advisoryPiSettingsTargets(options.scope, primaryTargets);
+  const repairResults = [];
+  const advisoryInspections = [];
+
+  for (const target of primaryTargets) {
+    const inspection = inspectPiTarget(target);
+    if (inspection.explicit && isInvalidInspection(inspection)) {
+      return outputPiError(
+        settingsInspectionError(inspection),
+        options.json,
+        output,
+        error,
+        inspection,
+        "settings_unavailable"
+      );
+    }
+    if (inspection.reason === "missing_settings" && !target.explicit) {
+      repairResults.push({ ...inspection, skipped: true });
+      continue;
+    }
+    repairResults.push({
+      ...target,
+      ...migratePiSettingsForKnownLegacySources(target.settingsPath, {
+        requireNpmSource: true,
+        includeLocal: options.includeLocal,
+        dryRun: options.dryRun,
+      }),
+    });
+  }
+
+  for (const target of advisoryTargets) {
+    const inspection = inspectPiTarget(target);
+    if (inspection.reason !== "missing_settings") advisoryInspections.push(inspection);
+  }
+
+  const data = piRepairData({ options, repairResults, advisoryInspections });
+  const report = writePiRepairReport(data);
+  data.reportPath = report.path;
+  if (report.error) data.reportError = report.error;
+
+  if (options.json) output(JSON.stringify({ success: true, data, warnings: [] }, null, 2));
+  else output(formatPiRepairPlain(data));
+
+  return repairResults.some((result) => hasRepairFailure(result)) ? 1 : 0;
+}
+
+function resolvePiSettingsTargets({ scope, settingsPath }, env = process.env, cwd = process.cwd()) {
+  if (settingsPath) {
+    return [{ scope: "settings", settingsPath, explicit: true }];
+  }
+  const targets = [];
+  if (scope === "global" || scope === "both") {
+    targets.push({ scope: "global", settingsPath: globalPiSettingsPath(env), explicit: false });
+  }
+  if (scope === "project" || scope === "both") {
+    targets.push({ scope: "project", settingsPath: join(cwd, ".pi", "settings.json"), explicit: false });
+  }
+  return dedupePiTargets(targets);
+}
+
+function globalPiSettingsPath(env = process.env) {
+  if (env.PI_CODING_AGENT_DIR) {
+    const normalized = env.PI_CODING_AGENT_DIR.replace(/[\\/]+$/, "");
+    if (normalized.split(/[\\/]+/).pop()?.toLowerCase() === "agent") {
+      return join(env.PI_CODING_AGENT_DIR, "settings.json");
+    }
+    return join(env.PI_CODING_AGENT_DIR, "agent", "settings.json");
+  }
+  return join(env.PI_HOME || join(homedir(), ".pi"), "agent", "settings.json");
+}
+
+function advisoryPiSettingsTargets(scope, primaryTargets) {
+  if (scope === "both") return [];
+  const primaryPaths = new Set(primaryTargets.map((target) => target.settingsPath));
+  return resolvePiSettingsTargets({ scope: scope === "global" ? "project" : "global", settingsPath: null }).filter(
+    (target) => !primaryPaths.has(target.settingsPath)
+  );
+}
+
+function dedupePiTargets(targets) {
+  const seen = new Set();
+  return targets.filter((target) => {
+    const key = target.settingsPath.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function inspectPiTarget(target) {
+  return { ...target, ...inspectPiSettingsForConflicts(target.settingsPath) };
+}
+
+function isInvalidInspection(inspection) {
+  return inspection.reason === "missing_settings" || inspection.reason.startsWith("invalid_settings:");
+}
+
+function settingsInspectionError(inspection) {
+  if (inspection.reason === "missing_settings") return `Pi settings file does not exist: ${inspection.settingsPath}`;
+  return `Could not read Pi settings file ${inspection.settingsPath}: ${inspection.reason.replace(/^invalid_settings: /, "")}`;
+}
+
+function piConflictData(inspections) {
+  const activeInspections = inspections.filter((inspection) => inspection.reason !== "missing_settings");
+  const conflicts = activeInspections.flatMap((inspection) =>
+    inspection.conflicts.map((conflict) => ({ scope: inspection.scope, settingsPath: inspection.settingsPath, ...conflict }))
+  );
+  return {
+    operation: "conflicts",
+    targets: inspections.map(summarizeInspection),
+    hasConflicts: conflicts.length > 0,
+    conflictCount: conflicts.length,
+    conflicts,
+    nextActions: piConflictNextActions(conflicts),
+  };
+}
+
+function piRepairData({ options, repairResults, advisoryInspections }) {
+  const remainingConflicts = advisoryInspections.flatMap((inspection) =>
+    inspection.conflicts.map((conflict) => ({ scope: inspection.scope, settingsPath: inspection.settingsPath, ...conflict }))
+  );
+  return {
+    operation: "repair",
+    dryRun: options.dryRun,
+    includeLocal: options.includeLocal,
+    targets: repairResults.map(summarizeRepairResult),
+    remainingConflicts,
+    nextActions: piRepairNextActions(repairResults, remainingConflicts, options),
+  };
+}
+
+function summarizeInspection(inspection) {
+  return {
+    scope: inspection.scope,
+    settingsPath: inspection.settingsPath,
+    explicit: inspection.explicit,
+    reason: inspection.reason,
+    skipped: inspection.reason === "missing_settings" && !inspection.explicit,
+    npmSourcePresent: inspection.npmSourcePresent,
+    conflictCount: inspection.conflicts.length,
+    conflicts: inspection.conflicts,
+  };
+}
+
+function summarizeRepairResult(result) {
+  return {
+    scope: result.scope,
+    settingsPath: result.settingsPath,
+    explicit: result.explicit,
+    reason: result.reason,
+    skipped: Boolean(result.skipped),
+    changed: Boolean(result.changed),
+    dryRun: Boolean(result.dryRun),
+    wouldChange: Boolean(result.wouldChange),
+    removed: result.removed ?? [],
+    localSkipped: result.localSkipped ?? [],
+    removedShims: result.removedShims ?? [],
+    quarantinedDirs: result.quarantinedDirs ?? [],
+    directoryBackupPaths: result.directoryBackupPaths ?? [],
+    ...(result.backupPath ? { backupPath: result.backupPath } : {}),
+    ...(result.shimBackupPath ? { shimBackupPath: result.shimBackupPath } : {}),
+    ...(result.quarantineErrors ? { quarantineErrors: result.quarantineErrors } : {}),
+    ...(result.writeError ? { writeError: result.writeError } : {}),
+  };
+}
+
+function piConflictNextActions(conflicts) {
+  if (conflicts.length === 0) return [];
+  const actions = ["Run `pire-browser pi repair` to remove safe legacy GitHub/ZIP-era duplicate registrations."];
+  if (conflicts.some((conflict) => conflict.kind === "local-checkout")) {
+    actions.push("Local checkout conflicts are reported only; rerun repair with `--include-local` if npm:pire-browser is the intended replacement.");
+  }
+  return actions;
+}
+
+function piRepairNextActions(repairResults, remainingConflicts, options) {
+  const actions = [];
+  if (repairResults.some((result) => result.reason === "missing_npm_source")) {
+    actions.push("Install the npm package first with `pi install npm:pire-browser`, then rerun `pire-browser pi repair`.");
+  }
+  if (repairResults.some((result) => (result.localSkipped ?? []).length > 0)) {
+    actions.push("Verified local checkout conflicts were left in place; rerun with `--include-local` if npm:pire-browser should replace them.");
+  }
+  if (remainingConflicts.length > 0) {
+    const scopes = [...new Set(remainingConflicts.map((conflict) => conflict.scope))].join(", ");
+    actions.push(`Conflicts remain in ${scopes} scope; rerun with \`--scope ${scopes.includes("project") ? "project" : "global"}\`.`);
+  }
+  if (options.dryRun) actions.push("Dry run only; rerun without `--dry-run` to apply changes.");
+  return actions;
+}
+
+function hasRepairFailure(result) {
+  return result.reason === "settings_write_failed" || (result.quarantineErrors ?? []).length > 0;
+}
+
+function writePiRepairReport(data) {
+  const path = join(dataDir(), "pi-repair", data.dryRun ? "dry-run-latest.json" : "latest.json");
+  try {
+    writeJson(path, { ...data, reportPath: path });
+    return { path };
+  } catch (error) {
+    return { path, error: error.message };
+  }
+}
+
+function formatPiConflictsPlain(data) {
+  if (!data.hasConflicts) return "No Pi pire-browser install conflicts found.";
+  const lines = [`Found ${data.conflictCount} Pi pire-browser install conflict(s):`];
+  for (const conflict of data.conflicts) {
+    const location = conflict.source ?? conflict.path;
+    lines.push(`- ${conflict.scope}: ${conflict.kind} ${location}`);
+  }
+  for (const action of data.nextActions) lines.push(`Next: ${action}`);
+  return lines.join("\n");
+}
+
+function formatPiRepairPlain(data) {
+  const changedCount = data.targets.filter((target) => target.changed || target.wouldChange).length;
+  const prefix = data.dryRun ? "pire-browser pi repair dry run" : "pire-browser pi repair";
+  const lines = [`${prefix}: ${changedCount > 0 ? "completed" : "no safe changes needed"}.`];
+  for (const target of data.targets) {
+    if (target.skipped) {
+      lines.push(`- ${target.scope}: skipped missing settings (${target.settingsPath})`);
+      continue;
+    }
+    const action = data.dryRun && target.wouldChange ? "would change" : target.changed ? "changed" : "unchanged";
+    lines.push(`- ${target.scope}: ${action} (${target.reason})`);
+    for (const source of target.removed) lines.push(`  removed package source: ${source}`);
+    for (const source of target.localSkipped) lines.push(`  left local checkout source: ${source}`);
+    for (const path of target.removedShims) lines.push(`  removed legacy shim: ${path}`);
+    for (const path of target.quarantinedDirs) lines.push(`  quarantined legacy checkout: ${path}`);
+  }
+  if (data.remainingConflicts.length > 0) {
+    lines.push(`Remaining conflicts outside repaired scope: ${data.remainingConflicts.length}`);
+  }
+  for (const action of data.nextActions) lines.push(`Next: ${action}`);
+  if (data.reportError) lines.push(`Report failed: ${data.reportError}`);
+  else lines.push(`Report: ${data.reportPath}`);
+  return lines.join("\n");
+}
+
+function outputPiError(message, json, output, error, details = null, code = "invalid_args") {
+  if (json) {
+    output(
+      JSON.stringify(
+        {
+          success: false,
+          error: { code, message },
+          ...(details ? { data: { details } } : {}),
+          warnings: [],
+        },
+        null,
+        2
+      )
+    );
+  } else {
+    error(`pire-browser: ${message}`);
+  }
+  return 2;
+}
+
 function successEnvelope(data) {
   return JSON.stringify({ success: true, data, warnings: [] }, null, 2);
 }
@@ -562,7 +926,7 @@ function maybeStartBackgroundPatchApply(commandArgs) {
 
 function isObservationalCommand(commandArgs) {
   const rootCommand = commandArgs.find((arg) => !arg.startsWith("-")) ?? "help";
-  return ["help", "status", "doctor", "install-status", "skills", "skill", "update"].includes(rootCommand);
+  return ["help", "status", "doctor", "install-status", "skills", "skill", "pi", "update"].includes(rootCommand);
 }
 
 function npmViewLatest(timeout) {

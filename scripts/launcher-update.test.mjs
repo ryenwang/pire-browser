@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { classifyUpdate, formatUpdatePlain, main } from "../bin/pire-browser.js";
@@ -7,6 +7,13 @@ import { classifyUpdate, formatUpdatePlain, main } from "../bin/pire-browser.js"
 const originalOffline = process.env.PI_OFFLINE;
 const originalPireSkillsDir = process.env.PIRE_BROWSER_SKILLS_DIR;
 const originalAgentSkillsDir = process.env.AGENT_BROWSER_SKILLS_DIR;
+const originalPiCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalPiHome = process.env.PI_HOME;
+const originalLocalAppData = process.env.LOCALAPPDATA;
+const originalXdgDataHome = process.env.XDG_DATA_HOME;
+const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
+const originalCwd = process.cwd();
 
 afterEach(() => {
   if (originalOffline === undefined) delete process.env.PI_OFFLINE;
@@ -15,8 +22,35 @@ afterEach(() => {
   else process.env.PIRE_BROWSER_SKILLS_DIR = originalPireSkillsDir;
   if (originalAgentSkillsDir === undefined) delete process.env.AGENT_BROWSER_SKILLS_DIR;
   else process.env.AGENT_BROWSER_SKILLS_DIR = originalAgentSkillsDir;
+  if (originalPiCodingAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+  else process.env.PI_CODING_AGENT_DIR = originalPiCodingAgentDir;
+  if (originalPiHome === undefined) delete process.env.PI_HOME;
+  else process.env.PI_HOME = originalPiHome;
+  if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA;
+  else process.env.LOCALAPPDATA = originalLocalAppData;
+  if (originalXdgDataHome === undefined) delete process.env.XDG_DATA_HOME;
+  else process.env.XDG_DATA_HOME = originalXdgDataHome;
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
+  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = originalUserProfile;
+  process.chdir(originalCwd);
   vi.restoreAllMocks();
 });
+
+function writeSettings(path, packages) {
+  writeFileSync(path, `${JSON.stringify({ packages }, null, 2)}\n`);
+}
+
+function setDataRootFileEnv(root) {
+  const file = join(root, "data-root-file");
+  writeFileSync(file, "not a directory");
+  process.env.LOCALAPPDATA = file;
+  process.env.XDG_DATA_HOME = file;
+  process.env.HOME = file;
+  process.env.USERPROFILE = file;
+  return file;
+}
 
 describe("launcher update UX", () => {
   it("serves launcher-owned help without invoking native commands", () => {
@@ -36,6 +70,12 @@ describe("launcher update UX", () => {
 
     expect(main(["skill", "help"])).toBe(0);
     expect(logs.pop()).toContain("AGENT_BROWSER_SKILLS_DIR");
+
+    expect(main(["pi", "--help"])).toBe(0);
+    const piHelp = logs.pop();
+    expect(piHelp).toContain("pire-browser pi repair");
+    expect(piHelp).toContain("Exit codes:");
+    expect(piHelp).toContain("data.remainingConflicts");
   });
 
   it("serves agent-browser-style skills get core from the JS launcher before native resolution", () => {
@@ -130,6 +170,7 @@ describe("launcher update UX", () => {
       expect(main(["skills", "get", "custom", "--json"])).toBe(0);
       expect(JSON.parse(logs.pop()).data.skill.content).toContain("# Custom");
     } finally {
+      process.chdir(originalCwd);
       rmSync(root, { recursive: true, force: true });
     }
   });
@@ -155,6 +196,216 @@ describe("launcher update UX", () => {
         message: "unsupported skills path option: --bad",
       },
     });
+  });
+
+  it("serves pi conflicts from the JS launcher and discovers global plus project settings", () => {
+    const root = join(tmpdir(), `pire-pi-launcher-${process.pid}-${Date.now()}`);
+    const project = join(root, "project");
+    const piRoot = join(root, ".pi");
+    mkdirSync(join(piRoot, "agent"), { recursive: true });
+    mkdirSync(join(project, ".pi"), { recursive: true });
+    writeSettings(join(piRoot, "agent", "settings.json"), [
+      { source: "git:github.com/ryenwang/pire-browser" },
+      { source: "npm:pire-browser" },
+    ]);
+    writeSettings(join(project, ".pi", "settings.json"), [
+      { source: "git:https://github.com/ryenwang/pire-browser" },
+      { source: "npm:pire-browser" },
+    ]);
+    process.env.PI_CODING_AGENT_DIR = piRoot;
+    process.env.LOCALAPPDATA = join(root, "local-appdata");
+    process.env.XDG_DATA_HOME = join(root, "xdg-data");
+    process.env.HOME = join(root, "home");
+    process.chdir(project);
+
+    try {
+      const logs = [];
+      vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+      expect(main(["pi", "conflicts", "--json"])).toBe(0);
+
+      const body = JSON.parse(logs.join("\n"));
+      expect(body).toMatchObject({
+        success: true,
+        data: {
+          operation: "conflicts",
+          hasConflicts: true,
+          conflictCount: 2,
+        },
+      });
+      expect(body.data.conflicts.map((conflict) => conflict.scope).sort()).toEqual(["global", "project"]);
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("repairs global by default while reporting remaining project conflicts", () => {
+    const root = join(tmpdir(), `pire-pi-repair-${process.pid}-${Date.now()}`);
+    const project = join(root, "project");
+    const piRoot = join(root, ".pi");
+    mkdirSync(join(piRoot, "agent"), { recursive: true });
+    mkdirSync(join(project, ".pi"), { recursive: true });
+    const globalSettings = join(piRoot, "agent", "settings.json");
+    const projectSettings = join(project, ".pi", "settings.json");
+    writeSettings(globalSettings, [
+      { source: "git:github.com/ryenwang/pire-browser" },
+      { source: "npm:pire-browser" },
+    ]);
+    writeSettings(projectSettings, [
+      { source: "git:github.com/ryenwang/pire-browser" },
+      { source: "npm:pire-browser" },
+    ]);
+    process.env.PI_CODING_AGENT_DIR = piRoot;
+    process.env.LOCALAPPDATA = join(root, "local-appdata");
+    process.env.XDG_DATA_HOME = join(root, "xdg-data");
+    process.env.HOME = join(root, "home");
+    process.chdir(project);
+
+    try {
+      const logs = [];
+      vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+      expect(main(["pi", "repair", "--json"])).toBe(0);
+
+      const body = JSON.parse(logs.join("\n"));
+      expect(body).toMatchObject({
+        success: true,
+        data: {
+          operation: "repair",
+          targets: [
+            {
+              scope: "global",
+              changed: true,
+              removed: ["git:github.com/ryenwang/pire-browser"],
+            },
+          ],
+          remainingConflicts: [
+            {
+              scope: "project",
+              kind: "legacy-github",
+            },
+          ],
+        },
+      });
+      expect(JSON.parse(readFileSync(globalSettings, "utf8")).packages).toEqual([{ source: "npm:pire-browser" }]);
+      expect(JSON.parse(readFileSync(projectSettings, "utf8")).packages).toEqual([
+        { source: "git:github.com/ryenwang/pire-browser" },
+        { source: "npm:pire-browser" },
+      ]);
+      expect(existsSync(body.data.reportPath)).toBe(true);
+      expect(JSON.parse(readFileSync(body.data.reportPath, "utf8")).remainingConflicts).toHaveLength(1);
+      expect(body.data.reportPath.endsWith(join("pi-repair", "latest.json"))).toBe(true);
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("skips missing auto-discovered settings but errors for missing explicit settings", () => {
+    const root = join(tmpdir(), `pire-pi-missing-${process.pid}-${Date.now()}`);
+    mkdirSync(root, { recursive: true });
+    process.env.PI_CODING_AGENT_DIR = join(root, ".pi");
+    process.env.LOCALAPPDATA = join(root, "local-appdata");
+    process.env.XDG_DATA_HOME = join(root, "xdg-data");
+    process.env.HOME = join(root, "home");
+    process.chdir(root);
+
+    try {
+      const logs = [];
+      const errors = [];
+      vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+      vi.spyOn(console, "error").mockImplementation((line) => errors.push(String(line)));
+
+      expect(main(["pi", "conflicts", "--json"])).toBe(0);
+      expect(JSON.parse(logs.pop()).data.targets.every((target) => target.skipped)).toBe(true);
+
+      expect(main(["pi", "conflicts", "--settings", join(root, "missing-settings.json"), "--json"])).toBe(2);
+      expect(JSON.parse(logs.pop())).toMatchObject({
+        success: false,
+        error: {
+          message: expect.stringContaining("does not exist"),
+        },
+      });
+
+      const invalidSettings = join(root, "invalid-settings.json");
+      writeFileSync(invalidSettings, "{");
+      expect(main(["pi", "repair", "--settings", invalidSettings, "--json"])).toBe(2);
+      expect(JSON.parse(logs.pop())).toMatchObject({
+        success: false,
+        error: {
+          code: "settings_unavailable",
+          message: expect.stringContaining("Could not read Pi settings file"),
+        },
+      });
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("dry-runs pi repair without changing settings or overwriting the real repair report", () => {
+    const root = join(tmpdir(), `pire-pi-dry-run-${process.pid}-${Date.now()}`);
+    const piRoot = join(root, ".pi");
+    const settingsPath = join(piRoot, "agent", "settings.json");
+    const realReportDir = join(root, "local-appdata", "pire-browser", "pi-repair");
+    const realReportPath = join(realReportDir, "latest.json");
+    mkdirSync(join(piRoot, "agent"), { recursive: true });
+    mkdirSync(realReportDir, { recursive: true });
+    writeFileSync(realReportPath, `${JSON.stringify({ real: true })}\n`);
+    writeSettings(settingsPath, [
+      { source: "git:github.com/ryenwang/pire-browser" },
+      { source: "npm:pire-browser" },
+    ]);
+    process.env.PI_CODING_AGENT_DIR = piRoot;
+    process.env.LOCALAPPDATA = join(root, "local-appdata");
+    process.env.XDG_DATA_HOME = join(root, "xdg-data");
+    process.env.HOME = join(root, "home");
+
+    try {
+      const logs = [];
+      vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+      expect(main(["pi", "repair", "--dry-run", "--json"])).toBe(0);
+
+      const body = JSON.parse(logs.join("\n"));
+      expect(body.data.targets[0]).toMatchObject({
+        dryRun: true,
+        wouldChange: true,
+        removed: ["git:github.com/ryenwang/pire-browser"],
+      });
+      expect(JSON.parse(readFileSync(settingsPath, "utf8")).packages).toEqual([
+        { source: "git:github.com/ryenwang/pire-browser" },
+        { source: "npm:pire-browser" },
+      ]);
+      expect(body.data.reportPath).toContain("pire-browser");
+      expect(existsSync(body.data.reportPath)).toBe(true);
+      expect(body.data.reportPath.endsWith(join("pi-repair", "dry-run-latest.json"))).toBe(true);
+      expect(JSON.parse(readFileSync(realReportPath, "utf8"))).toEqual({ real: true });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("prints report write failures in plain pi repair output", () => {
+    const root = join(tmpdir(), `pire-pi-report-failure-${process.pid}-${Date.now()}`);
+    const piRoot = join(root, ".pi");
+    const settingsPath = join(piRoot, "agent", "settings.json");
+    mkdirSync(join(piRoot, "agent"), { recursive: true });
+    writeSettings(settingsPath, [{ source: "npm:pire-browser" }]);
+    process.env.PI_CODING_AGENT_DIR = piRoot;
+    setDataRootFileEnv(root);
+
+    try {
+      const logs = [];
+      vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+      expect(main(["pi", "repair"])).toBe(0);
+
+      expect(logs.join("\n")).toContain("Report failed:");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("classifies semver changes for patch, minor, major, and current", () => {

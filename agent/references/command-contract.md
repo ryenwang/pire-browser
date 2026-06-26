@@ -31,6 +31,8 @@ Skill commands use:
 - `pire-browser update check`
 - `pire-browser update apply`
 - `pire-browser update configure --mode off|notify|patch`
+- `pire-browser pi conflicts`
+- `pire-browser pi repair`
 - `pire-browser stream enable`
 - `pire-browser stream status`
 - `pire-browser stream disable`
@@ -38,6 +40,13 @@ Skill commands use:
 - `pire-browser skills get core`
 - `pire-browser skills cat core`
 - `pire-browser profiles import <firefox-profile-dir> --name <managed-name>`
+
+## Pi Repair Exit Codes
+
+- `pire-browser pi conflicts` exits `0` when inspection completes, even if conflicts are found.
+- `pire-browser pi repair` exits `0` for successful repair, no-op, dry-run, missing npm source, and advisory-scope conflicts.
+- Nonzero exits are reserved for invalid arguments, explicit settings read/parse errors, settings write failures, or required quarantine failures.
+- Automation must inspect `data.remainingConflicts`, each target `reason`, and `nextActions` to decide whether the install is fully resolved.
 
 ## Browser Commands
 

@@ -66,45 +66,131 @@ export function isConflictingPireBrowserSource(source, settingsPath) {
   return isLocalPireBrowserSource(source, settingsPath);
 }
 
-export function migratePiSettingsForKnownLegacySources(settingsPath, { requireNpmSource = true } = {}) {
+export function inspectPiSettingsForConflicts(settingsPath) {
+  return inspectPiSettingsReadResult(settingsPath, readPiSettings(settingsPath));
+}
+
+function readPiSettings(settingsPath) {
   if (!existsSync(settingsPath)) {
-    return { changed: false, removed: [], reason: "missing_settings", settingsPath };
+    return { ok: false, reason: "missing_settings", settings: null };
   }
 
-  let settings;
   try {
-    settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+    return { ok: true, reason: "ok", settings: JSON.parse(readFileSync(settingsPath, "utf8")) };
   } catch (error) {
-    return { changed: false, removed: [], reason: `invalid_settings: ${error.message}`, settingsPath };
+    return { ok: false, reason: `invalid_settings: ${error.message}`, settings: null };
+  }
+}
+
+function inspectPiSettingsReadResult(settingsPath, readResult) {
+  if (!readResult.ok) return emptyInspection(settingsPath, readResult.reason);
+
+  const settings = readResult.settings;
+
+  const packages = Array.isArray(settings?.packages) ? settings.packages : [];
+  const packageConflicts = [];
+  let npmSourcePresent = false;
+  for (const entry of packages) {
+    const source = packageSource(entry);
+    if (isPireBrowserNpmSource(source)) {
+      npmSourcePresent = true;
+      continue;
+    }
+    const classification = classifyPireBrowserSource(source, settingsPath);
+    if (classification.conflict) {
+      packageConflicts.push({
+        type: "package",
+        kind: classification.kind,
+        source,
+        removableByDefault: classification.kind !== "local-checkout",
+      });
+    }
   }
 
-  if (!Array.isArray(settings.packages)) {
-    return { changed: false, removed: [], reason: "missing_packages", settingsPath };
+  const shim = inspectLegacyPireBrowserExtensionShim(settingsPath);
+  const managedDirs = legacyManagedInstallDirConflicts(settingsPath).map((path) => ({
+    type: "managed-directory",
+    kind: "managed-github-dir",
+    path,
+    removableByDefault: true,
+  }));
+  const shims = shim.found
+    ? [
+        {
+          type: "extension-shim",
+          kind: "zip-shim",
+          path: shim.shimPath,
+          removableByDefault: true,
+        },
+      ]
+    : [];
+
+  return {
+    settingsPath,
+    reason: Array.isArray(settings?.packages) ? "ok" : "missing_packages",
+    npmSourcePresent,
+    conflicts: [...packageConflicts, ...shims, ...managedDirs],
+    packageConflicts,
+    localConflicts: packageConflicts.filter((conflict) => conflict.kind === "local-checkout"),
+    shims,
+    managedDirs,
+  };
+}
+
+export function migratePiSettingsForKnownLegacySources(
+  settingsPath,
+  { requireNpmSource = true, includeLocal = false, dryRun = false } = {}
+) {
+  const readResult = readPiSettings(settingsPath);
+  const inspection = inspectPiSettingsReadResult(settingsPath, readResult);
+  if (inspection.reason === "missing_settings" || inspection.reason.startsWith("invalid_settings:")) {
+    return migrationNoChange(settingsPath, inspection.reason);
   }
 
-  if (requireNpmSource && !settings.packages.some((entry) => isPireBrowserNpmSource(packageSource(entry)))) {
-    return { changed: false, removed: [], reason: "missing_npm_source", settingsPath };
+  if (inspection.reason === "missing_packages") {
+    return migrationNoChange(settingsPath, "missing_packages");
+  }
+
+  if (requireNpmSource && !inspection.npmSourcePresent) {
+    return migrationNoChange(settingsPath, "missing_npm_source", {
+      localSkipped: inspection.localConflicts.map((conflict) => conflict.source),
+    });
   }
 
   const removed = [];
+  const localSkipped = [];
+  const settings = readResult.settings;
   const packages = settings.packages.filter((entry) => {
     const source = packageSource(entry);
-    if (!isConflictingPireBrowserSource(source, settingsPath)) return true;
+    const classification = classifyPireBrowserSource(source, settingsPath);
+    if (!classification.conflict) return true;
+    if (classification.kind === "local-checkout" && !includeLocal) {
+      localSkipped.push(source);
+      return true;
+    }
     removed.push(source);
     return false;
   });
-  const removedShim = removeLegacyPireBrowserExtensionShim(settingsPath);
-  const quarantined = quarantineLegacyManagedInstallDirs(settingsPath);
+  const removedShim = removeLegacyPireBrowserExtensionShim(settingsPath, { dryRun });
+  const quarantined = quarantineLegacyManagedInstallDirs(settingsPath, { dryRun });
 
   if (removed.length === 0 && !removedShim.removed && quarantined.quarantinedDirs.length === 0) {
     return {
       changed: false,
+      dryRun,
+      wouldChange: false,
       removed,
+      localSkipped,
       removedShims: [],
       quarantinedDirs: [],
       directoryBackupPaths: [],
       ...(quarantined.quarantineErrors.length > 0 ? { quarantineErrors: quarantined.quarantineErrors } : {}),
-      reason: quarantined.quarantineErrors.length > 0 ? "legacy_directory_quarantine_failed" : "no_legacy_source",
+      reason:
+        quarantined.quarantineErrors.length > 0
+          ? "legacy_directory_quarantine_failed"
+          : localSkipped.length > 0
+            ? "local_conflicts_skipped"
+            : "no_legacy_source",
       settingsPath,
     };
   }
@@ -112,16 +198,38 @@ export function migratePiSettingsForKnownLegacySources(settingsPath, { requireNp
   let backupPath = null;
   if (removed.length > 0) {
     backupPath = `${settingsPath}.pire-browser-migration.bak`;
-    if (!existsSync(backupPath)) {
-      copyFileSync(settingsPath, backupPath);
+    if (!dryRun) {
+      try {
+        if (!existsSync(backupPath)) {
+          copyFileSync(settingsPath, backupPath);
+        }
+        settings.packages = packages;
+        atomicWriteJson(settingsPath, settings);
+      } catch (error) {
+        return {
+          changed: false,
+          dryRun,
+          wouldChange: true,
+          removed,
+          localSkipped,
+          removedShims: removedShim.removed ? [removedShim.shimPath] : [],
+          quarantinedDirs: quarantined.quarantinedDirs,
+          directoryBackupPaths: quarantined.directoryBackupPaths,
+          reason: "settings_write_failed",
+          settingsPath,
+          backupPath,
+          writeError: error.message,
+        };
+      }
     }
-    settings.packages = packages;
-    writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
   }
 
   return {
-    changed: true,
+    changed: !dryRun,
+    dryRun,
+    wouldChange: true,
     removed,
+    localSkipped,
     removedShims: removedShim.removed ? [removedShim.shimPath] : [],
     quarantinedDirs: quarantined.quarantinedDirs,
     directoryBackupPaths: quarantined.directoryBackupPaths,
@@ -134,16 +242,7 @@ export function migratePiSettingsForKnownLegacySources(settingsPath, { requireNp
 }
 
 export function hasKnownLegacyPiSource(settingsPath) {
-  if (!existsSync(settingsPath)) return false;
-  try {
-    const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
-    return (
-      Array.isArray(settings.packages) &&
-      settings.packages.some((entry) => isConflictingPireBrowserSource(packageSource(entry), settingsPath))
-    );
-  } catch {
-    return false;
-  }
+  return inspectPiSettingsForConflicts(settingsPath).conflicts.length > 0;
 }
 
 export function schedulePiPackageMigration(packageRoot, env = process.env) {
@@ -236,16 +335,18 @@ function isPireBrowserPackageRoot(packageRoot) {
   }
 }
 
-function quarantineLegacyManagedInstallDirs(settingsPath) {
+function quarantineLegacyManagedInstallDirs(settingsPath, { dryRun = false } = {}) {
   const quarantinedDirs = [];
   const directoryBackupPaths = [];
   const quarantineErrors = [];
 
-  for (const packageRoot of legacyManagedInstallDirs(settingsPath)) {
-    if (!existsSync(packageRoot)) continue;
-    if (!isPireBrowserPackageRoot(packageRoot)) continue;
-
+  for (const packageRoot of legacyManagedInstallDirConflicts(settingsPath)) {
     const backupPath = nextBackupPath(packageRoot);
+    if (dryRun) {
+      quarantinedDirs.push(packageRoot);
+      directoryBackupPaths.push(backupPath);
+      continue;
+    }
     try {
       renameSync(packageRoot, backupPath);
       quarantinedDirs.push(packageRoot);
@@ -256,6 +357,12 @@ function quarantineLegacyManagedInstallDirs(settingsPath) {
   }
 
   return { quarantinedDirs, directoryBackupPaths, quarantineErrors };
+}
+
+function legacyManagedInstallDirConflicts(settingsPath) {
+  return legacyManagedInstallDirs(settingsPath).filter(
+    (packageRoot) => existsSync(packageRoot) && isPireBrowserPackageRoot(packageRoot)
+  );
 }
 
 function legacyManagedInstallDirs(settingsPath) {
@@ -273,20 +380,30 @@ function nextBackupPath(path) {
   throw new Error(`Could not find available backup path for ${path}`);
 }
 
-function removeLegacyPireBrowserExtensionShim(settingsPath) {
+function removeLegacyPireBrowserExtensionShim(settingsPath, { dryRun = false } = {}) {
+  const shim = inspectLegacyPireBrowserExtensionShim(settingsPath);
+  if (!shim.found) return { removed: false, shimPath: shim.shimPath };
+  const backupPath = `${shim.shimPath}.pire-browser-migration.bak`;
+  if (dryRun) return { removed: true, shimPath: shim.shimPath, backupPath };
+  try {
+    if (!existsSync(backupPath)) {
+      copyFileSync(shim.shimPath, backupPath);
+    }
+    unlinkSync(shim.shimPath);
+    return { removed: true, shimPath: shim.shimPath, backupPath };
+  } catch {
+    return { removed: false, shimPath: shim.shimPath };
+  }
+}
+
+function inspectLegacyPireBrowserExtensionShim(settingsPath) {
   const shimPath = join(dirname(settingsPath), "extensions", "pire-browser.ts");
-  if (!existsSync(shimPath)) return { removed: false, shimPath };
+  if (!existsSync(shimPath)) return { found: false, shimPath };
   try {
     const content = readFileSync(shimPath, "utf8");
-    if (!isLegacyPireBrowserExtensionShim(content)) return { removed: false, shimPath };
-    const backupPath = `${shimPath}.pire-browser-migration.bak`;
-    if (!existsSync(backupPath)) {
-      copyFileSync(shimPath, backupPath);
-    }
-    unlinkSync(shimPath);
-    return { removed: true, shimPath, backupPath };
+    return { found: isLegacyPireBrowserExtensionShim(content), shimPath };
   } catch {
-    return { removed: false, shimPath };
+    return { found: false, shimPath };
   }
 }
 
@@ -297,6 +414,46 @@ function isLegacyPireBrowserExtensionShim(content) {
     normalized.includes("pi/extensions/pire-browser.ts") &&
     normalized.includes("pire-browser")
   );
+}
+
+function classifyPireBrowserSource(source, settingsPath) {
+  if (isPireBrowserNpmSource(source)) return { conflict: false, kind: "npm" };
+  if (isKnownLegacyPiSource(source)) return { conflict: true, kind: "legacy-github" };
+  if (isLocalPireBrowserSource(source, settingsPath)) return { conflict: true, kind: "local-checkout" };
+  return { conflict: false, kind: "other" };
+}
+
+function emptyInspection(settingsPath, reason) {
+  return {
+    settingsPath,
+    reason,
+    npmSourcePresent: false,
+    conflicts: [],
+    packageConflicts: [],
+    localConflicts: [],
+    shims: [],
+    managedDirs: [],
+  };
+}
+
+function migrationNoChange(settingsPath, reason, extra = {}) {
+  return {
+    changed: false,
+    removed: [],
+    localSkipped: [],
+    removedShims: [],
+    quarantinedDirs: [],
+    directoryBackupPaths: [],
+    reason,
+    settingsPath,
+    ...extra,
+  };
+}
+
+function atomicWriteJson(path, value) {
+  const tempPath = `${path}.pire-browser-migration.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`);
+  renameSync(tempPath, path);
 }
 
 function sleep(ms) {
