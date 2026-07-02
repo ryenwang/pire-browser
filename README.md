@@ -12,6 +12,7 @@ Installs the native launcher and matching platform binary package:
 
 ```bash
 npm install -g pire-browser
+pire-browser --version
 pire-browser install   # register Firefox Native Messaging
 ```
 
@@ -37,6 +38,7 @@ For projects that want to pin the version in `package.json`:
 
 ```bash
 npm install pire-browser
+npx pire-browser --version
 npx pire-browser install
 ```
 
@@ -621,6 +623,8 @@ pire-browser setcontent '<main><h1>Hello</h1></main>'
 ### Setup
 
 ```bash
+pire-browser --version
+pire-browser version --json
 pire-browser install
 pire-browser install --with-deps
 pire-browser install --firefox-path /path/to/firefox
@@ -1380,7 +1384,7 @@ pire-browser skills get dogfood
 pire-browser skills path core
 ```
 
-Launcher-served commands such as `skills`, `update`, and `upgrade` support
+Launcher-served commands such as `--version`, `version`, `skills`, `update`, and `upgrade` support
 `--help` before native binary resolution, so agents can still get install/update
 guidance when an optional native package is missing or stale.
 

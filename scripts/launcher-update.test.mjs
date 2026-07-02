@@ -128,6 +128,50 @@ describe("launcher update UX", () => {
     expect(piHelp).toContain("data.remainingConflicts");
   });
 
+  it("serves version output before native binary resolution", () => {
+    const expectedVersion = JSON.parse(readFileSync(join(originalCwd, "package.json"), "utf8")).version;
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+    expect(main(["--version"])).toBe(0);
+    expect(logs.pop()).toBe(`pire-browser ${expectedVersion}`);
+
+    expect(main(["-V"])).toBe(0);
+    expect(logs.pop()).toBe(`pire-browser ${expectedVersion}`);
+
+    expect(main(["version", "--json"])).toBe(0);
+    expect(JSON.parse(logs.pop())).toMatchObject({
+      success: true,
+      data: {
+        name: "pire-browser",
+        version: expectedVersion,
+      },
+    });
+
+    expect(main(["--json", "--version"])).toBe(0);
+    expect(JSON.parse(logs.pop())).toMatchObject({
+      success: true,
+      data: {
+        version: expectedVersion,
+      },
+    });
+  });
+
+  it("reports invalid version command arguments without invoking native commands", () => {
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+    expect(main(["version", "--bad", "--json"])).toBe(2);
+
+    expect(JSON.parse(logs.join("\n"))).toMatchObject({
+      success: false,
+      error: {
+        code: "invalid_args",
+        message: "unsupported version option: --bad",
+      },
+    });
+  });
+
   it("serves agent-browser-style skills get core from the JS launcher before native resolution", () => {
     const logs = [];
     vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));

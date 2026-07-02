@@ -21,7 +21,7 @@ For a fresh install with no reported failure, prefer the short happy path first:
 4. If Pi reports a duplicate `pire-browser` tool from `npm:pire-browser` and an older GitHub, local-checkout, or legacy shim source, use `pire-browser pi conflicts` and then `pire-browser pi repair`. If `pire-browser` is not on PATH because Pi cannot start, tell the user to run `npx -y pire-browser@latest pi repair` from a normal terminal. Use `--include-local` only when the user wants the npm package to replace a verified local checkout.
 5. If optional native packages were skipped, reinstall with optional dependencies enabled.
 6. For launch reproduction, use `--headless`, `PIRE_BROWSER_HEADLESS=1`, or `AGENT_BROWSER_HEADLESS=1` for CI-style headless mode; use `--args`, `PIRE_BROWSER_ARGS`, or `AGENT_BROWSER_ARGS` for raw Firefox launch args; and use `--user-agent`, `PIRE_BROWSER_USER_AGENT`, or `AGENT_BROWSER_USER_AGENT` for a Firefox User-Agent override. These apply when a command launches a new managed Firefox session; existing live sessions keep their current launch context.
-7. Verify setup with `pire-browser status`, `pire-browser doctor`, or a fresh browser command.
+7. Verify package resolution with `pire-browser --version` when needed, then verify setup with `pire-browser status`, `pire-browser doctor`, or a fresh browser command.
 
 ## Audit
 

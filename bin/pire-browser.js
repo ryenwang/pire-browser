@@ -82,6 +82,9 @@ write failures, or required quarantine failures.
 `;
 
 export function main(args = process.argv.slice(2)) {
+  const versionResult = handleLauncherVersion(args);
+  if (versionResult !== null) return versionResult;
+
   if (args[0] === "update") {
     if (wantsLauncherHelp(args.slice(1))) {
       console.log(LAUNCHER_UPDATE_HELP.trim());
@@ -182,6 +185,37 @@ function forwardFile(path, stream) {
   if (!existsSync(path)) return;
   const body = readFileSync(path, "utf8");
   if (body) stream.write(body);
+}
+
+export function handleLauncherVersion(args, options = {}) {
+  const output = options.output ?? console.log;
+  const error = options.error ?? console.error;
+  const json = args.includes("--json");
+  if (args[0] === "version") {
+    const versionArgs = args.slice(1).filter((arg) => arg !== "--json");
+    if (wantsLauncherHelp(versionArgs)) {
+      output("Usage: pire-browser version [--json]");
+      return 0;
+    }
+    if (versionArgs.length > 0) {
+      return outputLauncherError(`unsupported version option: ${versionArgs[0]}`, json, output, error);
+    }
+    return outputVersion(json, output);
+  }
+
+  if (args.includes("--version") || args.includes("-V")) {
+    const unsupported = args.filter((arg) => !["--version", "-V", "--json"].includes(arg));
+    if (unsupported.length > 0) return null;
+    return outputVersion(json, output);
+  }
+  return null;
+}
+
+function outputVersion(json, output) {
+  const data = { name: packageJson.name ?? "pire-browser", version: packageJson.version };
+  if (json) output(successEnvelope(data));
+  else output(`${data.name} ${data.version}`);
+  return 0;
 }
 
 export function handleLauncherSkills(args, options = {}) {
@@ -713,6 +747,15 @@ function outputPiError(message, json, output, error, details = null, code = "inv
         2
       )
     );
+  } else {
+    error(`pire-browser: ${message}`);
+  }
+  return 2;
+}
+
+function outputLauncherError(message, json, output, error, code = "invalid_args") {
+  if (json) {
+    output(JSON.stringify({ success: false, error: { code, message }, warnings: [] }, null, 2));
   } else {
     error(`pire-browser: ${message}`);
   }

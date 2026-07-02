@@ -829,7 +829,7 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 
 ## Setup And Diagnostics
 
-- For a fresh direct CLI install, use `npm install -g pire-browser` then `pire-browser install`. For Pi, use `pi install npm:pire-browser`. Do not start by inspecting package source or running broad diagnostics unless an install or browser command fails.
+- For a fresh direct CLI install, use `npm install -g pire-browser`, optionally verify the package with `pire-browser --version`, then run `pire-browser install`. For Pi, use `pi install npm:pire-browser`. Do not start by inspecting package source or running broad diagnostics unless an install or browser command fails.
 - `pire-browser install` registers the platform native messaging host.
 - `pire-browser install --with-deps` is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux.
 - `pire-browser setup` is the lower-level setup command.

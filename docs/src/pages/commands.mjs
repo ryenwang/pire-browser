@@ -1,6 +1,11 @@
 import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, table, unavailable } from "../blocks.mjs";
 
 const commandsBlocks = [
+  h2("Version", "version"),
+  code(`pire-browser --version
+pire-browser version --json`),
+  p("<code>--version</code> and <code>version --json</code> are served by the JavaScript launcher before native binary resolution, so agents and smoke scripts can verify the installed package even when setup is incomplete."),
+
   h2("Core", "core"),
   code(`pire-browser open                    # Launch/reuse Firefox without navigating
 pire-browser open <url>              # Navigate to a URL

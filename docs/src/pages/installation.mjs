@@ -3,6 +3,7 @@ import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, tabl
 const installationBlocks = [
   h2("Global installation", "global-installation"),
   code(`npm install -g pire-browser
+pire-browser --version
 pire-browser install  # register Firefox Native Messaging`),
   p("This is the recommended path for direct CLI use. <code>npm install</code> runs best-effort setup; <code>pire-browser install</code> is safe to run again and makes Firefox Native Messaging registration explicit."),
   h2("Pi package", "pi-package"),
@@ -10,6 +11,7 @@ pire-browser install  # register Firefox Native Messaging`),
   p("Use this when Pi should load the packaged extension and skill. After install, ask Pi to use <code>pire-browser</code> for browser automation."),
   h2("Project installation", "project-installation"),
   code(`npm install pire-browser
+npx pire-browser --version
 npx pire-browser install
 npx pire-browser snapshot -i`),
   p("Use this when a project wants to pin the package version. Invoke through <code>npx pire-browser</code> or <code>package.json</code> scripts."),

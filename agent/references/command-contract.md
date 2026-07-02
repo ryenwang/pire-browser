@@ -23,6 +23,8 @@ Skill commands use:
 ## Local Commands
 
 - `pire-browser help`
+- `pire-browser --version`
+- `pire-browser version --json`
 - `pire-browser status`
 - `pire-browser doctor`
 - `pire-browser setup`
