@@ -988,6 +988,10 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             } else {
                 println!("{}", install_status_text(&report));
             }
+            let exit_code = install_status_exit_code(&report);
+            if exit_code != 0 {
+                std::process::exit(exit_code);
+            }
         }
         LocalCommand::DoctorFix {
             json,
@@ -1704,6 +1708,18 @@ fn handle_doctor_fix(
     let value = doctor_fix_success_value(&before, &setup_result, &after)?;
     println!("{}", format_cli_result(&value, json_output)?);
     Ok(())
+}
+
+fn install_status_exit_code(report: &InstallStatusReport) -> i32 {
+    install_status_exit_code_for_ok(report.ok)
+}
+
+fn install_status_exit_code_for_ok(ok: bool) -> i32 {
+    if ok {
+        0
+    } else {
+        1
+    }
 }
 
 fn doctor_fix_success_value(
@@ -15202,6 +15218,12 @@ mod tests {
         assert_eq!(action.code, "ActionPolicyError");
         assert_eq!(action.data, Some(json!({ "phase": "policy" })));
         assert_eq!(exit_code_for_error(&action.code), 2);
+    }
+
+    #[test]
+    fn install_status_exit_code_tracks_setup_health() {
+        assert_eq!(install_status_exit_code_for_ok(true), 0);
+        assert_eq!(install_status_exit_code_for_ok(false), 1);
     }
 
     #[test]

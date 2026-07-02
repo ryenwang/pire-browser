@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.16", "0-2-16"),
+  list([
+    "Makes <code>doctor --json</code> and <code>install-status --json</code> exit nonzero when setup health reports <code>data.ok: false</code>, so agents do not mistake a parseable diagnostic envelope for a healthy install.",
+    "Clarifies installed-agent command guidance to inspect <code>data.ok</code> and <code>data.nextActions</code> during first-run repair.",
+  ]),
   h2("0.2.15", "0-2-15"),
   list([
     "Improves first-run Firefox bridge diagnostics when <code>web-ext</code> exits before <code>pire-browser</code> connects or the extension session times out.",
@@ -69,7 +74,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The npm package is currently <code>pire-browser@0.2.15</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
+  p("The repository package version is currently <code>pire-browser@0.2.16</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
 ];
 
 export default page({

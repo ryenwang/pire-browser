@@ -50,6 +50,7 @@ Skill commands use:
 - Nonzero exits are reserved for invalid arguments, explicit settings read/parse errors, settings write failures, or required quarantine failures.
 - Automation must inspect `data.remainingConflicts`, each target `reason`, and `nextActions` to decide whether the install is fully resolved.
 - If the optional native platform package is missing, launcher-served `--help`, `help`, `install --help`, `setup --help`, `doctor --help`, `install-status --help`, and `mcp --help` still exit `0` with setup or MCP startup guidance. Launcher-served `install`, `setup`, `doctor --json`, and `install-status --json` exit nonzero with `error.code = "native_binary_unavailable"` and include repair guidance or `data.nextActions` with the concrete `--include=optional` reinstall command.
+- Native `doctor --json` and `install-status --json` exit nonzero when `data.ok` is `false`; automation should inspect both `data.ok` and `data.nextActions` instead of treating a parseable JSON envelope as setup success.
 
 ## Browser Commands
 

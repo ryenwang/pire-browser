@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.16
+
+- Makes `doctor --json` and `install-status --json` exit nonzero when setup health reports `data.ok: false`, so agents do not mistake a parseable diagnostic envelope for a healthy install.
+- Clarifies installed-agent command guidance to inspect `data.ok` and `data.nextActions` during first-run repair.
+
 ## 0.2.15
 
 - Improves first-run Firefox bridge diagnostics when `web-ext` exits before `pire-browser` connects or the extension session times out.
