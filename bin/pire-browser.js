@@ -8,6 +8,7 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -120,7 +121,7 @@ export function main(args = process.argv.slice(2)) {
   return result.status ?? 1;
 }
 
-if (isMain()) {
+if (isEntrypoint()) {
   process.exit(main(process.argv.slice(2)));
 }
 
@@ -1192,6 +1193,18 @@ function separator() {
   return process.platform === "win32" ? "\\" : "/";
 }
 
-function isMain() {
-  return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+export function isEntrypoint(argvPath = process.argv[1], moduleUrl = import.meta.url) {
+  if (!argvPath) return false;
+  const modulePath = typeof moduleUrl === "string" && moduleUrl.startsWith("file:")
+    ? fileURLToPath(moduleUrl)
+    : moduleUrl;
+  return canonicalEntrypointPath(modulePath) === canonicalEntrypointPath(argvPath);
+}
+
+function canonicalEntrypointPath(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
 }

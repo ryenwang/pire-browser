@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { classifyUpdate, formatUpdatePlain, main } from "../bin/pire-browser.js";
+import { pathToFileURL } from "node:url";
+import { classifyUpdate, formatUpdatePlain, isEntrypoint, main } from "../bin/pire-browser.js";
 
 const originalOffline = process.env.PI_OFFLINE;
 const originalPireSkillsDir = process.env.PIRE_BROWSER_SKILLS_DIR;
@@ -42,6 +43,10 @@ function writeSettings(path, packages) {
   writeFileSync(path, `${JSON.stringify({ packages }, null, 2)}\n`);
 }
 
+function mkdtempTestRoot() {
+  return mkdtempSync(join(tmpdir(), "pire-browser-launcher-test-"));
+}
+
 function setDataRootFileEnv(root) {
   const file = join(root, "data-root-file");
   writeFileSync(file, "not a directory");
@@ -53,6 +58,22 @@ function setDataRootFileEnv(root) {
 }
 
 describe("launcher update UX", () => {
+  it("recognizes npm bin shims and normalized paths as the launcher entrypoint", () => {
+    const temp = mkdtempTestRoot();
+    try {
+      const realLauncher = join(temp, "bin", "pire-browser.js");
+      const shimDir = join(temp, "shim");
+      mkdirSync(join(temp, "bin"), { recursive: true });
+      mkdirSync(shimDir, { recursive: true });
+      writeFileSync(realLauncher, "#!/usr/bin/env node\n");
+
+      expect(isEntrypoint(join(shimDir, "..", "bin", "pire-browser.js"), pathToFileURL(realLauncher).href)).toBe(true);
+      expect(isEntrypoint(join(temp, "bin", "other.js"), pathToFileURL(realLauncher).href)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("serves launcher-owned help without invoking native commands", () => {
     const logs = [];
     vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
