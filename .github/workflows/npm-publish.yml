@@ -40,6 +40,8 @@ jobs:
           fi
           git fetch origin main --depth=1
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - run: npm install --package-lock=false --no-audit --no-fund
+      - run: npm test -- scripts/package-artifacts.test.mjs
 
   platform-native:
     name: ${{ matrix.tuple }}
