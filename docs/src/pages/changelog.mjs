@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.5", "0-2-5"),
+  list([
+    "Keeps <code>doctor --json</code> and <code>install-status --json</code> useful when the optional native platform package is missing by serving a launcher-level diagnostic with concrete <code>--include=optional</code> reinstall guidance.",
+    "Updates postinstall and installed-agent setup guidance to prefer the agent-browser-style <code>install</code> command over lower-level <code>setup</code> wording.",
+  ]),
   h2("0.2.4", "0-2-4"),
   list([
     "Adds launcher-served <code>--version</code>, <code>-V</code>, and <code>version --json</code> output so agents can verify installed package resolution even when native setup needs repair.",
@@ -18,7 +23,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The npm package is currently <code>pire-browser@0.2.4</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
+  p("The npm package is currently <code>pire-browser@0.2.5</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
 ];
 
 export default page({

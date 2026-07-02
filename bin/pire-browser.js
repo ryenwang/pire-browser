@@ -19,7 +19,7 @@ import {
   inspectPiSettingsForConflicts,
   migratePiSettingsForKnownLegacySources,
 } from "../scripts/pi-install-migration.mjs";
-import { resolveNativeBinary, rootDir, rootPackageJson } from "../scripts/platform.mjs";
+import { packageNameForTuple, platformTuple, resolveNativeBinary, rootDir, rootPackageJson } from "../scripts/platform.mjs";
 
 const root = rootDir();
 const packageJson = rootPackageJson(root);
@@ -110,7 +110,10 @@ export function main(args = process.argv.slice(2)) {
   maybeStartBackgroundUpdateCheck(args);
   const resolved = resolveNativeBinary({ root });
   if (!resolved.ok) {
+    const missingNativeResult = handleLauncherMissingNative(args, resolved);
+    if (missingNativeResult !== null) return missingNativeResult;
     console.error(`pire-browser: ${resolved.reason}`);
+    console.error("pire-browser: run `pire-browser doctor --json` for repair guidance.");
     return 1;
   }
 
@@ -216,6 +219,146 @@ function outputVersion(json, output) {
   if (json) output(successEnvelope(data));
   else output(`${data.name} ${data.version}`);
   return 0;
+}
+
+export function handleLauncherMissingNative(args, resolved, options = {}) {
+  const output = options.output ?? console.log;
+  const rootCommand = launcherRootCommand(args);
+  if (!["doctor", "install-status"].includes(rootCommand)) return null;
+
+  const json = args.includes("--json");
+  const diagnostic = launcherInstallDiagnosticForMissingNative(resolved, args);
+  if (json) {
+    output(
+      JSON.stringify(
+        {
+          success: false,
+          error: {
+            code: "native_binary_unavailable",
+            message: diagnostic.message,
+          },
+          data: diagnostic,
+          warnings: [],
+        },
+        null,
+        2
+      )
+    );
+  } else {
+    output(formatLauncherInstallDiagnosticPlain(diagnostic));
+  }
+  return 1;
+}
+
+export function launcherInstallDiagnosticForMissingNative(resolved, args = []) {
+  const command = launcherRootCommand(args) ?? "doctor";
+  const tuple = resolved.tuple ?? safePlatformTuple();
+  const platformPackage = resolved.packageName ?? (tuple ? packageNameForTupleSafe(tuple) : null);
+  const version = packageJson.version;
+  const nativeBinary = {
+    ok: false,
+    tuple,
+    packageName: platformPackage,
+    reason: resolved.reason,
+    source: resolved.source ?? "launcher",
+  };
+  const nextActions = [];
+  if (resolved.reason?.startsWith("PIRE_BROWSER_BINARY") || resolved.reason?.startsWith("PIRE_BROWSER_EXE")) {
+    nextActions.push({
+      code: "fix_binary_override",
+      reason: "A native binary override points to a missing file.",
+      command: "Unset PIRE_BROWSER_BINARY and PIRE_BROWSER_EXE, or point the variable to an existing pire-browser binary.",
+      note: "Overrides are for tests and emergency diagnostics; normal npm/Pi installs should use the packaged optional native dependency.",
+    });
+  }
+  if (platformPackage) {
+    nextActions.push({
+      code: "reinstall_optional_native_package",
+      reason: `The optional native package ${platformPackage}@${version} for ${tuple} is missing.`,
+      command: `npm install -g pire-browser@${version} --include=optional`,
+      note: `For project installs, run \`npm install pire-browser@${version} --include=optional\` from the project root. For Pi installs, rerun \`pi install npm:pire-browser\`.`,
+    });
+    nextActions.push({
+      code: "check_optional_dependency_settings",
+      reason: "npm may have installed pire-browser with optional dependencies disabled.",
+      command: "npm config get omit",
+      note: "If the output includes `optional`, reinstall with `--include=optional` or remove the omit setting before reinstalling.",
+    });
+  }
+  if (nextActions.length === 0) {
+    nextActions.push({
+      code: "reinstall_pire_browser",
+      reason: "The native binary could not be resolved for this install.",
+      command: `npm install -g pire-browser@${version} --include=optional`,
+      note: "If this is a Pi install, rerun `pi install npm:pire-browser`; if Pi reports a duplicate tool conflict, run `npx -y pire-browser@latest pi repair`.",
+    });
+  }
+  nextActions.push({
+    code: "repair_pi_duplicate_if_needed",
+    reason: "Pi may still fail to start if an older GitHub/local pire-browser install is also registered.",
+    command: "npx -y pire-browser@latest pi repair",
+    note: "Use this only when Pi reports a duplicate `pire-browser` tool after reinstalling.",
+  });
+  return {
+    ok: false,
+    source: "launcher",
+    command,
+    message: resolved.reason,
+    package: {
+      name: packageJson.name ?? "pire-browser",
+      version,
+    },
+    nativeBinary,
+    nextActions,
+  };
+}
+
+export function formatLauncherInstallDiagnosticPlain(diagnostic) {
+  const lines = [
+    "pire-browser install status: needs attention",
+    `[missing] Native binary: ${diagnostic.message}`,
+  ];
+  if (diagnostic.nativeBinary.packageName) {
+    lines.push(`[missing] Native package: ${diagnostic.nativeBinary.packageName}`);
+  }
+  if (diagnostic.nativeBinary.tuple) {
+    lines.push(`Platform: ${diagnostic.nativeBinary.tuple}`);
+  }
+  lines.push("Next actions:");
+  for (const action of diagnostic.nextActions) {
+    lines.push(`  - [${action.code}] ${action.reason}`);
+    if (action.command) lines.push(`    command: ${action.command}`);
+    if (action.note) lines.push(`    note: ${action.note}`);
+  }
+  return lines.join("\n");
+}
+
+function launcherRootCommand(args) {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--firefox-path" || arg === "--config" || arg === "--profile" || arg === "--session-name") {
+      i += 1;
+      continue;
+    }
+    if (!arg.startsWith("-")) return arg;
+  }
+  return null;
+}
+
+function safePlatformTuple() {
+  try {
+    return platformTuple(process.platform, process.arch);
+  } catch {
+    return null;
+  }
+}
+
+function packageNameForTupleSafe(tuple) {
+  try {
+    return packageNameForTuple(tuple);
+  } catch {
+    return null;
+  }
 }
 
 export function handleLauncherSkills(args, options = {}) {

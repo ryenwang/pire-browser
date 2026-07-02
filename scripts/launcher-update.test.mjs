@@ -3,7 +3,14 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { classifyUpdate, formatUpdatePlain, isEntrypoint, main } from "../bin/pire-browser.js";
+import {
+  classifyUpdate,
+  formatUpdatePlain,
+  handleLauncherMissingNative,
+  isEntrypoint,
+  launcherInstallDiagnosticForMissingNative,
+  main,
+} from "../bin/pire-browser.js";
 
 const originalOffline = process.env.PI_OFFLINE;
 const originalPireSkillsDir = process.env.PIRE_BROWSER_SKILLS_DIR;
@@ -14,6 +21,8 @@ const originalLocalAppData = process.env.LOCALAPPDATA;
 const originalXdgDataHome = process.env.XDG_DATA_HOME;
 const originalHome = process.env.HOME;
 const originalUserProfile = process.env.USERPROFILE;
+const originalPireBinary = process.env.PIRE_BROWSER_BINARY;
+const originalPireExe = process.env.PIRE_BROWSER_EXE;
 const originalCwd = process.cwd();
 
 afterEach(() => {
@@ -35,6 +44,10 @@ afterEach(() => {
   else process.env.HOME = originalHome;
   if (originalUserProfile === undefined) delete process.env.USERPROFILE;
   else process.env.USERPROFILE = originalUserProfile;
+  if (originalPireBinary === undefined) delete process.env.PIRE_BROWSER_BINARY;
+  else process.env.PIRE_BROWSER_BINARY = originalPireBinary;
+  if (originalPireExe === undefined) delete process.env.PIRE_BROWSER_EXE;
+  else process.env.PIRE_BROWSER_EXE = originalPireExe;
   process.chdir(originalCwd);
   vi.restoreAllMocks();
 });
@@ -170,6 +183,89 @@ describe("launcher update UX", () => {
         message: "unsupported version option: --bad",
       },
     });
+  });
+
+  it("serves doctor JSON repair guidance when native binary resolution fails", () => {
+    const root = mkdtempTestRoot();
+    process.env.PIRE_BROWSER_BINARY = join(root, "missing-pire-browser.exe");
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+    expect(main(["doctor", "--json"])).toBe(1);
+
+    const body = JSON.parse(logs.join("\n"));
+    expect(body).toMatchObject({
+      success: false,
+      error: {
+        code: "native_binary_unavailable",
+      },
+      data: {
+        ok: false,
+        source: "launcher",
+        command: "doctor",
+        nativeBinary: {
+          ok: false,
+        },
+      },
+    });
+    expect(body.data.nextActions.map((action) => action.code)).toContain("fix_binary_override");
+    expect(body.data.nextActions.map((action) => action.code)).toContain("repair_pi_duplicate_if_needed");
+  });
+
+  it("formats missing optional native package guidance for install-status", () => {
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+    const result = handleLauncherMissingNative(
+      ["install-status"],
+      {
+        ok: false,
+        tuple: "win32-x64",
+        packageName: "@ryenw/pire-browser-win32-x64",
+        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.5 for win32-x64.",
+      },
+      { output: console.log }
+    );
+
+    expect(result).toBe(1);
+    const text = logs.join("\n");
+    expect(text).toContain("pire-browser install status: needs attention");
+    expect(text).toContain("Native package: @ryenw/pire-browser-win32-x64");
+    expect(text).toContain("npm install -g pire-browser@");
+    expect(text).toContain("--include=optional");
+    expect(text).toContain("npx -y pire-browser@latest pi repair");
+  });
+
+  it("builds missing optional native package nextActions for agents", () => {
+    const diagnostic = launcherInstallDiagnosticForMissingNative(
+      {
+        ok: false,
+        tuple: "linux-arm64",
+        packageName: "@ryenw/pire-browser-linux-arm64",
+        reason: "Missing optional native package @ryenw/pire-browser-linux-arm64@0.2.5 for linux-arm64.",
+      },
+      ["doctor", "--json"]
+    );
+
+    expect(diagnostic).toMatchObject({
+      ok: false,
+      command: "doctor",
+      nativeBinary: {
+        tuple: "linux-arm64",
+        packageName: "@ryenw/pire-browser-linux-arm64",
+      },
+    });
+    expect(diagnostic.nextActions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "reinstall_optional_native_package",
+          command: expect.stringContaining("--include=optional"),
+        }),
+        expect.objectContaining({
+          code: "check_optional_dependency_settings",
+          command: "npm config get omit",
+        }),
+      ])
+    );
   });
 
   it("serves agent-browser-style skills get core from the JS launcher before native resolution", () => {

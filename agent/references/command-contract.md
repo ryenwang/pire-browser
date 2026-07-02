@@ -49,6 +49,7 @@ Skill commands use:
 - `pire-browser pi repair` exits `0` for successful repair, no-op, dry-run, missing npm source, and advisory-scope conflicts.
 - Nonzero exits are reserved for invalid arguments, explicit settings read/parse errors, settings write failures, or required quarantine failures.
 - Automation must inspect `data.remainingConflicts`, each target `reason`, and `nextActions` to decide whether the install is fully resolved.
+- If the optional native platform package is missing, launcher-served `doctor --json` and `install-status --json` exit nonzero with `error.code = "native_binary_unavailable"` and include `data.nextActions` with the concrete `--include=optional` reinstall command.
 
 ## Browser Commands
 

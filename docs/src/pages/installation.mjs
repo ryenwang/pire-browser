@@ -19,6 +19,7 @@ npx pire-browser snapshot -i`),
   code(`pire-browser install --with-deps
 pire-browser doctor --json`),
   p("Use this only when Firefox is missing or setup fails. <code>install --with-deps</code> is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux. <code>doctor --json</code> reports concrete <code>nextActions</code> when setup needs repair."),
+  p("If the platform-native optional package was skipped during install, <code>doctor --json</code> and <code>install-status --json</code> still run from the JavaScript launcher and report the exact reinstall command, including <code>--include=optional</code>."),
   h2("Migrating from old GitHub/local installs", "migrating-from-old-github-local-installs"),
   p("Most users can skip this. If Pi reports that <code>npm:pire-browser</code> conflicts with an older GitHub, local-checkout, or ZIP-era install, inspect and repair the duplicate registration from a normal terminal."),
   code(`pire-browser pi conflicts
@@ -53,7 +54,7 @@ pire-browser doctor --fix --with-deps
 pire-browser doctor --fix --firefox-path /path/to/firefox
 pire-browser doctor --offline --quick
 pire-browser doctor --json`),
-  p("Doctor checks Firefox discovery, Native Messaging registration, extension build files, profile state, live sessions, PATH hints, and local policy diagnostics. Plain doctor is read-only; <code>doctor --json</code> and <code>install-status --json</code> include <code>nextActions</code> with concrete repair commands, while <code>doctor --fix</code> explicitly reruns native host setup and verifies the follow-up status. <code>--with-deps</code> on install/setup/fix may install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing; Linux remains guided/manual to avoid Snap/Flatpak Native Messaging failures."),
+  p("Doctor checks Firefox discovery, Native Messaging registration, extension build files, profile state, live sessions, PATH hints, and local policy diagnostics. Plain doctor is read-only; <code>doctor --json</code> and <code>install-status --json</code> include <code>nextActions</code> with concrete repair commands. If the optional native platform package is missing, those JSON diagnostics are still served by the JavaScript launcher and point to the <code>--include=optional</code> reinstall. <code>doctor --fix</code> explicitly reruns native host setup and verifies the follow-up status. <code>--with-deps</code> on install/setup/fix may install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing; Linux remains guided/manual to avoid Snap/Flatpak Native Messaging failures."),
   h2("Custom Firefox", "custom-firefox"),
   code(`# macOS/Linux
 PIRE_BROWSER_FIREFOX_PATH=/path/to/firefox pire-browser install

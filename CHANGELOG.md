@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5
+
+- Keeps `doctor --json` and `install-status --json` useful when the optional native platform package is missing by serving a launcher-level diagnostic with concrete `--include=optional` reinstall guidance.
+- Updates postinstall and installed-agent setup guidance to prefer the agent-browser-style `install` command over lower-level `setup` wording.
+
 ## 0.2.4
 
 - Adds launcher-served `--version`, `-V`, and `version --json` output so agents can verify installed package resolution even when native setup needs repair.

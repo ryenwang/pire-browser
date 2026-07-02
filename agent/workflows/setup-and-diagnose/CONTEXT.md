@@ -12,14 +12,14 @@ For a fresh install with no reported failure, prefer the short happy path first:
 ## Process
 
 1. Run read-only diagnostics first: `pire-browser status` or `pire-browser doctor`.
-   - Prefer `pire-browser doctor --json` when available; follow `data.nextActions` before guessing a repair.
+   - Prefer `pire-browser doctor --json` when available; follow `data.nextActions` before guessing a repair. If the platform-native optional package is missing, `doctor --json` is still served by the JavaScript launcher and reports the reinstall command with `--include=optional`.
 2. If native messaging registration is missing or mismatched, run `pire-browser doctor --fix` or the lower-level `pire-browser setup`.
    - In MCP, use debug-profile `pire_browser_install` for explicit native-host setup or repair.
    - If following an agent-browser-style recipe, `pire-browser install --with-deps` and `doctor --fix --with-deps` may install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing. Linux remains guided/manual to avoid Snap/Flatpak Native Messaging failures.
    - If Firefox discovery fails, follow the platform repair command printed by the error. `--firefox-path` may point to the Firefox executable, a directory containing it, or `/Applications/Firefox.app` on macOS.
 3. If postinstall was skipped by `--ignore-scripts`, run setup or retry the browser command that needs auto-launch.
 4. If Pi reports a duplicate `pire-browser` tool from `npm:pire-browser` and an older GitHub, local-checkout, or legacy shim source, use `pire-browser pi conflicts` and then `pire-browser pi repair`. If `pire-browser` is not on PATH because Pi cannot start, tell the user to run `npx -y pire-browser@latest pi repair` from a normal terminal. Use `--include-local` only when the user wants the npm package to replace a verified local checkout.
-5. If optional native packages were skipped, reinstall with optional dependencies enabled.
+5. If optional native packages were skipped, follow the `doctor --json` next action and reinstall with optional dependencies enabled.
 6. For launch reproduction, use `--headless`, `PIRE_BROWSER_HEADLESS=1`, or `AGENT_BROWSER_HEADLESS=1` for CI-style headless mode; use `--args`, `PIRE_BROWSER_ARGS`, or `AGENT_BROWSER_ARGS` for raw Firefox launch args; and use `--user-agent`, `PIRE_BROWSER_USER_AGENT`, or `AGENT_BROWSER_USER_AGENT` for a Firefox User-Agent override. These apply when a command launches a new managed Firefox session; existing live sessions keep their current launch context.
 7. Verify package resolution with `pire-browser --version` when needed, then verify setup with `pire-browser status`, `pire-browser doctor`, or a fresh browser command.
 

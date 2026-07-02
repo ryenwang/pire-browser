@@ -46,13 +46,13 @@ const result = spawnSync(process.execPath, args, {
 });
 if (result.error) {
   console.warn(`pire-browser: setup could not run during postinstall: ${result.error.message}`);
-  console.warn("pire-browser: install will continue. Run `pire-browser doctor` or `pire-browser setup` after install.");
+  console.warn("pire-browser: install will continue. Run `pire-browser doctor` or `pire-browser install` after install.");
   scheduleMigrationIfNeeded();
   process.exit(0);
 }
 if (result.status !== 0) {
   console.warn("pire-browser: setup did not complete during postinstall.");
-  console.warn("pire-browser: install will continue. Set PIRE_BROWSER_FIREFOX_PATH if Firefox is installed in a custom location, then run `pire-browser setup` or a browser command that can lazy-setup.");
+  console.warn("pire-browser: install will continue. Set PIRE_BROWSER_FIREFOX_PATH if Firefox is installed in a custom location, then run `pire-browser install` or a browser command that can lazy-setup.");
   scheduleMigrationIfNeeded();
   process.exit(0);
 }
