@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.10
+
+- Makes the first-use MCP path explicit across the README, docs quick start, MCP page, installed agent context, and bundled core skill: start `pire-browser mcp --tools core`, then open, snapshot, act, wait, and verify with typed tools.
+
 ## 0.2.9
 
 - Keeps `pire-browser mcp --help` useful from the JavaScript launcher when the optional native platform package is missing, so MCP-first agents can still discover `mcp --tools core` and profile guidance before repair.

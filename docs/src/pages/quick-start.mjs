@@ -18,6 +18,17 @@ pire-browser click '@e2'
 # 4. Re-snapshot after page changes
 pire-browser snapshot -i`),
   p("If a click reports that the target is covered by another element, dismiss or interact with the reported covering element, then run <code>snapshot -i</code> before retrying the original ref."),
+  h2("MCP-first agents", "mcp-first-agents"),
+  p("When an agent host supports MCP, start the typed core profile and keep the same inspect-before-act loop in tool calls."),
+  code(`pire-browser mcp --tools core
+
+# MCP tool loop:
+# 1. pire_browser_open({ "url": "https://example.com" })
+# 2. pire_browser_snapshot({ "interactive": true })
+# 3. pire_browser_click({ "selector": "@e2" })
+# 4. pire_browser_wait_for_load({ "state": "networkidle" })
+# 5. pire_browser_snapshot({ "interactive": true })`),
+  p("Use <code>pire_browser_get_text</code>, <code>pire_browser_get_url</code>, <code>pire_browser_is_visible</code>, and the other typed get/check tools for targeted verification before reporting success. If the native package is missing, <code>pire-browser mcp --help</code> still prints startup and repair guidance from the launcher."),
   h2("Common commands", "common-commands"),
   code(`pire-browser open                         # Launch/reuse Firefox without navigating
 pire-browser open https://example.com
@@ -65,9 +76,6 @@ pire-browser open https://example.com && pire-browser screenshot page.png`),
   code(`pire-browser snapshot -i --json
 pire-browser get text '@e1' --json`),
   p("The default text output is more compact and preferred for AI agents."),
-  h2("MCP", "mcp"),
-  code(`pire-browser mcp --tools core`),
-  p("Use the stdio MCP server when an agent host prefers typed tools instead of shell command strings. The MCP core profile exposes the same inspect-before-act workflow as the CLI."),
 ];
 
 export default page({

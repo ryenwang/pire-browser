@@ -1,6 +1,10 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.10", "0-2-10"),
+  list([
+    "Makes the first-use MCP path explicit across the README, docs quick start, MCP page, installed agent context, and bundled core skill: start <code>pire-browser mcp --tools core</code>, then open, snapshot, act, wait, and verify with typed tools.",
+  ]),
   h2("0.2.9", "0-2-9"),
   list([
     "Keeps <code>pire-browser mcp --help</code> useful from the JavaScript launcher when the optional native platform package is missing, so MCP-first agents can still discover <code>mcp --tools core</code> and profile guidance before repair.",
@@ -41,7 +45,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The npm package is currently <code>pire-browser@0.2.9</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
+  p("The npm package is currently <code>pire-browser@0.2.10</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
 ];
 
 export default page({

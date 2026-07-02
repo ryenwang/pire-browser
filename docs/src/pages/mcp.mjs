@@ -12,6 +12,13 @@ pire-browser mcp --tools core,react
 pire-browser mcp --tools all`),
   p("Use the smallest MCP profile that fits the task. <code>core</code> is the default inspect-before-act workflow. Add comma-separated profiles only when a workflow needs more surface, such as <code>core,network</code> for request/response waits and diagnostics, <code>core,state</code> for cookies, storage, auth, configured plugin discovery, and state files, or <code>core,react</code> for React Fiber inspection. The <code>pire_browser_tools_profiles</code> tool describes available profiles in-band."),
   p("<code>pire-browser mcp --help</code> is served by the JavaScript launcher even when the optional native platform package is missing, so MCP-first agent hosts can still discover the startup recipe before following repair guidance."),
+  h2("First Tool Loop", "first-tool-loop"),
+  code(`1. pire_browser_open({ "url": "https://example.com" })
+2. pire_browser_snapshot({ "interactive": true })
+3. pire_browser_click({ "selector": "@e2" })
+4. pire_browser_wait_for_load({ "state": "networkidle" })
+5. pire_browser_snapshot({ "interactive": true })`),
+  p("Use fresh refs from the most recent snapshot or a semantic find result. Prefer typed verification tools such as <code>pire_browser_get_text</code>, <code>pire_browser_get_url</code>, <code>pire_browser_get_value</code>, <code>pire_browser_is_visible</code>, and <code>pire_browser_is_enabled</code> before reporting success. Use <code>pire_browser_wait_ms</code> only when no page-specific condition is available."),
   h2("Profiles", "profiles"),
   table(
     ["Profile", "Purpose"],

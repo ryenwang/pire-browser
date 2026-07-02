@@ -9,6 +9,22 @@ Use `pire-browser` when the user asks you to inspect or control Firefox. Do not 
 
 ## Quick Start
 
+Use MCP when the agent host supports typed tools:
+
+```bash
+pire-browser mcp --tools core
+```
+
+Then follow this tool loop:
+
+1. `pire_browser_open` with the target URL.
+2. `pire_browser_snapshot` with `interactive: true`.
+3. Act with fresh refs or semantic tools such as `pire_browser_click`, `pire_browser_fill`, `pire_browser_press`, or `pire_browser_find`.
+4. Wait with the narrowest typed wait tool: `pire_browser_wait_for_selector`, `pire_browser_wait_for_text`, `pire_browser_wait_for_url`, `pire_browser_wait_for_load`, or `pire_browser_wait_ms`.
+5. Verify with a fresh `pire_browser_snapshot`, `pire_browser_get_text`, `pire_browser_get_url`, or another typed get/check tool before reporting success.
+
+Use CLI commands when MCP is unavailable or the user asks for shell commands:
+
 ```bash
 pire-browser open
 pire-browser open https://example.com

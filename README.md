@@ -4,6 +4,35 @@ Firefox automation CLI for AI agents. Fast native Rust CLI, Firefox WebExtension
 
 Firefox loads a WebExtension, the WebExtension talks to a Native Messaging host, and the CLI talks to that host through current-user IPC: Windows named pipes on Windows and Unix domain sockets on macOS/Linux.
 
+## AI Agent Quick Start
+
+For Pi users, install the package and ask the agent to use the tool:
+
+```bash
+pi install npm:pire-browser
+```
+
+For MCP-capable agent hosts, install once and start the smallest typed tool
+profile:
+
+```bash
+npm install -g pire-browser
+pire-browser install
+pire-browser mcp --tools core
+```
+
+Then follow this MCP loop:
+
+1. `pire_browser_open` with the target URL.
+2. `pire_browser_snapshot` with `interactive: true`.
+3. Act with fresh refs or semantic tools such as `pire_browser_click`, `pire_browser_fill`, `pire_browser_press`, or `pire_browser_find`.
+4. Wait with the narrowest typed wait tool, such as `pire_browser_wait_for_selector`, `pire_browser_wait_for_text`, `pire_browser_wait_for_url`, `pire_browser_wait_for_load`, or `pire_browser_wait_ms`.
+5. Verify with a fresh `pire_browser_snapshot`, `pire_browser_get_text`, `pire_browser_get_url`, or another typed get/check tool before reporting success.
+
+Use `pire-browser mcp --help` when setup is incomplete; it is served by the
+JavaScript launcher even if the optional native platform package is missing and
+prints the exact repair command.
+
 ## Installation
 
 ### Global Installation (recommended for direct CLI use)
