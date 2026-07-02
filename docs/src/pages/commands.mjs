@@ -4,7 +4,7 @@ const commandsBlocks = [
   h2("Version", "version"),
   code(`pire-browser --version
 pire-browser version --json`),
-  p("<code>--help</code>, launcher-owned command help, <code>--version</code>, and <code>version --json</code> are served by the JavaScript launcher before native binary resolution, so agents and smoke scripts can verify the installed package and get repair guidance even when setup is incomplete."),
+  p("<code>--help</code>, launcher-owned setup/update/skills/MCP command help, <code>--version</code>, and <code>version --json</code> are served by the JavaScript launcher before native binary resolution, so agents and smoke scripts can verify the installed package and get repair guidance even when setup is incomplete."),
 
   h2("Core", "core"),
   code(`pire-browser open                    # Launch/reuse Firefox without navigating
@@ -391,7 +391,7 @@ pire-browser doctor --fix --firefox-path /path/to/firefox
 pire-browser doctor --offline --quick
 pire-browser doctor --json
 pire-browser install-status --json`),
-  p("Exit code is <code>0</code> when checks pass or report only advisory warnings, and nonzero when setup is missing or arguments are invalid. Plain doctor is read-only; <code>doctor --json</code> and <code>install-status --json</code> include <code>nextActions</code> with concrete repair commands, while <code>doctor --fix</code> explicitly reruns native host setup and exits nonzero if the follow-up status still needs attention. If the optional native platform package is missing, launcher-served top-level help, setup/diagnostic command help, <code>install</code>, <code>setup</code>, <code>doctor --json</code>, and <code>install-status --json</code> point to the <code>--include=optional</code> reinstall. <code>doctor --fix --with-deps</code> accepts agent-browser-style repair recipes; it can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and reports guided non-Snap/non-Flatpak Firefox steps on Linux."),
+  p("Exit code is <code>0</code> when checks pass or report only advisory warnings, and nonzero when setup is missing or arguments are invalid. Plain doctor is read-only; <code>doctor --json</code> and <code>install-status --json</code> include <code>nextActions</code> with concrete repair commands, while <code>doctor --fix</code> explicitly reruns native host setup and exits nonzero if the follow-up status still needs attention. If the optional native platform package is missing, launcher-served top-level help, setup/diagnostic/MCP command help, <code>install</code>, <code>setup</code>, <code>doctor --json</code>, and <code>install-status --json</code> point to the <code>--include=optional</code> reinstall. <code>doctor --fix --with-deps</code> accepts agent-browser-style repair recipes; it can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and reports guided non-Snap/non-Flatpak Firefox steps on Linux."),
 
   h2("Chat", "chat"),
   statusNote("chat"),

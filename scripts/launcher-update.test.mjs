@@ -248,6 +248,7 @@ describe("launcher update UX", () => {
     const text = logs.join("\n");
     expect(text).toContain("Launcher-served commands available before native binary resolution");
     expect(text).toContain("skills get core");
+    expect(text).toContain("mcp --tools core");
     expect(text).toContain("npm install -g pire-browser@");
     expect(text).toContain("--include=optional");
   });
@@ -273,7 +274,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "win32-x64",
         packageName: "@ryenw/pire-browser-win32-x64",
-        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.8 for win32-x64.",
+        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.9 for win32-x64.",
       }
     );
 
@@ -288,13 +289,30 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "linux-x64",
         packageName: "@ryenw/pire-browser-linux-x64",
-        reason: "Missing optional native package @ryenw/pire-browser-linux-x64@0.2.8 for linux-x64.",
+        reason: "Missing optional native package @ryenw/pire-browser-linux-x64@0.2.9 for linux-x64.",
       }
     );
 
     expect(text).toContain("Help for `open` requires the native platform package");
     expect(text).toContain("pire-browser skills get core");
     expect(text).toContain("--include=optional");
+  });
+
+  it("serves MCP startup guidance when native binary resolution fails", () => {
+    const text = formatLauncherMissingNativeHelp(
+      ["mcp", "--help"],
+      {
+        ok: false,
+        tuple: "win32-x64",
+        packageName: "@ryenw/pire-browser-win32-x64",
+        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.9 for win32-x64.",
+      }
+    );
+
+    expect(text).toContain("pire-browser mcp --tools core");
+    expect(text).toContain("Model Context Protocol server");
+    expect(text).toContain("core` is the default inspect-before-act workflow");
+    expect(text).toContain("Repair: npm install -g pire-browser@");
   });
 
   it("serves plain install guidance instead of a bare missing-native error", () => {
@@ -306,7 +324,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "darwin-arm64",
         packageName: "@ryenw/pire-browser-darwin-arm64",
-        reason: "Missing optional native package @ryenw/pire-browser-darwin-arm64@0.2.8 for darwin-arm64.",
+        reason: "Missing optional native package @ryenw/pire-browser-darwin-arm64@0.2.9 for darwin-arm64.",
       },
       { output: console.log }
     );
@@ -325,7 +343,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "linux-x64",
         packageName: "@ryenw/pire-browser-linux-x64",
-        reason: "Missing optional native package @ryenw/pire-browser-linux-x64@0.2.8 for linux-x64.",
+        reason: "Missing optional native package @ryenw/pire-browser-linux-x64@0.2.9 for linux-x64.",
       },
       ["setup", "--firefox-path", "/opt/firefox/firefox"]
     );
@@ -344,7 +362,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "win32-x64",
         packageName: "@ryenw/pire-browser-win32-x64",
-        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.8 for win32-x64.",
+        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.9 for win32-x64.",
       },
       { output: console.log }
     );
@@ -364,7 +382,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "linux-arm64",
         packageName: "@ryenw/pire-browser-linux-arm64",
-        reason: "Missing optional native package @ryenw/pire-browser-linux-arm64@0.2.8 for linux-arm64.",
+        reason: "Missing optional native package @ryenw/pire-browser-linux-arm64@0.2.9 for linux-arm64.",
       },
       ["doctor", "--json"]
     );

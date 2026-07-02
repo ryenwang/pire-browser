@@ -81,6 +81,29 @@ is reserved for invalid args, explicit settings read/parse errors, settings
 write failures, or required quarantine failures.
 `;
 
+const LAUNCHER_MCP_HELP = `
+Usage:
+  pire-browser mcp
+  pire-browser mcp --tools core
+  pire-browser mcp --tools core,network
+  pire-browser mcp --tools core,state
+  pire-browser mcp --tools all
+
+Starts a Model Context Protocol server over stdio once the native platform
+package is available. Use the smallest tools profile that fits the task.
+\`core\` is the default inspect-before-act workflow: open/goto/navigate,
+snapshots, semantic find/action tools, typed get/check tools, typed waits,
+screenshots/PDFs/diffs, eval/evaluate, status, confirmation follow-up, tab
+list/new/switch/close, profile discovery, close, and skill guidance.
+
+Add comma-separated profiles when needed: \`network\` for request/response
+waits and HAR, \`state\` for cookies/storage/auth/state/plugin discovery,
+\`debug\` for launch/install/doctor/activity/trace/record/stream diagnostics,
+\`tabs\` for tab labels/frames/dialogs/windows, \`mobile\` for viewport/device
+helpers, and \`react\` for best-effort Firefox React inspection. Use \`all\`
+only when the host can tolerate every implemented MCP tool.
+`;
+
 const LAUNCHER_NATIVE_UNAVAILABLE_HELP = `
 pire-browser controls Firefox through a local WebExtension and native host.
 
@@ -99,6 +122,7 @@ Launcher-served commands available before native binary resolution:
   install-status [--json]          Alias for doctor diagnostics
   skills get core [--json]         Print version-matched agent guidance
   skills get dogfood [--json]      Print exploratory QA guidance
+  mcp --tools core                 Start typed MCP server after native repair
   pi conflicts | pi repair         Inspect/repair duplicate Pi registrations
   upgrade | update check           Check or apply package updates
 
@@ -331,6 +355,9 @@ missing, \`--json\` is served by the JavaScript launcher and exits nonzero with
 `.trim()}\n${repairHint}`.trim();
   }
   if (topic === "skills" || topic === "skill") return LAUNCHER_SKILLS_HELP.trim();
+  if (topic === "mcp") {
+    return `${LAUNCHER_MCP_HELP.trim()}\n${repairHint}`.trim();
+  }
   if (topic === "pi") return LAUNCHER_PI_HELP.trim();
   if (topic === "update") return LAUNCHER_UPDATE_HELP.trim();
   if (topic === "upgrade") return LAUNCHER_UPGRADE_HELP.trim();

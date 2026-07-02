@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.9
+
+- Keeps `pire-browser mcp --help` useful from the JavaScript launcher when the optional native platform package is missing, so MCP-first agents can still discover `mcp --tools core` and profile guidance before repair.
+
 ## 0.2.8
 
 - Marks Pi core runtime imports as optional peers so direct npm installs stay lean and avoid pulling Pi's dependency tree into normal CLI installs.

@@ -11,6 +11,7 @@ pire-browser mcp --tools core,state
 pire-browser mcp --tools core,react
 pire-browser mcp --tools all`),
   p("Use the smallest MCP profile that fits the task. <code>core</code> is the default inspect-before-act workflow. Add comma-separated profiles only when a workflow needs more surface, such as <code>core,network</code> for request/response waits and diagnostics, <code>core,state</code> for cookies, storage, auth, configured plugin discovery, and state files, or <code>core,react</code> for React Fiber inspection. The <code>pire_browser_tools_profiles</code> tool describes available profiles in-band."),
+  p("<code>pire-browser mcp --help</code> is served by the JavaScript launcher even when the optional native platform package is missing, so MCP-first agent hosts can still discover the startup recipe before following repair guidance."),
   h2("Profiles", "profiles"),
   table(
     ["Profile", "Purpose"],

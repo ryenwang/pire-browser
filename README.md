@@ -1388,7 +1388,7 @@ pire-browser skills path core
 ```
 
 Launcher-served commands such as `--version`, `version`, `skills`, `install`,
-`setup`, `doctor`, `install-status`, `pi`, `update`, and `upgrade` support
+`setup`, `doctor`, `install-status`, `mcp`, `pi`, `update`, and `upgrade` support
 `--help` before native binary resolution, so agents can still get setup, repair,
 and workflow guidance when an optional native package is missing or stale.
 
