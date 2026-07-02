@@ -87,6 +87,8 @@ Usage:
   pire-browser mcp --tools core
   pire-browser mcp --tools core,network
   pire-browser mcp --tools core,state
+  pire-browser mcp --tools core,debug
+  pire-browser mcp --tools core,tabs
   pire-browser mcp --tools all
 
 Starts a Model Context Protocol server over stdio once the native platform
@@ -102,6 +104,21 @@ waits and HAR, \`state\` for cookies/storage/auth/state/plugin discovery,
 \`tabs\` for tab labels/frames/dialogs/windows, \`mobile\` for viewport/device
 helpers, and \`react\` for best-effort Firefox React inspection. Use \`all\`
 only when the host can tolerate every implemented MCP tool.
+
+MCP client config:
+{
+  "mcpServers": {
+    "pire-browser": {
+      "command": "pire-browser",
+      "args": ["mcp", "--tools", "core"]
+    }
+  }
+}
+
+If a needed tool is missing from the active profile, restart the MCP server with
+the smallest combined profile that adds it, such as \`--tools core,network\`,
+\`--tools core,state\`, \`--tools core,tabs\`, \`--tools core,debug\`, or
+\`--tools core,react\`.
 `;
 
 const LAUNCHER_NATIVE_UNAVAILABLE_HELP = `

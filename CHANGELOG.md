@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.11
+
+- Adds copy-ready MCP client configuration examples to the README, docs site, launcher-served `mcp --help`, installed agent context, and bundled core skill.
+- Clarifies profile selection for MCP-first agents: start with `core`, add the smallest needed profile, and reserve `all` for hosts that can tolerate the full tool surface.
+
 ## 0.2.10
 
 - Makes the first-use MCP path explicit across the README, docs quick start, MCP page, installed agent context, and bundled core skill: start `pire-browser mcp --tools core`, then open, snapshot, act, wait, and verify with typed tools.

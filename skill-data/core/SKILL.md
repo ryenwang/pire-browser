@@ -15,6 +15,19 @@ Use MCP when the agent host supports typed tools:
 pire-browser mcp --tools core
 ```
 
+MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "pire-browser": {
+      "command": "pire-browser",
+      "args": ["mcp", "--tools", "core"]
+    }
+  }
+}
+```
+
 Then follow this tool loop:
 
 1. `pire_browser_open` with the target URL.
@@ -22,6 +35,10 @@ Then follow this tool loop:
 3. Act with fresh refs or semantic tools such as `pire_browser_click`, `pire_browser_fill`, `pire_browser_press`, or `pire_browser_find`.
 4. Wait with the narrowest typed wait tool: `pire_browser_wait_for_selector`, `pire_browser_wait_for_text`, `pire_browser_wait_for_url`, `pire_browser_wait_for_load`, or `pire_browser_wait_ms`.
 5. Verify with a fresh `pire_browser_snapshot`, `pire_browser_get_text`, `pire_browser_get_url`, or another typed get/check tool before reporting success.
+
+Start with `core`. Add `network`, `state`, `tabs`, `debug`, `mobile`, or
+`react` only when the task needs those tools; use `all` only when the host can
+tolerate the full tool list.
 
 Use CLI commands when MCP is unavailable or the user asks for shell commands:
 
@@ -757,6 +774,8 @@ Use MCP when the agent host prefers typed tools:
 pire-browser mcp --tools core
 pire-browser mcp --tools core,network
 pire-browser mcp --tools core,state
+pire-browser mcp --tools core,debug
+pire-browser mcp --tools core,tabs
 pire-browser mcp --tools all
 ```
 
@@ -778,6 +797,24 @@ client protocol versions during initialization. Tool discovery is paginated for
 large profiles. Tool annotations mark local maintenance/context tools such as
 install, upgrade, status, sessions, profiles, plugin discovery, and skills as non-open-world so
 hosts can show clearer approval prompts.
+
+MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "pire-browser": {
+      "command": "pire-browser",
+      "args": ["mcp", "--tools", "core"]
+    }
+  }
+}
+```
+
+If a needed tool is missing from the active profile, restart the MCP server with
+the smallest combined profile that adds it, such as `--tools core,network`,
+`--tools core,state`, `--tools core,tabs`, `--tools core,debug`, or
+`--tools core,react`.
 
 For MCP guardrails and launch context, prefer typed common fields over
 `extraArgs`: `statePath`, `allowFileAccess`, `allowedDomains`,

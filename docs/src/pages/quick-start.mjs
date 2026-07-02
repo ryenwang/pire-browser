@@ -22,13 +22,23 @@ pire-browser snapshot -i`),
   p("When an agent host supports MCP, start the typed core profile and keep the same inspect-before-act loop in tool calls."),
   code(`pire-browser mcp --tools core
 
+# MCP client config:
+# {
+#   "mcpServers": {
+#     "pire-browser": {
+#       "command": "pire-browser",
+#       "args": ["mcp", "--tools", "core"]
+#     }
+#   }
+# }
+
 # MCP tool loop:
 # 1. pire_browser_open({ "url": "https://example.com" })
 # 2. pire_browser_snapshot({ "interactive": true })
 # 3. pire_browser_click({ "selector": "@e2" })
 # 4. pire_browser_wait_for_load({ "state": "networkidle" })
 # 5. pire_browser_snapshot({ "interactive": true })`),
-  p("Use <code>pire_browser_get_text</code>, <code>pire_browser_get_url</code>, <code>pire_browser_is_visible</code>, and the other typed get/check tools for targeted verification before reporting success. If the native package is missing, <code>pire-browser mcp --help</code> still prints startup and repair guidance from the launcher."),
+  p("Use <code>pire_browser_get_text</code>, <code>pire_browser_get_url</code>, <code>pire_browser_is_visible</code>, and the other typed get/check tools for targeted verification before reporting success. Start with <code>--tools core</code>; add <code>network</code>, <code>state</code>, <code>tabs</code>, <code>debug</code>, <code>mobile</code>, or <code>react</code> only when that workflow needs the extra tools. If the native package is missing, <code>pire-browser mcp --help</code> still prints startup and repair guidance from the launcher."),
   h2("Common commands", "common-commands"),
   code(`pire-browser open                         # Launch/reuse Firefox without navigating
 pire-browser open https://example.com

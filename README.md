@@ -21,6 +21,19 @@ pire-browser install
 pire-browser mcp --tools core
 ```
 
+MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "pire-browser": {
+      "command": "pire-browser",
+      "args": ["mcp", "--tools", "core"]
+    }
+  }
+}
+```
+
 Then follow this MCP loop:
 
 1. `pire_browser_open` with the target URL.
@@ -28,6 +41,8 @@ Then follow this MCP loop:
 3. Act with fresh refs or semantic tools such as `pire_browser_click`, `pire_browser_fill`, `pire_browser_press`, or `pire_browser_find`.
 4. Wait with the narrowest typed wait tool, such as `pire_browser_wait_for_selector`, `pire_browser_wait_for_text`, `pire_browser_wait_for_url`, `pire_browser_wait_for_load`, or `pire_browser_wait_ms`.
 5. Verify with a fresh `pire_browser_snapshot`, `pire_browser_get_text`, `pire_browser_get_url`, or another typed get/check tool before reporting success.
+
+Profile rule of thumb: start with `core`; use `core,network` for request/response waits and HAR; `core,state` for cookies, storage, auth, profile import, downloads/uploads, and plugin discovery; `core,tabs` for labels, frames, dialogs, and windows; `core,debug` for install/doctor, console/errors, trace/record/stream evidence, and batch; `core,react` for React inspection; use `all` only when the host can tolerate the full tool surface.
 
 Use `pire-browser mcp --help` when setup is incomplete; it is served by the
 JavaScript launcher even if the optional native platform package is missing and
@@ -697,8 +712,29 @@ pire-browser mcp
 pire-browser mcp --tools core
 pire-browser mcp --tools core,network
 pire-browser mcp --tools core,state
+pire-browser mcp --tools core,debug
+pire-browser mcp --tools core,tabs
 pire-browser mcp --tools all
 ```
+
+Example MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "pire-browser": {
+      "command": "pire-browser",
+      "args": ["mcp", "--tools", "core"]
+    }
+  }
+}
+```
+
+Use `--tools core` for the first connection. If a required tool is missing from
+the active profile, restart the MCP server with the smallest combined profile
+that adds it, such as `--tools core,network`, `--tools core,state`,
+`--tools core,tabs`, `--tools core,debug`, or `--tools core,react`; reserve
+`--tools all` for hosts that can tolerate the full tool list.
 
 The stdio MCP server exposes typed tools through agent-browser-style profiles.
 `core` is the default inspect-before-act workflow: open/goto/navigate, snapshot, semantic

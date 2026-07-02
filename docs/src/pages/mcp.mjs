@@ -8,10 +8,22 @@ const mcpBlocks = [
 pire-browser mcp --tools core
 pire-browser mcp --tools core,network
 pire-browser mcp --tools core,state
+pire-browser mcp --tools core,debug
+pire-browser mcp --tools core,tabs
 pire-browser mcp --tools core,react
 pire-browser mcp --tools all`),
   p("Use the smallest MCP profile that fits the task. <code>core</code> is the default inspect-before-act workflow. Add comma-separated profiles only when a workflow needs more surface, such as <code>core,network</code> for request/response waits and diagnostics, <code>core,state</code> for cookies, storage, auth, configured plugin discovery, and state files, or <code>core,react</code> for React Fiber inspection. The <code>pire_browser_tools_profiles</code> tool describes available profiles in-band."),
   p("<code>pire-browser mcp --help</code> is served by the JavaScript launcher even when the optional native platform package is missing, so MCP-first agent hosts can still discover the startup recipe before following repair guidance."),
+  h2("Client Config", "client-config"),
+  code(`{
+  "mcpServers": {
+    "pire-browser": {
+      "command": "pire-browser",
+      "args": ["mcp", "--tools", "core"]
+    }
+  }
+}`),
+  p("Start MCP clients with <code>--tools core</code>. If the active profile does not include a needed tool, restart with the smallest combined profile that adds it: <code>core,network</code> for request/response waits and HAR, <code>core,state</code> for cookies, storage, auth, downloads/uploads, profile import, and plugin discovery, <code>core,tabs</code> for labels, frames, dialogs, and windows, <code>core,debug</code> for install/doctor, console/errors, trace/record/stream evidence, and batch, or <code>core,react</code> for React inspection. Use <code>all</code> only when the host can tolerate the full tool list."),
   h2("First Tool Loop", "first-tool-loop"),
   code(`1. pire_browser_open({ "url": "https://example.com" })
 2. pire_browser_snapshot({ "interactive": true })
