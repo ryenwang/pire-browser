@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.7
+
+- Keeps top-level help and setup/diagnostic command help available from the JavaScript launcher when the optional native platform package is missing.
+- Points missing-native help output to version-matched skills and the concrete `--include=optional` reinstall command.
+
 ## 0.2.6
 
 - Extends missing native package repair guidance to the first-run `install` and lower-level `setup` commands, including JSON output for agents.

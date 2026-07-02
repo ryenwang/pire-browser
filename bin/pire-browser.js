@@ -81,6 +81,40 @@ is reserved for invalid args, explicit settings read/parse errors, settings
 write failures, or required quarantine failures.
 `;
 
+const LAUNCHER_NATIVE_UNAVAILABLE_HELP = `
+pire-browser controls Firefox through a local WebExtension and native host.
+
+Usage:
+  pire-browser <command> [args]
+  pire-browser help [topic]
+  pire-browser <command> --help
+
+Launcher-served commands available before native binary resolution:
+  --version | version --json       Show installed package version
+  install [--with-deps] [--firefox-path <path>] [--json]
+                                   Register Firefox Native Messaging; reports repair guidance if native package is missing
+  setup [--with-deps] [--firefox-path <path>] [--json]
+                                   Lower-level install alias
+  doctor [--json]                  Diagnose setup; JSON includes nextActions
+  install-status [--json]          Alias for doctor diagnostics
+  skills get core [--json]         Print version-matched agent guidance
+  skills get dogfood [--json]      Print exploratory QA guidance
+  pi conflicts | pi repair         Inspect/repair duplicate Pi registrations
+  upgrade | update check           Check or apply package updates
+
+Common browser commands after native package repair:
+  open <url>                       Launch/reuse Firefox and navigate
+  snapshot -i                      Inspect the active page and print refs
+  click '@e4'                      Click a fresh ref from snapshot/find
+  fill '@e2' "text"                Fill a fresh ref
+  press Enter                      Press a key at page focus
+  screenshot                       Capture visual evidence
+
+If command help cannot be served because the native package is missing, use
+\`pire-browser skills get core\` for workflow guidance and \`pire-browser install
+--json\` or \`pire-browser doctor --json\` for concrete repair commands.
+`;
+
 export function main(args = process.argv.slice(2)) {
   const versionResult = handleLauncherVersion(args);
   if (versionResult !== null) return versionResult;
@@ -223,6 +257,10 @@ function outputVersion(json, output) {
 
 export function handleLauncherMissingNative(args, resolved, options = {}) {
   const output = options.output ?? console.log;
+  if (wantsLauncherHelp(args)) {
+    output(formatLauncherMissingNativeHelp(args, resolved));
+    return 0;
+  }
   const rootCommand = launcherRootCommand(args);
   if (!["doctor", "install-status", "install", "setup"].includes(rootCommand)) return null;
 
@@ -248,6 +286,60 @@ export function handleLauncherMissingNative(args, resolved, options = {}) {
     output(formatLauncherInstallDiagnosticPlain(diagnostic));
   }
   return 1;
+}
+
+export function formatLauncherMissingNativeHelp(args, resolved) {
+  const topic = launcherHelpTopic(args);
+  const version = packageJson.version;
+  const tuple = resolved.tuple ?? safePlatformTuple();
+  const packageName = resolved.packageName ?? (tuple ? packageNameForTupleSafe(tuple) : null);
+  const repairHint = packageName
+    ? `\nNative package unavailable: ${packageName}@${version}${tuple ? ` for ${tuple}` : ""}.\nRepair: npm install -g pire-browser@${version} --include=optional\n`
+    : `\nNative package unavailable: ${resolved.reason}\nRepair: npm install -g pire-browser@${version} --include=optional\n`;
+
+  if (!topic || topic === "commands") return `${LAUNCHER_NATIVE_UNAVAILABLE_HELP.trim()}\n${repairHint}`.trim();
+  if (topic === "install") {
+    return `${`
+Usage:
+  pire-browser install [--with-deps] [--firefox-path <path>] [--json]
+
+Agent-browser-style setup command. Registers the Firefox Native Messaging host
+for the current OS user. If the optional native package is missing, this
+launcher-served path reports concrete repair commands instead of requiring the
+native binary first.
+`.trim()}\n${repairHint}`.trim();
+  }
+  if (topic === "setup") {
+    return `${`
+Usage:
+  pire-browser setup [--with-deps] [--firefox-path <path>] [--json]
+  pire-browser setup --windows [--with-deps] [--firefox-path <path>] [--json]
+
+Lower-level setup command for Firefox Native Messaging. Prefer
+\`pire-browser install\` for agent-browser-style first-run setup.
+`.trim()}\n${repairHint}`.trim();
+  }
+  if (topic === "doctor" || topic === "install-status") {
+    return `${`
+Usage:
+  pire-browser doctor [--json] [--offline] [--fix] [--with-deps]
+  pire-browser install-status [--json] [--offline]
+
+Read-only install diagnostics by default. When the optional native package is
+missing, \`--json\` is served by the JavaScript launcher and exits nonzero with
+\`error.code = "native_binary_unavailable"\` plus \`data.nextActions\`.
+`.trim()}\n${repairHint}`.trim();
+  }
+  if (topic === "skills" || topic === "skill") return LAUNCHER_SKILLS_HELP.trim();
+  if (topic === "pi") return LAUNCHER_PI_HELP.trim();
+  if (topic === "update") return LAUNCHER_UPDATE_HELP.trim();
+  if (topic === "upgrade") return LAUNCHER_UPGRADE_HELP.trim();
+  if (topic === "version") return "Usage: pire-browser version [--json]";
+  return `${`
+Help for \`${topic}\` requires the native platform package. The installed
+launcher can still serve setup, update, Pi repair, version, and skills guidance.
+Run \`pire-browser skills get core\` for browser workflow recipes after repair.
+`.trim()}\n${repairHint}`.trim();
 }
 
 export function launcherInstallDiagnosticForMissingNative(resolved, args = []) {
@@ -350,6 +442,13 @@ function launcherRootCommand(args) {
     if (!arg.startsWith("-")) return arg;
   }
   return null;
+}
+
+function launcherHelpTopic(args) {
+  if (args[0] === "help") return args[1] && !args[1].startsWith("-") ? args[1] : null;
+  const rootCommand = launcherRootCommand(args);
+  if (!rootCommand || rootCommand === "help") return null;
+  return rootCommand;
 }
 
 function safePlatformTuple() {
