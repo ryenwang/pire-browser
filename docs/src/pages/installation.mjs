@@ -10,6 +10,7 @@ pire-browser snapshot -i`),
   h2("Pi package", "pi-package"),
   code(`pi install npm:pire-browser`),
   p("Use this when Pi should load the packaged extension and skill. After install, ask Pi to use <code>pire-browser</code> for browser automation."),
+  p("If Pi/npm prints an <code>allow-scripts</code> warning during install, continue with the first tool use. Browser commands can run lazy setup when Native Messaging registration is missing. Use the repair steps below only if the first browser command reports a setup or duplicate-install problem."),
   h2("Project installation", "project-installation"),
   code(`npm install pire-browser
 npx pire-browser install
@@ -20,7 +21,7 @@ npx pire-browser snapshot -i`),
   code(`pire-browser install --with-deps
 pire-browser doctor --json`),
   p("Use this only when Firefox is missing, setup fails, or the first browser command reports setup diagnostics. <code>install --with-deps</code> is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux. <code>doctor --json</code> reports concrete <code>nextActions</code> when setup needs repair."),
-  p("If the platform-native optional package was skipped during install, <code>--help</code>, <code>help</code>, setup/diagnostic/MCP command help, <code>install</code>, <code>setup</code>, <code>doctor --json</code>, and <code>install-status --json</code> still run from the JavaScript launcher and report the exact reinstall command, including <code>--include=optional</code>. If npm says postinstall scripts were skipped or blocked, run <code>pire-browser install</code> explicitly."),
+  p("If the platform-native optional package was skipped during install, <code>--help</code>, <code>help</code>, setup/diagnostic/MCP command help, <code>install</code>, <code>setup</code>, <code>doctor --json</code>, and <code>install-status --json</code> still run from the JavaScript launcher and report the exact reinstall command, including <code>--include=optional</code>. If direct npm install says postinstall scripts were skipped or blocked, run <code>pire-browser install</code> explicitly. For Pi installs, let the first browser command try lazy setup before running diagnostics."),
   h2("Migrating from old GitHub/local installs", "migrating-from-old-github-local-installs"),
   p("Most users can skip this. If Pi reports that <code>npm:pire-browser</code> conflicts with an older GitHub, local-checkout, or ZIP-era install, inspect and repair the duplicate registration from a normal terminal."),
   code(`pire-browser pi conflicts

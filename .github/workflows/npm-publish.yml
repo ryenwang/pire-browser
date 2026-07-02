@@ -133,11 +133,51 @@ jobs:
           fi
           node scripts/publish-npm-artifacts.mjs "${args[@]}"
 
+  pi-install-smoke:
+    name: Pi install smoke
+    needs:
+      - validate-release-ref
+      - publish
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - run: npm install --package-lock=false --no-audit --no-fund
+      - name: Smoke published Pi install
+        run: npm run smoke:pi-install -- --source npm:pire-browser@${{ needs.validate-release-ref.outputs.version }} --artifact-dir target/pi-install-smoke
+      - name: Print Pi install smoke diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d target/pi-install-smoke ]; then
+            echo "No Pi install smoke artifacts found"
+            exit 0
+          fi
+          find target/pi-install-smoke -maxdepth 1 -type f -print | sort
+          for file in target/pi-install-smoke/summary.json target/pi-install-smoke/*stderr.log target/pi-install-smoke/*stdout.log; do
+            [ -f "$file" ] || continue
+            echo ""
+            echo "==> $file"
+            tail -n 80 "$file"
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pi-install-smoke
+          path: target/pi-install-smoke
+          if-no-files-found: warn
+
   github-release:
     name: create GitHub release
     needs:
       - validate-release-ref
       - publish
+      - pi-install-smoke
     runs-on: ubuntu-24.04
     permissions:
       contents: write

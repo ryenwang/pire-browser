@@ -85,6 +85,11 @@ Then ask Pi to use the tool:
 Use pire-browser to open https://example.com and snapshot the page.
 ```
 
+If Pi/npm prints an `allow-scripts` warning during install, continue with the
+first tool use. Browser commands can run lazy setup when Native Messaging
+registration is missing. Use the repair steps below only if the first browser
+command reports a setup or duplicate-install problem.
+
 ### Project Installation (local dependency)
 
 For projects that want to pin the version in `package.json`:
@@ -110,7 +115,7 @@ pire-browser doctor --json
 
 `install --with-deps` is the agent-browser-style first-run helper: it uses an installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux. `doctor --json` reports concrete `nextActions` when setup needs repair.
 
-If the platform-native optional package was skipped during install, `--help`, `help`, `install --help`, `setup --help`, `doctor --help`, `install`, `setup`, `doctor --json`, and `install-status --json` still run from the JavaScript launcher and report the exact reinstall command, including `--include=optional`. If npm says postinstall scripts were skipped or blocked, run `pire-browser install` explicitly.
+If the platform-native optional package was skipped during install, `--help`, `help`, `install --help`, `setup --help`, `doctor --help`, `install`, `setup`, `doctor --json`, and `install-status --json` still run from the JavaScript launcher and report the exact reinstall command, including `--include=optional`. If direct npm install says postinstall scripts were skipped or blocked, run `pire-browser install` explicitly. For Pi installs, let the first browser command try lazy setup before running diagnostics.
 
 ### Migrating From Old GitHub/Local Installs
 

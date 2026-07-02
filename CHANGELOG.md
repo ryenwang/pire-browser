@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.14
+
+- Adds an isolated `smoke:pi-install` maintainer check that runs `pi install npm:pire-browser@<version>` against a temporary `PI_CODING_AGENT_DIR`, verifies package registration, and checks installed skill/version output without touching live Pi settings.
+- Adds the Pi install smoke as a post-publish gate before GitHub release creation, and clarifies that npm `allow-scripts` warnings during Pi install are non-fatal unless the first browser command reports setup trouble.
+
 ## 0.2.13
 
 - Shortens the first-use path across README, docs, launcher/native install help, setup success output, installed agent context, and the bundled core skill: install, run `pire-browser install`, then `open` and `snapshot -i`.

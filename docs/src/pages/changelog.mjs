@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.14", "0-2-14"),
+  list([
+    "Adds an isolated <code>smoke:pi-install</code> maintainer check that runs <code>pi install npm:pire-browser@&lt;version&gt;</code> against a temporary <code>PI_CODING_AGENT_DIR</code>, verifies package registration, and checks installed skill/version output without touching live Pi settings.",
+    "Adds the Pi install smoke as a post-publish gate before GitHub release creation, and clarifies that npm <code>allow-scripts</code> warnings during Pi install are non-fatal unless the first browser command reports setup trouble.",
+  ]),
   h2("0.2.13", "0-2-13"),
   list([
     "Shortens the first-use path across README, docs, launcher/native install help, setup success output, installed agent context, and the bundled core skill: install, run <code>pire-browser install</code>, then <code>open</code> and <code>snapshot -i</code>.",
@@ -59,7 +64,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The npm package is currently <code>pire-browser@0.2.13</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
+  p("The npm package is currently <code>pire-browser@0.2.14</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
 ];
 
 export default page({

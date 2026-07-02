@@ -1,6 +1,6 @@
 {
   "name": "@ryenw/pire-browser-darwin-arm64",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "description": "macOS ARM64 native binaries for pire-browser",
   "repository": {
     "type": "git",
