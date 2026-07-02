@@ -55,7 +55,7 @@ pire-browser doctor --json
 
 `install --with-deps` is the agent-browser-style first-run helper: it uses an installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux. `doctor --json` reports concrete `nextActions` when setup needs repair.
 
-If the platform-native optional package was skipped during install, `doctor --json` and `install-status --json` still run from the JavaScript launcher and report the exact reinstall command, including `--include=optional`.
+If the platform-native optional package was skipped during install, `install`, `setup`, `doctor --json`, and `install-status --json` still run from the JavaScript launcher and report the exact reinstall command, including `--include=optional`.
 
 ### Migrating From Old GitHub/Local Installs
 
@@ -643,7 +643,7 @@ pire-browser doctor --offline --quick
 pire-browser doctor --json
 ```
 
-`status` and plain `doctor` are observational. `doctor --json` and `install-status --json` include `nextActions` with concrete repair commands when setup needs attention. If the optional native platform package is missing, those JSON diagnostics are still served by the JavaScript launcher and point to the `--include=optional` reinstall. Use `doctor --fix` only when you explicitly want the agent-browser-style repair path: it reruns native host setup and then verifies status before reporting success. `install --with-deps`, `setup --with-deps`, and `doctor --fix --with-deps` accept agent-browser-style dependency setup recipes; on Windows/macOS they can try the supported Firefox installer when Firefox is missing, while Linux reports non-Snap/non-Flatpak Firefox guidance. Browser commands that need auto-launch can run lazy setup when native host registration is missing or mismatched.
+`status` and plain `doctor` are observational. `doctor --json` and `install-status --json` include `nextActions` with concrete repair commands when setup needs attention. If the optional native platform package is missing, `install`, `setup`, and those JSON diagnostics are still served by the JavaScript launcher and point to the `--include=optional` reinstall. Use `doctor --fix` only when you explicitly want the agent-browser-style repair path: it reruns native host setup and then verifies status before reporting success. `install --with-deps`, `setup --with-deps`, and `doctor --fix --with-deps` accept agent-browser-style dependency setup recipes; on Windows/macOS they can try the supported Firefox installer when Firefox is missing, while Linux reports non-Snap/non-Flatpak Firefox guidance. Browser commands that need auto-launch can run lazy setup when native host registration is missing or mismatched.
 
 ### Skills
 

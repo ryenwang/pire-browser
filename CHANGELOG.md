@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.6
+
+- Extends missing native package repair guidance to the first-run `install` and lower-level `setup` commands, including JSON output for agents.
+
 ## 0.2.5
 
 - Keeps `doctor --json` and `install-status --json` useful when the optional native platform package is missing by serving a launcher-level diagnostic with concrete `--include=optional` reinstall guidance.

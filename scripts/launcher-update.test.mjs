@@ -212,6 +212,69 @@ describe("launcher update UX", () => {
     expect(body.data.nextActions.map((action) => action.code)).toContain("repair_pi_duplicate_if_needed");
   });
 
+  it("serves install JSON repair guidance when native binary resolution fails", () => {
+    const root = mkdtempTestRoot();
+    process.env.PIRE_BROWSER_BINARY = join(root, "missing-pire-browser.exe");
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+    expect(main(["install", "--json"])).toBe(1);
+
+    const body = JSON.parse(logs.join("\n"));
+    expect(body).toMatchObject({
+      success: false,
+      error: {
+        code: "native_binary_unavailable",
+      },
+      data: {
+        ok: false,
+        source: "launcher",
+        command: "install",
+      },
+    });
+    expect(body.error.message).toContain("Cannot run install");
+    expect(body.data.nextActions.map((action) => action.code)).toContain("fix_binary_override");
+    expect(body.data.nextActions.map((action) => action.code)).toContain("reinstall_optional_native_package");
+  });
+
+  it("serves plain install guidance instead of a bare missing-native error", () => {
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+    const result = handleLauncherMissingNative(
+      ["install", "--with-deps"],
+      {
+        ok: false,
+        tuple: "darwin-arm64",
+        packageName: "@ryenw/pire-browser-darwin-arm64",
+        reason: "Missing optional native package @ryenw/pire-browser-darwin-arm64@0.2.6 for darwin-arm64.",
+      },
+      { output: console.log }
+    );
+
+    expect(result).toBe(1);
+    const text = logs.join("\n");
+    expect(text).toContain("pire-browser install status: needs attention");
+    expect(text).toContain("Cannot run install because the native pire-browser package is unavailable");
+    expect(text).toContain("Native package: @ryenw/pire-browser-darwin-arm64");
+    expect(text).toContain("--include=optional");
+  });
+
+  it("labels setup missing-native diagnostics with the setup command", () => {
+    const diagnostic = launcherInstallDiagnosticForMissingNative(
+      {
+        ok: false,
+        tuple: "linux-x64",
+        packageName: "@ryenw/pire-browser-linux-x64",
+        reason: "Missing optional native package @ryenw/pire-browser-linux-x64@0.2.6 for linux-x64.",
+      },
+      ["setup", "--firefox-path", "/opt/firefox/firefox"]
+    );
+
+    expect(diagnostic.command).toBe("setup");
+    expect(diagnostic.message).toContain("Cannot run setup");
+    expect(diagnostic.nextActions.map((action) => action.code)).toContain("reinstall_optional_native_package");
+  });
+
   it("formats missing optional native package guidance for install-status", () => {
     const logs = [];
     vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
@@ -221,7 +284,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "win32-x64",
         packageName: "@ryenw/pire-browser-win32-x64",
-        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.5 for win32-x64.",
+        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.6 for win32-x64.",
       },
       { output: console.log }
     );
@@ -241,7 +304,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "linux-arm64",
         packageName: "@ryenw/pire-browser-linux-arm64",
-        reason: "Missing optional native package @ryenw/pire-browser-linux-arm64@0.2.5 for linux-arm64.",
+        reason: "Missing optional native package @ryenw/pire-browser-linux-arm64@0.2.6 for linux-arm64.",
       },
       ["doctor", "--json"]
     );

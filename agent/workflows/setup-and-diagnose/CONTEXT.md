@@ -12,7 +12,7 @@ For a fresh install with no reported failure, prefer the short happy path first:
 ## Process
 
 1. Run read-only diagnostics first: `pire-browser status` or `pire-browser doctor`.
-   - Prefer `pire-browser doctor --json` when available; follow `data.nextActions` before guessing a repair. If the platform-native optional package is missing, `doctor --json` is still served by the JavaScript launcher and reports the reinstall command with `--include=optional`.
+   - Prefer `pire-browser doctor --json` when available; follow `data.nextActions` before guessing a repair. If the platform-native optional package is missing, `install`, `setup`, and `doctor --json` are still served by the JavaScript launcher and report the reinstall command with `--include=optional`.
 2. If native messaging registration is missing or mismatched, run `pire-browser doctor --fix` or the lower-level `pire-browser setup`.
    - In MCP, use debug-profile `pire_browser_install` for explicit native-host setup or repair.
    - If following an agent-browser-style recipe, `pire-browser install --with-deps` and `doctor --fix --with-deps` may install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing. Linux remains guided/manual to avoid Snap/Flatpak Native Messaging failures.

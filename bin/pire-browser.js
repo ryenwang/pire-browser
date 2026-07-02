@@ -224,7 +224,7 @@ function outputVersion(json, output) {
 export function handleLauncherMissingNative(args, resolved, options = {}) {
   const output = options.output ?? console.log;
   const rootCommand = launcherRootCommand(args);
-  if (!["doctor", "install-status"].includes(rootCommand)) return null;
+  if (!["doctor", "install-status", "install", "setup"].includes(rootCommand)) return null;
 
   const json = args.includes("--json");
   const diagnostic = launcherInstallDiagnosticForMissingNative(resolved, args);
@@ -303,7 +303,7 @@ export function launcherInstallDiagnosticForMissingNative(resolved, args = []) {
     ok: false,
     source: "launcher",
     command,
-    message: resolved.reason,
+    message: launcherMissingNativeMessage(command, resolved.reason),
     package: {
       name: packageJson.name ?? "pire-browser",
       version,
@@ -311,6 +311,13 @@ export function launcherInstallDiagnosticForMissingNative(resolved, args = []) {
     nativeBinary,
     nextActions,
   };
+}
+
+function launcherMissingNativeMessage(command, reason) {
+  if (command === "install" || command === "setup") {
+    return `Cannot run ${command} because the native pire-browser package is unavailable. ${reason}`;
+  }
+  return reason;
 }
 
 export function formatLauncherInstallDiagnosticPlain(diagnostic) {
