@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.8
+
+- Marks Pi core runtime imports as optional peers so direct npm installs stay lean and avoid pulling Pi's dependency tree into normal CLI installs.
+- Clarifies that skipped or blocked npm lifecycle scripts should be followed by an explicit `pire-browser install`.
+
 ## 0.2.7
 
 - Keeps top-level help and setup/diagnostic command help available from the JavaScript launcher when the optional native platform package is missing.

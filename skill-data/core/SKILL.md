@@ -832,6 +832,7 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 - For a fresh direct CLI install, use `npm install -g pire-browser`, optionally verify the package with `pire-browser --version`, then run `pire-browser install`. For Pi, use `pi install npm:pire-browser`. Do not start by inspecting package source or running broad diagnostics unless an install or browser command fails.
 - `pire-browser install` registers the platform native messaging host.
 - `pire-browser install --with-deps` is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux.
+- If npm reports skipped lifecycle scripts, `--ignore-scripts`, or an `allow-scripts` policy warning, run `pire-browser install` explicitly after npm finishes.
 - `pire-browser setup` is the lower-level setup command.
 - `--firefox-path` and `PIRE_BROWSER_FIREFOX_PATH` may point to the Firefox executable, a directory containing it, or `/Applications/Firefox.app` on macOS. If discovery fails, follow the platform repair command in the error output.
 - `pire-browser upgrade` checks npm and updates global npm or Pi-managed installs to the latest package when no managed Firefox session is active. Local project installs print the exact project-local `npm install` command. Background auto-update and lower-level `update apply` stay patch-only.

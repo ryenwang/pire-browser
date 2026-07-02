@@ -13,6 +13,7 @@ This inventory describes the source sets expected in a public installed `pire-br
 - `skills/pire-browser/SKILL.md`: small discovery stub for skill installers and agents.
 - `skill-data/core/SKILL.md` and `skill-data/dogfood/SKILL.md`: version-matched core and exploratory QA skills served by `pire-browser skills cat/get/path <name>`; the JS launcher can serve this guidance even when native setup needs repair. `PIRE_BROWSER_SKILLS_DIR` and `AGENT_BROWSER_SKILLS_DIR` can override the runtime skill root for local skill development.
 - `bin/pire-browser.js`, `scripts/pi-postinstall.mjs`, `scripts/pi-install-migration.mjs`: launcher-served `pi conflicts`/`pi repair` duplicate-source recovery, best-effort postinstall setup, old direct extension shim cleanup, and verified old Pi-managed GitHub checkout quarantine.
+- `package.json`: npm/Pi package metadata. Native binaries are version-matched optional dependencies, and Pi core runtime imports are optional peers provided by Pi hosts rather than direct CLI installs.
 - `LICENSE`: MIT license terms for the public package.
 - `README.md`: public package overview and human-facing install notes.
 

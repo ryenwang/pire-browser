@@ -17,6 +17,7 @@ pire-browser install   # register Firefox Native Messaging
 ```
 
 `npm install` runs best-effort setup; `pire-browser install` is safe to run again and makes the setup step explicit.
+If npm policy blocks lifecycle scripts with `--ignore-scripts` or an `allow-scripts` warning, the install is still usable; run `pire-browser install` after npm finishes.
 
 ### Pi Package
 
@@ -55,7 +56,7 @@ pire-browser doctor --json
 
 `install --with-deps` is the agent-browser-style first-run helper: it uses an installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux. `doctor --json` reports concrete `nextActions` when setup needs repair.
 
-If the platform-native optional package was skipped during install, `--help`, `help`, `install --help`, `setup --help`, `doctor --help`, `install`, `setup`, `doctor --json`, and `install-status --json` still run from the JavaScript launcher and report the exact reinstall command, including `--include=optional`.
+If the platform-native optional package was skipped during install, `--help`, `help`, `install --help`, `setup --help`, `doctor --help`, `install`, `setup`, `doctor --json`, and `install-status --json` still run from the JavaScript launcher and report the exact reinstall command, including `--include=optional`. If npm says postinstall scripts were skipped or blocked, run `pire-browser install` explicitly.
 
 ### Migrating From Old GitHub/Local Installs
 

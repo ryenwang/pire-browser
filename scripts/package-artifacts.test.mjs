@@ -33,4 +33,14 @@ describe("npm artifact metadata", () => {
       expect(normalizeRepositoryUrl(packageJson.repository)).toBe(expected);
     }
   });
+
+  it("keeps Pi core imports as optional peers for lean direct npm installs", () => {
+    const rootPackage = readJson(join(root, "package.json"));
+    const piPeers = ["@earendil-works/pi-coding-agent", "@earendil-works/pi-tui", "typebox"];
+
+    for (const peer of piPeers) {
+      expect(rootPackage.peerDependencies?.[peer]).toBe("*");
+      expect(rootPackage.peerDependenciesMeta?.[peer]).toEqual({ optional: true });
+    }
+  });
 });

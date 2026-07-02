@@ -45,6 +45,7 @@ function verifyRootTarball(tarball, rootPackage) {
   if (packageJson.name !== rootPackage.name) throw new Error(`${basename(tarball)} has wrong package name`);
   if (packageJson.version !== rootPackage.version) throw new Error(`${basename(tarball)} has wrong version`);
   verifyRepositoryUrl(tarball, packageJson, rootPackage);
+  verifyOptionalPiPeers(tarball, packageJson);
   rejectCommonLeakage(tarball, entries);
   const required = new Set([
     "package/bin/pire-browser.js",
@@ -73,6 +74,18 @@ function verifyRootTarball(tarball, rootPackage) {
     }
     if (entry.name.endsWith("pire-browser.xpi") && entry.name !== "package/extension/pire-browser.xpi") {
       throw new Error(`${basename(tarball)} placed XPI outside package/extension: ${entry.name}`);
+    }
+  }
+}
+
+function verifyOptionalPiPeers(tarball, packageJson) {
+  const piPeers = ["@earendil-works/pi-coding-agent", "@earendil-works/pi-tui", "typebox"];
+  for (const peer of piPeers) {
+    if (packageJson.peerDependencies?.[peer] !== "*") {
+      throw new Error(`${basename(tarball)} must declare ${peer} as a "*" peerDependency`);
+    }
+    if (packageJson.peerDependenciesMeta?.[peer]?.optional !== true) {
+      throw new Error(`${basename(tarball)} must mark ${peer} as an optional peer`);
     }
   }
 }

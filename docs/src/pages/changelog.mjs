@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.8", "0-2-8"),
+  list([
+    "Marks Pi core runtime imports as optional peers so direct npm installs stay lean and avoid pulling Pi's dependency tree into normal CLI installs.",
+    "Clarifies that skipped or blocked npm lifecycle scripts should be followed by an explicit <code>pire-browser install</code>.",
+  ]),
   h2("0.2.7", "0-2-7"),
   list([
     "Keeps top-level help and setup/diagnostic command help available from the JavaScript launcher when the optional native platform package is missing.",
@@ -32,7 +37,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The npm package is currently <code>pire-browser@0.2.7</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
+  p("The npm package is currently <code>pire-browser@0.2.8</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
 ];
 
 export default page({

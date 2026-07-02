@@ -1,6 +1,6 @@
 # Source Inventory
 
-Last reviewed: 2026-06-25
+Last reviewed: 2026-07-02
 
 This inventory records which public source sets are authoritative for `pire-browser`, which artifacts are generated or runtime-only, and where public ambiguity lives. It is intentionally not a file-by-file listing.
 
@@ -27,7 +27,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 | `tests` fixture tree | Test fixtures | Local HTML/session fixtures and shared policy contract fixtures. |
 | `scripts/` | Maintainer automation | Install, package, smoke, state/session/policy/download/upload lifecycle, trusted npm publishing helpers, release validation, and repository-only tests for packaged install helpers. |
 | `.github/workflows/` | Public CI/release automation | Pages deployment, platform package builds, trusted npm publish, and packed-release smoke checks. |
-| `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `.gitattributes` | Public entry points | Product scope, usage, release notes, package scripts, license terms, npm package shape, and repository line-ending/binary policy. |
+| `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `.gitattributes` | Public entry points | Product scope, usage, release notes, package scripts, license terms, npm package shape including optional Pi core peers, and repository line-ending/binary policy. |
 
 ## Generated Or Runtime Artifacts
 

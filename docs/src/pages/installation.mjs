@@ -5,7 +5,7 @@ const installationBlocks = [
   code(`npm install -g pire-browser
 pire-browser --version
 pire-browser install  # register Firefox Native Messaging`),
-  p("This is the recommended path for direct CLI use. <code>npm install</code> runs best-effort setup; <code>pire-browser install</code> is safe to run again and makes Firefox Native Messaging registration explicit."),
+  p("This is the recommended path for direct CLI use. <code>npm install</code> runs best-effort setup; <code>pire-browser install</code> is safe to run again and makes Firefox Native Messaging registration explicit. If npm policy blocks lifecycle scripts with <code>--ignore-scripts</code> or an <code>allow-scripts</code> warning, run <code>pire-browser install</code> after npm finishes."),
   h2("Pi package", "pi-package"),
   code(`pi install npm:pire-browser`),
   p("Use this when Pi should load the packaged extension and skill. After install, ask Pi to use <code>pire-browser</code> for browser automation."),
@@ -19,7 +19,7 @@ npx pire-browser snapshot -i`),
   code(`pire-browser install --with-deps
 pire-browser doctor --json`),
   p("Use this only when Firefox is missing or setup fails. <code>install --with-deps</code> is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux. <code>doctor --json</code> reports concrete <code>nextActions</code> when setup needs repair."),
-  p("If the platform-native optional package was skipped during install, <code>--help</code>, <code>help</code>, setup/diagnostic command help, <code>install</code>, <code>setup</code>, <code>doctor --json</code>, and <code>install-status --json</code> still run from the JavaScript launcher and report the exact reinstall command, including <code>--include=optional</code>."),
+  p("If the platform-native optional package was skipped during install, <code>--help</code>, <code>help</code>, setup/diagnostic command help, <code>install</code>, <code>setup</code>, <code>doctor --json</code>, and <code>install-status --json</code> still run from the JavaScript launcher and report the exact reinstall command, including <code>--include=optional</code>. If npm says postinstall scripts were skipped or blocked, run <code>pire-browser install</code> explicitly."),
   h2("Migrating from old GitHub/local installs", "migrating-from-old-github-local-installs"),
   p("Most users can skip this. If Pi reports that <code>npm:pire-browser</code> conflicts with an older GitHub, local-checkout, or ZIP-era install, inspect and repair the duplicate registration from a normal terminal."),
   code(`pire-browser pi conflicts
