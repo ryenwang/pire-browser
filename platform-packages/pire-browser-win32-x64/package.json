@@ -2,6 +2,10 @@
   "name": "@ryenw/pire-browser-win32-x64",
   "version": "0.2.3",
   "description": "Windows x64 native binaries for pire-browser",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ryenwang/pire-browser"
+  },
   "license": "MIT",
   "os": [
     "win32"

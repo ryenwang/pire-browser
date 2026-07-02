@@ -35,7 +35,7 @@ export function verifyNpmArtifacts(distDir) {
 
   verifyRootTarball(tarballFor(tarballs, rootPackage.name, version), rootPackage);
   for (const [tuple, packageName] of Object.entries(PLATFORM_PACKAGES)) {
-    verifyPlatformTarball(tarballFor(tarballs, packageName, version), tuple, packageName, version);
+    verifyPlatformTarball(tarballFor(tarballs, packageName, version), tuple, packageName, version, rootPackage);
   }
 }
 
@@ -44,6 +44,7 @@ function verifyRootTarball(tarball, rootPackage) {
   const packageJson = tarJson(tarball, "package/package.json");
   if (packageJson.name !== rootPackage.name) throw new Error(`${basename(tarball)} has wrong package name`);
   if (packageJson.version !== rootPackage.version) throw new Error(`${basename(tarball)} has wrong version`);
+  verifyRepositoryUrl(tarball, packageJson, rootPackage);
   rejectCommonLeakage(tarball, entries);
   const required = new Set([
     "package/bin/pire-browser.js",
@@ -76,12 +77,13 @@ function verifyRootTarball(tarball, rootPackage) {
   }
 }
 
-function verifyPlatformTarball(tarball, tuple, packageName, version) {
+function verifyPlatformTarball(tarball, tuple, packageName, version, rootPackage) {
   const [platform] = tuple.split("-");
   const entries = tarEntries(tarball);
   const packageJson = tarJson(tarball, "package/package.json");
   if (packageJson.name !== packageName) throw new Error(`${basename(tarball)} has wrong package name`);
   if (packageJson.version !== version) throw new Error(`${basename(tarball)} has wrong version`);
+  verifyRepositoryUrl(tarball, packageJson, rootPackage);
   rejectCommonLeakage(tarball, entries);
 
   const expected = new Set([
@@ -106,6 +108,26 @@ function verifyPlatformTarball(tarball, tuple, packageName, version) {
         throw new Error(`${basename(tarball)} entry ${path} is not executable in tarball mode ${entry?.mode ?? "(missing)"}`);
       }
     }
+  }
+}
+
+export function normalizeRepositoryUrl(repository) {
+  const url = typeof repository === "string" ? repository : repository?.url;
+  if (!url) return "";
+  return String(url)
+    .replace(/^git\+/, "")
+    .replace(/^git:\/\//, "https://")
+    .replace(/\.git\/?$/, "")
+    .replace(/\/$/, "");
+}
+
+function verifyRepositoryUrl(tarball, packageJson, rootPackage) {
+  const actual = normalizeRepositoryUrl(packageJson.repository);
+  const expected = normalizeRepositoryUrl(rootPackage.repository);
+  if (!actual || actual !== expected) {
+    throw new Error(
+      `${basename(tarball)} repository.url must match root package repository for npm provenance: ${expected}`
+    );
   }
 }
 
