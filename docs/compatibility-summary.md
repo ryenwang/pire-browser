@@ -1,6 +1,6 @@
 # Compatibility Summary
 
-This is a public, product-facing status summary for `pire-browser@0.2.12`. Detailed private development records are not published in this repository.
+This is a public, product-facing status summary for `pire-browser@0.2.13`. Detailed private development records are not published in this repository.
 
 | Area | Status | Notes |
 | --- | --- | --- |

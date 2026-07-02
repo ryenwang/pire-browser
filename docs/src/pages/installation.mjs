@@ -3,22 +3,23 @@ import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, tabl
 const installationBlocks = [
   h2("Global installation", "global-installation"),
   code(`npm install -g pire-browser
-pire-browser --version
-pire-browser install  # register Firefox Native Messaging`),
-  p("This is the recommended path for direct CLI use. <code>npm install</code> runs best-effort setup; <code>pire-browser install</code> is safe to run again and makes Firefox Native Messaging registration explicit. If npm policy blocks lifecycle scripts with <code>--ignore-scripts</code> or an <code>allow-scripts</code> warning, run <code>pire-browser install</code> after npm finishes."),
+pire-browser install  # first-time Firefox setup
+pire-browser open https://example.com
+pire-browser snapshot -i`),
+  p("This is the recommended path for direct CLI use. <code>npm install</code> runs best-effort setup; <code>pire-browser install</code> is safe to run again and makes Firefox Native Messaging registration explicit. After setup, use <code>open</code> and <code>snapshot -i</code> as the basic inspect-before-act loop. If npm policy blocks lifecycle scripts with <code>--ignore-scripts</code> or an <code>allow-scripts</code> warning, run <code>pire-browser install</code> after npm finishes."),
   h2("Pi package", "pi-package"),
   code(`pi install npm:pire-browser`),
   p("Use this when Pi should load the packaged extension and skill. After install, ask Pi to use <code>pire-browser</code> for browser automation."),
   h2("Project installation", "project-installation"),
   code(`npm install pire-browser
-npx pire-browser --version
 npx pire-browser install
+npx pire-browser open https://example.com
 npx pire-browser snapshot -i`),
   p("Use this when a project wants to pin the package version. Invoke through <code>npx pire-browser</code> or <code>package.json</code> scripts."),
   h2("First-run repair", "first-run-repair"),
   code(`pire-browser install --with-deps
 pire-browser doctor --json`),
-  p("Use this only when Firefox is missing or setup fails. <code>install --with-deps</code> is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux. <code>doctor --json</code> reports concrete <code>nextActions</code> when setup needs repair."),
+  p("Use this only when Firefox is missing, setup fails, or the first browser command reports setup diagnostics. <code>install --with-deps</code> is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux. <code>doctor --json</code> reports concrete <code>nextActions</code> when setup needs repair."),
   p("If the platform-native optional package was skipped during install, <code>--help</code>, <code>help</code>, setup/diagnostic/MCP command help, <code>install</code>, <code>setup</code>, <code>doctor --json</code>, and <code>install-status --json</code> still run from the JavaScript launcher and report the exact reinstall command, including <code>--include=optional</code>. If npm says postinstall scripts were skipped or blocked, run <code>pire-browser install</code> explicitly."),
   h2("Migrating from old GitHub/local installs", "migrating-from-old-github-local-installs"),
   p("Most users can skip this. If Pi reports that <code>npm:pire-browser</code> conflicts with an older GitHub, local-checkout, or ZIP-era install, inspect and repair the duplicate registration from a normal terminal."),

@@ -1,6 +1,6 @@
 {
   "name": "pire-browser",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "description": "Cross-platform Pi extension and Firefox bridge for local browser automation",
   "keywords": [
     "pi-package",
@@ -89,13 +89,13 @@
     }
   },
   "optionalDependencies": {
-    "@ryenw/pire-browser-win32-x64": "0.2.12",
-    "@ryenw/pire-browser-win32-ia32": "0.2.12",
-    "@ryenw/pire-browser-win32-arm64": "0.2.12",
-    "@ryenw/pire-browser-darwin-x64": "0.2.12",
-    "@ryenw/pire-browser-darwin-arm64": "0.2.12",
-    "@ryenw/pire-browser-linux-x64": "0.2.12",
-    "@ryenw/pire-browser-linux-arm64": "0.2.12"
+    "@ryenw/pire-browser-win32-x64": "0.2.13",
+    "@ryenw/pire-browser-win32-ia32": "0.2.13",
+    "@ryenw/pire-browser-win32-arm64": "0.2.13",
+    "@ryenw/pire-browser-darwin-x64": "0.2.13",
+    "@ryenw/pire-browser-darwin-arm64": "0.2.13",
+    "@ryenw/pire-browser-linux-x64": "0.2.13",
+    "@ryenw/pire-browser-linux-arm64": "0.2.13"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.78.0",

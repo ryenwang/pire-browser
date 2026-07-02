@@ -6,7 +6,9 @@ const introBlocks = [
 
 # or direct CLI use
 npm install -g pire-browser
-pire-browser install                 # register Firefox Native Messaging`),
+pire-browser install                 # first-time Firefox setup
+pire-browser open https://example.com
+pire-browser snapshot -i`),
   h2("Features", "features"),
   list([
     "<strong>Agent-first:</strong> compact text output uses fewer tokens than a DOM dump and is easy for agents to parse.",

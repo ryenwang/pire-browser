@@ -12,12 +12,19 @@ For Pi users, install the package and ask the agent to use the tool:
 pi install npm:pire-browser
 ```
 
-For MCP-capable agent hosts, install once and start the smallest typed tool
-profile:
+For direct CLI or MCP-capable agent hosts, install once, run setup, then use
+the same inspect-before-act loop:
 
 ```bash
 npm install -g pire-browser
 pire-browser install
+pire-browser open https://example.com
+pire-browser snapshot -i
+```
+
+When the agent host supports MCP, start the smallest typed tool profile:
+
+```bash
 pire-browser mcp --tools core
 ```
 
@@ -56,8 +63,9 @@ Installs the native launcher and matching platform binary package:
 
 ```bash
 npm install -g pire-browser
-pire-browser --version
-pire-browser install   # register Firefox Native Messaging
+pire-browser install   # first-time Firefox setup
+pire-browser open https://example.com
+pire-browser snapshot -i
 ```
 
 `npm install` runs best-effort setup; `pire-browser install` is safe to run again and makes the setup step explicit.
@@ -83,15 +91,17 @@ For projects that want to pin the version in `package.json`:
 
 ```bash
 npm install pire-browser
-npx pire-browser --version
 npx pire-browser install
+npx pire-browser open https://example.com
+npx pire-browser snapshot -i
 ```
 
 Then use via `package.json` scripts or by invoking `npx pire-browser`.
 
 ### First-Run Repair
 
-Use this only when Firefox is missing or setup fails:
+Use this only when Firefox is missing, setup fails, or the first browser
+command reports setup diagnostics:
 
 ```bash
 pire-browser install --with-deps

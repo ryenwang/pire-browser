@@ -43,6 +43,7 @@ tolerate the full tool list.
 Use CLI commands when MCP is unavailable or the user asks for shell commands:
 
 ```bash
+pire-browser install
 pire-browser open
 pire-browser open https://example.com
 pire-browser snapshot -i
@@ -67,6 +68,18 @@ retrying the original ref.
 5. Reinspect and report success only after verification confirms the requested state.
 
 ## Common Recipes
+
+Fresh direct CLI install:
+
+```bash
+npm install -g pire-browser
+pire-browser install
+pire-browser open https://example.com
+pire-browser snapshot -i
+```
+
+Use `install --with-deps`, `doctor`, or `doctor --json` only when Firefox is
+missing, setup fails, or the first browser command reports setup diagnostics.
 
 Search a site:
 

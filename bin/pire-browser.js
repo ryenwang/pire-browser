@@ -344,10 +344,17 @@ export function formatLauncherMissingNativeHelp(args, resolved) {
 Usage:
   pire-browser install [--with-deps] [--firefox-path <path>] [--json]
 
-Agent-browser-style setup command. Registers the Firefox Native Messaging host
-for the current OS user. If the optional native package is missing, this
-launcher-served path reports concrete repair commands instead of requiring the
-native binary first.
+First-run setup command. Registers the Firefox Native Messaging host for the
+current OS user.
+
+Normal path:
+  npm install -g pire-browser
+  pire-browser install
+  pire-browser open https://example.com
+  pire-browser snapshot -i
+
+If the optional native package is missing, this launcher-served path reports
+concrete repair commands instead of requiring the native binary first.
 `.trim()}\n${repairHint}`.trim();
   }
   if (topic === "setup") {
@@ -357,7 +364,8 @@ Usage:
   pire-browser setup --windows [--with-deps] [--firefox-path <path>] [--json]
 
 Lower-level setup command for Firefox Native Messaging. Prefer
-\`pire-browser install\` for agent-browser-style first-run setup.
+\`pire-browser install\` for first-run setup. After setup, run
+\`pire-browser open https://example.com\` and \`pire-browser snapshot -i\`.
 `.trim()}\n${repairHint}`.trim();
   }
   if (topic === "doctor" || topic === "install-status") {

@@ -162,6 +162,7 @@ pub fn setup_result_text(result: &SetupResult) -> String {
     if let Some(note) = &result.dependency_note {
         text.push_str(&format!("\nDependency note: {note}"));
     }
+    text.push_str("\nNext: run `pire-browser open https://example.com` and `pire-browser snapshot -i`.");
     text
 }
 
@@ -429,6 +430,20 @@ mod tests {
             dependency_note(true, Some("Ran dependency installer.".to_string())).unwrap(),
             "Ran dependency installer."
         );
+    }
+
+    #[test]
+    fn setup_result_text_points_to_first_browser_commands() {
+        let text = setup_result_text(&SetupResult {
+            firefox_path: PathBuf::from("/Applications/Firefox.app"),
+            host_path: PathBuf::from("/tmp/pire-browser-host"),
+            manifest_path: PathBuf::from("/tmp/pire-browser.json"),
+            note: None,
+            dependency_note: None,
+        });
+        assert!(text.contains("pire-browser setup complete"));
+        assert!(text.contains("pire-browser open https://example.com"));
+        assert!(text.contains("pire-browser snapshot -i"));
     }
 
     #[test]

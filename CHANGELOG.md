@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.13
+
+- Shortens the first-use path across README, docs, launcher/native install help, setup success output, installed agent context, and the bundled core skill: install, run `pire-browser install`, then `open` and `snapshot -i`.
+- Keeps repair and migration guidance available but frames `install --with-deps`, `doctor`, and Pi repair as fallback paths after setup or the first browser command reports a problem.
+
 ## 0.2.12
 
 - Aligns native `pire-browser mcp --help` with the launcher-served MCP help so healthy installs and missing-native installs both show the same client config and profile-selection guidance.

@@ -4136,13 +4136,20 @@ const INSTALL_HELP: &str = r##"
 Usage:
   pire-browser install [--with-deps] [--firefox-path <path>]
 
-Alias for setup. Registers the Firefox Native Messaging host for the current
-user. `--firefox-path` accepts the Firefox executable, a directory containing
-the executable, or a macOS Firefox.app bundle. Use `pire-browser doctor` for
-read-only diagnostics. `--with-deps` is accepted for agent-browser-style setup
-recipes: on Windows it tries winget or Chocolatey when Firefox is missing, on
-macOS it tries Homebrew when Firefox is missing, and on Linux it reports
-non-Snap/non-Flatpak Firefox guidance without running sudo package managers.
+First-run setup command. Registers the Firefox Native Messaging host for the
+current user. Normal path:
+
+  npm install -g pire-browser
+  pire-browser install
+  pire-browser open https://example.com
+  pire-browser snapshot -i
+
+`--firefox-path` accepts the Firefox executable, a directory containing the
+executable, or a macOS Firefox.app bundle. Use `pire-browser doctor` for
+read-only diagnostics. Use `--with-deps` only when Firefox is missing or setup
+fails: on Windows it tries winget or Chocolatey, on macOS it tries Homebrew, and
+on Linux it reports non-Snap/non-Flatpak Firefox guidance without running sudo
+package managers.
 "##;
 
 const UPDATE_HELP: &str = r##"
@@ -4168,9 +4175,10 @@ Registers the Firefox Native Messaging host for the current user. `--windows`
 is a deprecated compatibility alias and is ignored on non-Windows platforms.
 `--firefox-path` accepts the Firefox executable, a directory containing the
 executable, or a macOS Firefox.app bundle. `pire-browser install` is a public
-alias for this setup step. `--with-deps` prints platform dependency guidance
-and, on Windows/macOS only, can try the supported userland Firefox installer
-when Firefox is missing.
+alias for this setup step and is preferred for first-run setup. After setup,
+run `pire-browser open https://example.com` and `pire-browser snapshot -i`.
+`--with-deps` prints platform dependency guidance and, on Windows/macOS only,
+can try the supported userland Firefox installer when Firefox is missing.
 "##;
 
 const LAUNCH_HELP: &str = r##"
@@ -6902,9 +6910,15 @@ mod tests {
         assert!(help_text(Some("status")).unwrap().contains("status"));
         assert!(help_text(Some("install"))
             .unwrap()
-            .contains("Alias for setup"));
+            .contains("First-run setup command"));
         assert!(help_text(Some("install")).unwrap().contains("Firefox.app"));
         assert!(help_text(Some("install")).unwrap().contains("--with-deps"));
+        assert!(help_text(Some("install"))
+            .unwrap()
+            .contains("pire-browser open https://example.com"));
+        assert!(help_text(Some("install"))
+            .unwrap()
+            .contains("pire-browser snapshot -i"));
         assert!(help_text(Some("tap"))
             .unwrap()
             .contains("pire-browser tap '@e4'"));

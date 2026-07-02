@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.13", "0-2-13"),
+  list([
+    "Shortens the first-use path across README, docs, launcher/native install help, setup success output, installed agent context, and the bundled core skill: install, run <code>pire-browser install</code>, then <code>open</code> and <code>snapshot -i</code>.",
+    "Keeps repair and migration guidance available but frames <code>install --with-deps</code>, <code>doctor</code>, and Pi repair as fallback paths after setup or the first browser command reports a problem.",
+  ]),
   h2("0.2.12", "0-2-12"),
   list([
     "Aligns native <code>pire-browser mcp --help</code> with the launcher-served MCP help so healthy installs and missing-native installs both show the same client config and profile-selection guidance.",
@@ -54,7 +59,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The npm package is currently <code>pire-browser@0.2.12</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
+  p("The npm package is currently <code>pire-browser@0.2.13</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
 ];
 
 export default page({
