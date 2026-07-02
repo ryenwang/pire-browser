@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   inspectPiSettingsForConflicts,
@@ -1198,7 +1198,9 @@ export function isEntrypoint(argvPath = process.argv[1], moduleUrl = import.meta
   const modulePath = typeof moduleUrl === "string" && moduleUrl.startsWith("file:")
     ? fileURLToPath(moduleUrl)
     : moduleUrl;
-  return canonicalEntrypointPath(modulePath) === canonicalEntrypointPath(argvPath);
+  const canonicalModule = canonicalEntrypointPath(modulePath);
+  const canonicalArgv = canonicalEntrypointPath(argvPath);
+  return canonicalModule === canonicalArgv || isNpmBinShimEntrypoint(canonicalArgv, canonicalModule);
 }
 
 function canonicalEntrypointPath(path) {
@@ -1206,5 +1208,36 @@ function canonicalEntrypointPath(path) {
     return realpathSync(path);
   } catch {
     return resolve(path);
+  }
+}
+
+function isNpmBinShimEntrypoint(argvPath, modulePath) {
+  if (basename(modulePath) !== "pire-browser.js") return false;
+  const binDir = dirname(modulePath);
+  if (basename(binDir) !== "bin") return false;
+  const packageRoot = dirname(binDir);
+  if (!isPireBrowserPackageRoot(packageRoot)) return false;
+
+  const nodeModulesDir = dirname(packageRoot);
+  const candidates = [
+    join(nodeModulesDir, ".bin", "pire-browser"),
+    join(nodeModulesDir, ".bin", "pire-browser.cmd"),
+    join(nodeModulesDir, ".bin", "pire-browser.ps1"),
+  ];
+
+  const maybeLibDir = dirname(nodeModulesDir);
+  if (basename(nodeModulesDir) === "node_modules" && basename(maybeLibDir) === "lib") {
+    candidates.push(join(dirname(maybeLibDir), "bin", "pire-browser"));
+  }
+
+  return candidates.some((candidate) => canonicalEntrypointPath(candidate) === argvPath);
+}
+
+function isPireBrowserPackageRoot(packageRoot) {
+  try {
+    const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+    return packageJson?.name === "pire-browser";
+  } catch {
+    return false;
   }
 }

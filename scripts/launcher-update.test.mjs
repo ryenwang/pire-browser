@@ -74,6 +74,35 @@ describe("launcher update UX", () => {
     }
   });
 
+  it("recognizes npm shim scripts that invoke the installed launcher", () => {
+    const temp = mkdtempTestRoot();
+    try {
+      const globalPackageRoot = join(temp, "global", "lib", "node_modules", "pire-browser");
+      const globalLauncher = join(globalPackageRoot, "bin", "pire-browser.js");
+      const globalShim = join(temp, "global", "bin", "pire-browser");
+      mkdirSync(join(globalPackageRoot, "bin"), { recursive: true });
+      mkdirSync(join(temp, "global", "bin"), { recursive: true });
+      writeFileSync(join(globalPackageRoot, "package.json"), `${JSON.stringify({ name: "pire-browser" })}\n`);
+      writeFileSync(globalLauncher, "#!/usr/bin/env node\n");
+      writeFileSync(globalShim, "#!/bin/sh\nexec node ../lib/node_modules/pire-browser/bin/pire-browser.js \"$@\"\n");
+
+      const localPackageRoot = join(temp, "project", "node_modules", "pire-browser");
+      const localLauncher = join(localPackageRoot, "bin", "pire-browser.js");
+      const localShim = join(temp, "project", "node_modules", ".bin", "pire-browser");
+      mkdirSync(join(localPackageRoot, "bin"), { recursive: true });
+      mkdirSync(join(temp, "project", "node_modules", ".bin"), { recursive: true });
+      writeFileSync(join(localPackageRoot, "package.json"), `${JSON.stringify({ name: "pire-browser" })}\n`);
+      writeFileSync(localLauncher, "#!/usr/bin/env node\n");
+      writeFileSync(localShim, "#!/bin/sh\nexec node ../pire-browser/bin/pire-browser.js \"$@\"\n");
+
+      expect(isEntrypoint(globalShim, pathToFileURL(globalLauncher).href)).toBe(true);
+      expect(isEntrypoint(localShim, pathToFileURL(localLauncher).href)).toBe(true);
+      expect(isEntrypoint(globalShim, pathToFileURL(localLauncher).href)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("serves launcher-owned help without invoking native commands", () => {
     const logs = [];
     vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
