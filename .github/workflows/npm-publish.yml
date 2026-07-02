@@ -134,7 +134,7 @@ jobs:
           node scripts/publish-npm-artifacts.mjs "${args[@]}"
 
   pi-install-smoke:
-    name: Pi install smoke
+    name: Pi install/runtime smoke
     needs:
       - validate-release-ref
       - publish
@@ -147,9 +147,9 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
       - run: npm install --package-lock=false --no-audit --no-fund
-      - name: Smoke published Pi install
+      - name: Smoke published Pi install and runtime discovery
         run: npm run smoke:pi-install -- --source npm:pire-browser@${{ needs.validate-release-ref.outputs.version }} --artifact-dir target/pi-install-smoke
-      - name: Print Pi install smoke diagnostics
+      - name: Print Pi install/runtime smoke diagnostics
         if: failure()
         shell: bash
         run: |

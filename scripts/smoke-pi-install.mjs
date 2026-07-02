@@ -77,13 +77,15 @@ function runStep(name, command, args, options) {
     cwd: options.cwd,
     env: options.env,
     encoding: "utf8",
+    input: options.input,
     shell: process.platform === "win32" && command === "pi",
+    timeout: options.timeoutMs,
     windowsHide: true,
   });
   const stdout = result.stdout ?? "";
   const stderr = result.stderr ?? "";
   const status = result.status ?? (result.error ? 1 : 0);
-  const entry = { name, command, args, status };
+  const entry = { name, command, args, status, timedOut: result.signal === "SIGTERM" || result.error?.code === "ETIMEDOUT" };
   writeFileSync(join(options.artifactDir, `${options.index}-${name}.stdout.log`), stdout);
   writeFileSync(join(options.artifactDir, `${options.index}-${name}.stderr.log`), stderr);
   options.summary.steps.push(entry);
@@ -155,7 +157,63 @@ export function expectedVersionFromSource(source) {
   return match?.[1] ?? null;
 }
 
-export function runPiInstallSmoke(options) {
+function jsonLines(stdout) {
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+function samePath(actual, expected) {
+  return resolve(actual) === resolve(expected);
+}
+
+export function validatePiRpcCommands(stdout, packageRoot) {
+  const responses = jsonLines(stdout);
+  const response = responses.find((entry) => entry.type === "response" && entry.command === "get_commands");
+  if (!response) throw new Error("Pi RPC did not return a get_commands response");
+  if (!response.success) throw new Error(`Pi RPC get_commands failed: ${response.error ?? "unknown error"}`);
+  const commands = Array.isArray(response.data?.commands) ? response.data.commands : [];
+  const skill = commands.find((command) => command.name === "skill:pire-browser" && command.source === "skill");
+  if (!skill) throw new Error("Pi RPC did not discover skill:pire-browser from the installed package");
+  if (!samePath(skill.sourceInfo?.baseDir ?? "", packageRoot)) {
+    throw new Error(`Pi RPC skill source did not point at installed package root: ${skill.sourceInfo?.baseDir}`);
+  }
+  return {
+    commandCount: commands.length,
+    skill: {
+      name: skill.name,
+      source: skill.source,
+      path: skill.sourceInfo?.path,
+      baseDir: skill.sourceInfo?.baseDir,
+      packageSource: skill.sourceInfo?.source,
+    },
+  };
+}
+
+export async function validateInstalledPiExtensionLoad(packageRoot) {
+  const { discoverAndLoadExtensions } = await import("@earendil-works/pi-coding-agent");
+  const extensionPath = join(packageRoot, "pi", "extensions", "pire-browser.ts");
+  const result = await discoverAndLoadExtensions([extensionPath], packageRoot);
+  if (result.errors.length > 0) {
+    throw new Error(`Pi extension loader failed: ${result.errors.map((error) => error.error).join("; ")}`);
+  }
+  const extension = result.extensions[0];
+  if (!extension) throw new Error("Pi extension loader did not return an extension");
+  const tools = [...extension.tools.keys()];
+  if (!tools.includes("pire-browser") && !tools.includes("pire_browser")) {
+    throw new Error(`Pi extension did not register the pire-browser tool; tools: ${tools.join(", ") || "(none)"}`);
+  }
+  return {
+    extensionPath,
+    tools,
+    commands: [...extension.commands.keys()],
+    flags: [...extension.flags.keys()],
+  };
+}
+
+export async function runPiInstallSmoke(options) {
   const workRoot = mkdtempSync(join(tmpdir(), "pire-pi-install-smoke-"));
   const agentDir = join(workRoot, "agent");
   const artifactDir = resolve(options.artifactDir);
@@ -218,6 +276,14 @@ export function runPiInstallSmoke(options) {
       throw new Error("installed core skill did not include first-use/MCP guidance");
     }
 
+    const rpc = runStep("pi-rpc-get-commands", options.piCommand, ["--mode", "rpc", "--no-builtin-tools", "--tools", "pire-browser", "--no-session"], {
+      ...stepOptions,
+      input: `${JSON.stringify({ type: "get_commands", id: "pire-runtime-smoke-commands" })}\n`,
+      timeoutMs: 15_000,
+    });
+    summary.piRpc = validatePiRpcCommands(rpc.stdout, packageRoot);
+    summary.piExtension = await validateInstalledPiExtensionLoad(packageRoot);
+
     summary.success = true;
     return summary;
   } finally {
@@ -228,8 +294,9 @@ export function runPiInstallSmoke(options) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const summary = runPiInstallSmoke(parsePiInstallSmokeArgs(process.argv.slice(2)));
+    const summary = await runPiInstallSmoke(parsePiInstallSmokeArgs(process.argv.slice(2)));
     console.log(`Pi install smoke passed for ${summary.source} (${summary.installedVersion}).`);
+    console.log(`Pi runtime discovered ${summary.piRpc.skill.name} and registered tool(s): ${summary.piExtension.tools.join(", ")}.`);
     console.log(`Artifacts: ${summary.artifactDir}`);
   } catch (error) {
     console.error(error?.stack || error?.message || String(error));

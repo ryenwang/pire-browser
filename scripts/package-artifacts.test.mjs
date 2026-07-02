@@ -9,6 +9,7 @@ import {
   parsePiInstallSmokeArgs,
   piInstallSmokeEnv,
   validateInstalledPackage,
+  validatePiRpcCommands,
   validatePiSettings,
 } from "./smoke-pi-install.mjs";
 
@@ -104,5 +105,42 @@ describe("npm artifact metadata", () => {
         "1.2.3"
       )
     ).toThrow(/pi\.extensions/);
+  });
+
+  it("validates Pi runtime RPC discovery points at the installed package", () => {
+    const packageRoot = join(root, "target", "fake-pi", "npm", "node_modules", "pire-browser");
+    const stdout = `${JSON.stringify({
+      id: "pire-runtime-smoke-commands",
+      type: "response",
+      command: "get_commands",
+      success: true,
+      data: {
+        commands: [
+          {
+            name: "skill:pire-browser",
+            description: "Use the installed pire-browser CLI.",
+            source: "skill",
+            sourceInfo: {
+              path: join(packageRoot, "skills", "pire-browser", "SKILL.md"),
+              source: "npm:pire-browser@1.2.3",
+              baseDir: packageRoot,
+            },
+          },
+        ],
+      },
+    })}\n`;
+
+    expect(validatePiRpcCommands(stdout, packageRoot).skill.name).toBe("skill:pire-browser");
+    expect(() =>
+      validatePiRpcCommands(
+        JSON.stringify({
+          type: "response",
+          command: "get_commands",
+          success: true,
+          data: { commands: [] },
+        }),
+        packageRoot
+      )
+    ).toThrow(/skill:pire-browser/);
   });
 });
