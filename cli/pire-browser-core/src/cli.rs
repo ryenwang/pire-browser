@@ -4238,6 +4238,9 @@ Usage:
   pire-browser mcp
   pire-browser mcp --tools core
   pire-browser mcp --tools core,network
+  pire-browser mcp --tools core,state
+  pire-browser mcp --tools core,debug
+  pire-browser mcp --tools core,tabs
   pire-browser mcp --tools all
 
 Starts a Model Context Protocol server over stdio. Use the smallest tools
@@ -4255,6 +4258,21 @@ Fiber tree/inspect/render recording/Suspense tools and vitals.
 Use `all` for every currently implemented MCP tool. The server defaults to MCP
 protocol 2025-11-25 and accepts older supported client protocol versions during
 initialization. Tool discovery is paginated for large profiles.
+
+MCP client config:
+{
+  "mcpServers": {
+    "pire-browser": {
+      "command": "pire-browser",
+      "args": ["mcp", "--tools", "core"]
+    }
+  }
+}
+
+If a needed tool is missing from the active profile, restart the MCP server with
+the smallest combined profile that adds it, such as `--tools core,network`,
+`--tools core,state`, `--tools core,tabs`, `--tools core,debug`, or
+`--tools core,react`.
 "##;
 
 const SKILLS_HELP: &str = r##"
@@ -7248,6 +7266,13 @@ mod tests {
         assert!(help_text(Some("mcp")).unwrap().contains("semantic find"));
         assert!(help_text(Some("mcp")).unwrap().contains("2025-11-25"));
         assert!(help_text(Some("mcp")).unwrap().contains("paginated"));
+        assert!(help_text(Some("mcp")).unwrap().contains("\"mcpServers\""));
+        assert!(help_text(Some("mcp"))
+            .unwrap()
+            .contains("\"args\": [\"mcp\", \"--tools\", \"core\"]"));
+        assert!(help_text(Some("mcp"))
+            .unwrap()
+            .contains("--tools core,debug"));
         assert!(help_text(Some("mcp"))
             .unwrap()
             .contains("trace/profiler/record evidence"));

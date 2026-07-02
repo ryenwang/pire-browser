@@ -274,7 +274,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "win32-x64",
         packageName: "@ryenw/pire-browser-win32-x64",
-        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.11 for win32-x64.",
+        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.12 for win32-x64.",
       }
     );
 
@@ -289,7 +289,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "linux-x64",
         packageName: "@ryenw/pire-browser-linux-x64",
-        reason: "Missing optional native package @ryenw/pire-browser-linux-x64@0.2.11 for linux-x64.",
+        reason: "Missing optional native package @ryenw/pire-browser-linux-x64@0.2.12 for linux-x64.",
       }
     );
 
@@ -305,7 +305,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "win32-x64",
         packageName: "@ryenw/pire-browser-win32-x64",
-        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.11 for win32-x64.",
+        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.12 for win32-x64.",
       }
     );
 
@@ -327,7 +327,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "darwin-arm64",
         packageName: "@ryenw/pire-browser-darwin-arm64",
-        reason: "Missing optional native package @ryenw/pire-browser-darwin-arm64@0.2.11 for darwin-arm64.",
+        reason: "Missing optional native package @ryenw/pire-browser-darwin-arm64@0.2.12 for darwin-arm64.",
       },
       { output: console.log }
     );
@@ -346,7 +346,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "linux-x64",
         packageName: "@ryenw/pire-browser-linux-x64",
-        reason: "Missing optional native package @ryenw/pire-browser-linux-x64@0.2.11 for linux-x64.",
+        reason: "Missing optional native package @ryenw/pire-browser-linux-x64@0.2.12 for linux-x64.",
       },
       ["setup", "--firefox-path", "/opt/firefox/firefox"]
     );
@@ -365,7 +365,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "win32-x64",
         packageName: "@ryenw/pire-browser-win32-x64",
-        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.11 for win32-x64.",
+        reason: "Missing optional native package @ryenw/pire-browser-win32-x64@0.2.12 for win32-x64.",
       },
       { output: console.log }
     );
@@ -385,7 +385,7 @@ describe("launcher update UX", () => {
         ok: false,
         tuple: "linux-arm64",
         packageName: "@ryenw/pire-browser-linux-arm64",
-        reason: "Missing optional native package @ryenw/pire-browser-linux-arm64@0.2.11 for linux-arm64.",
+        reason: "Missing optional native package @ryenw/pire-browser-linux-arm64@0.2.12 for linux-arm64.",
       },
       ["doctor", "--json"]
     );

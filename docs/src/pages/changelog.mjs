@@ -1,6 +1,10 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.12", "0-2-12"),
+  list([
+    "Aligns native <code>pire-browser mcp --help</code> with the launcher-served MCP help so healthy installs and missing-native installs both show the same client config and profile-selection guidance.",
+  ]),
   h2("0.2.11", "0-2-11"),
   list([
     "Adds copy-ready MCP client configuration examples to the README, docs site, launcher-served <code>mcp --help</code>, installed agent context, and bundled core skill.",
@@ -50,7 +54,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The npm package is currently <code>pire-browser@0.2.11</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
+  p("The npm package is currently <code>pire-browser@0.2.12</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
 ];
 
 export default page({

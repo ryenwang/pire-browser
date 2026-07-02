@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.12
+
+- Aligns native `pire-browser mcp --help` with the launcher-served MCP help so healthy installs and missing-native installs both show the same client config and profile-selection guidance.
+
 ## 0.2.11
 
 - Adds copy-ready MCP client configuration examples to the README, docs site, launcher-served `mcp --help`, installed agent context, and bundled core skill.
