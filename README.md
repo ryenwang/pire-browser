@@ -115,6 +115,12 @@ pire-browser doctor --json
 
 `install --with-deps` is the agent-browser-style first-run helper: it uses an installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux. `doctor --json` reports concrete `nextActions` when setup needs repair.
 
+If launch fails with `web-ext exited before pire-browser connected` or a
+connection timeout, read the printed `Log:` path and follow the JSON
+`data.nextActions`: run `pire-browser doctor --json`, refresh setup with
+`pire-browser install`, close managed Firefox/web-ext processes for that
+profile, then retry.
+
 If the platform-native optional package was skipped during install, `--help`, `help`, `install --help`, `setup --help`, `doctor --help`, `install`, `setup`, `doctor --json`, and `install-status --json` still run from the JavaScript launcher and report the exact reinstall command, including `--include=optional`. If direct npm install says postinstall scripts were skipped or blocked, run `pire-browser install` explicitly. For Pi installs, let the first browser command try lazy setup before running diagnostics.
 
 ### Migrating From Old GitHub/Local Installs

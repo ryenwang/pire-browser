@@ -13,6 +13,7 @@ use crate::download::{
 };
 use crate::firefox::{discover_firefox, firefox_discovery_error_message};
 use crate::protocol::EXTENSION_ID;
+use crate::redaction::redact_text;
 use crate::session::{
     cleanup_stale_sessions, data_dir, ensure_runtime_dirs, list_sessions, now_ms, SessionInfo,
 };
@@ -299,8 +300,14 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
     while Instant::now() < deadline {
         if let Some(status) = child.try_wait()? {
             bail!(
-                "{launcher_name} exited before pire-browser connected (status: {status}); check {}",
-                log_path.display()
+                "{}",
+                launch_connect_failure_message(
+                    launcher_name,
+                    Some(&format!(
+                        "{launcher_name} exited before pire-browser connected (status: {status})"
+                    )),
+                    &log_path
+                )
             );
         }
 
@@ -333,8 +340,12 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
     }
 
     bail!(
-        "timed out waiting for pire-browser extension session; check {}",
-        log_path.display()
+        "{}",
+        launch_connect_failure_message(
+            launcher_name,
+            Some("timed out waiting for pire-browser extension session"),
+            &log_path
+        )
     )
 }
 
@@ -976,6 +987,42 @@ fn open_append(path: &Path) -> Result<File> {
         .with_context(|| format!("failed to open {}", path.display()))
 }
 
+fn launch_connect_failure_message(
+    launcher_name: &str,
+    summary: Option<&str>,
+    log_path: &Path,
+) -> String {
+    let mut text = String::new();
+    text.push_str(summary.unwrap_or("pire-browser could not connect to the Firefox extension"));
+    text.push_str(&format!("\nLog: {}", log_path.display()));
+    text.push_str("\nNext actions:");
+    text.push_str("\n- Run `pire-browser doctor --json` and follow `data.nextActions`.");
+    text.push_str("\n- Run `pire-browser install` to refresh Native Messaging setup.");
+    text.push_str("\n- Close managed Firefox/web-ext processes for this profile, then retry.");
+    if launcher_name == "web-ext" {
+        text.push_str("\n- If `web-ext` or `npx` failed, confirm Node.js/npm can run `npx --yes web-ext --version`.");
+    }
+    if let Some(tail) = redacted_log_tail(log_path, 6) {
+        text.push_str(&format!("\nRecent {launcher_name} log:\n{tail}"));
+    }
+    text
+}
+
+fn redacted_log_tail(path: &Path, max_lines: usize) -> Option<String> {
+    let content = fs::read_to_string(path).ok()?;
+    let lines: Vec<_> = content
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    if lines.is_empty() {
+        return None;
+    }
+    let start = lines.len().saturating_sub(max_lines);
+    let tail = lines[start..].join("\n");
+    Some(redact_text(&tail))
+}
+
 fn npx_command() -> PathBuf {
     #[cfg(windows)]
     {
@@ -1441,6 +1488,32 @@ mod tests {
             launch_wait_timeout_from_env(ExtensionLaunchMode::WebExt, Some("120000")),
             Duration::from_secs(120)
         );
+    }
+
+    #[test]
+    fn launch_connect_failure_message_reports_next_actions_and_redacted_log_tail() {
+        let root = tempfile::tempdir().unwrap();
+        let log_path = root.path().join("web-ext.log");
+        fs::write(
+            &log_path,
+            "starting web-ext\nAuthorization: Bearer sk-test-secret\nfailed to launch\n",
+        )
+        .unwrap();
+
+        let message = launch_connect_failure_message(
+            "web-ext",
+            Some("web-ext exited before pire-browser connected (status: 1)"),
+            &log_path,
+        );
+
+        assert!(message.contains("web-ext exited before pire-browser connected"));
+        assert!(message.contains("Log: "));
+        assert!(message.contains("pire-browser doctor --json"));
+        assert!(message.contains("pire-browser install"));
+        assert!(message.contains("npx --yes web-ext --version"));
+        assert!(message.contains("Recent web-ext log:"));
+        assert!(message.contains("failed to launch"));
+        assert!(!message.contains("sk-test-secret"));
     }
 
     #[test]

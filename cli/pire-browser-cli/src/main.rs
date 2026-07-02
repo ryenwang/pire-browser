@@ -11736,11 +11736,42 @@ fn rpc_error_from_anyhow(err: &anyhow::Error) -> pire_browser_core::protocol::Rp
     } else {
         ("command_failed", "runtime")
     };
+    let data = rpc_error_data_for_message(code, phase, &message);
     pire_browser_core::protocol::RpcError {
         code: code.to_string(),
         message: redact_text(&message),
-        data: Some(json!({ "phase": phase })),
+        data: Some(data),
     }
+}
+
+fn rpc_error_data_for_message(code: &str, phase: &str, message: &str) -> Value {
+    let mut data = json!({ "phase": phase });
+    let is_launch_connect_timeout = code == "timeout"
+        && message.contains("timed out waiting for pire-browser extension session");
+    if code == "browser_launch_failed" || is_launch_connect_timeout {
+        data["nextActions"] = json!([
+            "Run `pire-browser doctor --json` and follow `data.nextActions`.",
+            "Run `pire-browser install` to refresh Native Messaging setup.",
+            "Close managed Firefox/web-ext processes for this profile, then retry.",
+            "If web-ext or npx failed, confirm Node.js/npm can run `npx --yes web-ext --version`."
+        ]);
+        if let Some(log_path) = extract_launch_log_path(message) {
+            data["logPath"] = json!(redact_text(&log_path));
+        }
+    }
+    data
+}
+
+fn extract_launch_log_path(message: &str) -> Option<String> {
+    for line in message.lines() {
+        if let Some(path) = line.strip_prefix("Log: ") {
+            let path = path.trim();
+            if !path.is_empty() {
+                return Some(path.to_string());
+            }
+        }
+    }
+    None
 }
 
 fn local_not_available_result(
@@ -15112,10 +15143,20 @@ mod tests {
     #[test]
     fn classifies_launch_and_connect_failures_for_json_envelopes() {
         let timeout = rpc_error_from_anyhow(&anyhow::anyhow!(
-            "timed out waiting for pire-browser extension session; check C:/tmp/web-ext.log"
+            "timed out waiting for pire-browser extension session\nLog: C:/tmp/web-ext.log"
         ));
         assert_eq!(timeout.code, "timeout");
         assert_eq!(exit_code_for_error(&timeout.code), 124);
+        assert_eq!(timeout.data.as_ref().unwrap()["phase"], "connect");
+        assert_eq!(
+            timeout.data.as_ref().unwrap()["logPath"],
+            "C:/tmp/web-ext.log"
+        );
+        assert!(timeout.data.as_ref().unwrap()["nextActions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|action| action.as_str().unwrap().contains("doctor --json")));
 
         let disconnected = rpc_error_from_anyhow(&anyhow::anyhow!(
             "extension_disconnected: no live Firefox extension session found"
@@ -15134,9 +15175,19 @@ mod tests {
         assert_eq!(exit_code_for_error(&invalid_args.code), 2);
 
         let launch = rpc_error_from_anyhow(&anyhow::anyhow!(
-            "web-ext exited before pire-browser connected (status: 1)"
+            "web-ext exited before pire-browser connected (status: 1)\nLog: C:/tmp/web-ext.log"
         ));
         assert_eq!(launch.code, "browser_launch_failed");
+        assert_eq!(launch.data.as_ref().unwrap()["phase"], "launch");
+        assert_eq!(
+            launch.data.as_ref().unwrap()["logPath"],
+            "C:/tmp/web-ext.log"
+        );
+        assert!(launch.data.as_ref().unwrap()["nextActions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|action| action.as_str().unwrap().contains("pire-browser install")));
 
         let domain = rpc_error_from_anyhow(&anyhow::anyhow!(
             "DomainPolicyError: host `example.net` is outside the active domain allowlist (example.com)"

@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.15", "0-2-15"),
+  list([
+    "Improves first-run Firefox bridge diagnostics when <code>web-ext</code> exits before <code>pire-browser</code> connects or the extension session times out.",
+    "Adds stable <code>Log:</code> and <code>nextActions</code> guidance to launch/connect failures so agents can run <code>doctor --json</code>, refresh setup, close managed Firefox/web-ext processes, and inspect the right log instead of guessing.",
+  ]),
   h2("0.2.14", "0-2-14"),
   list([
     "Adds an isolated <code>smoke:pi-install</code> maintainer check that runs <code>pi install npm:pire-browser@&lt;version&gt;</code> against a temporary <code>PI_CODING_AGENT_DIR</code>, verifies package registration, and checks installed skill/version output without touching live Pi settings.",
@@ -64,7 +69,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The npm package is currently <code>pire-browser@0.2.14</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
+  p("The npm package is currently <code>pire-browser@0.2.15</code>. Release details remain authoritative in the repository README and GitHub release artifacts."),
 ];
 
 export default page({

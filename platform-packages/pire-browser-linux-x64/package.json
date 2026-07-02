@@ -1,6 +1,6 @@
 {
   "name": "@ryenw/pire-browser-linux-x64",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "description": "Linux x64 native binaries for pire-browser",
   "repository": {
     "type": "git",

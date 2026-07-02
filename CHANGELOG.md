@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.15
+
+- Improves first-run Firefox bridge diagnostics when `web-ext` exits before `pire-browser` connects or the extension session times out.
+- Adds stable `Log:` and `nextActions` guidance to launch/connect failures so agents can run `doctor --json`, refresh setup, close managed Firefox/web-ext processes, and inspect the right log instead of guessing.
+
 ## 0.2.14
 
 - Adds an isolated `smoke:pi-install` maintainer check that runs `pi install npm:pire-browser@<version>` against a temporary `PI_CODING_AGENT_DIR`, verifies package registration, and checks installed skill/version output without touching live Pi settings.
