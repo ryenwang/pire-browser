@@ -102,12 +102,24 @@ jobs:
           name: root-package
           path: dist/npm/*.tgz
 
+  packed-browser-smoke:
+    name: Packed browser smoke
+    needs:
+      - validate-release-ref
+    uses: ./.github/workflows/release-smoke.yml
+    with:
+      target: all
+      run_browser_smoke: true
+      run_signed_xpi: false
+    secrets: inherit
+
   publish:
     name: publish to npm
     needs:
       - validate-release-ref
       - platform-native
       - root
+      - packed-browser-smoke
     runs-on: ubuntu-24.04
     environment: npm-production
     steps:

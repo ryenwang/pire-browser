@@ -23,6 +23,23 @@ on:
         required: false
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      target:
+        description: "Release smoke target"
+        required: false
+        type: string
+        default: all
+      run_browser_smoke:
+        description: "Run browser smoke against installed packed artifacts"
+        required: false
+        type: boolean
+        default: true
+      run_signed_xpi:
+        description: "Sign the extension through AMO and also smoke PIRE_BROWSER_EXTENSION_MODE=xpi on Windows x64"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   packed-package:

@@ -26,7 +26,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 | `docs/compatibility-summary.md` | Public compatibility summary | Coarse product-facing status table. Do not use it for detailed planning or implementation priority. |
 | `tests` fixture tree | Test fixtures | Local HTML/session fixtures and shared policy contract fixtures. |
 | `scripts/` | Maintainer automation | Install, package, Pi fresh-install/runtime-discovery smoke, packed-package smoke, state/session/policy/download/upload lifecycle, trusted npm publishing helpers, release validation, and repository-only tests for packaged install helpers. |
-| `.github/workflows/` | Public CI/release automation | Pages deployment, platform package builds, trusted npm publish with post-publish Pi install/runtime-discovery smoke, and packed-release smoke checks. |
+| `.github/workflows/` | Public CI/release automation | Pages deployment, platform package builds, trusted npm publish gated by reusable packed browser smoke plus post-publish Pi install/runtime-discovery smoke, and manual packed-release smoke checks. |
 | `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `.gitattributes` | Public entry points | Product scope, usage, release notes, package scripts, license terms, npm package shape including optional Pi core peers, and repository line-ending/binary policy. |
 
 ## Generated Or Runtime Artifacts
@@ -55,5 +55,5 @@ This inventory records which public source sets are authoritative for `pire-brow
 
 ## Missing Context
 
-- npm trusted publishing generates npm provenance from `.github/workflows/npm-publish.yml` after each package trusts the workflow in npm; that workflow also runs an isolated post-publish `pi install npm:pire-browser@<version>` smoke before creating the GitHub release, then verifies Pi RPC skill discovery and Pi extension-loader tool registration from the installed package.
+- npm trusted publishing generates npm provenance from `.github/workflows/npm-publish.yml` after each package trusts the workflow in npm; that workflow requires the reusable packed browser smoke gate before publishing, then runs an isolated post-publish `pi install npm:pire-browser@<version>` smoke before creating the GitHub release and verifies Pi RPC skill discovery plus Pi extension-loader tool registration from the installed package.
 - GitHub Pages still needs the repository setting `Settings > Pages > Build and deployment > Source: GitHub Actions` before `.github/workflows/pages.yml` can deploy the site.

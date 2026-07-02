@@ -143,4 +143,21 @@ describe("npm artifact metadata", () => {
       )
     ).toThrow(/skill:pire-browser/);
   });
+
+  it("requires packed browser smoke before trusted npm publish", () => {
+    const publishWorkflow = readFileSync(join(root, ".github", "workflows", "npm-publish.yml"), "utf8");
+    const releaseSmokeWorkflow = readFileSync(join(root, ".github", "workflows", "release-smoke.yml"), "utf8");
+
+    expect(releaseSmokeWorkflow).toContain("workflow_call:");
+    expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*target:[\s\S]*default: all/);
+    expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*run_browser_smoke:[\s\S]*default: true/);
+    expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*run_signed_xpi:[\s\S]*default: false/);
+
+    expect(publishWorkflow).toMatch(
+      /packed-browser-smoke:\s*\n\s*name: Packed browser smoke[\s\S]*uses: \.\/\.github\/workflows\/release-smoke\.yml/
+    );
+    expect(publishWorkflow).toMatch(/packed-browser-smoke:[\s\S]*target: all/);
+    expect(publishWorkflow).toMatch(/packed-browser-smoke:[\s\S]*run_browser_smoke: true/);
+    expect(publishWorkflow).toMatch(/publish:[\s\S]*needs:[\s\S]*packed-browser-smoke/);
+  });
 });
