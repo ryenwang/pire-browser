@@ -16,8 +16,10 @@ import {
 import {
   installCommandArgs,
   packedMcpBrowserSmokeInput,
+  packedMcpNetworkSmokeInput,
   packedMcpSmokeInput,
   validatePackedMcpBrowserSmokeOutput,
+  validatePackedMcpNetworkSmokeOutput,
   validatePackedMcpSmokeOutput,
 } from "./smoke-packed-package.mjs";
 
@@ -308,6 +310,105 @@ describe("npm artifact metadata", () => {
     expect(() => validatePackedMcpBrowserSmokeOutput(stdout.replace("mcp-smoke@example.com", "wrong@example.com"))).toThrow(/get_value/);
   });
 
+  it("validates packed-package MCP network smoke input and output", () => {
+    const harPath = join(tmpdir(), "pire-browser-mcp-network-smoke.har");
+    writeFileSync(
+      harPath,
+      JSON.stringify({
+        log: {
+          entries: [
+            {
+              request: {
+                method: "GET",
+                url: "http://127.0.0.1:4321/api/status.json?source=network-smoke",
+              },
+            },
+          ],
+        },
+      })
+    );
+    try {
+      const input = packedMcpNetworkSmokeInput({
+        profile: "packed-mcp-network-test",
+        url: "http://127.0.0.1:4321/network.html",
+        harPath,
+        executablePath: "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+      });
+      for (const tool of [
+        "pire_browser_open",
+        "pire_browser_network_har_start",
+        "pire_browser_find",
+        "pire_browser_network_wait_for_request",
+        "pire_browser_network_wait_for_response",
+        "pire_browser_network_requests",
+        "pire_browser_network_har_stop",
+        "pire_browser_wait_for_text",
+        "pire_browser_get_text",
+        "pire_browser_close",
+      ]) {
+        expect(input).toContain(`"name":"${tool}"`);
+      }
+      expect(input).toContain('"profile":"packed-mcp-network-test"');
+
+      const record = {
+        requestId: "req_123",
+        url: "http://127.0.0.1:4321/api/status.json?source=network-smoke",
+        method: "GET",
+        type: "xmlhttprequest",
+        statusCode: 200,
+      };
+      const envelope = (data) => ({ success: true, data, warnings: [] });
+      const stdout = [
+        { jsonrpc: "2.0", id: 1, result: { serverInfo: { name: "pire-browser", version: "0.2.20" } } },
+        { jsonrpc: "2.0", id: 2, result: { isError: false, structuredContent: envelope({ text: "opened" }), content: [{ type: "text", text: "opened" }] } },
+        { jsonrpc: "2.0", id: 3, result: { isError: false, structuredContent: envelope({ harRecording: { active: true } }), content: [{ type: "text", text: "started" }] } },
+        { jsonrpc: "2.0", id: 4, result: { isError: false, structuredContent: envelope({ text: "clicked" }), content: [{ type: "text", text: "clicked" }] } },
+        { jsonrpc: "2.0", id: 5, result: { isError: false, structuredContent: envelope({ request: record }), content: [{ type: "text", text: "Matched network request req_123" }] } },
+        { jsonrpc: "2.0", id: 6, result: { isError: false, structuredContent: envelope({ request: record }), content: [{ type: "text", text: "Matched network response req_123 200" }] } },
+        { jsonrpc: "2.0", id: 7, result: { isError: false, structuredContent: envelope({ requests: [record], count: 1 }), content: [{ type: "text", text: "req_123 200 GET" }] } },
+        {
+          jsonrpc: "2.0",
+          id: 8,
+          result: {
+            isError: false,
+            structuredContent: envelope({
+              count: 1,
+              path: harPath,
+              har: {
+                log: {
+                  entries: [
+                    {
+                      request: {
+                        method: "GET",
+                        url: record.url,
+                      },
+                    },
+                  ],
+                },
+              },
+            }),
+            content: [{ type: "text", text: `Wrote HAR to ${harPath}` }],
+          },
+        },
+        { jsonrpc: "2.0", id: 9, result: { isError: false, structuredContent: envelope({ text: "waited" }), content: [{ type: "text", text: "waited" }] } },
+        { jsonrpc: "2.0", id: 10, result: { isError: false, structuredContent: envelope({ text: "network fixture ready" }), content: [{ type: "text", text: "network fixture ready" }] } },
+        { jsonrpc: "2.0", id: 11, result: { isError: false, structuredContent: envelope({ text: "closed" }), content: [{ type: "text", text: "closed" }] } },
+      ].map((message) => JSON.stringify(message)).join("\n");
+
+      expect(validatePackedMcpNetworkSmokeOutput(stdout, { harPath })).toEqual({
+        responses: 11,
+        serverVersion: "0.2.20",
+        requests: 1,
+        harEntries: 1,
+      });
+      expect(() => validatePackedMcpNetworkSmokeOutput(stdout.replace("xmlhttprequest", "script"), { harPath })).toThrow(/fixture fetch request/);
+      expect(() => validatePackedMcpNetworkSmokeOutput(stdout.replaceAll('"statusCode":200', '"statusCode":500'), { harPath })).toThrow(/2xx/);
+      expect(() => validatePackedMcpNetworkSmokeOutput(stdout.replaceAll("network fixture ready", "still loading"), { harPath })).toThrow(/get_text/);
+    } finally {
+      rmSync(harPath, { force: true });
+    }
+  });
+
   it("uses the public install path in packed-package release smoke", () => {
     expect(installCommandArgs()).toEqual(["install"]);
     expect(installCommandArgs({ firefoxPath: "/opt/firefox/firefox" })).toEqual([
@@ -330,9 +431,12 @@ describe("npm artifact metadata", () => {
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*target:[\s\S]*default: all/);
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*run_browser_smoke:[\s\S]*default: true/);
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*run_signed_xpi:[\s\S]*default: false/);
+    expect(releaseSmokeWorkflow).toContain("*mcp*.stdout.log");
+    expect(releaseSmokeWorkflow).toContain("*mcp*.stderr.log");
     const packedSmokeScript = readFileSync(join(root, "scripts", "smoke-packed-package.mjs"), "utf8");
     expect(packedSmokeScript).toContain("runPackedMcpSmoke");
     expect(packedSmokeScript).toContain("runMcpBrowserSmoke");
+    expect(packedSmokeScript).toContain("runMcpNetworkSmoke");
 
     expect(publishWorkflow).toMatch(
       /packed-browser-smoke:\s*\n\s*name: Packed browser smoke[\s\S]*uses: \.\/\.github\/workflows\/release-smoke\.yml/

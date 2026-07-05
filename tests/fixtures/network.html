@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pire-browser network fixture</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 32px;
+        max-width: 720px;
+      }
+      button,
+      output {
+        display: block;
+        margin: 12px 0;
+      }
+      #api-result {
+        color: #14532d;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Network fixture</h1>
+    <button type="button" aria-label="Load API">Load API</button>
+    <output id="api-result" aria-live="polite">Idle</output>
+
+    <script>
+      const result = document.querySelector("#api-result");
+      document.querySelector("button").addEventListener("click", async () => {
+        result.textContent = "Loading";
+        try {
+          const response = await fetch("/api/status.json?source=network-smoke", {
+            cache: "no-store",
+          });
+          const data = await response.json();
+          result.textContent = data.ready ? data.message : "network fixture not ready";
+        } catch (error) {
+          result.textContent = `network fixture error: ${error.message}`;
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -326,6 +326,65 @@ export function packedMcpBrowserSmokeInput({ profile, url, screenshot, executabl
   ].map((message) => JSON.stringify({ jsonrpc: "2.0", ...message })).join("\n") + "\n";
 }
 
+export function packedMcpNetworkSmokeInput({ profile, url, harPath, executablePath = null }) {
+  const target = (extra = {}) => ({
+    profile,
+    ...extra,
+  });
+  const openArgs = target({ url });
+  if (executablePath) openArgs.executablePath = executablePath;
+  return [
+    { id: 1, method: "initialize", params: {} },
+    { id: 2, method: "tools/call", params: { name: "pire_browser_open", arguments: openArgs } },
+    { id: 3, method: "tools/call", params: { name: "pire_browser_network_har_start", arguments: target() } },
+    { id: 4, method: "tools/call", params: { name: "pire_browser_find", arguments: target({ kind: "role", query: "button", name: "Load API", action: "click" }) } },
+    {
+      id: 5,
+      method: "tools/call",
+      params: {
+        name: "pire_browser_network_wait_for_request",
+        arguments: target({
+          pattern: "**/api/status.json**",
+          resourceType: "xhr,fetch",
+          method: "GET",
+          waitTimeoutMs: 30_000,
+        }),
+      },
+    },
+    {
+      id: 6,
+      method: "tools/call",
+      params: {
+        name: "pire_browser_network_wait_for_response",
+        arguments: target({
+          pattern: "**/api/status.json**",
+          resourceType: "xhr,fetch",
+          method: "GET",
+          status: "2xx",
+          waitTimeoutMs: 30_000,
+        }),
+      },
+    },
+    {
+      id: 7,
+      method: "tools/call",
+      params: {
+        name: "pire_browser_network_requests",
+        arguments: target({
+          filter: "/api/status.json",
+          resourceType: "xhr,fetch",
+          method: "GET",
+          status: "2xx",
+        }),
+      },
+    },
+    { id: 8, method: "tools/call", params: { name: "pire_browser_network_har_stop", arguments: target({ path: harPath }) } },
+    { id: 9, method: "tools/call", params: { name: "pire_browser_wait_for_text", arguments: target({ text: "network fixture ready", waitTimeoutMs: 30_000 }) } },
+    { id: 10, method: "tools/call", params: { name: "pire_browser_get_text", arguments: target({ selector: "#api-result" }) } },
+    { id: 11, method: "tools/call", params: { name: "pire_browser_close", arguments: target() } },
+  ].map((message) => JSON.stringify({ jsonrpc: "2.0", ...message })).join("\n") + "\n";
+}
+
 export function validatePackedMcpBrowserSmokeOutput(stdout) {
   const responses = parseMcpJsonLines(stdout, "MCP browser smoke");
   const byId = new Map(responses.map((response) => [String(response.id), response]));
@@ -362,6 +421,72 @@ export function validatePackedMcpBrowserSmokeOutput(stdout) {
     responses: responses.length,
     serverVersion: initialized.result.serverInfo.version ?? null,
   };
+}
+
+export function validatePackedMcpNetworkSmokeOutput(stdout, { harPath = null } = {}) {
+  const responses = parseMcpJsonLines(stdout, "MCP network smoke");
+  const byId = new Map(responses.map((response) => [String(response.id), response]));
+  const initialized = byId.get("1");
+  if (initialized?.result?.serverInfo?.name !== "pire-browser") {
+    throw new Error("MCP network smoke initialize response did not identify the pire-browser server");
+  }
+  for (const id of ["2", "3", "4", "5", "6", "7", "8", "9", "10", "11"]) {
+    const response = byId.get(id);
+    if (!response) throw new Error(`MCP network smoke missing response id ${id}`);
+    if (response.error) {
+      throw new Error(`MCP network smoke tool id ${id} returned JSON-RPC error: ${response.error.message ?? JSON.stringify(response.error)}`);
+    }
+    if (response.result?.isError === true) {
+      throw new Error(`MCP network smoke tool id ${id} returned isError=true: ${response.result.content?.[0]?.text ?? ""}`);
+    }
+  }
+
+  const request = mcpEnvelopeData(byId.get("5"))?.request;
+  if (!networkRecordMatchesFixture(request)) {
+    throw new Error("MCP network smoke wait_for_request did not return the fixture fetch request");
+  }
+  const response = mcpEnvelopeData(byId.get("6"))?.request;
+  if (!networkRecordMatchesFixture(response) || response.statusCode !== 200) {
+    throw new Error("MCP network smoke wait_for_response did not return a 2xx fixture response");
+  }
+  const requests = mcpEnvelopeData(byId.get("7"))?.requests;
+  if (!Array.isArray(requests) || !requests.some((record) => networkRecordMatchesFixture(record) && record.statusCode === 200)) {
+    throw new Error("MCP network smoke requests listing did not include the fixture API response");
+  }
+  const har = mcpEnvelopeData(byId.get("8"));
+  if ((har?.count ?? 0) < 1 || !Array.isArray(har?.har?.log?.entries)) {
+    throw new Error("MCP network smoke HAR stop did not return HAR entries");
+  }
+  if (!har.har.log.entries.some((entry) => String(entry?.request?.url ?? "").includes("/api/status.json"))) {
+    throw new Error("MCP network smoke HAR did not include the fixture API URL");
+  }
+  if (harPath && !existsSync(harPath)) {
+    throw new Error(`MCP network smoke expected HAR file was not created: ${harPath}`);
+  }
+  const resultText = String(byId.get("10")?.result?.content?.[0]?.text ?? "");
+  if (!resultText.includes("network fixture ready")) {
+    throw new Error("MCP network smoke get_text did not verify the fetched fixture result");
+  }
+  return {
+    responses: responses.length,
+    serverVersion: initialized.result.serverInfo.version ?? null,
+    requests: requests.length,
+    harEntries: har.har.log.entries.length,
+  };
+}
+
+function mcpEnvelopeData(response) {
+  const structured = response?.result?.structuredContent;
+  if (structured?.success !== true) {
+    throw new Error(`MCP network smoke expected success envelope, got ${JSON.stringify(structured)}`);
+  }
+  return structured.data;
+}
+
+function networkRecordMatchesFixture(record) {
+  return String(record?.url ?? "").includes("/api/status.json")
+    && String(record?.method ?? "").toUpperCase() === "GET"
+    && String(record?.type ?? "").toLowerCase() === "xmlhttprequest";
 }
 
 export function isSuccessfulLaunchTimeout(result) {
@@ -456,6 +581,7 @@ async function main(argv) {
       nativeResolution: null,
       mcp: null,
       mcpBrowser: null,
+      mcpNetwork: null,
       profiles,
       modes: [],
       steps: recorder.steps,
@@ -507,6 +633,18 @@ async function main(argv) {
         summary,
       });
       await runMcpBrowserSmoke({
+        command,
+        commandCwd,
+        env,
+        workRoot,
+        artifactDir,
+        dataRoot,
+        prefix,
+        firefoxPath: options.firefoxPath,
+        recorder,
+        summary,
+      });
+      await runMcpNetworkSmoke({
         command,
         commandCwd,
         env,
@@ -763,6 +901,74 @@ async function runMcpBrowserSmoke({
   }
 }
 
+async function runMcpNetworkSmoke({
+  command,
+  commandCwd,
+  env,
+  workRoot,
+  artifactDir,
+  dataRoot,
+  prefix,
+  firefoxPath,
+  recorder,
+  summary,
+}) {
+  if (firefoxPath && !existsSync(firefoxPath)) {
+    throw new Error(`Firefox not found at ${firefoxPath}`);
+  }
+  const mode = "mcp-network-web-ext";
+  const fixture = await startFixtureServer({ artifactDir });
+  const profile = `packed-${mode}-${Date.now()}`;
+  const profilePath = join(dataRoot, "firefox-profiles", profile);
+  const harDir = join(artifactDir, "network");
+  mkdirSync(harDir, { recursive: true });
+  const harPath = join(harDir, `network-${mode}.har`);
+  const modeResult = {
+    mode,
+    mcp: true,
+    profile,
+    profilePath,
+    fixtureUrl: fixtureUrl(fixture, "network.html"),
+    harPath,
+    success: false,
+  };
+  summary.profiles.push({ mode, profile, profilePath });
+  summary.modes.push(modeResult);
+  summary.mcpNetwork = modeResult;
+  writeSummary(summary, artifactDir, env);
+
+  try {
+    runPire(command, installCommandArgs({ firefoxPath }), { cwd: commandCwd, env, recorder });
+    runPire(command, ["doctor", "--json"], { cwd: commandCwd, env, recorder });
+    warmWebExtCache({ cwd: commandCwd, env, recorder });
+
+    const result = runPire(command, ["mcp", "--tools", "core,network"], {
+      cwd: commandCwd,
+      env,
+      timeoutMs: 300_000,
+      recorder,
+      input: packedMcpNetworkSmokeInput({
+        profile,
+        url: modeResult.fixtureUrl,
+        harPath,
+        executablePath: firefoxPath,
+      }),
+    });
+    modeResult.validation = validatePackedMcpNetworkSmokeOutput(result.stdout, { harPath });
+    modeResult.success = true;
+  } finally {
+    runPire(command, ["--profile", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
+    await fixture.close();
+    copyDiagnostics({ dataRoot, artifactDir });
+    if (process.platform === "win32") {
+      cleanupWindowsProcesses({ workRoot, prefix, profilePaths: [profilePath], recorder, env });
+    } else {
+      cleanupUnixProcesses({ workRoot, prefix, profilePaths: [profilePath], recorder, env });
+    }
+    writeSummary(summary, artifactDir, env);
+  }
+}
+
 async function runBrowserSmoke({
   command,
   commandCwd,
@@ -908,12 +1114,17 @@ async function startFixtureServer({ artifactDir }) {
   }
   return {
     url,
+    baseUrl: `http://127.0.0.1:${port}`,
     port,
     pid: child.pid,
     stdoutPath,
     stderrPath,
     close: () => stopFixtureServer(child),
   };
+}
+
+function fixtureUrl(fixture, path) {
+  return `${fixture.baseUrl}/${String(path).replace(/^\/+/, "")}`;
 }
 
 function findFreePort() {

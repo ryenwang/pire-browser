@@ -192,6 +192,8 @@ jobs:
             "*setup*.stderr.log",
             "*launch*.stdout.log",
             "*launch*.stderr.log",
+            "*mcp*.stdout.log",
+            "*mcp*.stderr.log",
             "*snapshot*.stderr.log",
             "*find*.stderr.log",
             "*wait*.stderr.log",
