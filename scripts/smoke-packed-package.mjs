@@ -312,12 +312,17 @@ export function packedMcpBrowserSmokeInput({ profile, url, screenshot, executabl
     { id: 1, method: "initialize", params: {} },
     { id: 2, method: "tools/call", params: { name: "pire_browser_open", arguments: openArgs } },
     { id: 3, method: "tools/call", params: { name: "pire_browser_snapshot", arguments: target({ interactive: true, compact: true }) } },
-    { id: 4, method: "tools/call", params: { name: "pire_browser_fill", arguments: target({ selector: "#email", text: "mcp-smoke@example.com" }) } },
-    { id: 5, method: "tools/call", params: { name: "pire_browser_click", arguments: target({ selector: "button" }) } },
+    { id: 4, method: "tools/call", params: { name: "pire_browser_find", arguments: target({ kind: "label", query: "Email", action: "fill", value: "mcp-smoke@example.com" }) } },
+    { id: 5, method: "tools/call", params: { name: "pire_browser_find", arguments: target({ kind: "role", query: "button", name: "Submit", action: "click" }) } },
     { id: 6, method: "tools/call", params: { name: "pire_browser_wait_for_selector", arguments: target({ selector: "#done:not([hidden])", waitTimeoutMs: 30_000 }) } },
-    { id: 7, method: "tools/call", params: { name: "pire_browser_screenshot", arguments: target({ path: screenshot }) } },
-    { id: 8, method: "tools/call", params: { name: "pire_browser_tab_list", arguments: target() } },
-    { id: 9, method: "tools/call", params: { name: "pire_browser_close", arguments: target() } },
+    { id: 7, method: "tools/call", params: { name: "pire_browser_get_text", arguments: target({ selector: "#done" }) } },
+    { id: 8, method: "tools/call", params: { name: "pire_browser_get_value", arguments: target({ selector: "#email" }) } },
+    { id: 9, method: "tools/call", params: { name: "pire_browser_get_url", arguments: target() } },
+    { id: 10, method: "tools/call", params: { name: "pire_browser_get_title", arguments: target() } },
+    { id: 11, method: "tools/call", params: { name: "pire_browser_is_visible", arguments: target({ selector: "#done" }) } },
+    { id: 12, method: "tools/call", params: { name: "pire_browser_screenshot", arguments: target({ path: screenshot }) } },
+    { id: 13, method: "tools/call", params: { name: "pire_browser_tab_list", arguments: target() } },
+    { id: 14, method: "tools/call", params: { name: "pire_browser_close", arguments: target() } },
   ].map((message) => JSON.stringify({ jsonrpc: "2.0", ...message })).join("\n") + "\n";
 }
 
@@ -328,7 +333,7 @@ export function validatePackedMcpBrowserSmokeOutput(stdout) {
   if (initialized?.result?.serverInfo?.name !== "pire-browser") {
     throw new Error("MCP browser smoke initialize response did not identify the pire-browser server");
   }
-  for (const id of ["2", "3", "4", "5", "6", "7", "8", "9"]) {
+  for (const id of ["2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"]) {
     const response = byId.get(id);
     if (!response) throw new Error(`MCP browser smoke missing response id ${id}`);
     if (response.error) {
@@ -341,6 +346,17 @@ export function validatePackedMcpBrowserSmokeOutput(stdout) {
   const snapshotText = String(byId.get("3")?.result?.content?.[0]?.text ?? "");
   if (!snapshotText.includes("@e")) {
     throw new Error("MCP browser smoke snapshot did not include semantic refs");
+  }
+  const expectedText = [
+    ["7", "Submitted", "get_text did not verify submitted marker"],
+    ["8", "mcp-smoke@example.com", "get_value did not verify filled email"],
+    ["9", "/form.html", "get_url did not verify fixture URL"],
+    ["10", "pire-browser fixture", "get_title did not verify fixture title"],
+    ["11", "true", "is_visible did not verify submitted marker visibility"],
+  ];
+  for (const [id, expected, message] of expectedText) {
+    const text = String(byId.get(id)?.result?.content?.[0]?.text ?? "");
+    if (!text.includes(expected)) throw new Error(`MCP browser smoke ${message}`);
   }
   return {
     responses: responses.length,

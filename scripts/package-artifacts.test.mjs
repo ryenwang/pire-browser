@@ -253,9 +253,13 @@ describe("npm artifact metadata", () => {
     for (const tool of [
       "pire_browser_open",
       "pire_browser_snapshot",
-      "pire_browser_fill",
-      "pire_browser_click",
+      "pire_browser_find",
       "pire_browser_wait_for_selector",
+      "pire_browser_get_text",
+      "pire_browser_get_value",
+      "pire_browser_get_url",
+      "pire_browser_get_title",
+      "pire_browser_is_visible",
       "pire_browser_screenshot",
       "pire_browser_tab_list",
       "pire_browser_close",
@@ -272,13 +276,18 @@ describe("npm artifact metadata", () => {
       { jsonrpc: "2.0", id: 4, result: { isError: false, content: [{ type: "text", text: "filled" }] } },
       { jsonrpc: "2.0", id: 5, result: { isError: false, content: [{ type: "text", text: "clicked" }] } },
       { jsonrpc: "2.0", id: 6, result: { isError: false, content: [{ type: "text", text: "waited" }] } },
-      { jsonrpc: "2.0", id: 7, result: { isError: false, content: [{ type: "text", text: "screenshot" }] } },
-      { jsonrpc: "2.0", id: 8, result: { isError: false, content: [{ type: "text", text: "tabs" }] } },
-      { jsonrpc: "2.0", id: 9, result: { isError: false, content: [{ type: "text", text: "closed" }] } },
+      { jsonrpc: "2.0", id: 7, result: { isError: false, content: [{ type: "text", text: "Submitted" }] } },
+      { jsonrpc: "2.0", id: 8, result: { isError: false, content: [{ type: "text", text: "mcp-smoke@example.com" }] } },
+      { jsonrpc: "2.0", id: 9, result: { isError: false, content: [{ type: "text", text: "http://127.0.0.1:4321/form.html" }] } },
+      { jsonrpc: "2.0", id: 10, result: { isError: false, content: [{ type: "text", text: "pire-browser fixture" }] } },
+      { jsonrpc: "2.0", id: 11, result: { isError: false, content: [{ type: "text", text: "true" }] } },
+      { jsonrpc: "2.0", id: 12, result: { isError: false, content: [{ type: "text", text: "screenshot" }] } },
+      { jsonrpc: "2.0", id: 13, result: { isError: false, content: [{ type: "text", text: "tabs" }] } },
+      { jsonrpc: "2.0", id: 14, result: { isError: false, content: [{ type: "text", text: "closed" }] } },
     ].map((message) => JSON.stringify(message)).join("\n");
 
     expect(validatePackedMcpBrowserSmokeOutput(stdout)).toEqual({
-      responses: 9,
+      responses: 14,
       serverVersion: "0.2.20",
     });
     expect(() => validatePackedMcpBrowserSmokeOutput(stdout.replace("@e1 input Email\\n@e2 button Submit", "input Email\\nbutton Submit"))).toThrow(
@@ -294,6 +303,8 @@ describe("npm artifact metadata", () => {
         stdout.replace('"isError":false,"content":[{"type":"text","text":"closed"}]', '"isError":true,"content":[{"type":"text","text":"close failed"}]')
       )
     ).toThrow(/close failed/);
+    expect(() => validatePackedMcpBrowserSmokeOutput(stdout.replace("Submitted", "Still waiting"))).toThrow(/get_text/);
+    expect(() => validatePackedMcpBrowserSmokeOutput(stdout.replace("mcp-smoke@example.com", "wrong@example.com"))).toThrow(/get_value/);
   });
 
   it("requires packed browser smoke before trusted npm publish", () => {
