@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.21
+
+- Adds `pire-browser session info [--json]` as a read-only session/profile/restore diagnostic, including selected target status and suggested next actions for agent-browser-style restore workflows.
+- Updates README, docs site, installed agent context, and bundled core skill to use `session info --json` when agents need to inspect restore state before acting.
+
 ## 0.2.20
 
 - Preserves stdin for Windows npm-launched native commands that require it, including MCP stdio, `chat`, `eval --stdin`, `auth save --password-stdin`, `cookies set --curl -`, and stdin-driven `batch`.

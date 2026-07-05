@@ -8,9 +8,11 @@ const sessionsBlocks = [
   h2("Session targeting", "session-targeting"),
   code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
 pire-browser --session "$SESSION" --restore open https://app.example.com
+pire-browser --session "$SESSION" --restore session info --json
 pire-browser --session "$SESSION" --restore snapshot -i
 
 pire-browser session list
+pire-browser session info --json
 pire-browser session id --scope worktree --prefix my-app
 pire-browser session id --scope worktree --prefix my-app --json
 pire-browser session list --json
@@ -23,6 +25,7 @@ AGENT_BROWSER_SESSION=work pire-browser snapshot -i
 pire-browser --session-name work snapshot -i
 pire-browser --session-name work close`),
   p("For app QA, derive one stable worktree-scoped session name and pass it with <code>--session</code> and <code>--restore</code> on every command. This mirrors agent-browser's persistent-session recipe, but the persistence mechanism is the named managed Firefox profile. The name is deterministic for the current Git worktree and prefix, so separate projects do not collide. <code>session id --scope cwd</code> scopes to the current directory, and <code>--scope global</code> returns the sanitized prefix without a path hash."),
+  p("Use <code>pire-browser --session &lt;name&gt; --restore session info --json</code> to inspect the selected live session, managed Firefox profile, restore status, and next actions without launching or mutating Firefox."),
   p("<code>--session &lt;uuid&gt;</code> targets a strict live session id from <code>session list</code>. <code>--session &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION=&lt;name&gt;</code>, <code>AGENT_BROWSER_SESSION=&lt;name&gt;</code>, <code>--session-name &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION_NAME=&lt;name&gt;</code>, and <code>AGENT_BROWSER_SESSION_NAME=&lt;name&gt;</code> are named-profile aliases that may reuse or launch managed Firefox. <code>--restore &lt;name&gt;</code> is a short spelling for <code>--session &lt;name&gt; --restore</code> when no session/profile target is already present. <code>--restore-save auto|always|never</code> is accepted for agent-browser recipe compatibility; named Firefox profiles persist automatically."),
   h2("Managed profiles", "managed-profiles"),
   code(`pire-browser profiles --json

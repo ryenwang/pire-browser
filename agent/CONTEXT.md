@@ -19,7 +19,7 @@ Use this folder when you are operating an installed `pire-browser` package. It i
 - For a fresh direct CLI install, use `npm install -g pire-browser`, `pire-browser install`, then `pire-browser open <url>` and `pire-browser snapshot -i`. Do not start with broad diagnostics unless install/setup or the first browser command fails.
 - Use `pire-browser read <url>` for docs/articles when interaction refs are not needed; use bare `pire-browser read` for rendered active-tab text. Use bare `pire-browser read --llms index|full`, `read --require-md`, `read --raw`, or `read --timeout <ms>` when the active tab URL should drive an HTTP docs fetch.
 - Inspect with `pire-browser snapshot -i` before acting on a page.
-- For project QA loops, derive one stable named session with `SESSION="$(pire-browser session id --scope worktree --prefix <app>)"` and pass `--session "$SESSION" --restore` on every command so login, tabs, and managed Firefox profile state stay tied to the current worktree.
+- For project QA loops, derive one stable named session with `SESSION="$(pire-browser session id --scope worktree --prefix <app>)"` and pass `--session "$SESSION" --restore` on every command so login, tabs, and managed Firefox profile state stay tied to the current worktree. Use `pire-browser --session "$SESSION" --restore session info --json` to inspect launch/profile/restore state and next actions without opening a new browser.
 - Treat snapshot refs as short lived. Use fresh refs after navigation, DOM changes, dialogs, downloads, uploads, or errors.
 - Use `pire-browser click <link-ref> --new-tab` or MCP `pire_browser_click` with `newTab: true` only when a link target with an `href` should open in a new tab.
 - Do not claim success until `pire-browser` output confirms it.

@@ -351,8 +351,10 @@ pire-browser --session-name review state load --require-inspected ./.pire-state/
   statusNote("namedSessions"),
   code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
 pire-browser --session "$SESSION" --restore open https://example.com
+pire-browser --session "$SESSION" --restore session info --json
 pire-browser --session "$SESSION" --restore snapshot -i
 pire-browser session list
+pire-browser session info --json
 pire-browser session id --scope worktree --prefix my-app
 pire-browser session id --scope worktree --prefix my-app --json
 pire-browser session list --json

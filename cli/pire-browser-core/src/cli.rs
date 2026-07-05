@@ -73,6 +73,14 @@ pub struct SessionIdOptions {
     pub json: bool,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RestoreCliOptions {
+    pub requested: bool,
+    pub name: Option<String>,
+    pub save: Option<String>,
+    pub check_text: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadCommandOptions {
     pub url: String,
@@ -237,6 +245,11 @@ pub enum LocalCommand {
         confirmation_policy: ConfirmationPolicyArgs,
     },
     SessionList {
+        json: bool,
+    },
+    SessionInfo {
+        target: SessionTarget,
+        restore: RestoreCliOptions,
         json: bool,
     },
     SessionId {
@@ -1387,6 +1400,10 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     let mut args = raw.to_vec();
     let mut session_id = None;
     let mut session_name = None;
+    let mut restore_requested = false;
+    let mut restore_name = None;
+    let mut restore_save = None;
+    let mut restore_check_text = None;
     let mut state_path = None;
     let mut json_output = false;
     let mut ignored_global_flags = Vec::new();
@@ -1395,10 +1412,12 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     let mut confirmation_policy = ConfirmationPolicyArgs::default();
     while let Some(first) = args.first().cloned() {
         if first == "--restore" {
+            restore_requested = true;
             args.remove(0);
             if let Some(value) = args.first().filter(|value| is_optional_restore_key(value)) {
                 let value = value.clone();
                 args.remove(0);
+                restore_name = Some(value.clone());
                 if session_id.is_none() && session_name.is_none() {
                     set_session_name(&session_id, &mut session_name, value)?;
                 }
@@ -1421,8 +1440,14 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 "--confirm-actions" => {
                     set_confirm_actions(&mut confirmation_policy, value)?;
                 }
-                "--restore-save" => validate_restore_save(&value)?,
-                "--restore-check-text" => validate_non_empty_flag_value(&flag, &value)?,
+                "--restore-save" => {
+                    validate_restore_save(&value)?;
+                    restore_save = Some(value);
+                }
+                "--restore-check-text" => {
+                    validate_non_empty_flag_value(&flag, &value)?;
+                    restore_check_text = Some(value);
+                }
                 _ => {}
             }
             if ignored_with_warning_global_flag(&flag) {
@@ -2144,6 +2169,23 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                     bail!("unsupported session list option: {extra}");
                 }
                 return Ok(LocalCommand::SessionList { json: json_output });
+            }
+            "info" => {
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                if let Some(extra) = args.first() {
+                    bail!("unsupported session info option: {extra}");
+                }
+                return Ok(LocalCommand::SessionInfo {
+                    target: session_target,
+                    restore: RestoreCliOptions {
+                        requested: restore_requested,
+                        name: restore_name,
+                        save: restore_save,
+                        check_text: restore_check_text,
+                    },
+                    json: json_output,
+                });
             }
             "id" => {
                 args.remove(0);
@@ -4400,6 +4442,7 @@ user's pire-browser data directory. They expire after about 60 seconds. Use
 const SESSION_HELP: &str = r##"
 Usage:
   pire-browser session list [--json]
+  pire-browser session info [--json]
   pire-browser session id [--scope worktree|cwd|global] [--prefix <name>] [--json]
   pire-browser session attach <id> [--json]
   pire-browser session cleanup [--json]
@@ -4413,11 +4456,14 @@ Usage:
 
 Lists live Firefox extension sessions, prints the `--session <id>` prefix for a
 chosen session, derives a stable agent-browser-style named session id for the
-current project, or removes stale session files. `session id --scope worktree
---prefix my-app` prints a deterministic name that can be passed directly to
-`--session <name>` for project QA loops. `worktree` uses the nearest `.git`
-root and falls back to the current directory; `cwd` uses the current directory;
-`global` returns the sanitized prefix without a path hash.
+current project, inspects current launch/restore/profile status, or removes
+stale session files. `session info --json` is read-only and reports the selected
+target, live session, managed Firefox profile, restore interpretation, and next
+actions. `session id --scope worktree --prefix my-app` prints a deterministic
+name that can be passed directly to `--session <name>` for project QA loops.
+`worktree` uses the nearest `.git` root and falls back to the current directory;
+`cwd` uses the current directory; `global` returns the sanitized prefix without
+a path hash.
 
 `--session <uuid>` is strict live-id targeting. `--session <name>` reuses a
 managed named Firefox profile; `--session-name <name>` is the explicit
@@ -6640,6 +6686,50 @@ mod tests {
             LocalCommand::SessionList { json: true }
         );
         assert_eq!(
+            parse_cli_args(&s(&["session", "info", "--json"])).unwrap(),
+            LocalCommand::SessionInfo {
+                target: SessionTarget::Default,
+                restore: RestoreCliOptions::default(),
+                json: true
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "--session",
+                "work",
+                "--restore",
+                "--restore-save",
+                "auto",
+                "session",
+                "info",
+                "--json"
+            ]))
+            .unwrap(),
+            LocalCommand::SessionInfo {
+                target: SessionTarget::Name("work".to_string()),
+                restore: RestoreCliOptions {
+                    requested: true,
+                    name: None,
+                    save: Some("auto".to_string()),
+                    check_text: None,
+                },
+                json: true
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["--restore", "work", "session", "info"])).unwrap(),
+            LocalCommand::SessionInfo {
+                target: SessionTarget::Name("work".to_string()),
+                restore: RestoreCliOptions {
+                    requested: true,
+                    name: Some("work".to_string()),
+                    save: None,
+                    check_text: None,
+                },
+                json: false
+            }
+        );
+        assert_eq!(
             parse_cli_args(&s(&["session", "attach", "abc", "--json"])).unwrap(),
             LocalCommand::SessionAttach {
                 session: "abc".to_string(),
@@ -7527,6 +7617,9 @@ mod tests {
         assert!(text.contains("skills cat core"));
         assert!(text.contains("pushstate /dashboard"));
         assert!(text.contains("--session work --restore open <url>"));
+        assert!(help_text(Some("session"))
+            .unwrap()
+            .contains("session info --json"));
         assert!(text.contains("get text '@e1'"));
         assert!(text.contains("is visible '@e1'"));
         assert!(text.contains("console"));

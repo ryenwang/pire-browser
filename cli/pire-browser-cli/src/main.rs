@@ -21,7 +21,7 @@ use pire_browser_core::auth_vault::{
 use pire_browser_core::cli::{
     apply_config_defaults, build_command_request, format_cli_result, help_text, parse_cli_args,
     session_id_value, ConfigWarning, DashboardAction, GlobalFlagWarning, LocalCommand,
-    ReadActiveUrlOptions, SessionTarget, StreamAction,
+    ReadActiveUrlOptions, RestoreCliOptions, SessionTarget, StreamAction,
 };
 use pire_browser_core::confirmation_policy::{
     confirmation_policy_diagnostic_from_args, confirmation_policy_text,
@@ -49,16 +49,17 @@ use pire_browser_core::install_status::{
 use pire_browser_core::ipc::send_pipe_request;
 use pire_browser_core::launch::{
     annotate_session_profile_names, import_firefox_profile, launch_firefox, launch_result_text,
-    list_managed_profiles, live_session_for_profile_name, validate_profile_name, LaunchOptions,
-    LaunchResult, ManagedProfileInfo, ProfileImportOptions, ProfileImportResult,
+    list_managed_profiles, live_session_for_profile_name, managed_profile_dir_from_data_dir,
+    validate_profile_name, LaunchOptions, LaunchResult, ManagedProfileInfo, ProfileImportOptions,
+    ProfileImportResult, DEFAULT_PROFILE_NAME,
 };
 use pire_browser_core::protocol::{RpcRequest, RpcResponse};
 use pire_browser_core::redaction::{redact_json_value, redact_text};
 use pire_browser_core::session::{
-    cleanup_stale_sessions, cleanup_stale_sessions_with_report, list_sessions, now_ms,
-    remove_session, select_session, session_attach_text, session_attach_value,
-    session_cleanup_text, session_cleanup_value, session_status_text, session_status_value,
-    SessionInfo,
+    cleanup_stale_sessions, cleanup_stale_sessions_with_report, data_dir, default_session_target,
+    list_sessions, now_ms, remove_session, select_session, session_attach_text,
+    session_attach_value, session_cleanup_text, session_cleanup_value, session_status_text,
+    session_status_value, SessionInfo,
 };
 use pire_browser_core::setup::{setup, setup_result_text, setup_with_deps, SetupResult};
 use pire_browser_core::skills::{list_skills, skill_content, skill_path};
@@ -529,6 +530,13 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             } else {
                 println!("{}", session_status_text(&sessions));
             }
+        }
+        LocalCommand::SessionInfo {
+            target,
+            restore,
+            json,
+        } => {
+            handle_session_info(target, restore, json)?;
         }
         LocalCommand::SessionId { options } => {
             let value = session_id_value(&options)?;
@@ -4065,6 +4073,356 @@ Rules:
 - If a command returns confirmation-required output, stop and ask the user to approve.
 - Use at most five commands per response.
 - Do not claim success until command output proves it."#
+}
+
+fn handle_session_info(
+    target: SessionTarget,
+    restore: RestoreCliOptions,
+    json_output: bool,
+) -> Result<()> {
+    let root = data_dir()?;
+    let now = now_ms();
+    let mut sessions = list_sessions()?;
+    annotate_session_profile_names(&mut sessions)?;
+    let profiles = list_managed_profiles()?;
+    let value = session_info_value_from_parts(&target, &restore, &root, &sessions, &profiles, now)?;
+    if json_output {
+        println!("{}", format_cli_result(&value, true)?);
+    } else {
+        println!("{}", session_info_text(&value));
+    }
+    Ok(())
+}
+
+fn session_info_value_from_parts(
+    target: &SessionTarget,
+    restore: &RestoreCliOptions,
+    data_root: &Path,
+    sessions: &[SessionInfo],
+    profiles: &[ManagedProfileInfo],
+    now: u64,
+) -> Result<Value> {
+    let live_sessions: Vec<SessionInfo> = sessions
+        .iter()
+        .filter(|session| !session.is_stale(now))
+        .cloned()
+        .collect();
+    let stale_sessions: Vec<SessionInfo> = sessions
+        .iter()
+        .filter(|session| session.is_stale(now))
+        .cloned()
+        .collect();
+    let (default_session_id, ambiguous_default) = default_session_target(&live_sessions);
+    let (target_kind, target_value, selected_session) = match target {
+        SessionTarget::Default => {
+            let selected = default_session_id.as_deref().and_then(|id| {
+                live_sessions
+                    .iter()
+                    .find(|session| session.session_id == id)
+            });
+            ("default", None, selected)
+        }
+        SessionTarget::Id(id) => (
+            "sessionId",
+            Some(id.clone()),
+            sessions.iter().find(|session| session.session_id == *id),
+        ),
+        SessionTarget::Name(name) => {
+            validate_profile_name(name)?;
+            (
+                "namedProfile",
+                Some(name.clone()),
+                session_for_profile_name(&live_sessions, profiles, name),
+            )
+        }
+    };
+
+    let profile_name = match target {
+        SessionTarget::Name(name) => Some(name.clone()),
+        SessionTarget::Default => selected_session
+            .and_then(|session| session.profile_name.clone())
+            .or_else(|| Some(DEFAULT_PROFILE_NAME.to_string())),
+        SessionTarget::Id(_) => selected_session.and_then(|session| session.profile_name.clone()),
+    };
+    let profile = profile_name
+        .as_deref()
+        .and_then(|name| profiles.iter().find(|profile| profile.name == name));
+    let profile_path = profile_name.as_deref().map(|name| {
+        profile
+            .map(|profile| profile.path.clone())
+            .unwrap_or_else(|| managed_profile_dir_from_data_dir(data_root, name))
+    });
+    let profile_exists = profile
+        .map(|profile| profile.exists)
+        .or_else(|| profile_path.as_ref().map(|path| path.exists()));
+    let launcher_live_without_bridge = profile
+        .map(|profile| profile.launcher_live && profile.session_id.is_none())
+        .unwrap_or(false);
+    let selected_session_id = selected_session.map(|session| session.session_id.clone());
+    let selected_stale = selected_session.map(|session| session.is_stale(now));
+    let selected_live = selected_stale.map(|stale| !stale).unwrap_or(false);
+    let restore_status = restore_status(
+        target,
+        restore.requested,
+        ambiguous_default,
+        selected_session.is_some(),
+        selected_stale.unwrap_or(false),
+        selected_live,
+        profile_name.as_deref(),
+        profile_exists.unwrap_or(false),
+        launcher_live_without_bridge,
+    );
+    let next_actions = session_info_next_actions(
+        target,
+        restore_status,
+        profile_name.as_deref(),
+        selected_session_id.as_deref(),
+    );
+
+    Ok(json!({
+        "target": {
+            "kind": target_kind,
+            "value": target_value,
+            "sessionId": selected_session_id,
+            "live": selected_live,
+            "stale": selected_stale,
+            "ambiguousDefault": ambiguous_default,
+            "profileName": profile_name,
+            "profilePath": profile_path,
+            "profileExists": profile_exists
+        },
+        "restore": {
+            "requested": restore.requested,
+            "name": restore.name.clone(),
+            "effectiveName": if restore.requested { profile_name.clone() } else { None },
+            "save": restore.save.clone(),
+            "checkText": restore.check_text.clone(),
+            "checkTextSupported": false,
+            "mechanism": "managed-firefox-profile",
+            "status": restore_status,
+            "note": restore_note(restore, restore_status)
+        },
+        "selectedSession": selected_session,
+        "managedProfile": profile,
+        "counts": {
+            "liveSessions": live_sessions.len(),
+            "staleSessions": stale_sessions.len(),
+            "profiles": profiles.len()
+        },
+        "defaultSessionId": default_session_id,
+        "ambiguousDefault": ambiguous_default,
+        "dataDir": data_root,
+        "nextActions": next_actions
+    }))
+}
+
+fn session_for_profile_name<'a>(
+    sessions: &'a [SessionInfo],
+    profiles: &'a [ManagedProfileInfo],
+    name: &str,
+) -> Option<&'a SessionInfo> {
+    sessions
+        .iter()
+        .find(|session| session.profile_name.as_deref() == Some(name))
+        .or_else(|| {
+            profiles
+                .iter()
+                .find(|profile| profile.name == name)
+                .and_then(|profile| profile.session_id.as_deref())
+                .and_then(|session_id| {
+                    sessions
+                        .iter()
+                        .find(|session| session.session_id == session_id)
+                })
+        })
+}
+
+fn restore_status(
+    target: &SessionTarget,
+    restore_requested: bool,
+    ambiguous_default: bool,
+    has_selected_session: bool,
+    selected_stale: bool,
+    selected_live: bool,
+    profile_name: Option<&str>,
+    profile_exists: bool,
+    launcher_live_without_bridge: bool,
+) -> &'static str {
+    if selected_stale {
+        return "sessionStale";
+    }
+    if selected_live && profile_name.is_some() {
+        return "profileActive";
+    }
+    if selected_live {
+        return "liveSessionActive";
+    }
+    if matches!(target, SessionTarget::Default) && ambiguous_default {
+        return "ambiguousDefault";
+    }
+    if matches!(target, SessionTarget::Default) && !restore_requested && !has_selected_session {
+        return "noLiveSession";
+    }
+    if launcher_live_without_bridge {
+        return "profileLaunchingNoBridge";
+    }
+    if profile_name.is_some() && profile_exists {
+        return "profilePresent";
+    }
+    if profile_name.is_some() {
+        return "profileMissing";
+    }
+    if matches!(target, SessionTarget::Id(_)) && !has_selected_session {
+        return "sessionMissing";
+    }
+    "noLiveSession"
+}
+
+fn restore_note(restore: &RestoreCliOptions, status: &str) -> String {
+    let base = match status {
+        "profileActive" => "Restore target is active through a managed Firefox profile.",
+        "liveSessionActive" => {
+            "A live session is active, but it is not tied to a named managed profile."
+        }
+        "profilePresent" => {
+            "Managed Firefox profile exists and can be reused by opening with --restore."
+        }
+        "profileLaunchingNoBridge" => {
+            "Firefox or web-ext appears to be running for this profile, but no pire-browser extension session is connected yet."
+        }
+        "profileMissing" => {
+            "Managed Firefox profile does not exist yet; opening with --restore will create it."
+        }
+        "sessionStale" => {
+            "The selected session file is stale; run session cleanup before relying on it."
+        }
+        "sessionMissing" => "The requested live session id is not present.",
+        "ambiguousDefault" => {
+            "More than one live session is available; use an explicit --session target."
+        }
+        _ => "No live session is selected yet.",
+    };
+    if restore.check_text.is_some() {
+        format!(
+            "{base} --restore-check-text is accepted for recipe compatibility, but pire-browser does not verify it during restore."
+        )
+    } else if restore.requested {
+        format!("{base} --restore maps to named managed Firefox profile reuse in pire-browser.")
+    } else {
+        base.to_string()
+    }
+}
+
+fn session_info_next_actions(
+    target: &SessionTarget,
+    status: &str,
+    profile_name: Option<&str>,
+    session_id: Option<&str>,
+) -> Vec<String> {
+    match status {
+        "profileActive" => profile_name
+            .map(|name| {
+                vec![format!(
+                    "pire-browser --session {} --restore snapshot -i",
+                    shell_word(name)
+                )]
+            })
+            .unwrap_or_default(),
+        "liveSessionActive" => session_id
+            .map(|id| {
+                vec![format!(
+                    "pire-browser --session {} snapshot -i",
+                    shell_word(id)
+                )]
+            })
+            .unwrap_or_default(),
+        "profilePresent" | "profileMissing" => profile_name
+            .map(|name| {
+                vec![format!(
+                    "pire-browser --session {} --restore open <url>",
+                    shell_word(name)
+                )]
+            })
+            .unwrap_or_default(),
+        "profileLaunchingNoBridge" => profile_name
+            .map(|name| {
+                vec![
+                    format!(
+                        "pire-browser --session {} --restore snapshot -i",
+                        shell_word(name)
+                    ),
+                    "pire-browser doctor --json".to_string(),
+                ]
+            })
+            .unwrap_or_else(|| vec!["pire-browser doctor --json".to_string()]),
+        "sessionStale" => vec!["pire-browser session cleanup".to_string()],
+        "sessionMissing" | "ambiguousDefault" => {
+            vec!["pire-browser session list --json".to_string()]
+        }
+        _ if matches!(target, SessionTarget::Default) => {
+            vec!["pire-browser open <url>".to_string()]
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn session_info_text(value: &Value) -> String {
+    let mut text = String::from("pire-browser session info");
+    if let Some(kind) = value.pointer("/target/kind").and_then(Value::as_str) {
+        text.push_str(&format!("\nTarget: {kind}"));
+        if let Some(target_value) = value.pointer("/target/value").and_then(Value::as_str) {
+            text.push_str(&format!(" {target_value}"));
+        }
+    }
+    if let Some(status) = value.pointer("/restore/status").and_then(Value::as_str) {
+        text.push_str(&format!("\nStatus: {status}"));
+    }
+    if let Some(profile_name) = value.pointer("/target/profileName").and_then(Value::as_str) {
+        let exists = value
+            .pointer("/target/profileExists")
+            .and_then(Value::as_bool)
+            .map(|exists| if exists { "yes" } else { "no" })
+            .unwrap_or("unknown");
+        text.push_str(&format!("\nProfile: {profile_name} (exists: {exists})"));
+        if let Some(path) = value.pointer("/target/profilePath").and_then(Value::as_str) {
+            text.push_str(&format!("\nProfile path: {path}"));
+        }
+    }
+    if let Some(session_id) = value.pointer("/target/sessionId").and_then(Value::as_str) {
+        let live = value
+            .pointer("/target/live")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        text.push_str(&format!(
+            "\nLive session: {session_id} ({})",
+            if live { "live" } else { "not live" }
+        ));
+    } else {
+        text.push_str("\nLive session: none selected");
+    }
+    if let Some(note) = value.pointer("/restore/note").and_then(Value::as_str) {
+        text.push_str(&format!("\nRestore: {note}"));
+    }
+    if let Some(actions) = value.pointer("/nextActions").and_then(Value::as_array) {
+        if !actions.is_empty() {
+            text.push_str("\nNext actions:");
+            for action in actions.iter().filter_map(Value::as_str) {
+                text.push_str(&format!("\n- {action}"));
+            }
+        }
+    }
+    text
+}
+
+fn shell_word(value: &str) -> String {
+    if value
+        .chars()
+        .any(|ch| ch.is_whitespace() || matches!(ch, '"' | '\'' | '$' | '`'))
+    {
+        format!("\"{}\"", value.replace('"', "\\\""))
+    } else {
+        value.to_string()
+    }
 }
 
 fn handle_profiles_list(json_output: bool) -> Result<()> {
@@ -12750,6 +13108,169 @@ mod tests {
             last_focused_at: 3,
             active_page: None,
         }
+    }
+
+    fn test_profile(name: &str, session_id: Option<&str>, exists: bool) -> ManagedProfileInfo {
+        ManagedProfileInfo {
+            name: name.to_string(),
+            path: PathBuf::from(format!("/tmp/pire-browser/{name}")),
+            exists,
+            metadata_path: PathBuf::from(format!("/tmp/pire-browser/{name}/launcher.json")),
+            launcher_live: session_id.is_some(),
+            launcher_pid: session_id.map(|_| 123),
+            session_id: session_id.map(str::to_string),
+            active_url: Some("https://example.com".to_string()),
+            last_launch_url: Some("https://example.com".to_string()),
+            started_at: Some(1),
+        }
+    }
+
+    #[test]
+    fn session_info_reports_active_named_restore_target() {
+        let now = 10;
+        let mut session = test_session();
+        session.profile_name = Some("work".to_string());
+        session.last_heartbeat_at = now;
+        let profiles = vec![test_profile("work", Some("session-1"), true)];
+        let restore = RestoreCliOptions {
+            requested: true,
+            name: None,
+            save: Some("auto".to_string()),
+            check_text: None,
+        };
+        let value = session_info_value_from_parts(
+            &SessionTarget::Name("work".to_string()),
+            &restore,
+            Path::new("/tmp/pire-browser"),
+            &[session],
+            &profiles,
+            now,
+        )
+        .unwrap();
+        assert_eq!(value["target"]["kind"], "namedProfile");
+        assert_eq!(value["target"]["live"], true);
+        assert_eq!(value["restore"]["status"], "profileActive");
+        assert_eq!(value["restore"]["save"], "auto");
+        assert_eq!(value["restore"]["effectiveName"], "work");
+        assert_eq!(value["counts"]["liveSessions"], 1);
+        assert!(value.get("profiles").is_none());
+        assert_eq!(
+            value["nextActions"][0],
+            "pire-browser --session work --restore snapshot -i"
+        );
+        assert!(session_info_text(&value).contains("Status: profileActive"));
+    }
+
+    #[test]
+    fn session_info_reports_missing_profile_with_open_next_action() {
+        let root = std::env::temp_dir().join(format!(
+            "pire-browser-session-info-missing-{}",
+            std::process::id()
+        ));
+        if root.exists() {
+            fs::remove_dir_all(&root).unwrap();
+        }
+        let restore = RestoreCliOptions {
+            requested: true,
+            name: Some("work".to_string()),
+            save: None,
+            check_text: Some("Dashboard".to_string()),
+        };
+        let value = session_info_value_from_parts(
+            &SessionTarget::Name("work".to_string()),
+            &restore,
+            &root,
+            &[],
+            &[],
+            10,
+        )
+        .unwrap();
+        assert_eq!(value["target"]["profileExists"], false);
+        assert_eq!(value["restore"]["status"], "profileMissing");
+        assert_eq!(value["restore"]["effectiveName"], "work");
+        assert_eq!(value["restore"]["checkTextSupported"], false);
+        assert!(value["restore"]["note"]
+            .as_str()
+            .unwrap()
+            .contains("--restore-check-text is accepted"));
+        assert_eq!(
+            value["nextActions"][0],
+            "pire-browser --session work --restore open <url>"
+        );
+    }
+
+    #[test]
+    fn session_info_default_without_restore_reports_no_live_session() {
+        let root = std::env::temp_dir().join(format!(
+            "pire-browser-session-info-default-{}",
+            std::process::id()
+        ));
+        if root.exists() {
+            fs::remove_dir_all(&root).unwrap();
+        }
+        let value = session_info_value_from_parts(
+            &SessionTarget::Default,
+            &RestoreCliOptions::default(),
+            &root,
+            &[],
+            &[],
+            10,
+        )
+        .unwrap();
+        assert_eq!(value["target"]["kind"], "default");
+        assert_eq!(value["restore"]["status"], "noLiveSession");
+        assert_eq!(value["nextActions"][0], "pire-browser open <url>");
+    }
+
+    #[test]
+    fn session_info_separates_stale_sessions_without_cleanup() {
+        let mut session = test_session();
+        session.profile_name = Some("work".to_string());
+        session.last_heartbeat_at = 1;
+        let value = session_info_value_from_parts(
+            &SessionTarget::Id("session-1".to_string()),
+            &RestoreCliOptions::default(),
+            Path::new("/tmp/pire-browser"),
+            &[session],
+            &[],
+            10_000_000,
+        )
+        .unwrap();
+        assert_eq!(value["restore"]["status"], "sessionStale");
+        assert_eq!(value["counts"]["liveSessions"], 0);
+        assert_eq!(value["counts"]["staleSessions"], 1);
+        assert_eq!(value["nextActions"][0], "pire-browser session cleanup");
+    }
+
+    #[test]
+    fn session_info_reports_launcher_without_bridge() {
+        let mut profile = test_profile("work", None, true);
+        profile.launcher_live = true;
+        profile.launcher_pid = Some(456);
+        let value = session_info_value_from_parts(
+            &SessionTarget::Name("work".to_string()),
+            &RestoreCliOptions {
+                requested: true,
+                name: None,
+                save: None,
+                check_text: None,
+            },
+            Path::new("/tmp/pire-browser"),
+            &[],
+            &[profile],
+            10,
+        )
+        .unwrap();
+        assert_eq!(value["restore"]["status"], "profileLaunchingNoBridge");
+        assert!(value["restore"]["note"]
+            .as_str()
+            .unwrap()
+            .contains("no pire-browser extension session is connected"));
+        assert_eq!(
+            value["nextActions"][0],
+            "pire-browser --session work --restore snapshot -i"
+        );
+        assert_eq!(value["nextActions"][1], "pire-browser doctor --json");
     }
 
     #[test]
