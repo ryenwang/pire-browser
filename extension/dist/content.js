@@ -39,6 +39,8 @@
             return Promise.resolve(configureNextDialog(message.action, message.text));
         if (message.type === "dialog_auto")
             return Promise.resolve(configureDialogAutoHandling(message.enabled !== false));
+        if (message.type === "pire_ready")
+            return Promise.resolve({ ready: true, url: window.location.href, readyState: document.readyState });
         if (message.type === "snapshot")
             return Promise.resolve(snapshotFrame(message.selector, message.depth, Boolean(message.cursorInteractive)));
         if (message.type === "find")

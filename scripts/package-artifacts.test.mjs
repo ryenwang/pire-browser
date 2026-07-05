@@ -520,6 +520,15 @@ describe("npm artifact metadata", () => {
     }
   });
 
+  it("waits for content-script readiness after state-load reloads", () => {
+    const background = readFileSync(join(root, "extension", "src", "background.ts"), "utf8");
+    const content = readFileSync(join(root, "extension", "src", "content.ts"), "utf8");
+
+    expect(content).toContain('message.type === "pire_ready"');
+    expect(background).toContain("await waitForContentScriptReady(tab.tabId, 5000)");
+    expect(background).toMatch(/async function waitForContentScriptReady[\s\S]*pire_ready[\s\S]*isFrameRoutingError/);
+  });
+
   it("uses the public install path in packed-package release smoke", () => {
     expect(installCommandArgs()).toEqual(["install"]);
     expect(installCommandArgs({ firefoxPath: "/opt/firefox/firefox" })).toEqual([

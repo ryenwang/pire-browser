@@ -127,6 +127,7 @@ browser.runtime.onMessage.addListener((message: any) => {
   if (message.type === "dialog_status") return Promise.resolve(dialogStatus());
   if (message.type === "dialog_control") return Promise.resolve(configureNextDialog(message.action, message.text));
   if (message.type === "dialog_auto") return Promise.resolve(configureDialogAutoHandling(message.enabled !== false));
+  if (message.type === "pire_ready") return Promise.resolve({ ready: true, url: window.location.href, readyState: document.readyState });
   if (message.type === "snapshot") return Promise.resolve(snapshotFrame(message.selector, message.depth, Boolean(message.cursorInteractive)));
   if (message.type === "find") return Promise.resolve(findElements(message.locator));
   if (message.type === "frame_target") return Promise.resolve(frameTargetLocator(message.locator));

@@ -5927,6 +5927,7 @@
             return storage;
         await browser.tabs.reload(tab.tabId);
         await waitForTabComplete(tab.tabId, 10000);
+        await waitForContentScriptReady(tab.tabId, 5000);
         const warnings = cookiesSkipped > 0
             ? [bestEffortWarning("state load", `Skipped ${cookiesSkipped} cookie(s) whose metadata Firefox would not restore for the active origin.`)]
             : [];
@@ -7543,6 +7544,24 @@
     }
     async function waitForTabComplete(tabId, timeout) {
         await waitForTabState(tabId, timeout, (tab) => tab.status === "complete");
+    }
+    async function waitForContentScriptReady(tabId, timeout) {
+        const startedAt = Date.now();
+        let lastError = "";
+        while (Date.now() - startedAt < timeout) {
+            try {
+                const response = await sendFrame(tabId, 0, { type: "pire_ready" });
+                if (response?.ready === true)
+                    return;
+            }
+            catch (error) {
+                if (!isFrameRoutingError(error))
+                    throw error;
+                lastError = error instanceof Error ? error.message : String(error);
+            }
+            await delay(TAB_READY_POLL_INTERVAL_MS);
+        }
+        throw new Error(lastError ? `timeout waiting for content script after reload: ${lastError}` : "timeout waiting for content script after reload");
     }
     async function waitForTabReady(tabId, expectedUrl, previousUrl, timeout) {
         await waitForTabState(tabId, timeout, (tab) => {
