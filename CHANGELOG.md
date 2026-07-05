@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.26
+
+- Bounds managed-profile process discovery during Firefox launch recovery so a stalled Windows WMI/PowerShell or Unix `ps` scan cannot freeze later named-session commands before they reach the browser bridge.
+- Adds focused Rust coverage for the timeout helper that captures successful command output and kills slow process scans.
+
 ## 0.2.25
 
 - Adds `open/goto/navigate --device <name>` so the first page request can receive the selected mobile User-Agent before navigation.

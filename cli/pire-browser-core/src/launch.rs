@@ -1,7 +1,8 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -19,6 +20,7 @@ use crate::session::{
 };
 
 pub const DEFAULT_PROFILE_NAME: &str = "Default";
+const PROFILE_PROCESS_SCAN_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone)]
 pub struct LaunchOptions {
@@ -1134,14 +1136,15 @@ Get-CimInstance Win32_Process |
   } |
   ForEach-Object { Write-Output $_.ProcessId }
 "#;
-    let output = Command::new("powershell.exe")
+    let mut command = Command::new("powershell.exe");
+    command
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .env(
             "PIRE_BROWSER_PROFILE_CLEANUP_NEEDLE",
             profile_path.display().to_string(),
-        )
-        .output();
-    let Ok(output) = output else {
+        );
+    let Ok(Some(output)) = command_output_with_timeout(command, PROFILE_PROCESS_SCAN_TIMEOUT)
+    else {
         return Vec::new();
     };
     if !output.status.success() {
@@ -1159,8 +1162,10 @@ fn profile_process_ids(profile_path: &Path) -> Vec<u32> {
     if needle.is_empty() {
         return Vec::new();
     }
-    let output = Command::new("ps").args(["-eo", "pid,args"]).output();
-    let Ok(output) = output else {
+    let mut command = Command::new("ps");
+    command.args(["-eo", "pid,args"]);
+    let Ok(Some(output)) = command_output_with_timeout(command, PROFILE_PROCESS_SCAN_TIMEOUT)
+    else {
         return Vec::new();
     };
     if !output.status.success() {
@@ -1205,6 +1210,38 @@ fn profile_process_command_matches_impl(command_line: &str, profile_path: &str) 
     let launcher_text = lowered.replace(&lowered_profile, "");
     launcher_text.contains("firefox")
         || (launcher_text.contains("node") && launcher_text.contains("web-ext"))
+}
+
+fn command_output_with_timeout(
+    mut command: Command,
+    timeout: Duration,
+) -> std::io::Result<Option<Output>> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command.spawn()?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(status) = child.try_wait()? {
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            if let Some(mut pipe) = child.stdout.take() {
+                pipe.read_to_end(&mut stdout)?;
+            }
+            if let Some(mut pipe) = child.stderr.take() {
+                pipe.read_to_end(&mut stderr)?;
+            }
+            return Ok(Some(Output {
+                status,
+                stdout,
+                stderr,
+            }));
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(None);
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
 }
 
 #[cfg(windows)]
@@ -1700,6 +1737,29 @@ mod tests {
     }
 
     #[test]
+    fn command_output_with_timeout_captures_successful_output() {
+        let command = quick_output_command("pire-timeout-ok");
+
+        let output = command_output_with_timeout(command, Duration::from_secs(5))
+            .unwrap()
+            .expect("command should finish");
+
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).contains("pire-timeout-ok"));
+    }
+
+    #[test]
+    fn command_output_with_timeout_kills_slow_processes() {
+        let command = slow_output_command();
+        let started = Instant::now();
+
+        let output = command_output_with_timeout(command, Duration::from_millis(150)).unwrap();
+
+        assert!(output.is_none());
+        assert!(started.elapsed() < Duration::from_secs(3));
+    }
+
+    #[test]
     fn annotates_sessions_from_launcher_metadata() {
         let root = tempfile::tempdir().unwrap();
         let alpha_path = launcher_metadata_path_from_data_dir(root.path(), "alpha");
@@ -1767,5 +1827,47 @@ mod tests {
         annotate_session_profile_names_from_data_dir(root.path(), &mut sessions).unwrap();
         assert_eq!(sessions[0].profile_name.as_deref(), Some("alpha"));
         assert_eq!(sessions[1].profile_name.as_deref(), Some("beta"));
+    }
+
+    #[cfg(windows)]
+    fn quick_output_command(text: &str) -> Command {
+        let mut command = Command::new("powershell.exe");
+        command
+            .args(["-NoProfile", "-NonInteractive", "-Command"])
+            .arg(format!("Write-Output {text:?}"));
+        command
+    }
+
+    #[cfg(not(windows))]
+    fn quick_output_command(text: &str) -> Command {
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg(format!("printf '%s\\n' {}", shell_quote(text)));
+        command
+    }
+
+    #[cfg(windows)]
+    fn slow_output_command() -> Command {
+        let mut command = Command::new("powershell.exe");
+        command.args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Start-Sleep -Seconds 5; Write-Output done",
+        ]);
+        command
+    }
+
+    #[cfg(not(windows))]
+    fn slow_output_command() -> Command {
+        let mut command = Command::new("sh");
+        command.args(["-c", "sleep 5; printf done"]);
+        command
+    }
+
+    #[cfg(not(windows))]
+    fn shell_quote(text: &str) -> String {
+        format!("'{}'", text.replace('\'', "'\\''"))
     }
 }

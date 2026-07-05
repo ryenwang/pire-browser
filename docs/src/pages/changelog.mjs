@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.26", "0-2-26"),
+  list([
+    "Bounds managed-profile process discovery during Firefox launch recovery so a stalled Windows WMI/PowerShell or Unix <code>ps</code> scan cannot freeze later named-session commands before they reach the browser bridge.",
+    "Adds focused Rust coverage for the timeout helper that captures successful command output and kills slow process scans.",
+  ]),
   h2("0.2.25", "0-2-25"),
   list([
     "Adds <code>open/goto/navigate --device &lt;name&gt;</code> so the first page request can receive the selected mobile User-Agent before navigation.",
