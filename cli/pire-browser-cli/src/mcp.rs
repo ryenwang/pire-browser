@@ -1,8 +1,10 @@
 use anyhow::{bail, Result};
 use pire_browser_core::redaction::redact_text;
 use serde_json::{json, Map, Value};
+use std::fs::{self, File};
 use std::io::{self, BufRead, Write};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
@@ -610,9 +612,9 @@ fn command_output(args: &[String]) -> std::result::Result<Output, String> {
     }
     let exe = std::env::current_exe()
         .map_err(|err| format!("failed to resolve pire-browser executable: {err}"))?;
-    Command::new(exe)
-        .args(args)
-        .output()
+    let mut command = Command::new(exe);
+    command.args(args);
+    command_output_via_temp_files(command)
         .map_err(|err| format!("failed to run pire-browser command: {err}"))
 }
 
@@ -627,6 +629,39 @@ fn launcher_command_output(args: &[String]) -> std::result::Result<Output, Strin
         .args(launcher_args)
         .output()
         .map_err(|err| format!("failed to run pire-browser launcher command: {err}"))
+}
+
+fn command_output_via_temp_files(mut command: Command) -> io::Result<Output> {
+    let (stdout_path, stderr_path) = mcp_output_paths();
+    let stdout_file = File::create(&stdout_path)?;
+    let stderr_file = File::create(&stderr_path)?;
+    let status = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout_file))
+        .stderr(Stdio::from(stderr_file))
+        .status()?;
+    let stdout = fs::read(&stdout_path).unwrap_or_default();
+    let stderr = fs::read(&stderr_path).unwrap_or_default();
+    let _ = fs::remove_file(stdout_path);
+    let _ = fs::remove_file(stderr_path);
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+fn mcp_output_paths() -> (std::path::PathBuf, std::path::PathBuf) {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let stem = format!("pire-browser-mcp-{}-{unique}", std::process::id());
+    let temp = std::env::temp_dir();
+    (
+        temp.join(format!("{stem}.stdout.log")),
+        temp.join(format!("{stem}.stderr.log")),
+    )
 }
 
 fn launcher_args(args: &[String]) -> Vec<String> {

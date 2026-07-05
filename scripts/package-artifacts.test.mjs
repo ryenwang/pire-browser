@@ -13,7 +13,12 @@ import {
   validatePiRpcCommands,
   validatePiSettings,
 } from "./smoke-pi-install.mjs";
-import { packedMcpSmokeInput, validatePackedMcpSmokeOutput } from "./smoke-packed-package.mjs";
+import {
+  packedMcpBrowserSmokeInput,
+  packedMcpSmokeInput,
+  validatePackedMcpBrowserSmokeOutput,
+  validatePackedMcpSmokeOutput,
+} from "./smoke-packed-package.mjs";
 
 const root = rootDir();
 
@@ -238,6 +243,54 @@ describe("npm artifact metadata", () => {
     ).toThrow(/profile-mismatch guidance/);
   });
 
+  it("validates packed-package MCP browser smoke input and output", () => {
+    const input = packedMcpBrowserSmokeInput({
+      profile: "packed-mcp-test",
+      url: "http://127.0.0.1:4321/form.html",
+      screenshot: join(tmpdir(), "pire-browser-mcp-smoke.png"),
+      executablePath: "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+    });
+    for (const tool of [
+      "pire_browser_open",
+      "pire_browser_snapshot",
+      "pire_browser_fill",
+      "pire_browser_click",
+      "pire_browser_wait_for_selector",
+      "pire_browser_screenshot",
+      "pire_browser_tab_list",
+      "pire_browser_close",
+    ]) {
+      expect(input).toContain(`"name":"${tool}"`);
+    }
+    expect(input).toContain('"profile":"packed-mcp-test"');
+    expect(input).toContain('"executablePath"');
+
+    const stdout = [
+      { jsonrpc: "2.0", id: 1, result: { serverInfo: { name: "pire-browser", version: "0.2.20" } } },
+      { jsonrpc: "2.0", id: 2, result: { isError: false, content: [{ type: "text", text: "opened" }] } },
+      { jsonrpc: "2.0", id: 3, result: { isError: false, content: [{ type: "text", text: "@e1 input Email\n@e2 button Submit" }] } },
+      { jsonrpc: "2.0", id: 4, result: { isError: false, content: [{ type: "text", text: "filled" }] } },
+      { jsonrpc: "2.0", id: 5, result: { isError: false, content: [{ type: "text", text: "clicked" }] } },
+      { jsonrpc: "2.0", id: 6, result: { isError: false, content: [{ type: "text", text: "waited" }] } },
+      { jsonrpc: "2.0", id: 7, result: { isError: false, content: [{ type: "text", text: "screenshot" }] } },
+      { jsonrpc: "2.0", id: 8, result: { isError: false, content: [{ type: "text", text: "tabs" }] } },
+      { jsonrpc: "2.0", id: 9, result: { isError: false, content: [{ type: "text", text: "closed" }] } },
+    ].map((message) => JSON.stringify(message)).join("\n");
+
+    expect(validatePackedMcpBrowserSmokeOutput(stdout)).toEqual({
+      responses: 9,
+      serverVersion: "0.2.20",
+    });
+    expect(() => validatePackedMcpBrowserSmokeOutput(stdout.replace("@e1 input Email\\n@e2 button Submit", "input Email\\nbutton Submit"))).toThrow(
+      /semantic refs/
+    );
+    expect(() =>
+      validatePackedMcpBrowserSmokeOutput(
+        stdout.replace('"isError":false,"content":[{"type":"text","text":"filled"}]', '"isError":true,"content":[{"type":"text","text":"fill failed"}]')
+      )
+    ).toThrow(/fill failed/);
+  });
+
   it("requires packed browser smoke before trusted npm publish", () => {
     const publishWorkflow = readFileSync(join(root, ".github", "workflows", "npm-publish.yml"), "utf8");
     const releaseSmokeWorkflow = readFileSync(join(root, ".github", "workflows", "release-smoke.yml"), "utf8");
@@ -246,7 +299,9 @@ describe("npm artifact metadata", () => {
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*target:[\s\S]*default: all/);
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*run_browser_smoke:[\s\S]*default: true/);
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*run_signed_xpi:[\s\S]*default: false/);
-    expect(readFileSync(join(root, "scripts", "smoke-packed-package.mjs"), "utf8")).toContain("runPackedMcpSmoke");
+    const packedSmokeScript = readFileSync(join(root, "scripts", "smoke-packed-package.mjs"), "utf8");
+    expect(packedSmokeScript).toContain("runPackedMcpSmoke");
+    expect(packedSmokeScript).toContain("runMcpBrowserSmoke");
 
     expect(publishWorkflow).toMatch(
       /packed-browser-smoke:\s*\n\s*name: Packed browser smoke[\s\S]*uses: \.\/\.github\/workflows\/release-smoke\.yml/

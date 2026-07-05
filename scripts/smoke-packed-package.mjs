@@ -248,7 +248,7 @@ export function packedMcpSmokeInput() {
   ].join("\n") + "\n";
 }
 
-export function validatePackedMcpSmokeOutput(stdout) {
+function parseMcpJsonLines(stdout, label) {
   const responses = String(stdout ?? "")
     .split(/\r?\n/)
     .filter((line) => line.trim().length > 0)
@@ -256,9 +256,14 @@ export function validatePackedMcpSmokeOutput(stdout) {
       try {
         return JSON.parse(line);
       } catch (error) {
-        throw new Error(`MCP smoke response line ${index + 1} was not JSON: ${error.message}`);
+        throw new Error(`${label} response line ${index + 1} was not JSON: ${error.message}`);
       }
     });
+  return responses;
+}
+
+export function validatePackedMcpSmokeOutput(stdout) {
+  const responses = parseMcpJsonLines(stdout, "MCP smoke");
   if (responses.length < 3) {
     throw new Error(`MCP smoke expected at least 3 JSON-RPC responses, got ${responses.length}`);
   }
@@ -293,6 +298,53 @@ export function validatePackedMcpSmokeOutput(stdout) {
     coreActive: core.active,
     networkActive: network.active,
     allActive: all.active,
+  };
+}
+
+export function packedMcpBrowserSmokeInput({ profile, url, screenshot, executablePath = null }) {
+  const target = (extra = {}) => ({
+    profile,
+    ...extra,
+  });
+  const openArgs = target({ url });
+  if (executablePath) openArgs.executablePath = executablePath;
+  return [
+    { id: 1, method: "initialize", params: {} },
+    { id: 2, method: "tools/call", params: { name: "pire_browser_open", arguments: openArgs } },
+    { id: 3, method: "tools/call", params: { name: "pire_browser_snapshot", arguments: target({ interactive: true, compact: true }) } },
+    { id: 4, method: "tools/call", params: { name: "pire_browser_fill", arguments: target({ selector: "#email", text: "mcp-smoke@example.com" }) } },
+    { id: 5, method: "tools/call", params: { name: "pire_browser_click", arguments: target({ selector: "button" }) } },
+    { id: 6, method: "tools/call", params: { name: "pire_browser_wait_for_selector", arguments: target({ selector: "#done:not([hidden])", waitTimeoutMs: 30_000 }) } },
+    { id: 7, method: "tools/call", params: { name: "pire_browser_screenshot", arguments: target({ path: screenshot }) } },
+    { id: 8, method: "tools/call", params: { name: "pire_browser_tab_list", arguments: target() } },
+    { id: 9, method: "tools/call", params: { name: "pire_browser_close", arguments: target() } },
+  ].map((message) => JSON.stringify({ jsonrpc: "2.0", ...message })).join("\n") + "\n";
+}
+
+export function validatePackedMcpBrowserSmokeOutput(stdout) {
+  const responses = parseMcpJsonLines(stdout, "MCP browser smoke");
+  const byId = new Map(responses.map((response) => [String(response.id), response]));
+  const initialized = byId.get("1");
+  if (initialized?.result?.serverInfo?.name !== "pire-browser") {
+    throw new Error("MCP browser smoke initialize response did not identify the pire-browser server");
+  }
+  for (const id of ["2", "3", "4", "5", "6", "7", "8", "9"]) {
+    const response = byId.get(id);
+    if (!response) throw new Error(`MCP browser smoke missing response id ${id}`);
+    if (response.error) {
+      throw new Error(`MCP browser smoke tool id ${id} returned JSON-RPC error: ${response.error.message ?? JSON.stringify(response.error)}`);
+    }
+    if (response.result?.isError === true) {
+      throw new Error(`MCP browser smoke tool id ${id} returned isError=true: ${response.result.content?.[0]?.text ?? ""}`);
+    }
+  }
+  const snapshotText = String(byId.get("3")?.result?.content?.[0]?.text ?? "");
+  if (!snapshotText.includes("@e")) {
+    throw new Error("MCP browser smoke snapshot did not include semantic refs");
+  }
+  return {
+    responses: responses.length,
+    serverVersion: initialized.result.serverInfo.version ?? null,
   };
 }
 
@@ -387,6 +439,7 @@ async function main(argv) {
       installedPackageRoot: null,
       nativeResolution: null,
       mcp: null,
+      mcpBrowser: null,
       profiles,
       modes: [],
       steps: recorder.steps,
@@ -434,6 +487,18 @@ async function main(argv) {
         prefix,
         firefoxPath: options.firefoxPath,
         mode: "web-ext",
+        recorder,
+        summary,
+      });
+      await runMcpBrowserSmoke({
+        command,
+        commandCwd,
+        env,
+        workRoot,
+        artifactDir,
+        dataRoot,
+        prefix,
+        firefoxPath: options.firefoxPath,
         recorder,
         summary,
       });
@@ -599,6 +664,77 @@ function runPackedMcpSmoke({ command, commandCwd, env, recorder, summary }) {
     ...mcp,
   };
   writeSummary(summary, summary.artifactDir, env);
+}
+
+async function runMcpBrowserSmoke({
+  command,
+  commandCwd,
+  env,
+  workRoot,
+  artifactDir,
+  dataRoot,
+  prefix,
+  firefoxPath,
+  recorder,
+  summary,
+}) {
+  if (firefoxPath && !existsSync(firefoxPath)) {
+    throw new Error(`Firefox not found at ${firefoxPath}`);
+  }
+  const mode = "mcp-web-ext";
+  const fixture = await startFixtureServer({ artifactDir });
+  const profile = `packed-${mode}-${Date.now()}`;
+  const profilePath = join(dataRoot, "firefox-profiles", profile);
+  const screenshotDir = join(artifactDir, "screenshots");
+  mkdirSync(screenshotDir, { recursive: true });
+  const screenshot = join(screenshotDir, `screenshot-${mode}.png`);
+  const modeResult = {
+    mode,
+    mcp: true,
+    profile,
+    profilePath,
+    fixtureUrl: fixture.url,
+    screenshot,
+    success: false,
+  };
+  summary.profiles.push({ mode, profile, profilePath });
+  summary.modes.push(modeResult);
+  summary.mcpBrowser = modeResult;
+  writeSummary(summary, artifactDir, env);
+
+  try {
+    const setupArgs = ["setup"];
+    if (firefoxPath) setupArgs.push("--firefox-path", firefoxPath);
+    runPire(command, setupArgs, { cwd: commandCwd, env, recorder });
+    runPire(command, ["doctor", "--json"], { cwd: commandCwd, env, recorder });
+    warmWebExtCache({ cwd: commandCwd, env, recorder });
+
+    const result = runPire(command, ["mcp", "--tools", "core"], {
+      cwd: commandCwd,
+      env,
+      timeoutMs: 300_000,
+      recorder,
+      input: packedMcpBrowserSmokeInput({
+        profile,
+        url: fixture.url,
+        screenshot,
+        executablePath: firefoxPath,
+      }),
+    });
+    modeResult.validation = validatePackedMcpBrowserSmokeOutput(result.stdout);
+    if (!existsSync(screenshot)) throw new Error(`Expected MCP screenshot was not created: ${screenshot}`);
+    modeResult.success = true;
+  } finally {
+    runPire(command, ["--profile", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
+    await fixture.close();
+    copyDiagnostics({ dataRoot, artifactDir });
+    if (process.platform === "win32") {
+      cleanupWindowsProcesses({ workRoot, prefix, profilePaths: [profilePath], recorder, env });
+    } else {
+      cleanupUnixProcesses({ workRoot, prefix, profilePaths: [profilePath], recorder, env });
+    }
+    writeSummary(summary, artifactDir, env);
+  }
 }
 
 async function runBrowserSmoke({

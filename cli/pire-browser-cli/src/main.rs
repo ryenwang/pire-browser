@@ -12099,8 +12099,8 @@ fn send_to_named_session(
     )?;
     let mut options = options;
     options.url = launch_url_for_remote_args_after_mutators(args, launch_plugin_runtime);
-    let result = launch_firefox_with_lazy_setup(options)?;
-    let session_id = result.session.session_id;
+    let mut launch_result = launch_firefox_with_lazy_setup(options)?;
+    let session_id = launch_result.session.session_id.clone();
     let request = request_with_launch_plugin_init_scripts(request, args, launch_plugin_runtime)?;
     if should_register_launch_plugin_init_scripts_after_launch(args, launch_plugin_runtime) {
         if let Some(runtime) = launch_plugin_runtime {
@@ -12108,6 +12108,12 @@ fn send_to_named_session(
                 &session_id,
                 runtime.init_scripts.borrow().as_slice(),
             )?;
+        }
+    }
+    if !has_launch_plugin_init_scripts(launch_plugin_runtime) {
+        launch_result = wait_for_auto_launched_open_page(launch_result, args)?;
+        if let Some(response) = auto_launched_open_response(args, &launch_result) {
+            return Ok(response);
         }
     }
     send_to_session(Some(&session_id), &request)
@@ -12582,13 +12588,11 @@ fn auto_launched_open_response(
 }
 
 fn simple_open_url_for_auto_launch_response(args: &[String]) -> Option<String> {
-    if !matches!(
-        args.first().map(String::as_str),
-        Some("open" | "goto" | "navigate")
-    ) {
-        return None;
-    }
-    if args.iter().any(|arg| {
+    let command_index = args
+        .iter()
+        .position(|arg| matches!(arg.as_str(), "open" | "goto" | "navigate"))?;
+    let command_args = &args[command_index..];
+    if command_args.iter().any(|arg| {
         matches!(
             arg.as_str(),
             "--new" | "--new-tab" | "--headers" | "--init-script" | "--label"
@@ -12596,7 +12600,7 @@ fn simple_open_url_for_auto_launch_response(args: &[String]) -> Option<String> {
     }) {
         return None;
     }
-    first_positional_arg(&args[1..], &["--enable"])
+    first_positional_arg(&command_args[1..], &["--enable"])
 }
 
 fn same_url_for_cli(left: &str, right: &str) -> bool {
@@ -15090,6 +15094,18 @@ mod tests {
         assert_eq!(result["autoLaunched"], json!(true));
         assert_eq!(result["tab"]["url"], json!("https://example.com/"));
         assert!(result.get("warnings").is_none());
+    }
+
+    #[test]
+    fn simple_open_auto_launch_handles_target_prefixed_args() {
+        let launch = test_launch_result(Some("https://example.com/"));
+        let (response, _) = auto_launched_open_response(
+            &s(&["--profile", "Work", "open", "https://example.com"]),
+            &launch,
+        )
+        .unwrap();
+        assert!(response.ok);
+        assert_eq!(response.result.unwrap()["autoLaunched"], json!(true));
     }
 
     #[test]
