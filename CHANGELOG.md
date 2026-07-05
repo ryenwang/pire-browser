@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.22
+
+- Makes bare `pire-browser session [--json]` an agent-browser-compatible alias for current/default session diagnostics, while keeping `pire-browser session list` and plural `pire-browser sessions` for live-session inventory.
+
 ## 0.2.21
 
 - Adds `pire-browser session info [--json]` as a read-only session/profile/restore diagnostic, including selected target status and suggested next actions for agent-browser-style restore workflows.

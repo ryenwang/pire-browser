@@ -2158,7 +2158,23 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     if command == "session" || command == "sessions" {
         args.remove(0);
         remove_json_flags(&mut args, &mut json_output);
-        let subcommand = args.first().map(String::as_str).unwrap_or("list");
+        let subcommand = args.first().map(String::as_str);
+        if subcommand.is_none() {
+            if command == "sessions" {
+                return Ok(LocalCommand::SessionList { json: json_output });
+            }
+            return Ok(LocalCommand::SessionInfo {
+                target: session_target,
+                restore: RestoreCliOptions {
+                    requested: restore_requested,
+                    name: restore_name,
+                    save: restore_save,
+                    check_text: restore_check_text,
+                },
+                json: json_output,
+            });
+        }
+        let subcommand = subcommand.unwrap_or("list");
         match subcommand {
             "list" => {
                 if !args.is_empty() {
@@ -3442,6 +3458,7 @@ Common commands:
   profiles [--json]               List managed Firefox profiles
   profiles import <dir> --name Work
                                   Copy a Firefox profile into a managed profile
+  session                         Inspect current/default session target
   session list                    List live Firefox sessions
   session id --scope worktree --prefix my-app
                                   Print a stable project-scoped session name
@@ -4441,6 +4458,7 @@ user's pire-browser data directory. They expire after about 60 seconds. Use
 
 const SESSION_HELP: &str = r##"
 Usage:
+  pire-browser session [--json]
   pire-browser session list [--json]
   pire-browser session info [--json]
   pire-browser session id [--scope worktree|cwd|global] [--prefix <name>] [--json]
@@ -4454,13 +4472,15 @@ Usage:
   pire-browser --profile <name-or-path> open <url>
   pire-browser --session-name <name> close
 
-Lists live Firefox extension sessions, prints the `--session <id>` prefix for a
-chosen session, derives a stable agent-browser-style named session id for the
-current project, inspects current launch/restore/profile status, or removes
-stale session files. `session info --json` is read-only and reports the selected
-target, live session, managed Firefox profile, restore interpretation, and next
-actions. `session id --scope worktree --prefix my-app` prints a deterministic
-name that can be passed directly to `--session <name>` for project QA loops.
+`session` is an agent-browser-compatible alias for `session info`: it reports
+the current/default target, live session, managed Firefox profile, restore
+interpretation, and next actions without launching Firefox. `session list`
+lists all live Firefox extension sessions. This command also prints the
+`--session <id>` prefix for a chosen session, derives a stable
+agent-browser-style named session id for the current project, or removes stale
+session files. `session id --scope worktree --prefix my-app` prints a
+deterministic name that can be passed directly to `--session <name>` for project
+QA loops.
 `worktree` uses the nearest `.git` root and falls back to the current directory;
 `cwd` uses the current directory; `global` returns the sanitized prefix without
 a path hash.
@@ -6686,6 +6706,22 @@ mod tests {
             LocalCommand::SessionList { json: true }
         );
         assert_eq!(
+            parse_cli_args(&s(&["session", "--json"])).unwrap(),
+            LocalCommand::SessionInfo {
+                target: SessionTarget::Default,
+                restore: RestoreCliOptions::default(),
+                json: true
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["session"])).unwrap(),
+            LocalCommand::SessionInfo {
+                target: SessionTarget::Default,
+                restore: RestoreCliOptions::default(),
+                json: false
+            }
+        );
+        assert_eq!(
             parse_cli_args(&s(&["session", "info", "--json"])).unwrap(),
             LocalCommand::SessionInfo {
                 target: SessionTarget::Default,
@@ -7619,7 +7655,7 @@ mod tests {
         assert!(text.contains("--session work --restore open <url>"));
         assert!(help_text(Some("session"))
             .unwrap()
-            .contains("session info --json"));
+            .contains("session info [--json]"));
         assert!(text.contains("get text '@e1'"));
         assert!(text.contains("is visible '@e1'"));
         assert!(text.contains("console"));

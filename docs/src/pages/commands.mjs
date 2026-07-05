@@ -353,6 +353,7 @@ pire-browser --session-name review state load --require-inspected ./.pire-state/
 pire-browser --session "$SESSION" --restore open https://example.com
 pire-browser --session "$SESSION" --restore session info --json
 pire-browser --session "$SESSION" --restore snapshot -i
+pire-browser session --json
 pire-browser session list
 pire-browser session info --json
 pire-browser session id --scope worktree --prefix my-app

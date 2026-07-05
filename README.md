@@ -975,6 +975,7 @@ pire-browser --session "$SESSION" --restore open https://app.example.com
 pire-browser --session "$SESSION" --restore session info --json
 pire-browser --session "$SESSION" --restore snapshot -i
 
+pire-browser session --json
 pire-browser session list
 pire-browser session info --json
 pire-browser session id --scope worktree --prefix my-app
@@ -996,9 +997,12 @@ passwords, and other Firefox profile data survive browser restarts. The name is
 deterministic for the current Git worktree and prefix, so separate projects do
 not collide. `session id --scope cwd` scopes to the current directory, and
 `--scope global` returns the sanitized prefix without a path hash.
-Use `pire-browser --session <name> --restore session info --json` when an agent
-needs to inspect the selected live session, managed Firefox profile, restore
+Use `pire-browser session` or `pire-browser session --json` for the
+agent-browser-compatible current/default session diagnostic. Use
+`pire-browser --session <name> --restore session info --json` when an agent needs
+to inspect a selected live session, managed Firefox profile, restore
 interpretation, and suggested next actions without launching or mutating Firefox.
+Use `session list` when you need the full live-session inventory.
 
 `--session <uuid>` targets a strict live session id from `session list`. `--session <name>`, `PIRE_BROWSER_SESSION=<name>`, `AGENT_BROWSER_SESSION=<name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION_NAME=<name>`, and `AGENT_BROWSER_SESSION_NAME=<name>` are named-profile aliases that may reuse or launch managed Firefox. `--restore <name>` may be used as a short spelling for `--session <name> --restore` when no session/profile target is already present. `--restore-save auto|always|never` is accepted for agent-browser recipe compatibility; named Firefox profiles persist automatically.
 
