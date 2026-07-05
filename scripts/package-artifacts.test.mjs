@@ -13,6 +13,7 @@ import {
   validatePiRpcCommands,
   validatePiSettings,
 } from "./smoke-pi-install.mjs";
+import { packedMcpSmokeInput, validatePackedMcpSmokeOutput } from "./smoke-packed-package.mjs";
 
 const root = rootDir();
 
@@ -179,6 +180,64 @@ describe("npm artifact metadata", () => {
     ).toThrow(/skill:pire-browser/);
   });
 
+  it("validates packed-package MCP stdio smoke output", () => {
+    expect(packedMcpSmokeInput()).toContain('"method":"initialize"');
+    expect(packedMcpSmokeInput()).toContain('"name":"pire_browser_network_route"');
+    expect(packedMcpSmokeInput()).toContain('"name":"pire_browser_tools_profiles"');
+
+    const stdout = [
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        result: {
+          serverInfo: {
+            name: "pire-browser",
+            version: "0.2.20",
+          },
+        },
+      }),
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        result: {
+          content: [
+            {
+              type: "text",
+              text: "tool `pire_browser_network_route` is not available in MCP tools profile `core`; it is available in `network`. Restart with `--tools core,network`, or use `--tools all` if the host can tolerate the full tool list.",
+            },
+          ],
+        },
+      }),
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        result: {
+          structuredContent: {
+            profiles: [
+              { name: "core", active: true },
+              { name: "network", active: false },
+              { name: "all", active: false },
+            ],
+          },
+        },
+      }),
+    ].join("\n");
+
+    expect(validatePackedMcpSmokeOutput(stdout)).toMatchObject({
+      responses: 3,
+      serverVersion: "0.2.20",
+      coreActive: true,
+      networkActive: false,
+      allActive: false,
+    });
+    expect(() => validatePackedMcpSmokeOutput("")).toThrow(/expected at least 3/);
+    expect(() =>
+      validatePackedMcpSmokeOutput(
+        stdout.replace("--tools core,network", "--tools all")
+      )
+    ).toThrow(/profile-mismatch guidance/);
+  });
+
   it("requires packed browser smoke before trusted npm publish", () => {
     const publishWorkflow = readFileSync(join(root, ".github", "workflows", "npm-publish.yml"), "utf8");
     const releaseSmokeWorkflow = readFileSync(join(root, ".github", "workflows", "release-smoke.yml"), "utf8");
@@ -187,6 +246,7 @@ describe("npm artifact metadata", () => {
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*target:[\s\S]*default: all/);
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*run_browser_smoke:[\s\S]*default: true/);
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*run_signed_xpi:[\s\S]*default: false/);
+    expect(readFileSync(join(root, "scripts", "smoke-packed-package.mjs"), "utf8")).toContain("runPackedMcpSmoke");
 
     expect(publishWorkflow).toMatch(
       /packed-browser-smoke:\s*\n\s*name: Packed browser smoke[\s\S]*uses: \.\/\.github\/workflows\/release-smoke\.yml/

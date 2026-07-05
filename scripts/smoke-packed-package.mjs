@@ -240,6 +240,62 @@ export function unixCleanupTargets(psOutput, needles, currentPid = process.pid) 
   return targets;
 }
 
+export function packedMcpSmokeInput() {
+  return [
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}',
+    '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pire_browser_network_route","arguments":{"pattern":"**/api/**"}}}',
+    '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"pire_browser_tools_profiles","arguments":{}}}',
+  ].join("\n") + "\n";
+}
+
+export function validatePackedMcpSmokeOutput(stdout) {
+  const responses = String(stdout ?? "")
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line, index) => {
+      try {
+        return JSON.parse(line);
+      } catch (error) {
+        throw new Error(`MCP smoke response line ${index + 1} was not JSON: ${error.message}`);
+      }
+    });
+  if (responses.length < 3) {
+    throw new Error(`MCP smoke expected at least 3 JSON-RPC responses, got ${responses.length}`);
+  }
+
+  const byId = new Map(responses.map((response) => [String(response.id), response]));
+  const initialized = byId.get("1");
+  if (initialized?.result?.serverInfo?.name !== "pire-browser") {
+    throw new Error("MCP smoke initialize response did not identify the pire-browser server");
+  }
+
+  const missingToolMessage = String(byId.get("2")?.result?.content?.[0]?.text ?? "");
+  if (!missingToolMessage.includes("pire_browser_network_route") || !missingToolMessage.includes("--tools core,network")) {
+    throw new Error("MCP smoke did not return the expected profile-mismatch guidance for network_route");
+  }
+
+  const profiles = byId.get("3")?.result?.structuredContent?.profiles;
+  if (!Array.isArray(profiles)) {
+    throw new Error("MCP smoke tools_profiles response did not include structured profiles");
+  }
+  const profile = (name) => profiles.find((candidate) => candidate.name === name);
+  const core = profile("core");
+  const network = profile("network");
+  const all = profile("all");
+  if (core?.active !== true || network?.active !== false || all?.active !== false) {
+    throw new Error("MCP smoke profile active flags were not correct for --tools core");
+  }
+
+  return {
+    responses: responses.length,
+    serverVersion: initialized.result.serverInfo.version ?? null,
+    missingToolMessage,
+    coreActive: core.active,
+    networkActive: network.active,
+    allActive: all.active,
+  };
+}
+
 export function isSuccessfulLaunchTimeout(result) {
   const errorText = `${result?.error?.code ?? ""} ${result?.error?.message ?? ""}`;
   if (!/\bETIMEDOUT\b/.test(errorText)) return false;
@@ -330,6 +386,7 @@ async function main(argv) {
       platformTarball: null,
       installedPackageRoot: null,
       nativeResolution: null,
+      mcp: null,
       profiles,
       modes: [],
       steps: recorder.steps,
@@ -365,6 +422,7 @@ async function main(argv) {
     }
 
     runInstalledChecks({ command, commandCwd, env, recorder });
+    runPackedMcpSmoke({ command, commandCwd, env, recorder, summary });
     if (options.browser) {
       await runBrowserSmoke({
         command,
@@ -528,6 +586,21 @@ function runInstalledChecks({ command, commandCwd, env, recorder }) {
   runPire(command, ["doctor"], { cwd: commandCwd, env, recorder });
 }
 
+function runPackedMcpSmoke({ command, commandCwd, env, recorder, summary }) {
+  const result = runPire(command, ["mcp", "--tools", "core"], {
+    cwd: commandCwd,
+    env,
+    recorder,
+    input: packedMcpSmokeInput(),
+  });
+  const mcp = validatePackedMcpSmokeOutput(result.stdout);
+  summary.mcp = {
+    success: true,
+    ...mcp,
+  };
+  writeSummary(summary, summary.artifactDir, env);
+}
+
 async function runBrowserSmoke({
   command,
   commandCwd,
@@ -614,6 +687,7 @@ function runPire(command, args, options = {}) {
     allowFailure: options.allowFailure,
     acceptErrorResult: options.acceptErrorResult,
     recorder: options.recorder,
+    input: options.input,
   });
 }
 
@@ -635,6 +709,7 @@ function runChecked(label, command, args, options = {}) {
     shell: options.shell ?? false,
     timeout: options.timeoutMs,
     windowsHide: true,
+    input: options.input,
   });
   if (options.recorder) options.recorder.record(label, result);
   if (result.error) {
