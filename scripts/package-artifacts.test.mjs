@@ -392,7 +392,7 @@ describe("npm artifact metadata", () => {
         },
         { jsonrpc: "2.0", id: 9, result: { isError: false, structuredContent: envelope({ text: "waited" }), content: [{ type: "text", text: "waited" }] } },
         { jsonrpc: "2.0", id: 10, result: { isError: false, structuredContent: envelope({ text: "network fixture ready" }), content: [{ type: "text", text: "network fixture ready" }] } },
-        { jsonrpc: "2.0", id: 11, result: { isError: false, structuredContent: envelope({ text: "closed" }), content: [{ type: "text", text: "closed" }] } },
+        { jsonrpc: "2.0", id: 11, result: { isError: true, structuredContent: { success: false, error: { code: "command_failed", message: "close failed for the targeted session" } }, content: [{ type: "text", text: "close failed for the targeted session" }] } },
       ].map((message) => JSON.stringify(message)).join("\n");
 
       expect(validatePackedMcpNetworkSmokeOutput(stdout, { harPath })).toEqual({
@@ -400,6 +400,7 @@ describe("npm artifact metadata", () => {
         serverVersion: "0.2.20",
         requests: 1,
         harEntries: 1,
+        closeWarning: "close failed for the targeted session",
       });
       expect(() => validatePackedMcpNetworkSmokeOutput(stdout.replace("xmlhttprequest", "script"), { harPath })).toThrow(/fixture fetch request/);
       expect(() => validatePackedMcpNetworkSmokeOutput(stdout.replaceAll('"statusCode":200', '"statusCode":500'), { harPath })).toThrow(/2xx/);

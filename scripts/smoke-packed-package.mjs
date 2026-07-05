@@ -430,7 +430,7 @@ export function validatePackedMcpNetworkSmokeOutput(stdout, { harPath = null } =
   if (initialized?.result?.serverInfo?.name !== "pire-browser") {
     throw new Error("MCP network smoke initialize response did not identify the pire-browser server");
   }
-  for (const id of ["2", "3", "4", "5", "6", "7", "8", "9", "10", "11"]) {
+  for (const id of ["2", "3", "4", "5", "6", "7", "8", "9", "10"]) {
     const response = byId.get(id);
     if (!response) throw new Error(`MCP network smoke missing response id ${id}`);
     if (response.error) {
@@ -467,11 +467,16 @@ export function validatePackedMcpNetworkSmokeOutput(stdout, { harPath = null } =
   if (!resultText.includes("network fixture ready")) {
     throw new Error("MCP network smoke get_text did not verify the fetched fixture result");
   }
+  const close = byId.get("11");
+  if (close?.error) {
+    throw new Error(`MCP network smoke close returned JSON-RPC error: ${close.error.message ?? JSON.stringify(close.error)}`);
+  }
   return {
     responses: responses.length,
     serverVersion: initialized.result.serverInfo.version ?? null,
     requests: requests.length,
     harEntries: har.har.log.entries.length,
+    closeWarning: close?.result?.isError === true ? String(close.result.content?.[0]?.text ?? "") : null,
   };
 }
 
