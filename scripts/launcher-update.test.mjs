@@ -11,6 +11,7 @@ import {
   formatLauncherMissingNativeHelp,
   launcherInstallDiagnosticForMissingNative,
   main,
+  nativeArgsNeedStdin,
 } from "../bin/pire-browser.js";
 
 const originalOffline = process.env.PI_OFFLINE;
@@ -140,6 +141,23 @@ describe("launcher update UX", () => {
     expect(piHelp).toContain("pire-browser pi repair");
     expect(piHelp).toContain("Exit codes:");
     expect(piHelp).toContain("data.remainingConflicts");
+  });
+
+  it("preserves stdin for native commands that require it through the Windows launcher", () => {
+    expect(nativeArgsNeedStdin(["mcp", "--tools", "core"])).toBe(true);
+    expect(nativeArgsNeedStdin(["chat"])).toBe(true);
+    expect(nativeArgsNeedStdin(["chat", "--json"])).toBe(true);
+    expect(nativeArgsNeedStdin(["eval", "--stdin"])).toBe(true);
+    expect(nativeArgsNeedStdin(["auth", "save", "app", "--password-stdin"])).toBe(true);
+    expect(nativeArgsNeedStdin(["cookies", "set", "--curl", "-"])).toBe(true);
+    expect(nativeArgsNeedStdin(["batch"])).toBe(true);
+    expect(nativeArgsNeedStdin(["batch", "--bail"])).toBe(true);
+
+    expect(nativeArgsNeedStdin(["open", "https://example.com"])).toBe(false);
+    expect(nativeArgsNeedStdin(["eval", "document.title"])).toBe(false);
+    expect(nativeArgsNeedStdin(["cookies", "set", "--curl", "curl https://example.com"])).toBe(false);
+    expect(nativeArgsNeedStdin(["batch", "snapshot -i"])).toBe(false);
+    expect(nativeArgsNeedStdin(["batch", "--bail", "snapshot -i"])).toBe(false);
   });
 
   it("serves version output before native binary resolution", () => {

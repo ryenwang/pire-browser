@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PLATFORM_PACKAGES, packageDirectoryName, rootDir } from "./platform.mjs";
+import { PLATFORM_PACKAGES, packageDirectoryName, resolveNativeBinary, rootDir } from "./platform.mjs";
 import { normalizeRepositoryUrl } from "./verify-npm-artifacts.mjs";
 import {
   expectedPackageSource,
@@ -50,6 +51,40 @@ describe("npm artifact metadata", () => {
     for (const peer of piPeers) {
       expect(rootPackage.peerDependencies?.[peer]).toBe("*");
       expect(rootPackage.peerDependenciesMeta?.[peer]).toEqual({ optional: true });
+    }
+  });
+
+  it("prefers freshly built source binaries before optional sidecars and transitional checked-in binaries", () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), "pire-browser-platform-test-"));
+    try {
+      writeFileSync(join(tempRoot, "package.json"), `${JSON.stringify({ name: "pire-browser", version: "1.2.3" })}\n`);
+      const checkedInBin = join(tempRoot, "bin", "win32-x64", "pire-browser.exe");
+      const debugBin = join(tempRoot, "cli", "target", "debug", "pire-browser.exe");
+      const optionalPackageRoot = join(tempRoot, "node_modules", "@ryenw", "pire-browser-win32-x64");
+      const optionalBin = join(optionalPackageRoot, "bin", "pire-browser.exe");
+      mkdirSync(join(tempRoot, "bin", "win32-x64"), { recursive: true });
+      mkdirSync(join(tempRoot, "cli", "target", "debug"), { recursive: true });
+      mkdirSync(join(optionalPackageRoot, "bin"), { recursive: true });
+      writeFileSync(checkedInBin, "old");
+      writeFileSync(debugBin, "new");
+      writeFileSync(join(optionalPackageRoot, "package.json"), `${JSON.stringify({ name: "@ryenw/pire-browser-win32-x64" })}\n`);
+      writeFileSync(optionalBin, "sidecar");
+
+      expect(
+        resolveNativeBinary({
+          root: tempRoot,
+          cwd: tempRoot,
+          platform: "win32",
+          arch: "x64",
+          env: {},
+        })
+      ).toMatchObject({
+        ok: true,
+        path: debugBin,
+        source: "development",
+      });
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
     }
   });
 

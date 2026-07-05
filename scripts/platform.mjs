@@ -80,6 +80,16 @@ export function resolveNativeBinary(options = {}) {
     return { ok: false, reason: error.message };
   }
 
+  const suffix = platform === "win32" ? ".exe" : "";
+  for (const candidate of [
+    join(root, "cli", "target", "debug", `pire-browser${suffix}`),
+    join(root, "cli", "target", "release", `pire-browser${suffix}`),
+    join(cwd, "target", "debug", `pire-browser${suffix}`),
+    join(cwd, "target", "release", `pire-browser${suffix}`),
+  ]) {
+    if (existsSync(candidate)) return { ok: true, path: candidate, source: "development", tuple };
+  }
+
   const packageName = packageNameForTuple(tuple);
   const requireFromRoot = createRequire(join(root, "package.json"));
   try {
@@ -88,19 +98,11 @@ export function resolveNativeBinary(options = {}) {
     const candidate = platformBinaryPath(packageRoot, platform);
     if (existsSync(candidate)) return { ok: true, path: candidate, source: packageName, tuple };
   } catch {
-    // Fall through to development candidates and then the optional-dependency diagnostic.
+    // Fall through to the transitional checked-in binary and then the optional-dependency diagnostic.
   }
 
-  const suffix = platform === "win32" ? ".exe" : "";
-  for (const candidate of [
-    join(root, "bin", tuple, `pire-browser${suffix}`),
-    join(root, "cli", "target", "debug", `pire-browser${suffix}`),
-    join(root, "cli", "target", "release", `pire-browser${suffix}`),
-    join(cwd, "target", "debug", `pire-browser${suffix}`),
-    join(cwd, "target", "release", `pire-browser${suffix}`),
-  ]) {
-    if (existsSync(candidate)) return { ok: true, path: candidate, source: "development", tuple };
-  }
+  const checkedInCandidate = join(root, "bin", tuple, `pire-browser${suffix}`);
+  if (existsSync(checkedInCandidate)) return { ok: true, path: checkedInCandidate, source: "development", tuple };
 
   const version = rootPackageJson(root).version;
   return {

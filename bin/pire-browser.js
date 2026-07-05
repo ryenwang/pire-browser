@@ -219,7 +219,7 @@ function nativeEnv() {
 
 function runNative(binary, nativeArgs) {
   const env = nativeEnv();
-  if (process.platform !== "win32") {
+  if (process.platform !== "win32" || nativeArgsNeedStdin(nativeArgs)) {
     return spawnSync(binary, nativeArgs, { stdio: "inherit", windowsHide: true, env });
   }
 
@@ -248,6 +248,22 @@ function runNative(binary, nativeArgs) {
     closeIfOpen(stderrFd);
     rmSync(tempDir, { recursive: true, force: true });
   }
+}
+
+export function nativeArgsNeedStdin(args) {
+  const command = args[0];
+  if (command === "mcp" || command === "chat") return true;
+  if (command === "eval" && args.includes("--stdin")) return true;
+  if (command === "auth" && args[1] === "save" && args.includes("--password-stdin")) return true;
+  if (command === "cookies" && args[1] === "set") {
+    const curlIndex = args.indexOf("--curl");
+    if (curlIndex !== -1 && args[curlIndex + 1] === "-") return true;
+  }
+  return command === "batch" && !batchHasInlineCommands(args);
+}
+
+function batchHasInlineCommands(args) {
+  return args.slice(1).some((arg) => arg !== "--bail");
 }
 
 function closeIfOpen(fd) {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.20
+
+- Preserves stdin for Windows npm-launched native commands that require it, including MCP stdio, `chat`, `eval --stdin`, `auth save --password-stdin`, `cookies set --curl -`, and stdin-driven `batch`.
+- Makes source checkout dogfooding prefer freshly built Rust binaries before stale optional sidecars or transitional checked-in binaries.
+
 ## 0.2.19
 
 - Improves MCP profile-mismatch errors so agents get the exact `--tools` profile combinations that expose a missing tool instead of a generic fallback hint.

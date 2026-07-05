@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.20", "0-2-20"),
+  list([
+    "Preserves stdin for Windows npm-launched native commands that require it, including MCP stdio, <code>chat</code>, <code>eval --stdin</code>, <code>auth save --password-stdin</code>, <code>cookies set --curl -</code>, and stdin-driven <code>batch</code>.",
+    "Makes source checkout dogfooding prefer freshly built Rust binaries before stale optional sidecars or transitional checked-in binaries.",
+  ]),
   h2("0.2.19", "0-2-19"),
   list([
     "Improves MCP profile-mismatch errors so agents get the exact <code>--tools</code> profile combinations that expose a missing tool instead of a generic fallback hint.",
@@ -89,7 +94,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The repository package version is currently <code>pire-browser@0.2.19</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
+  p("The repository package version is currently <code>pire-browser@0.2.20</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
 ];
 
 export default page({
