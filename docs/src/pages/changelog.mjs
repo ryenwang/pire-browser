@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.19", "0-2-19"),
+  list([
+    "Improves MCP profile-mismatch errors so agents get the exact <code>--tools</code> profile combinations that expose a missing tool instead of a generic fallback hint.",
+    "Aligns the in-band <code>pire_browser_tools_profiles</code> descriptions with the documented MCP profile surface for network waits, install/upgrade diagnostics, streams, tabs/windows, and state tools.",
+  ]),
   h2("0.2.18", "0-2-18"),
   list([
     "Replaces remaining first-run status/auth/session guidance that pointed agents at lower-level <code>launch</code> with the public <code>open</code> workflow.",
@@ -84,7 +89,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The repository package version is currently <code>pire-browser@0.2.18</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
+  p("The repository package version is currently <code>pire-browser@0.2.19</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
 ];
 
 export default page({

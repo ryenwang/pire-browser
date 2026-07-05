@@ -162,7 +162,9 @@ pub fn setup_result_text(result: &SetupResult) -> String {
     if let Some(note) = &result.dependency_note {
         text.push_str(&format!("\nDependency note: {note}"));
     }
-    text.push_str("\nNext: run `pire-browser open https://example.com` and `pire-browser snapshot -i`.");
+    text.push_str(
+        "\nNext: run `pire-browser open https://example.com` and `pire-browser snapshot -i`.",
+    );
     text
 }
 

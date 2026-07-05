@@ -134,27 +134,27 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "core",
             bits: PROFILE_CORE,
-            description: "Default inspect-before-act workflow: open/goto/navigate, snapshots, semantic find, interactions, waits, navigation helpers, init scripts, reads, screenshots/PDFs, diffs, eval/evaluate, status, confirmation follow-up, tab list/new/switch/close, profiles, close, and skill guidance.",
+            description: "Default inspect-before-act workflow: open/goto/navigate, read, snapshots, semantic find, interactions, typed get/check verification, typed waits, back/forward/reload, SPA pushstate, init scripts, set-content fixtures, screenshots/PDFs/diffs, eval/evaluate, status, confirmation follow-up, tab list/new/switch/close, profile discovery, close, and skill guidance.",
         },
         McpProfileDescriptor {
             name: "network",
             bits: PROFILE_NETWORK,
-            description: "Headers, credentials, offline toggle, network request inspection with redacted request/response headers, safe request-body previews, bounded response previews, HAR export, and route/unroute controls.",
+            description: "Headers, credentials, offline toggle, request/response waits, network request inspection with redacted request/response headers, safe request-body previews, bounded response previews, HAR export, and route/unroute controls.",
         },
         McpProfileDescriptor {
             name: "state",
             bits: PROFILE_STATE,
-            description: "Cookies, storage, auth helpers, configured plugin discovery, plaintext or opt-in encrypted state files, sessions, profiles including Firefox profile import, downloads/uploads, clipboard, and skills.",
+            description: "Cookies, storage, encrypted auth vault helpers, configured plugin discovery, plaintext or opt-in encrypted state files, sessions, profiles including Firefox profile import, downloads/uploads, typed clipboard tools, and skills.",
         },
         McpProfileDescriptor {
             name: "debug",
             bits: PROFILE_DEBUG,
-            description: "Lower-level launch and batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, Firefox trace and recording bundles, best-effort vitals, diffs, status, sessions/profiles, confirmation follow-up, and close.",
+            description: "Lower-level launch, explicit install/repair, user-requested package upgrade, batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, Firefox trace bundles, profiler bundles, screenshot-sequence recording bundles, dashboard-backed stream preview controls, best-effort vitals, diffs, status, sessions/profiles, confirmation follow-up, and close.",
         },
         McpProfileDescriptor {
             name: "tabs",
             bits: PROFILE_TABS,
-            description: "Back/forward/reload, tab list/new/select/label/close, iframe selection, JavaScript dialogs, windows, and close.",
+            description: "Broader tab/window workflows: back/forward/reload, tab list/new/switch/label/close, iframe switch/main helpers, JavaScript dialogs, windows, and close.",
         },
         McpProfileDescriptor {
             name: "mobile",
@@ -500,13 +500,76 @@ fn handle_tools_call(
         return Ok(tool_profiles_result(profile));
     }
     if !profile.allows_tool(name) {
-        return Err(format!(
-            "tool `{name}` is not available in MCP tools profile `{}`; start pire-browser with `mcp --tools all` or combine profiles such as `--tools core,network`",
-            profile.label()
-        ));
+        return Err(unavailable_tool_message(name, profile));
     }
     let args = tool_command_args(name, &arguments, profile)?;
     Ok(run_cli_tool(args))
+}
+
+fn unavailable_tool_message(name: &str, active: McpToolsProfile) -> String {
+    let bits = tool_profile_bits(name);
+    if bits == 0 {
+        return format!(
+            "unknown pire-browser MCP tool `{name}`; call `pire_browser_tools_profiles` or restart with `mcp --tools all` to inspect the full tool surface"
+        );
+    }
+    let profile_names = profile_names_for_bits(bits);
+    let suggestions = profile_suggestions_for_tool(active.bits(), bits);
+    let profiles_text = join_human_list(&profile_names);
+    let suggestions_text = join_human_list(
+        &suggestions
+            .iter()
+            .map(|profile| format!("`--tools {profile}`"))
+            .collect::<Vec<_>>(),
+    );
+    if suggestions.is_empty() {
+        return format!(
+            "tool `{name}` is not available in MCP tools profile `{}`; it is available in {profiles_text}. Restart with `mcp --tools all`.",
+            active.label()
+        );
+    }
+    format!(
+        "tool `{name}` is not available in MCP tools profile `{}`; it is available in {profiles_text}. Restart with {suggestions_text}, or use `--tools all` if the host can tolerate the full tool list.",
+        active.label()
+    )
+}
+
+fn profile_names_for_bits(bits: u16) -> Vec<String> {
+    profile_descriptors()
+        .into_iter()
+        .filter(|profile| profile.name != "all")
+        .filter(|profile| bits & profile.bits != 0)
+        .map(|profile| format!("`{}`", profile.name))
+        .collect()
+}
+
+fn profile_suggestions_for_tool(active_bits: u16, tool_bits: u16) -> Vec<String> {
+    let mut suggestions = Vec::new();
+    for profile in profile_descriptors()
+        .into_iter()
+        .filter(|profile| profile.name != "all")
+        .filter(|profile| tool_bits & profile.bits != 0)
+    {
+        let candidate = McpToolsProfile::Combined(active_bits | profile.bits).label();
+        if !suggestions.contains(&candidate) {
+            suggestions.push(candidate);
+        }
+    }
+    suggestions
+}
+
+fn join_human_list(items: &[String]) -> String {
+    match items {
+        [] => "no profile".to_string(),
+        [one] => one.clone(),
+        [first, second] => format!("{first} or {second}"),
+        _ => {
+            let mut text = items[..items.len() - 1].join(", ");
+            text.push_str(", or ");
+            text.push_str(&items[items.len() - 1]);
+            text
+        }
+    }
 }
 
 fn run_cli_tool(args: Vec<String>) -> Value {
@@ -588,9 +651,11 @@ fn tool_profiles_result(active: McpToolsProfile) -> Value {
         .into_iter()
         .map(|profile| {
             let count = mcp_tools(McpToolsProfile::Combined(profile.bits)).len();
+            let active_profile = profile.name == "all" && active == McpToolsProfile::All
+                || profile.name != "all" && active.bits() & profile.bits != 0;
             json!({
                 "name": profile.name,
-                "active": active.bits() & profile.bits != 0,
+                "active": active_profile,
                 "toolCount": count,
                 "description": profile.description
             })
@@ -5433,10 +5498,45 @@ mod tests {
         .unwrap();
         assert_eq!(result["id"], 8);
         assert_eq!(result["result"]["isError"], true);
+        let text = result["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("not available in MCP tools profile `core`"));
+        assert!(text.contains("available in `network`"));
+        assert!(text.contains("`--tools core,network`"));
+
+        let result = handle_message(
+            r#"{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"pire_browser_window_new","arguments":{}}}"#,
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(result["id"], 12);
+        assert_eq!(result["result"]["isError"], true);
+        let text = result["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("available in `tabs`"));
+        assert!(text.contains("`--tools core,tabs`"));
+
+        let result = handle_message(
+            r#"{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"pire_browser_dialog_status","arguments":{}}}"#,
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(result["id"], 13);
+        assert_eq!(result["result"]["isError"], true);
+        let text = result["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("available in `debug` or `tabs`"));
+        assert!(text.contains("`--tools core,debug`"));
+        assert!(text.contains("`--tools core,tabs`"));
+
+        let result = handle_message(
+            r#"{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"pire_browser_definitely_unknown","arguments":{}}}"#,
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(result["id"], 14);
+        assert_eq!(result["result"]["isError"], true);
         assert!(result["result"]["content"][0]["text"]
             .as_str()
             .unwrap()
-            .contains("not available in MCP tools profile `core`"));
+            .contains("unknown pire-browser MCP tool"));
 
         let result = handle_message(
             r#"{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"pire_browser_install","arguments":{}}}"#,
@@ -5445,10 +5545,9 @@ mod tests {
         .unwrap();
         assert_eq!(result["id"], 10);
         assert_eq!(result["result"]["isError"], true);
-        assert!(result["result"]["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("not available in MCP tools profile `core`"));
+        let text = result["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("available in `debug`"));
+        assert!(text.contains("`--tools core,debug`"));
 
         let result = handle_message(
             r#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"pire_browser_upgrade","arguments":{}}}"#,
@@ -5457,10 +5556,9 @@ mod tests {
         .unwrap();
         assert_eq!(result["id"], 11);
         assert_eq!(result["result"]["isError"], true);
-        assert!(result["result"]["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("not available in MCP tools profile `core`"));
+        let text = result["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("available in `debug`"));
+        assert!(text.contains("`--tools core,debug`"));
 
         let result = handle_message(
             r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"pire_browser_batch","arguments":{"commands":["snapshot -i"]}}}"#,
@@ -5469,10 +5567,9 @@ mod tests {
         .unwrap();
         assert_eq!(result["id"], 9);
         assert_eq!(result["result"]["isError"], true);
-        assert!(result["result"]["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("not available in MCP tools profile `core`"));
+        let text = result["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("available in `debug`"));
+        assert!(text.contains("`--tools core,debug`"));
     }
 
     #[test]
@@ -5493,6 +5590,50 @@ mod tests {
             .unwrap()
             .iter()
             .any(|profile| profile["name"] == "network" && profile["active"] == true));
+        let profiles = result["result"]["structuredContent"]["profiles"]
+            .as_array()
+            .unwrap();
+        assert!(profiles
+            .iter()
+            .any(|profile| profile["name"] == "core" && profile["active"] == true));
+        assert!(profiles
+            .iter()
+            .any(|profile| profile["name"] == "all" && profile["active"] == false));
+        let network = profiles
+            .iter()
+            .find(|profile| profile["name"] == "network")
+            .unwrap();
+        assert!(network["description"]
+            .as_str()
+            .unwrap()
+            .contains("request/response waits"));
+        let debug = profiles
+            .iter()
+            .find(|profile| profile["name"] == "debug")
+            .unwrap();
+        let debug_description = debug["description"].as_str().unwrap();
+        assert!(debug_description.contains("explicit install/repair"));
+        assert!(debug_description.contains("user-requested package upgrade"));
+        assert!(debug_description.contains("dashboard-backed stream preview"));
+        let tabs = profiles
+            .iter()
+            .find(|profile| profile["name"] == "tabs")
+            .unwrap();
+        assert!(tabs["description"]
+            .as_str()
+            .unwrap()
+            .contains("tab list/new/switch/label/close"));
+
+        let all = handle_message(
+            r#"{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"pire_browser_tools_profiles","arguments":{}}}"#,
+            McpToolsProfile::All,
+        )
+        .unwrap();
+        assert!(all["result"]["structuredContent"]["profiles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|profile| profile["name"] == "all" && profile["active"] == true));
     }
 
     #[test]

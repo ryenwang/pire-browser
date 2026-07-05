@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.19
+
+- Improves MCP profile-mismatch errors so agents get the exact `--tools` profile combinations that expose a missing tool instead of a generic fallback hint.
+- Aligns the in-band `pire_browser_tools_profiles` descriptions with the documented MCP profile surface for network waits, install/upgrade diagnostics, streams, tabs/windows, and state tools.
+
 ## 0.2.18
 
 - Replaces remaining first-run status/auth/session guidance that pointed agents at lower-level `launch` with the public `open` workflow.
