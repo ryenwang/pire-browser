@@ -12866,12 +12866,15 @@ fn launch_url_for_remote_args(args: &[String]) -> Option<String> {
     if args.iter().any(|arg| arg == "--headers") {
         return None;
     }
+    if has_device_args(args) {
+        return None;
+    }
     if has_init_script_args(args) {
         return None;
     }
     match args.first().map(String::as_str) {
         Some("open" | "goto" | "navigate") => {
-            first_positional_arg(&args[1..], &["--label", "--init-script", "--enable"])
+            first_positional_arg(&args[1..], &["--label", "--init-script", "--enable", "--device"])
         }
         Some("vitals") => first_positional_arg(&args[1..], &[]),
         Some("batch") => batch_launch_url(args),
@@ -12978,8 +12981,8 @@ fn simple_open_url_for_auto_launch_response(args: &[String]) -> Option<String> {
     if command_args.iter().any(|arg| {
         matches!(
             arg.as_str(),
-            "--new" | "--new-tab" | "--headers" | "--init-script" | "--label"
-        )
+            "--new" | "--new-tab" | "--headers" | "--init-script" | "--label" | "--device"
+        ) || arg.starts_with("--device=")
     }) {
         return None;
     }
@@ -13004,7 +13007,7 @@ fn batch_launch_url(args: &[String]) -> Option<String> {
 fn navigation_url_for_remote_args(args: &[String]) -> Option<String> {
     match args.first().map(String::as_str) {
         Some("open" | "goto" | "navigate") => {
-            first_positional_arg(&args[1..], &["--label", "--init-script", "--enable"])
+            first_positional_arg(&args[1..], &["--label", "--init-script", "--enable", "--device"])
         }
         Some("tab" | "tabs") if args.get(1).map(String::as_str) == Some("new") => {
             first_positional_arg(&args[2..], &["--label"])
@@ -13019,6 +13022,15 @@ fn has_init_script_args(args: &[String]) -> bool {
         args.first().map(String::as_str),
         Some("open" | "goto" | "navigate")
     ) && args.iter().any(|arg| arg == "--init-script")
+}
+
+fn has_device_args(args: &[String]) -> bool {
+    matches!(
+        args.first().map(String::as_str),
+        Some("open" | "goto" | "navigate")
+    ) && args
+        .iter()
+        .any(|arg| arg == "--device" || arg.starts_with("--device="))
 }
 
 fn is_controlled_close_command(args: &[String]) -> bool {
@@ -14611,6 +14623,40 @@ mod tests {
                 "--enable",
                 "react-devtools",
                 "https://example.com"
+            ])),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            launch_url_for_remote_args(&s(&[
+                "open",
+                "--device",
+                "iPhone 14",
+                "https://example.com"
+            ])),
+            None
+        );
+        assert_eq!(
+            navigation_url_for_remote_args(&s(&[
+                "open",
+                "--device",
+                "iPhone 14",
+                "https://example.com"
+            ])),
+            Some("https://example.com".to_string())
+        );
+        assert_eq!(
+            launch_url_for_remote_args(&s(&[
+                "open",
+                "https://example.com",
+                "--device=iPhone 14"
+            ])),
+            None
+        );
+        assert_eq!(
+            navigation_url_for_remote_args(&s(&[
+                "open",
+                "https://example.com",
+                "--device=iPhone 14"
             ])),
             Some("https://example.com".to_string())
         );

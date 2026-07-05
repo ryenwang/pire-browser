@@ -802,7 +802,7 @@ describe("pire-browser command foundations", () => {
     expect(body).toContain("Firefox WebExtensions resize the browser window to approximate the requested content viewport");
   });
 
-  it("implements set device as a best-effort viewport preset", () => {
+  it("implements set device as a best-effort device environment preset", () => {
     const body = background();
     expect(body).toContain('case "device":');
     expect(body).toContain('return setDeviceCommand(rest, "device");');
@@ -813,7 +813,15 @@ describe("pire-browser command foundations", () => {
     expect(body).toContain("async function setDeviceCommand");
     expect(body).toContain("function parseDeviceArgs");
     expect(body).toContain("function findDeviceProfile");
-    expect(body).toContain("User-Agent, touch events, mobile browser chrome, and deviceScaleFactor are reported but not enforced");
+    expect(body).toContain("let deviceInitScriptRegistration");
+    expect(body).toContain("let currentDeviceProfile");
+    expect(body).toContain("function deviceShimScript");
+    expect(body).toContain("function applyDeviceEnvironment");
+    expect(body).toContain('upsertRequestHeader(requestHeaders, "User-Agent"');
+    expect(body).toContain('Object.defineProperty(target, name, { configurable: true, get: () => value })');
+    expect(body).toContain('"maxTouchPoints"');
+    expect(body).toContain('"ontouchstart"');
+    expect(body).toContain("native touch input, mobile browser chrome, or exact deviceScaleFactor");
   });
 
   it("implements set geo as a best-effort page geolocation shim", () => {
@@ -1304,7 +1312,7 @@ describe("command shape parity", () => {
 
   it("supports best-effort open init scripts before navigation", () => {
     const body = background();
-    expect(body).toContain('firstPositionalArg(args, ["--label", "--init-script", "--headers", "--enable"])');
+    expect(body).toContain('firstPositionalArg(args, ["--label", "--init-script", "--headers", "--enable", "--device"])');
     expect(body).toContain("parseInitScripts(params.initScripts)");
     expect(body).toContain("async function registerInitScripts");
     expect(body).toContain("browser.contentScripts.register");
@@ -1317,7 +1325,7 @@ describe("command shape parity", () => {
     expect(body).toContain("bestEffortWarning(");
     expect(body).toContain('"open --init-script"');
     expect(body).toContain("Firefox WebExtension init scripts are best effort");
-    expect(body).toContain('firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers", "--enable"])');
+    expect(body).toContain('firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers", "--enable", "--device"])');
   });
 
   it("installs a lightweight React hook for enabled React workflows", () => {
@@ -1496,7 +1504,7 @@ describe("command shape parity", () => {
     expect(body).toContain('subcommand === "renders"');
     expect(body).toContain('subcommand === "suspense"');
     expect(body).toContain('arg === "--only-dynamic"');
-    expect(body).toContain('firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers", "--enable"])');
+    expect(body).toContain('firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers", "--enable", "--device"])');
     expect(body).toContain("Installed a best-effort React DevTools-compatible hook before navigation");
 
     const contentBody = content();

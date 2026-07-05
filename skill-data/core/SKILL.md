@@ -480,6 +480,7 @@ Set a responsive viewport before QA screenshots:
 pire-browser set viewport 1280 720
 pire-browser snapshot -i --compact
 pire-browser screenshot desktop.png
+pire-browser open https://example.com --device "iPhone 14"
 pire-browser device "iPhone 14"
 pire-browser set device "iPhone 14"
 pire-browser set geo 37.7749 -122.4194
@@ -488,12 +489,12 @@ pire-browser swipe up 500
 pire-browser screenshot mobile.png
 ```
 
-`set viewport`, `device`, `set geo`, `tap`, and `swipe` are Firefox best-effort paths. Viewport and device settings resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `device <name>` is the agent-browser-style spelling; `set device <name>` remains compatible. Device presets report a User-Agent/touch/scale profile but do not enforce mobile User-Agent, touch input, browser chrome, or exact deviceScaleFactor. `swipe` maps touch direction to page scroll and is not native touch input. `set geo` installs a page-level `navigator.geolocation` shim for managed Firefox pages; it does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state.
+`set viewport`, `device`, `set geo`, `tap`, and `swipe` are Firefox best-effort paths. Viewport and device settings resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `device <name>` is the agent-browser-style spelling; `set device <name>` remains compatible. Device presets also apply a request User-Agent override for future requests and a page-level navigator/touch shim for future navigations plus the active page when possible. Use `open <url> --device <name>` when the first page request must see the mobile User-Agent. This is still not native touch input, mobile browser chrome, or exact deviceScaleFactor emulation; verify page-visible navigator values before relying on mobile-only code paths. `swipe` maps touch direction to page scroll and is not native touch input. `set geo` installs a page-level `navigator.geolocation` shim for managed Firefox pages; it does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state.
 
 When using MCP, prefer the typed setting tools (`pire_browser_set_viewport`,
 `pire_browser_device`, `pire_browser_set_device`, `pire_browser_set_geo`, `pire_browser_set_headers`,
 `pire_browser_set_credentials`, `pire_browser_set_media`, and
-`pire_browser_set_offline`) instead of raw command strings.
+`pire_browser_set_offline`) instead of raw command strings. For first-navigation mobile checks, pass the typed `device` field to `pire_browser_open`, `pire_browser_goto`, or `pire_browser_navigate`.
 
 ```sh
 pire-browser --color-scheme dark open https://example.com

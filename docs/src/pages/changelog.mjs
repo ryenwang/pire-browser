@@ -1,6 +1,12 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.25", "0-2-25"),
+  list([
+    "Adds <code>open/goto/navigate --device &lt;name&gt;</code> so the first page request can receive the selected mobile User-Agent before navigation.",
+    "Upgrades <code>device</code> / <code>set device</code> from viewport-only behavior to a Firefox best-effort device environment: viewport resize, request User-Agent override, and page-level navigator/touch shims with documented native mobile limits.",
+    "Exposes the typed MCP <code>device</code> field on open-like tools and updates README, docs, installed agent context, and bundled skill recipes to reduce mobile-emulation ambiguity.",
+  ]),
   h2("0.2.24", "0-2-24"),
   list([
     "Documents the agent-browser-style no-global-install trial path with <code>npx -y pire-browser@latest open &lt;url&gt;</code> followed by <code>snapshot -i</code>.",

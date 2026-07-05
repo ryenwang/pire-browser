@@ -161,6 +161,7 @@ pire-browser --proxy http://proxy.example:8080 open https://example.com
 pire-browser --proxy http://proxy.example:8080 --proxy-bypass "localhost,*.internal" open https://example.com
 pire-browser set media light
 pire-browser set viewport 1280 720
+pire-browser open https://example.com --device "iPhone 14"
 pire-browser device "iPhone 14"
 pire-browser set device "iPhone 14"
 pire-browser set geo 37.7749 -122.4194
@@ -170,7 +171,9 @@ pire-browser set offline on
 pire-browser set offline off
 pire-browser open https://api.example.com --headers '{"Authorization":"Bearer token"}'
 pire-browser --executable-path /path/to/firefox open https://example.com
-# device/set device is best-effort viewport-only. set offline is best-effort request blocking.
+# device/set device is best-effort viewport + User-Agent/navigator/touch shim.
+# Use open <url> --device <name> when the first request must see the mobile User-Agent.
+# set offline is best-effort request blocking.
 # set credentials is memory-only HTTP Basic auth for the active origin.
 # set geo is a page-level navigator.geolocation shim; --args and --user-agent are launch-time
 # Firefox settings for newly launched managed sessions; TLS-ignore launch flags are not available

@@ -39,9 +39,11 @@
     const lastSnapshotTextByTabId = new Map();
     const runtimeInitScripts = new Map();
     let geolocationInitScriptRegistration = null;
+    let deviceInitScriptRegistration = null;
     const headersByOrigin = new Map();
     const credentialsByOrigin = new Map();
     let proxyCredentials = null;
+    let currentDeviceProfile = null;
     const networkRequestsById = new Map();
     const networkRequestIdsByTabId = new Map();
     const networkRequestLogIdsByTabId = new Map();
@@ -619,7 +621,7 @@
     function domainPolicyDestinationUrl(args) {
         const [command, subcommand, ...rest] = args;
         if (["open", "goto", "navigate"].includes(command ?? "")) {
-            return firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers", "--enable"]);
+            return firstPositionalArg(args.slice(1), ["--label", "--init-script", "--headers", "--enable", "--device"]);
         }
         if ((command === "tab" || command === "tabs") && subcommand === "new") {
             return firstPositionalArg(rest, ["--label"]);
@@ -920,10 +922,13 @@
         }
     }
     async function openCommand(args, command = "open", params = {}) {
-        const url = firstPositionalArg(args, ["--label", "--init-script", "--headers", "--enable"]);
+        const url = firstPositionalArg(args, ["--label", "--init-script", "--headers", "--enable", "--device"]);
         const enableOption = parseOpenEnableOption(args);
         if ("error" in enableOption)
             return enableOption;
+        const deviceOption = parseOpenDeviceOption(args, params.device, command);
+        if ("error" in deviceOption)
+            return deviceOption;
         const initScripts = parseInitScripts(params.initScripts);
         if ("error" in initScripts)
             return initScripts;
@@ -935,6 +940,9 @@
             return parsedHeaders;
         if (parsedHeaders.provided && !url) {
             return { error: { code: "invalid_args", message: "open --headers requires <url>" } };
+        }
+        if (deviceOption.profile && !url) {
+            return { error: { code: "invalid_args", message: `${command} --device requires <url>` } };
         }
         if (!url) {
             if (command !== "open") {
@@ -954,10 +962,17 @@
         const headerScope = parsedHeaders.provided ? setHeadersForUrl(url, parsedHeaders.headers) : null;
         if (headerScope && "error" in headerScope)
             return headerScope;
+        const warnings = mergeWarnings(params.proxyWarnings, registered.warnings);
+        let deviceResult;
+        if (deviceOption.profile) {
+            const environment = await applyDeviceEnvironment(deviceOption.profile, `${command} --device`);
+            const resized = await resizeViewport(deviceOption.profile.width, deviceOption.profile.height, deviceOption.profile.scale, `${command} --device`);
+            deviceResult = publicDeviceResult(deviceOption.profile, environment);
+            warnings.push(...mergeWarnings(environment.warnings, resized.warnings, deviceEmulationWarning(`${command} --device`)));
+        }
         const active = await activeTab();
         const previousUrl = active?.url;
         let tab;
-        const warnings = mergeWarnings(params.proxyWarnings, registered.warnings);
         if (enableOption.reactDevtools) {
             warnings.push(bestEffortWarning("react", "Installed a best-effort React DevTools-compatible hook before navigation. Firefox render recording uses this lightweight hook plus Fiber data, not the full React DevTools extension."));
         }
@@ -1000,10 +1015,22 @@
             text: [`Opened ${url} in ${record.agentId}${label ? ` (${label})` : ""}`, ...warnings.map(formatWarningLine)].join("\n"),
             tab: record,
             headers: headerScope ? headerScope.headers : undefined,
+            device: deviceResult,
             media: params.appliedColorScheme,
             proxy: params.appliedProxy,
             warnings,
         };
+    }
+    function parseOpenDeviceOption(args, paramDevice, command) {
+        const inline = args.find((arg) => arg.startsWith("--device="));
+        const value = inline ? inline.slice("--device=".length) : valueAfter(args, "--device");
+        if (!inline && args.includes("--device") && (!value || value.startsWith("--"))) {
+            return { error: { code: "invalid_args", message: `${command} --device requires a device name such as "iPhone 14"` } };
+        }
+        const device = typeof paramDevice === "string" && !value ? paramDevice : value;
+        if (!device)
+            return {};
+        return parseDeviceArgs([device], `${command} --device`);
     }
     function parseOpenEnableOption(args) {
         const inline = args.find((arg) => arg.startsWith("--enable="));
@@ -2909,30 +2936,128 @@
         const parsed = parseDeviceArgs(args, commandName);
         if ("error" in parsed)
             return parsed;
+        const environment = await applyDeviceEnvironment(parsed.profile, commandName);
         const resized = await resizeViewport(parsed.profile.width, parsed.profile.height, parsed.profile.scale, commandName);
         const page = resized.viewport.page;
         return {
             text: `Device ${parsed.profile.name} requested ${parsed.profile.width}x${parsed.profile.height} scale ${parsed.profile.scale}; measured ${page?.innerWidth ?? "unknown"}x${page?.innerHeight ?? "unknown"}`,
-            device: {
-                name: parsed.profile.name,
-                viewport: {
-                    width: parsed.profile.width,
-                    height: parsed.profile.height,
-                    scale: parsed.profile.scale,
-                },
-                userAgent: parsed.profile.userAgent,
-                isMobile: parsed.profile.isMobile,
-                hasTouch: parsed.profile.hasTouch,
-                emulated: {
-                    viewport: true,
-                    deviceScaleFactor: false,
-                    userAgent: false,
-                    touch: false,
-                },
-            },
+            device: publicDeviceResult(parsed.profile, environment),
             viewport: resized.viewport,
-            warnings: mergeWarnings(resized.warnings, bestEffortWarning(commandName, "Firefox WebExtensions approximate device emulation by resizing the content viewport only. User-Agent, touch events, mobile browser chrome, and deviceScaleFactor are reported but not enforced.")),
+            warnings: mergeWarnings(environment.warnings, resized.warnings, deviceEmulationWarning(commandName)),
         };
+    }
+    function publicDeviceResult(profile, environment) {
+        return {
+            name: profile.name,
+            viewport: {
+                width: profile.width,
+                height: profile.height,
+                scale: profile.scale,
+            },
+            userAgent: profile.userAgent,
+            isMobile: profile.isMobile,
+            hasTouch: profile.hasTouch,
+            emulated: {
+                viewport: true,
+                deviceScaleFactor: false,
+                userAgent: environment.userAgent,
+                navigator: environment.navigator,
+                touch: environment.touch,
+                activePageInjection: environment.activePageInjection,
+            },
+        };
+    }
+    function deviceEmulationWarning(feature) {
+        return bestEffortWarning(feature, "Firefox WebExtensions approximate device emulation with a request User-Agent override, page-level navigator/touch shim, and window resize. This is not native touch input, mobile browser chrome, or exact deviceScaleFactor emulation.");
+    }
+    async function applyDeviceEnvironment(profile, feature) {
+        currentDeviceProfile = profile;
+        const script = deviceShimScript(profile);
+        const warnings = [];
+        let navigator = false;
+        let activePageInjection = 0;
+        const registration = await registerDeviceShim(script, feature);
+        if ("error" in registration && registration.error) {
+            warnings.push(bestEffortWarning(feature, registration.error.message));
+        }
+        else {
+            navigator = true;
+            warnings.push(...registration.warnings);
+        }
+        const activeInjection = await injectDeviceShimIntoActivePage(script, feature);
+        activePageInjection = activeInjection.count;
+        warnings.push(...activeInjection.warnings);
+        return {
+            userAgent: true,
+            navigator,
+            touch: profile.hasTouch && navigator,
+            activePageInjection,
+            warnings,
+        };
+    }
+    async function registerDeviceShim(script, feature) {
+        if (typeof browser.contentScripts?.register !== "function") {
+            return {
+                error: {
+                    code: "not_available",
+                    message: `${feature} could not register the device navigator shim for future navigations because Firefox contentScripts.register is unavailable.`,
+                },
+            };
+        }
+        if (deviceInitScriptRegistration) {
+            await unregisterInitScripts([deviceInitScriptRegistration]);
+            deviceInitScriptRegistration = null;
+        }
+        try {
+            deviceInitScriptRegistration = await browser.contentScripts.register({
+                matches: ["<all_urls>"],
+                js: [{ code: initScriptContentScript({ path: "set-device", code: script }) }],
+                runAt: "document_start",
+                allFrames: true,
+                matchAboutBlank: true,
+            });
+        }
+        catch (error) {
+            return {
+                error: {
+                    code: "not_available",
+                    message: `${feature} could not register the device navigator shim for future navigations: ${error instanceof Error ? error.message : String(error)}`,
+                },
+            };
+        }
+        return {
+            registered: true,
+            warnings: [
+                bestEffortWarning(feature, "Registered a page-level device navigator/touch shim for future navigations in this managed Firefox session."),
+            ],
+        };
+    }
+    async function injectDeviceShimIntoActivePage(script, feature) {
+        const tab = await targetTab().catch(() => null);
+        if (!tab || typeof browser.tabs?.executeScript !== "function") {
+            return {
+                count: 0,
+                warnings: [
+                    bestEffortWarning(feature, "Registered the device environment for future requests/navigations, but could not inject the navigator shim into the currently active page."),
+                ],
+            };
+        }
+        try {
+            const results = await browser.tabs.executeScript(tab.tabId, {
+                code: initScriptContentScript({ path: "set-device-runtime", code: script }),
+                allFrames: true,
+                matchAboutBlank: true,
+            });
+            return { count: Array.isArray(results) ? results.length : 0, warnings: [] };
+        }
+        catch (error) {
+            return {
+                count: 0,
+                warnings: [
+                    bestEffortWarning(feature, `Registered the device environment for future requests/navigations, but active-page injection failed: ${error instanceof Error ? error.message : String(error)}`),
+                ],
+            };
+        }
     }
     async function resizeViewport(width, height, scale, feature) {
         const tab = await targetTab();
@@ -3486,6 +3611,75 @@
     }
     function supportedDeviceNames() {
         return DEVICE_PROFILES.map((profile) => profile.name).join(", ");
+    }
+    function deviceShimScript(profile) {
+        const payload = JSON.stringify({
+            userAgent: profile.userAgent,
+            platform: devicePlatform(profile),
+            maxTouchPoints: profile.hasTouch ? 5 : 0,
+            hasTouch: profile.hasTouch,
+            isMobile: profile.isMobile,
+        });
+        return `(() => {
+  const device = ${payload};
+  const defineGetter = (target, name, value) => {
+    try {
+      Object.defineProperty(target, name, { configurable: true, get: () => value });
+      return;
+    } catch {}
+    try { target[name] = value; } catch {}
+  };
+  defineGetter(Navigator.prototype, "userAgent", device.userAgent);
+  defineGetter(navigator, "userAgent", device.userAgent);
+  defineGetter(Navigator.prototype, "appVersion", device.userAgent.replace(/^Mozilla\\//, ""));
+  defineGetter(navigator, "appVersion", device.userAgent.replace(/^Mozilla\\//, ""));
+  defineGetter(Navigator.prototype, "platform", device.platform);
+  defineGetter(navigator, "platform", device.platform);
+  defineGetter(Navigator.prototype, "maxTouchPoints", device.maxTouchPoints);
+  defineGetter(navigator, "maxTouchPoints", device.maxTouchPoints);
+  defineGetter(Navigator.prototype, "msMaxTouchPoints", device.maxTouchPoints);
+  defineGetter(navigator, "msMaxTouchPoints", device.maxTouchPoints);
+  if (device.hasTouch) {
+    for (const name of ["ontouchstart", "ontouchmove", "ontouchend", "ontouchcancel"]) {
+      if (!(name in window)) {
+        try {
+          Object.defineProperty(window, name, { configurable: true, writable: true, value: null });
+        } catch {
+          try { window[name] = null; } catch {}
+        }
+      }
+    }
+    if (typeof window.Touch === "undefined") {
+      try {
+        window.Touch = function Touch(init = {}) { Object.assign(this, init); };
+      } catch {}
+    }
+    if (typeof window.TouchEvent === "undefined") {
+      try {
+        window.TouchEvent = function TouchEvent(type, init = {}) {
+          const event = new UIEvent(type, init);
+          Object.defineProperties(event, {
+            touches: { value: init.touches || [] },
+            targetTouches: { value: init.targetTouches || [] },
+            changedTouches: { value: init.changedTouches || [] },
+          });
+          return event;
+        };
+      } catch {}
+    }
+  }
+  window.__pireBrowserDevice = { ...device, appliedAt: Date.now() };
+})();`;
+    }
+    function devicePlatform(profile) {
+        const ua = profile.userAgent;
+        if (/iPad/i.test(ua))
+            return "iPad";
+        if (/iPhone/i.test(ua))
+            return "iPhone";
+        if (/Android|Linux/i.test(ua))
+            return "Linux armv8l";
+        return "";
     }
     async function tuneViewportWindow(tabId, windowId, width, height) {
         const metrics = await viewportMetrics(tabId).catch(() => null);
@@ -7588,9 +7782,13 @@
         const origin = safeOrigin(details?.url);
         const rules = origin ? headersByOrigin.get(origin) : undefined;
         const credentials = origin ? credentialsByOrigin.get(origin) : undefined;
-        if (!rules?.length && !credentials)
+        const device = currentDeviceProfile;
+        if (!rules?.length && !credentials && !device?.userAgent)
             return {};
         const requestHeaders = Array.isArray(details.requestHeaders) ? [...details.requestHeaders] : [];
+        if (device?.userAgent) {
+            upsertRequestHeader(requestHeaders, "User-Agent", device.userAgent);
+        }
         for (const rule of rules ?? []) {
             upsertRequestHeader(requestHeaders, rule.name, rule.value);
         }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.25
+
+- Adds `open/goto/navigate --device <name>` so the first page request can receive the selected mobile User-Agent before navigation.
+- Upgrades `device` / `set device` from viewport-only behavior to a Firefox best-effort device environment: viewport resize, request User-Agent override, and page-level navigator/touch shims with documented native mobile limits.
+- Exposes the typed MCP `device` field on open-like tools and updates README, docs, installed agent context, and bundled skill recipes to reduce mobile-emulation ambiguity.
+
 ## 0.2.24
 
 - Documents the agent-browser-style no-global-install trial path with `npx -y pire-browser@latest open <url>` followed by `snapshot -i`.

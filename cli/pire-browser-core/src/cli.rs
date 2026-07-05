@@ -626,7 +626,7 @@ fn push_init_script_env_defaults_from_value(args: &mut Vec<String>, value: Optio
     if !has_positional_after(
         args,
         command_index + 1,
-        &["--label", "--headers", "--enable"],
+        &["--label", "--headers", "--enable", "--device"],
     ) {
         return;
     }
@@ -3356,6 +3356,8 @@ Common commands:
                                   Pass Firefox args when launching a new session
   --user-agent "qa-bot/1.0" open <url>
                                   Override User-Agent for a new session
+  open <url> --device "iPhone 14"
+                                  Apply a device preset before first navigation
   open <url> --headers '{"Authorization":"Bearer token"}'
   --proxy http://proxy.example:8080 open <url>
   --allow-file-access open file:///path/to/page.html
@@ -3412,7 +3414,7 @@ Common commands:
   react renders stop              Stop and print React render profile
   react suspense                  Show best-effort React Suspense boundaries
   highlight '#submit'             Draw a visible overlay around a target
-  device "iPhone 14"              Best-effort device viewport preset
+  device "iPhone 14"              Best-effort device viewport + UA/navigator shim
   set viewport 1280 720           Approximate the active page viewport
   mouse move 80 80                Dispatch page mouse events at viewport coords
   swipe up 500                    Best-effort mobile swipe as page scroll
@@ -4174,9 +4176,12 @@ warning.
 
 `device <name>` applies a best-effort preset viewport for common devices such as
 iPhone 14, iPhone 15 Pro, Pixel 7, Galaxy S22, and iPad. `set device <name>` is
-a compatibility spelling for the same behavior. User-Agent, touch, mobile
-browser chrome, and exact deviceScaleFactor are reported but not enforced on
-the Firefox backend.
+a compatibility spelling for the same behavior. It also applies a request
+User-Agent override for future requests and a best-effort page-level
+navigator/touch shim for future navigations plus the active page. Native touch,
+mobile browser chrome, and exact deviceScaleFactor are still not enforced on
+the Firefox backend. Use `open <url> --device <name>` when the first navigation
+must see the preset User-Agent.
 
 `set geo <lat> <lng>` installs a best-effort page-level geolocation shim for
 managed Firefox pages. It updates navigator.geolocation for future navigations
@@ -4212,9 +4217,12 @@ iPhone 15 Pro, Pixel 7, Galaxy S22, and iPad. This is an agent-browser-style
 alias for `set device <name>`.
 
 Firefox WebExtensions resize the managed Firefox window to approximate the
-requested content viewport. User-Agent, touch, mobile browser chrome, and exact
-deviceScaleFactor are reported but not enforced, so verify measured
-page.innerWidth/page.innerHeight before relying on pixel-perfect screenshots.
+requested content viewport. They also apply a request User-Agent override for
+future requests and a best-effort page-level navigator/touch shim for future
+navigations plus the active page. Native touch, mobile browser chrome, and exact
+deviceScaleFactor are still not enforced, so verify measured
+page.innerWidth/page.innerHeight and page-visible navigator values before relying
+on mobile-specific behavior.
 "##;
 
 const MOUSE_HELP: &str = r##"
@@ -7686,6 +7694,7 @@ mod tests {
         assert!(text.contains("highlight '#submit'"));
         assert!(text.contains("record restart recording-dir"));
         assert!(text.contains("device \"iPhone 14\""));
+        assert!(text.contains("open <url> --device \"iPhone 14\""));
         assert!(text.contains("install [--with-deps] [--firefox-path <path>]"));
         assert!(text.contains("upgrade"));
         assert!(text.contains("--config ./ci-config.json open <url>"));
@@ -7944,6 +7953,12 @@ mod tests {
             .contains("set device \"iPhone 14\""));
         assert!(help_text(Some("set"))
             .unwrap()
+            .contains("User-Agent override for future requests"));
+        assert!(help_text(Some("set"))
+            .unwrap()
+            .contains("open <url> --device <name>"));
+        assert!(help_text(Some("set"))
+            .unwrap()
             .contains("set geo <lat> <lng>"));
         assert!(help_text(Some("set"))
             .unwrap()
@@ -7957,6 +7972,9 @@ mod tests {
         assert!(help_text(Some("device"))
             .unwrap()
             .contains("agent-browser-style"));
+        assert!(help_text(Some("device"))
+            .unwrap()
+            .contains("page-visible navigator values"));
         assert!(help_text(Some("find"))
             .unwrap()
             .contains("find text \"Save\" --exact"));

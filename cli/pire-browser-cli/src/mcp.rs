@@ -2053,6 +2053,10 @@ fn push_open_like_args(
         args.push("--enable".to_string());
         args.push("react-devtools".to_string());
     }
+    if let Some(device) = optional_string(object, "device")? {
+        args.push("--device".to_string());
+        args.push(device);
+    }
     if let Some(url) = optional_string(object, "url")? {
         args.push(url);
     }
@@ -3763,14 +3767,14 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_device",
             "Device preset",
-            "Agent-browser-style alias for a best-effort viewport device preset such as iPhone 14, Pixel 7, Galaxy S22, or iPad.",
+            "Agent-browser-style alias for a best-effort device preset such as iPhone 14, Pixel 7, Galaxy S22, or iPad. Applies viewport resize plus request User-Agent and page-level navigator/touch shims for future navigation.",
             tool_schema(vec![("name", string_prop("Device preset name."))], &["name"]),
             false,
         ),
         tool(
             "pire_browser_set_device",
             "Set device preset",
-            "Compatibility spelling for pire_browser_device; applies a best-effort viewport preset such as iPhone 14, Pixel 7, Galaxy S22, or iPad.",
+            "Compatibility spelling for pire_browser_device; applies a best-effort device preset such as iPhone 14, Pixel 7, Galaxy S22, or iPad.",
             tool_schema(vec![("name", string_prop("Device preset name."))], &["name"]),
             false,
         ),
@@ -4611,6 +4615,12 @@ fn open_tool_schema(url_description: &str) -> Value {
                 ),
             ),
             (
+                "device",
+                string_prop(
+                    "Optional device preset such as iPhone 14 or Pixel 7 to apply before the first navigation.",
+                ),
+            ),
+            (
                 "initScriptPaths",
                 string_array_prop(
                     "Local JavaScript files to register as best-effort document-start init scripts for this navigation.",
@@ -5072,6 +5082,10 @@ mod tests {
         assert_eq!(
             open["inputSchema"]["properties"]["headers"]["type"],
             "object"
+        );
+        assert_eq!(
+            open["inputSchema"]["properties"]["device"]["type"],
+            "string"
         );
         assert_eq!(
             open["inputSchema"]["properties"]["headless"]["type"],
@@ -5925,6 +5939,7 @@ mod tests {
                 "maxOutput": 50000,
                 "contentBoundaries": true,
                 "executablePath": "C:/Program Files/Mozilla Firefox/firefox.exe",
+                "device": "iPhone 14",
                 "url": "https://example.com/app",
                 "headers": {
                     "X-Preview": "on",
@@ -5967,6 +5982,8 @@ mod tests {
                 "--executable-path",
                 "C:/Program Files/Mozilla Firefox/firefox.exe",
                 "open",
+                "--device",
+                "iPhone 14",
                 "https://example.com/app",
                 "--init-script",
                 "scripts/bootstrap.js",

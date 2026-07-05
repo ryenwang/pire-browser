@@ -13,7 +13,7 @@ export const featureStatuses = {
   },
   settings: {
     status: "partial",
-    summary: "`set viewport`, best-effort `device` / `set device` viewport presets, best-effort page-level `set geo`, `set headers`, session-memory HTTP Basic `set credentials`, `set media`, best-effort `set offline` request blocking, and extension-applied proxy settings are implemented; native browser geolocation and CDP-exact viewport/offline metrics remain unavailable on the Firefox backend.",
+    summary: "`set viewport`, best-effort `device` / `set device` viewport plus User-Agent/navigator/touch shims, `open/goto/navigate --device` first-navigation device presets, best-effort page-level `set geo`, `set headers`, session-memory HTTP Basic `set credentials`, `set media`, best-effort `set offline` request blocking, and extension-applied proxy settings are implemented; native browser geolocation, native touch input, mobile browser chrome, exact deviceScaleFactor, and CDP-exact viewport/offline metrics remain unavailable on the Firefox backend.",
     sources: ["README.md", "skill-data/core/SKILL.md", "extension/src/background.ts"],
   },
   headers: {
