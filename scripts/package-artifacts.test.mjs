@@ -14,6 +14,7 @@ import {
   validatePiSettings,
 } from "./smoke-pi-install.mjs";
 import {
+  installCommandArgs,
   packedMcpBrowserSmokeInput,
   packedMcpSmokeInput,
   validatePackedMcpBrowserSmokeOutput,
@@ -305,6 +306,20 @@ describe("npm artifact metadata", () => {
     ).toThrow(/close failed/);
     expect(() => validatePackedMcpBrowserSmokeOutput(stdout.replace("Submitted", "Still waiting"))).toThrow(/get_text/);
     expect(() => validatePackedMcpBrowserSmokeOutput(stdout.replace("mcp-smoke@example.com", "wrong@example.com"))).toThrow(/get_value/);
+  });
+
+  it("uses the public install path in packed-package release smoke", () => {
+    expect(installCommandArgs()).toEqual(["install"]);
+    expect(installCommandArgs({ firefoxPath: "/opt/firefox/firefox" })).toEqual([
+      "install",
+      "--firefox-path",
+      "/opt/firefox/firefox",
+    ]);
+
+    const packedSmokeScript = readFileSync(join(root, "scripts", "smoke-packed-package.mjs"), "utf8");
+    expect(packedSmokeScript).toContain('runPire(command, installCommandArgs({ firefoxPath })');
+    expect(packedSmokeScript).toContain('runPire(command, ["install-status", "--json"]');
+    expect(packedSmokeScript).not.toContain('const setupArgs = ["setup"]');
   });
 
   it("requires packed browser smoke before trusted npm publish", () => {

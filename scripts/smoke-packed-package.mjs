@@ -490,7 +490,7 @@ async function main(argv) {
       throw new Error(`Installed pire-browser command not found: ${command.displayCommand ?? command.command}`);
     }
 
-    runInstalledChecks({ command, commandCwd, env, recorder });
+    runInstalledChecks({ command, commandCwd, env, recorder, firefoxPath: options.firefoxPath });
     runPackedMcpSmoke({ command, commandCwd, env, recorder, summary });
     if (options.browser) {
       await runBrowserSmoke({
@@ -648,7 +648,13 @@ async function assertInstalledNativeResolution({ packageRoot, commandCwd, env })
   return resolved;
 }
 
-function runInstalledChecks({ command, commandCwd, env, recorder }) {
+export function installCommandArgs({ firefoxPath = null } = {}) {
+  const args = ["install"];
+  if (firefoxPath) args.push("--firefox-path", firefoxPath);
+  return args;
+}
+
+function runInstalledChecks({ command, commandCwd, env, recorder, firefoxPath = null }) {
   const skill = runPire(command, ["skills", "cat", "core", "--json"], { cwd: commandCwd, env, recorder });
   const parsed = JSON.parse(skill.stdout);
   if (parsed.success !== true || parsed.data?.skill?.name !== "core") {
@@ -662,6 +668,12 @@ function runInstalledChecks({ command, commandCwd, env, recorder }) {
     !String(parsedGet.data?.skill?.content ?? "").includes("pire-browser skills get --all")
   ) {
     throw new Error("skills get core --json did not return the expected current success/data envelope");
+  }
+  runPire(command, installCommandArgs({ firefoxPath }), { cwd: commandCwd, env, recorder });
+  const installStatus = runPire(command, ["install-status", "--json"], { cwd: commandCwd, env, recorder });
+  const parsedInstallStatus = JSON.parse(installStatus.stdout);
+  if (parsedInstallStatus.success !== true || parsedInstallStatus.data?.ok !== true) {
+    throw new Error("install-status --json did not report a healthy installed package after public install");
   }
   runPire(command, ["status", "--json"], { cwd: commandCwd, env, recorder });
   runPire(command, ["doctor"], { cwd: commandCwd, env, recorder });
@@ -719,9 +731,7 @@ async function runMcpBrowserSmoke({
   writeSummary(summary, artifactDir, env);
 
   try {
-    const setupArgs = ["setup"];
-    if (firefoxPath) setupArgs.push("--firefox-path", firefoxPath);
-    runPire(command, setupArgs, { cwd: commandCwd, env, recorder });
+    runPire(command, installCommandArgs({ firefoxPath }), { cwd: commandCwd, env, recorder });
     runPire(command, ["doctor", "--json"], { cwd: commandCwd, env, recorder });
     warmWebExtCache({ cwd: commandCwd, env, recorder });
 
@@ -788,9 +798,7 @@ async function runBrowserSmoke({
   writeSummary(summary, artifactDir, env);
 
   try {
-    const setupArgs = ["setup"];
-    if (firefoxPath) setupArgs.push("--firefox-path", firefoxPath);
-    runPire(command, setupArgs, { cwd: commandCwd, env, recorder });
+    runPire(command, installCommandArgs({ firefoxPath }), { cwd: commandCwd, env, recorder });
     runPire(command, ["doctor", "--json"], { cwd: commandCwd, env, recorder });
     if (mode === "web-ext") {
       warmWebExtCache({ cwd: commandCwd, env, recorder });
