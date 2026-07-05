@@ -26,6 +26,12 @@ import {
   validatePackedMcpSmokeOutput,
   validatePackedMcpStateSmokeOutput,
 } from "./smoke-packed-package.mjs";
+import {
+  npxPackageCommandArgs,
+  npxSmokeEnv,
+  parseNpxPackageSmokeArgs,
+  validateNpxSmokeOutputs,
+} from "./smoke-npx-package.mjs";
 
 const root = rootDir();
 
@@ -123,6 +129,73 @@ describe("npm artifact metadata", () => {
     expect(env.PIRE_BROWSER_SKIP_POSTINSTALL).toBe("1");
     expect(env.PIRE_BROWSER_BINARY).toBeUndefined();
     expect(env.PIRE_BROWSER_EXE).toBeUndefined();
+  });
+
+  it("constructs the no-global-install npx package smoke safely", () => {
+    const options = parseNpxPackageSmokeArgs([
+      "--tuple",
+      "win32-x64",
+      "--build-platform",
+      "--pack-dir",
+      "target/npx-pack",
+      "--artifact-dir",
+      "target/npx-artifacts",
+    ]);
+    expect(options.tuple).toBe("win32-x64");
+    expect(options.buildPlatform).toBe(true);
+    expect(options.packDir).toContain("target");
+    expect(options.artifactDir).toContain("target");
+
+    const env = npxSmokeEnv({
+      PIRE_BROWSER_BINARY: "dev-bin",
+      PIRE_BROWSER_EXE: "dev-exe",
+    });
+    expect(env.PIRE_BROWSER_BINARY).toBeUndefined();
+    expect(env.PIRE_BROWSER_EXE).toBeUndefined();
+    expect(env.PIRE_BROWSER_DISABLE_UPDATE_CHECK).toBe("1");
+    expect(env.PIRE_BROWSER_SKIP_POSTINSTALL).toBe("1");
+    expect(env.PI_OFFLINE).toBe("1");
+
+    expect(
+      npxPackageCommandArgs({
+        rootTarball: "pire-browser-1.2.3.tgz",
+        platformTarball: "ryenw-pire-browser-win32-x64-1.2.3.tgz",
+        commandArgs: ["help", "window"],
+      })
+    ).toEqual([
+      "exec",
+      "--yes",
+      "--package",
+      "pire-browser-1.2.3.tgz",
+      "--package",
+      "ryenw-pire-browser-win32-x64-1.2.3.tgz",
+      "--",
+      "pire-browser",
+      "help",
+      "window",
+    ]);
+  });
+
+  it("validates no-global-install npx smoke outputs", () => {
+    expect(
+      validateNpxSmokeOutputs({
+        versionStdout: "0.2.24\n",
+        helpStdout: "pire-browser window switch <wN>\npire-browser window close [wN]\n",
+        skillsStdout: JSON.stringify({
+          success: true,
+          data: { skill: { name: "core", content: "pire-browser snapshot -i" } },
+        }),
+        expectedVersion: "0.2.24",
+      })
+    ).toMatchObject({ version: "0.2.24", helpChecked: true, skill: "core" });
+    expect(() =>
+      validateNpxSmokeOutputs({
+        versionStdout: "0.2.24\n",
+        helpStdout: "missing",
+        skillsStdout: "{}",
+        expectedVersion: "0.2.24",
+      })
+    ).toThrow(/window lifecycle/);
   });
 
   it("validates Pi settings and package manifest shape for the fresh install smoke", () => {

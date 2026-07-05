@@ -22,6 +22,13 @@ pire-browser open https://example.com
 pire-browser snapshot -i
 ```
 
+Or try it once without a global install:
+
+```bash
+npx -y pire-browser@latest open https://example.com
+npx -y pire-browser@latest snapshot -i
+```
+
 When the agent host supports MCP, start the smallest typed tool profile:
 
 ```bash
@@ -70,6 +77,17 @@ pire-browser snapshot -i
 
 `npm install` runs best-effort setup; `pire-browser install` is safe to run again and makes the setup step explicit.
 If npm policy blocks lifecycle scripts with `--ignore-scripts` or an `allow-scripts` warning, the install is still usable; run `pire-browser install` after npm finishes.
+
+### Try Without Global Install
+
+For a one-off agent-browser-style trial, use `npx`:
+
+```bash
+npx -y pire-browser@latest open https://example.com
+npx -y pire-browser@latest snapshot -i
+```
+
+Repeated use should prefer the global or project install above so the package path stays stable.
 
 ### Pi Package
 

@@ -4,7 +4,7 @@ const quickStartBlocks = [
   h2("Before first command", "before-first-command"),
   code(`npm install -g pire-browser
 pire-browser install`),
-  p("Run setup once after installing. It is safe to run again. If this fails, use the Installation page's first-run repair section."),
+  p("Run setup once after installing. It is safe to run again. If this fails, use the Installation page's first-run repair section. For a one-off trial without global install, use <code>npx -y pire-browser@latest open https://example.com</code>, then <code>npx -y pire-browser@latest snapshot -i</code>."),
   h2("Core workflow", "core-workflow"),
   p("Every browser automation follows this pattern:"),
   code(`# 1. Navigate

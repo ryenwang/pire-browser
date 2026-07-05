@@ -7,6 +7,10 @@ pire-browser install  # first-time Firefox setup
 pire-browser open https://example.com
 pire-browser snapshot -i`),
   p("This is the recommended path for direct CLI use. <code>npm install</code> runs best-effort setup; <code>pire-browser install</code> is safe to run again and makes Firefox Native Messaging registration explicit. After setup, use <code>open</code> and <code>snapshot -i</code> as the basic inspect-before-act loop. If npm policy blocks lifecycle scripts with <code>--ignore-scripts</code> or an <code>allow-scripts</code> warning, run <code>pire-browser install</code> after npm finishes."),
+  h2("Try without global install", "try-without-global-install"),
+  code(`npx -y pire-browser@latest open https://example.com
+npx -y pire-browser@latest snapshot -i`),
+  p("Use this for a one-off agent-browser-style trial. Repeated direct CLI use should prefer the global or project install so the package path stays stable."),
   h2("Pi package", "pi-package"),
   code(`pi install npm:pire-browser`),
   p("Use this when Pi should load the packaged extension and skill. After install, ask Pi to use <code>pire-browser</code> for browser automation."),

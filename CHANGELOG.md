@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.24
+
+- Documents the agent-browser-style no-global-install trial path with `npx -y pire-browser@latest open <url>` followed by `snapshot -i`.
+- Adds a packed npx smoke script that runs the root and platform tarballs together through `npm exec --package`, proving the no-global path resolves version-matched native packages and launcher-served skill guidance without repo fallbacks.
+
 ## 0.2.23
 
 - Adds Firefox window lifecycle commands for popup-style workflows: `pire-browser window list`, `pire-browser window switch <wN>`, and `pire-browser window close [wN]`, plus matching MCP tools in the `tabs` profile.

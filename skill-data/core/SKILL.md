@@ -78,6 +78,13 @@ pire-browser open https://example.com
 pire-browser snapshot -i
 ```
 
+One-off trial without global install:
+
+```bash
+npx -y pire-browser@latest open https://example.com
+npx -y pire-browser@latest snapshot -i
+```
+
 Use `install --with-deps`, `doctor`, or `doctor --json` only when Firefox is
 missing, setup fails, or the first browser command reports setup diagnostics.
 
@@ -931,7 +938,7 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 
 ## Setup And Diagnostics
 
-- For a fresh direct CLI install, use `npm install -g pire-browser`, optionally verify the package with `pire-browser --version`, then run `pire-browser install`. For Pi, use `pi install npm:pire-browser`. Do not start by inspecting package source or running broad diagnostics unless an install or browser command fails.
+- For a fresh direct CLI install, use `npm install -g pire-browser`, optionally verify the package with `pire-browser --version`, then run `pire-browser install`. For a one-off trial without global install, use `npx -y pire-browser@latest open <url>` and then `npx -y pire-browser@latest snapshot -i`. For Pi, use `pi install npm:pire-browser`. Do not start by inspecting package source or running broad diagnostics unless an install or browser command fails.
 - `pire-browser install` registers the platform native messaging host.
 - `pire-browser install --with-deps` is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux.
 - If npm reports skipped lifecycle scripts, `--ignore-scripts`, or an `allow-scripts` policy warning, run `pire-browser install` explicitly after npm finishes.

@@ -1,6 +1,6 @@
 {
   "name": "pire-browser",
-  "version": "0.2.23",
+  "version": "0.2.24",
   "description": "Cross-platform Pi extension and Firefox bridge for local browser automation",
   "keywords": [
     "pi-package",
@@ -57,6 +57,7 @@
     "release:npm:trust": "node scripts/npm-trust-setup.mjs",
     "release:npm:publish": "node scripts/publish-npm-artifacts.mjs",
     "smoke:pi-install": "node scripts/smoke-pi-install.mjs",
+    "smoke:npx-package": "node scripts/smoke-npx-package.mjs --build-platform",
     "smoke:confirm-actions": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-confirm-actions.ps1",
     "smoke:action-policy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-action-policy.ps1",
     "smoke:domain-policy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-domain-policy.ps1",
@@ -90,13 +91,13 @@
     }
   },
   "optionalDependencies": {
-    "@ryenw/pire-browser-win32-x64": "0.2.23",
-    "@ryenw/pire-browser-win32-ia32": "0.2.23",
-    "@ryenw/pire-browser-win32-arm64": "0.2.23",
-    "@ryenw/pire-browser-darwin-x64": "0.2.23",
-    "@ryenw/pire-browser-darwin-arm64": "0.2.23",
-    "@ryenw/pire-browser-linux-x64": "0.2.23",
-    "@ryenw/pire-browser-linux-arm64": "0.2.23"
+    "@ryenw/pire-browser-win32-x64": "0.2.24",
+    "@ryenw/pire-browser-win32-ia32": "0.2.24",
+    "@ryenw/pire-browser-win32-arm64": "0.2.24",
+    "@ryenw/pire-browser-darwin-x64": "0.2.24",
+    "@ryenw/pire-browser-darwin-arm64": "0.2.24",
+    "@ryenw/pire-browser-linux-x64": "0.2.24",
+    "@ryenw/pire-browser-linux-arm64": "0.2.24"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.78.0",

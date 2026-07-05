@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.24", "0-2-24"),
+  list([
+    "Documents the agent-browser-style no-global-install trial path with <code>npx -y pire-browser@latest open &lt;url&gt;</code> followed by <code>snapshot -i</code>.",
+    "Adds a packed npx smoke script that runs the root and platform tarballs together through <code>npm exec --package</code>, proving the no-global path resolves version-matched native packages and launcher-served skill guidance without repo fallbacks.",
+  ]),
   h2("0.2.23", "0-2-23"),
   list([
     "Adds Firefox window lifecycle commands for popup-style workflows: <code>pire-browser window list</code>, <code>pire-browser window switch &lt;wN&gt;</code>, and <code>pire-browser window close [wN]</code>, plus matching MCP tools in the <code>tabs</code> profile.",

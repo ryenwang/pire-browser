@@ -571,7 +571,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pire-browser-cli"
-version = "0.2.23"
+version = "0.2.24"
 dependencies = [
  "anyhow",
  "base64",
@@ -586,7 +586,7 @@ dependencies = [
 
 [[package]]
 name = "pire-browser-core"
-version = "0.2.23"
+version = "0.2.24"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -606,7 +606,7 @@ dependencies = [
 
 [[package]]
 name = "pire-browser-host"
-version = "0.2.23"
+version = "0.2.24"
 dependencies = [
  "anyhow",
  "pire-browser-core",
