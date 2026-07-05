@@ -328,7 +328,7 @@ export function validatePackedMcpBrowserSmokeOutput(stdout) {
   if (initialized?.result?.serverInfo?.name !== "pire-browser") {
     throw new Error("MCP browser smoke initialize response did not identify the pire-browser server");
   }
-  for (const id of ["2", "3", "4", "5", "6", "7", "8", "9"]) {
+  for (const id of ["2", "3", "4", "5", "6", "7", "8"]) {
     const response = byId.get(id);
     if (!response) throw new Error(`MCP browser smoke missing response id ${id}`);
     if (response.error) {

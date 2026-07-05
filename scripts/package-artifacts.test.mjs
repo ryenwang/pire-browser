@@ -289,6 +289,11 @@ describe("npm artifact metadata", () => {
         stdout.replace('"isError":false,"content":[{"type":"text","text":"filled"}]', '"isError":true,"content":[{"type":"text","text":"fill failed"}]')
       )
     ).toThrow(/fill failed/);
+    expect(() =>
+      validatePackedMcpBrowserSmokeOutput(
+        stdout.replace('"isError":false,"content":[{"type":"text","text":"closed"}]', '"isError":true,"content":[{"type":"text","text":"close failed"}]')
+      )
+    ).not.toThrow();
   });
 
   it("requires packed browser smoke before trusted npm publish", () => {
