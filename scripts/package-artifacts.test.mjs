@@ -293,7 +293,7 @@ describe("npm artifact metadata", () => {
       validatePackedMcpBrowserSmokeOutput(
         stdout.replace('"isError":false,"content":[{"type":"text","text":"closed"}]', '"isError":true,"content":[{"type":"text","text":"close failed"}]')
       )
-    ).not.toThrow();
+    ).toThrow(/close failed/);
   });
 
   it("requires packed browser smoke before trusted npm publish", () => {

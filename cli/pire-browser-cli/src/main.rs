@@ -2363,6 +2363,9 @@ fn handle_close_one(
         Ok(response) => match serde_json::from_str::<RpcResponse>(&response) {
             Ok(response) => response,
             Err(err) => {
+                if is_close_teardown_response_loss(&response, &err) {
+                    return close_one_success(json_output, ignored_global_flags, &session, None);
+                }
                 let failure = close_all_send_failure_value(&session, &err);
                 return close_one_failure(json_output, ignored_global_flags, failure);
             }
@@ -2374,25 +2377,34 @@ fn handle_close_one(
     };
 
     if response.ok {
-        let _ = remove_session(&session.session_id);
-        let session_result = close_all_success_value(&session, response.result);
-        let mut value = json!({
-            "text": close_one_text(&session),
-            "closed": 1,
-            "attempted": 1,
-            "failed": 0,
-            "session": session_result,
-            "sessions": [session_result]
-        });
-        append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
-        println!("{}", format_cli_result(&value, json_output)?);
-        let _ = io::stdout().flush();
-        thread::sleep(Duration::from_millis(1000));
-        return Ok(());
+        return close_one_success(json_output, ignored_global_flags, &session, response.result);
     }
 
     let failure = close_all_response_failure_value(&session, response.error);
     close_one_failure(json_output, ignored_global_flags, failure)
+}
+
+fn close_one_success(
+    json_output: bool,
+    ignored_global_flags: Vec<GlobalFlagWarning>,
+    session: &SessionInfo,
+    result: Option<Value>,
+) -> Result<()> {
+    let _ = remove_session(&session.session_id);
+    let session_result = close_all_success_value(session, result);
+    let mut value = json!({
+        "text": close_one_text(session),
+        "closed": 1,
+        "attempted": 1,
+        "failed": 0,
+        "session": session_result,
+        "sessions": [session_result]
+    });
+    append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
+    println!("{}", format_cli_result(&value, json_output)?);
+    let _ = io::stdout().flush();
+    thread::sleep(Duration::from_millis(1000));
+    Ok(())
 }
 
 fn select_close_session(target: &SessionTarget) -> Result<Option<SessionInfo>> {
@@ -2470,9 +2482,14 @@ fn handle_close_all(json_output: bool, ignored_global_flags: Vec<GlobalFlagWarni
             Ok(response) => match serde_json::from_str::<RpcResponse>(&response) {
                 Ok(response) => response,
                 Err(err) => {
-                    let failure = close_all_send_failure_value(session, &err);
-                    failures.push(failure.clone());
-                    results.push(failure);
+                    if is_close_teardown_response_loss(&response, &err) {
+                        let _ = remove_session(&session.session_id);
+                        results.push(close_all_success_value(session, None));
+                    } else {
+                        let failure = close_all_send_failure_value(session, &err);
+                        failures.push(failure.clone());
+                        results.push(failure);
+                    }
                     continue;
                 }
             },
@@ -2550,6 +2567,10 @@ fn close_all_send_failure_value(session: &SessionInfo, err: &dyn std::fmt::Displ
             "message": redact_text(&err.to_string())
         }
     })
+}
+
+fn is_close_teardown_response_loss(raw_response: &str, err: &serde_json::Error) -> bool {
+    raw_response.trim().is_empty() && err.is_eof()
 }
 
 fn close_all_response_failure_value(
@@ -12710,6 +12731,41 @@ mod tests {
 
     fn s(values: &[&str]) -> Vec<String> {
         values.iter().map(|v| v.to_string()).collect()
+    }
+
+    fn test_session() -> SessionInfo {
+        SessionInfo {
+            session_id: "session-1".to_string(),
+            profile_name: Some("packed-mcp-web-ext".to_string()),
+            profile_id: "profile-1".to_string(),
+            pipe_name: "pipe-1".to_string(),
+            extension_id: "extension-1".to_string(),
+            extension_version: "0.0.0-test".to_string(),
+            started_at: 1,
+            last_heartbeat_at: 2,
+            last_focused_at: 3,
+            active_page: None,
+        }
+    }
+
+    #[test]
+    fn close_teardown_response_loss_detects_empty_eof_only() {
+        let eof = serde_json::from_str::<RpcResponse>("").unwrap_err();
+        assert!(is_close_teardown_response_loss("", &eof));
+        assert!(is_close_teardown_response_loss(" \n", &eof));
+
+        let invalid = serde_json::from_str::<RpcResponse>("{").unwrap_err();
+        assert!(!is_close_teardown_response_loss("{", &invalid));
+        assert!(!is_close_teardown_response_loss("not-json", &invalid));
+    }
+
+    #[test]
+    fn close_success_value_can_represent_teardown_without_response_body() {
+        let value = close_all_success_value(&test_session(), None);
+        assert_eq!(value["ok"], json!(true));
+        assert_eq!(value["sessionId"], json!("session-1"));
+        assert_eq!(value["profileName"], json!("packed-mcp-web-ext"));
+        assert_eq!(value["result"]["text"], json!("closed"));
     }
 
     #[test]
