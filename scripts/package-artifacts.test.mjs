@@ -602,6 +602,12 @@ describe("npm artifact metadata", () => {
     const content = readFileSync(join(root, "extension", "src", "content.ts"), "utf8");
 
     expect(content).toContain('message.type === "pire_ready"');
+    expect(background).toContain("await waitForContentScriptReady(tab.id, 5000)");
+    expect(background).toContain("await waitForContentScriptReady(created.id, 5000)");
+    expect(background).toMatch(/async function sendFrame[\s\S]*waitForContentScriptReady\(tabId, 3000\)[\s\S]*sendRawFrame\(tabId, frameId, message\)/);
+    expect(background).toMatch(/async function sendRawFrame[\s\S]*browser\.tabs\.sendMessage\(tabId, message, target\)/);
+    expect(background).toContain("await reloadTabAndWait(tab.tabId, 10000)");
+    expect(background).toMatch(/async function reloadTabAndWait[\s\S]*browser\.tabs\.onUpdated\.addListener\(listener\)[\s\S]*browser\.tabs\.reload\(tabId\)/);
     expect(background).toContain("await waitForContentScriptReady(tab.tabId, 5000)");
     expect(background).toMatch(/async function waitForContentScriptReady[\s\S]*pire_ready[\s\S]*isFrameRoutingError/);
   });

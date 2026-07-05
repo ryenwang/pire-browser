@@ -962,8 +962,11 @@
                     ? await browser.tabs.create({ url, active: true })
                     : await browser.tabs.update(active.id, { url, active: true });
             await waitForTabReady(tab.id, url, previousUrl, 10000);
+            await waitForContentScriptReady(tab.id, 5000);
         }
         catch (error) {
+            if (isContentScriptReadinessError(error))
+                throw error;
             const existingFileTab = isFileUrl(url) ? await existingTabForUrl(url, active) : null;
             if (existingFileTab) {
                 tab = await browser.tabs.update(existingFileTab.id, { active: true });
@@ -1896,6 +1899,7 @@
         }
         const created = await browser.tabs.create({ url: url.href, active: true });
         await waitForTabReady(created.id, url.href, undefined, 10000);
+        await waitForContentScriptReady(created.id, 5000);
         const loadedTab = await browser.tabs.get(created.id);
         const record = markControlledPage(rememberTab(loadedTab));
         selectedFramesByTabId.delete(record.tabId);
@@ -5925,8 +5929,7 @@
         const storage = await importStateStorage(tab.tabId, state.localStorage ?? {}, state.sessionStorage ?? {});
         if ("error" in storage)
             return storage;
-        await browser.tabs.reload(tab.tabId);
-        await waitForTabComplete(tab.tabId, 10000);
+        await reloadTabAndWait(tab.tabId, 10000);
         await waitForContentScriptReady(tab.tabId, 5000);
         const warnings = cookiesSkipped > 0
             ? [bestEffortWarning("state load", `Skipped ${cookiesSkipped} cookie(s) whose metadata Firefox would not restore for the active origin.`)]
@@ -6340,9 +6343,8 @@
         return Boolean(normalizeFrameUrl(target)) || /^(about|data|blob|file):/i.test(target) || target.includes("://");
     }
     async function sendFrame(tabId, frameId, message, behavior = {}) {
-        const target = typeof frameId === "number" ? { frameId } : undefined;
         try {
-            const response = await browser.tabs.sendMessage(tabId, message, target);
+            const response = await sendRawFrame(tabId, frameId, message);
             rememberDialogs(tabId, response?.dialogs);
             return response;
         }
@@ -6356,8 +6358,18 @@
                     dialogs: [],
                 };
             }
+            if (message.type !== "pire_ready" && isFrameRoutingError(error)) {
+                await waitForContentScriptReady(tabId, 3000).catch(() => undefined);
+                const response = await sendRawFrame(tabId, frameId, message);
+                rememberDialogs(tabId, response?.dialogs);
+                return response;
+            }
             throw error;
         }
+    }
+    async function sendRawFrame(tabId, frameId, message) {
+        const target = typeof frameId === "number" ? { frameId } : undefined;
+        return browser.tabs.sendMessage(tabId, message, target);
     }
     function rememberDialogs(tabId, dialogs) {
         if (!Array.isArray(dialogs) || dialogs.length === 0)
@@ -7545,12 +7557,45 @@
     async function waitForTabComplete(tabId, timeout) {
         await waitForTabState(tabId, timeout, (tab) => tab.status === "complete");
     }
+    async function reloadTabAndWait(tabId, timeout) {
+        await new Promise((resolve, reject) => {
+            let settled = false;
+            let timeoutTimer = 0;
+            const cleanup = () => {
+                clearTimeout(timeoutTimer);
+                browser.tabs.onUpdated.removeListener(listener);
+            };
+            const succeed = () => {
+                if (settled)
+                    return;
+                settled = true;
+                cleanup();
+                resolve();
+            };
+            const fail = (error) => {
+                if (settled)
+                    return;
+                settled = true;
+                cleanup();
+                reject(error);
+            };
+            const listener = (updatedTabId, changeInfo) => {
+                if (updatedTabId !== tabId)
+                    return;
+                if (changeInfo.status === "complete")
+                    succeed();
+            };
+            browser.tabs.onUpdated.addListener(listener);
+            timeoutTimer = setTimeout(() => fail(new Error("timeout waiting for tab reload to complete")), timeout);
+            browser.tabs.reload(tabId).catch(fail);
+        });
+    }
     async function waitForContentScriptReady(tabId, timeout) {
         const startedAt = Date.now();
         let lastError = "";
         while (Date.now() - startedAt < timeout) {
             try {
-                const response = await sendFrame(tabId, 0, { type: "pire_ready" });
+                const response = await sendRawFrame(tabId, 0, { type: "pire_ready" });
                 if (response?.ready === true)
                     return;
             }
@@ -7562,6 +7607,10 @@
             await delay(TAB_READY_POLL_INTERVAL_MS);
         }
         throw new Error(lastError ? `timeout waiting for content script after reload: ${lastError}` : "timeout waiting for content script after reload");
+    }
+    function isContentScriptReadinessError(error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return /timeout waiting for content script/i.test(message);
     }
     async function waitForTabReady(tabId, expectedUrl, previousUrl, timeout) {
         await waitForTabState(tabId, timeout, (tab) => {
