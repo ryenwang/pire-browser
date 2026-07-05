@@ -18,9 +18,11 @@ import {
   packedMcpBrowserSmokeInput,
   packedMcpNetworkSmokeInput,
   packedMcpSmokeInput,
+  packedMcpStateSmokeInput,
   validatePackedMcpBrowserSmokeOutput,
   validatePackedMcpNetworkSmokeOutput,
   validatePackedMcpSmokeOutput,
+  validatePackedMcpStateSmokeOutput,
 } from "./smoke-packed-package.mjs";
 
 const root = rootDir();
@@ -292,6 +294,7 @@ describe("npm artifact metadata", () => {
     expect(validatePackedMcpBrowserSmokeOutput(stdout)).toEqual({
       responses: 14,
       serverVersion: "0.2.20",
+      closeWarning: null,
     });
     expect(() => validatePackedMcpBrowserSmokeOutput(stdout.replace("@e1 input Email\\n@e2 button Submit", "input Email\\nbutton Submit"))).toThrow(
       /semantic refs/
@@ -301,11 +304,9 @@ describe("npm artifact metadata", () => {
         stdout.replace('"isError":false,"content":[{"type":"text","text":"filled"}]', '"isError":true,"content":[{"type":"text","text":"fill failed"}]')
       )
     ).toThrow(/fill failed/);
-    expect(() =>
-      validatePackedMcpBrowserSmokeOutput(
-        stdout.replace('"isError":false,"content":[{"type":"text","text":"closed"}]', '"isError":true,"content":[{"type":"text","text":"close failed"}]')
-      )
-    ).toThrow(/close failed/);
+    expect(validatePackedMcpBrowserSmokeOutput(
+      stdout.replace('"isError":false,"content":[{"type":"text","text":"closed"}]', '"isError":true,"content":[{"type":"text","text":"close failed"}]')
+    )).toMatchObject({ closeWarning: "close failed" });
     expect(() => validatePackedMcpBrowserSmokeOutput(stdout.replace("Submitted", "Still waiting"))).toThrow(/get_text/);
     expect(() => validatePackedMcpBrowserSmokeOutput(stdout.replace("mcp-smoke@example.com", "wrong@example.com"))).toThrow(/get_value/);
   });
@@ -410,6 +411,115 @@ describe("npm artifact metadata", () => {
     }
   });
 
+  it("validates packed-package MCP state/auth smoke input and output", () => {
+    const statePath = join(tmpdir(), "pire-browser-mcp-state-smoke.json");
+    writeFileSync(statePath, JSON.stringify({ kind: "active-origin-state" }));
+    try {
+      const input = packedMcpStateSmokeInput({
+        profile: "packed-mcp-state-test",
+        url: "http://127.0.0.1:4321/state.html?value=mcp-state-smoke",
+        clearUrl: "http://127.0.0.1:4321/state.html?clear=1",
+        restoreUrl: "http://127.0.0.1:4321/state.html",
+        formUrl: "http://127.0.0.1:4321/form.html",
+        statePath,
+        executablePath: "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+      });
+      for (const tool of [
+        "pire_browser_open",
+        "pire_browser_wait_for_text",
+        "pire_browser_state_save",
+        "pire_browser_state_load",
+        "pire_browser_storage_get",
+        "pire_browser_cookies_list",
+        "pire_browser_state_show",
+        "pire_browser_auth_save",
+        "pire_browser_auth_list",
+        "pire_browser_auth_show",
+        "pire_browser_auth_login",
+        "pire_browser_auth_delete",
+        "pire_browser_close",
+      ]) {
+        expect(input).toContain(`"name":"${tool}"`);
+      }
+      expect(input).toContain('"profile":"packed-mcp-state-test"');
+      expect(input).toContain('"noRequireInspected":true');
+      expect(input).toContain('"url":"http://127.0.0.1:4321/form.html"');
+
+      const envelope = (data) => ({ success: true, data, warnings: [] });
+      const ok = (id, text, data = { text }) => ({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          isError: false,
+          structuredContent: envelope(data),
+          content: [{ type: "text", text }],
+        },
+      });
+      const stdout = [
+        { jsonrpc: "2.0", id: 1, result: { serverInfo: { name: "pire-browser", version: "0.2.20" } } },
+        ok(2, "opened"),
+        ok(3, "waited"),
+        ok(4, "saved", {
+          path: statePath,
+          cookies: 1,
+          localStorageKeys: 1,
+          sessionStorageKeys: 1,
+        }),
+        ok(5, "opened clear"),
+        ok(6, "waited empty"),
+        ok(7, "EMPTY"),
+        ok(8, "EMPTY"),
+        ok(9, "EMPTY"),
+        ok(10, "opened neutral state page"),
+        ok(11, "loaded", {
+          path: statePath,
+          cookiesSet: 1,
+          localStorageKeys: 1,
+          sessionStorageKeys: 1,
+          reloaded: true,
+        }),
+        ok(12, "waited restored"),
+        ok(13, "mcp-state-smoke"),
+        ok(14, "mcp-state-smoke"),
+        ok(15, "mcp-state-smoke"),
+        ok(16, "mcp-state-smoke"),
+        ok(17, "mcp-state-smoke"),
+        ok(18, "pireStateCookie=mcp-state-smoke"),
+        ok(19, "state summary", {
+          path: statePath,
+          counts: {
+            cookies: 1,
+            localStorageKeys: 1,
+            sessionStorageKeys: 1,
+          },
+        }),
+        ok(20, "Saved auth profile packed-mcp-auth", { profile: { name: "packed-mcp-auth" } }),
+        ok(21, "packed-mcp-auth", { profiles: [{ name: "packed-mcp-auth" }] }),
+        ok(22, "packed-mcp-auth #email #notes", { profile: { name: "packed-mcp-auth" } }),
+        ok(23, "Logged in packed-mcp-auth"),
+        ok(24, "waited done"),
+        ok(25, "mcp-auth@example.com"),
+        ok(26, "mcp-auth-secret"),
+        ok(27, "Deleted auth profile packed-mcp-auth"),
+        { jsonrpc: "2.0", id: 28, result: { isError: true, structuredContent: { success: false, error: { code: "command_failed", message: "close failed for the targeted session" } }, content: [{ type: "text", text: "close failed for the targeted session" }] } },
+      ].map((message) => JSON.stringify(message)).join("\n");
+
+      expect(validatePackedMcpStateSmokeOutput(stdout, { statePath })).toEqual({
+        responses: 28,
+        serverVersion: "0.2.20",
+        cookies: 1,
+        localStorageKeys: 1,
+        sessionStorageKeys: 1,
+        closeWarning: "close failed for the targeted session",
+      });
+      expect(() => validatePackedMcpStateSmokeOutput(stdout.replaceAll('"text":"mcp-state-smoke"', '"text":"wrong"'), { statePath })).toThrow(/restored/);
+      expect(() => validatePackedMcpStateSmokeOutput(stdout.replace('"cookies":1', '"cookies":0'), { statePath })).toThrow(/capture/);
+      expect(() => validatePackedMcpStateSmokeOutput(stdout.replace("Saved auth profile packed-mcp-auth", "Saved auth profile packed-mcp-auth mcp-auth-secret"), { statePath })).toThrow(/leaked/);
+    } finally {
+      rmSync(statePath, { force: true });
+    }
+  });
+
   it("uses the public install path in packed-package release smoke", () => {
     expect(installCommandArgs()).toEqual(["install"]);
     expect(installCommandArgs({ firefoxPath: "/opt/firefox/firefox" })).toEqual([
@@ -438,6 +548,7 @@ describe("npm artifact metadata", () => {
     expect(packedSmokeScript).toContain("runPackedMcpSmoke");
     expect(packedSmokeScript).toContain("runMcpBrowserSmoke");
     expect(packedSmokeScript).toContain("runMcpNetworkSmoke");
+    expect(packedSmokeScript).toContain("runMcpStateSmoke");
 
     expect(publishWorkflow).toMatch(
       /packed-browser-smoke:\s*\n\s*name: Packed browser smoke[\s\S]*uses: \.\/\.github\/workflows\/release-smoke\.yml/
