@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.17
+
+- Makes `doctor --json` and `install-status --json` recommend `pire-browser install` when Firefox Native Messaging registration is missing or mismatched, aligning machine-readable repair guidance with the documented first-run setup path.
+- Clarifies installed-agent, README, and docs guidance so agents use `doctor --fix` only when they explicitly want the diagnose-then-repair wrapper.
+
 ## 0.2.16
 
 - Makes `doctor --json` and `install-status --json` exit nonzero when setup health reports `data.ok: false`, so agents do not mistake a parseable diagnostic envelope for a healthy install.

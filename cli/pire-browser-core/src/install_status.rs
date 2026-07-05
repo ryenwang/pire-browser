@@ -250,7 +250,7 @@ fn install_next_actions(report: &InstallStatusReport) -> Vec<InstallNextAction> 
         actions.push(InstallNextAction::new(
             "repair_native_messaging",
             "Firefox Native Messaging registration is missing or mismatched.",
-            Some("pire-browser doctor --fix"),
+            Some("pire-browser install"),
             Some("Use `--firefox-path <path>` if Firefox is installed in a custom location."),
         ));
     }
@@ -705,6 +705,70 @@ mod tests {
         let text = install_status_text(&report);
         assert!(text.contains("Next actions:"));
         assert!(text.contains("pire-browser install --with-deps"));
+    }
+
+    #[test]
+    fn native_messaging_status_prefers_public_install_repair_action() {
+        let mut report = InstallStatusReport {
+            ok: false,
+            firefox_path: Some(PathBuf::from("/Applications/Firefox.app")),
+            firefox_install_kind: Some("standard".to_string()),
+            cli_executable: CheckStatus::ok(
+                "CLI executable",
+                Some(PathBuf::from("pire-browser")),
+                None,
+            ),
+            cli_on_path: CheckStatus::ok("CLI on PATH", Some(PathBuf::from("pire-browser")), None),
+            native_host: CheckStatus::ok(
+                "Native host binary",
+                Some(PathBuf::from("pire-browser-host")),
+                None,
+            ),
+            native_manifest: CheckStatus::fail("Native manifest", None, "run setup"),
+            native_registry: CheckStatus::fail("Native registry", None, "missing"),
+            extension_source: CheckStatus::ok(
+                "Extension source",
+                Some(PathBuf::from("extension/manifest.json")),
+                None,
+            ),
+            extension_build: CheckStatus::ok(
+                "Extension build",
+                Some(PathBuf::from("extension/dist")),
+                None,
+            ),
+            default_profile: CheckStatus::fail("Managed Firefox profile Default", None, "missing"),
+            default_profile_launcher: CheckStatus::fail(
+                "Profile launcher Default",
+                None,
+                "missing",
+            ),
+            firefox_startup_policy: CheckStatus::fail(
+                "Firefox startup popup suppression",
+                None,
+                "missing",
+            ),
+            auth_handoff: crate::auth_handoff::auth_handoff_from_data_dir(
+                &PathBuf::from("/tmp/pire-browser"),
+                DEFAULT_PROFILE_NAME,
+            ),
+            action_policy: crate::action_policy::action_policy_from_env_value(None),
+            confirmation_policy: crate::confirmation_policy::confirmation_policy_from_env_values(
+                None, None,
+            ),
+            domain_policy: crate::domain_policy::domain_policy_from_env_value(None),
+            state_policy: crate::state_policy::state_policy_from_env_value(None),
+            live_sessions: Vec::new(),
+            next_actions: Vec::new(),
+        };
+        report.next_actions = install_next_actions(&report);
+
+        assert!(report.next_actions.iter().any(|action| {
+            action.code == "repair_native_messaging"
+                && action.command.as_deref() == Some("pire-browser install")
+        }));
+        let text = install_status_text(&report);
+        assert!(text.contains("command: pire-browser install"));
+        assert!(!text.contains("command: pire-browser doctor --fix"));
     }
 
     #[test]
