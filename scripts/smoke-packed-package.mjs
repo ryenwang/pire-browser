@@ -385,6 +385,26 @@ export function packedMcpNetworkSmokeInput({ profile, url, harPath, executablePa
   ].map((message) => JSON.stringify({ jsonrpc: "2.0", ...message })).join("\n") + "\n";
 }
 
+export function packedMcpFilesSmokeInput({ profile, url, uploadPath, downloadPath, waitDownloadPath, downloadDir, executablePath = null }) {
+  const target = (extra = {}) => ({
+    profile,
+    ...extra,
+  });
+  const openArgs = target({ url, downloadPath: downloadDir });
+  if (executablePath) openArgs.executablePath = executablePath;
+  return [
+    { id: 1, method: "initialize", params: {} },
+    { id: 2, method: "tools/call", params: { name: "pire_browser_open", arguments: openArgs } },
+    { id: 3, method: "tools/call", params: { name: "pire_browser_upload", arguments: target({ selector: "#upload", files: [uploadPath] }) } },
+    { id: 4, method: "tools/call", params: { name: "pire_browser_wait_for_text", arguments: target({ text: "packed MCP upload fixture", waitTimeoutMs: 30_000 }) } },
+    { id: 5, method: "tools/call", params: { name: "pire_browser_get_text", arguments: target({ selector: "#upload-summary" }) } },
+    { id: 6, method: "tools/call", params: { name: "pire_browser_click", arguments: target({ selector: "#download-link" }) } },
+    { id: 7, method: "tools/call", params: { name: "pire_browser_wait_download", arguments: target({ path: waitDownloadPath, timeout: 60_000 }) } },
+    { id: 8, method: "tools/call", params: { name: "pire_browser_download", arguments: target({ selector: "#download-link", path: downloadPath, timeout: 60_000 }) } },
+    { id: 9, method: "tools/call", params: { name: "pire_browser_close", arguments: target() } },
+  ].map((message) => JSON.stringify({ jsonrpc: "2.0", ...message })).join("\n") + "\n";
+}
+
 export function packedMcpStateSmokeInput({ profile, url, clearUrl, restoreUrl, formUrl, statePath, executablePath = null }) {
   const target = (extra = {}) => ({
     profile,
@@ -535,6 +555,65 @@ export function validatePackedMcpNetworkSmokeOutput(stdout, { harPath = null } =
     serverVersion: initialized.result.serverInfo.version ?? null,
     requests: requests.length,
     harEntries: har.har.log.entries.length,
+    closeWarning: close?.result?.isError === true ? String(close.result.content?.[0]?.text ?? "") : null,
+  };
+}
+
+export function validatePackedMcpFilesSmokeOutput(stdout, { uploadPath = null, downloadPath = null, waitDownloadPath = null } = {}) {
+  const responses = parseMcpJsonLines(stdout, "MCP files smoke");
+  const byId = new Map(responses.map((response) => [String(response.id), response]));
+  const initialized = byId.get("1");
+  if (initialized?.result?.serverInfo?.name !== "pire-browser") {
+    throw new Error("MCP files smoke initialize response did not identify the pire-browser server");
+  }
+  for (const id of ["2", "3", "4", "5", "6", "7", "8"]) {
+    const response = byId.get(id);
+    if (!response) throw new Error(`MCP files smoke missing response id ${id}`);
+    if (response.error) {
+      throw new Error(`MCP files smoke tool id ${id} returned JSON-RPC error: ${response.error.message ?? JSON.stringify(response.error)}`);
+    }
+    if (response.result?.isError === true) {
+      throw new Error(`MCP files smoke tool id ${id} returned isError=true: ${response.result.content?.[0]?.text ?? ""}`);
+    }
+  }
+
+  const uploadText = String(byId.get("5")?.result?.content?.[0]?.text ?? "");
+  if (!uploadText.includes("packed-mcp-upload.txt") || !uploadText.includes("packed MCP upload fixture")) {
+    throw new Error("MCP files smoke upload summary did not verify uploaded file content");
+  }
+  const uploadResult = mcpEnvelopeData(byId.get("3"), "MCP files smoke");
+  if ((uploadResult?.fileCount ?? 0) < 1) {
+    throw new Error("MCP files smoke upload did not report an uploaded file");
+  }
+  for (const [path, label] of [
+    [uploadPath, "upload source"],
+    [downloadPath, "download"],
+    [waitDownloadPath, "wait_download"],
+  ]) {
+    if (path && !existsSync(path)) {
+      throw new Error(`MCP files smoke expected ${label} file was not created: ${path}`);
+    }
+  }
+  for (const [path, label] of [
+    [downloadPath, "download"],
+    [waitDownloadPath, "wait_download"],
+  ]) {
+    if (!path) continue;
+    const content = readFileSync(path, "utf8");
+    if (!content.includes("packed MCP download fixture")) {
+      throw new Error(`MCP files smoke ${label} file did not contain fixture content`);
+    }
+  }
+  const close = byId.get("9");
+  if (close?.error) {
+    throw new Error(`MCP files smoke close returned JSON-RPC error: ${close.error.message ?? JSON.stringify(close.error)}`);
+  }
+  return {
+    responses: responses.length,
+    serverVersion: initialized.result.serverInfo.version ?? null,
+    uploadVerified: true,
+    downloadVerified: true,
+    waitDownloadVerified: true,
     closeWarning: close?.result?.isError === true ? String(close.result.content?.[0]?.text ?? "") : null,
   };
 }
@@ -722,6 +801,7 @@ async function main(argv) {
       nativeResolution: null,
       mcp: null,
       mcpBrowser: null,
+      mcpFiles: null,
       mcpNetwork: null,
       profiles,
       modes: [],
@@ -774,6 +854,18 @@ async function main(argv) {
         summary,
       });
       await runMcpBrowserSmoke({
+        command,
+        commandCwd,
+        env,
+        workRoot,
+        artifactDir,
+        dataRoot,
+        prefix,
+        firefoxPath: options.firefoxPath,
+        recorder,
+        summary,
+      });
+      await runMcpFilesSmoke({
         command,
         commandCwd,
         env,
@@ -1040,6 +1132,85 @@ async function runMcpBrowserSmoke({
     });
     modeResult.validation = validatePackedMcpBrowserSmokeOutput(result.stdout);
     if (!existsSync(screenshot)) throw new Error(`Expected MCP screenshot was not created: ${screenshot}`);
+    modeResult.success = true;
+  } finally {
+    runPire(command, ["--profile", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
+    await fixture.close();
+    copyDiagnostics({ dataRoot, artifactDir });
+    if (process.platform === "win32") {
+      cleanupWindowsProcesses({ workRoot, prefix, profilePaths: [profilePath], recorder, env });
+    } else {
+      cleanupUnixProcesses({ workRoot, prefix, profilePaths: [profilePath], recorder, env });
+    }
+    writeSummary(summary, artifactDir, env);
+  }
+}
+
+async function runMcpFilesSmoke({
+  command,
+  commandCwd,
+  env,
+  workRoot,
+  artifactDir,
+  dataRoot,
+  prefix,
+  firefoxPath,
+  recorder,
+  summary,
+}) {
+  if (firefoxPath && !existsSync(firefoxPath)) {
+    throw new Error(`Firefox not found at ${firefoxPath}`);
+  }
+  const mode = "mcp-files-web-ext";
+  const fixture = await startFixtureServer({ artifactDir });
+  const profile = `packed-${mode}-${Date.now()}`;
+  const profilePath = join(dataRoot, "firefox-profiles", profile);
+  const filesDir = join(artifactDir, "files");
+  mkdirSync(filesDir, { recursive: true });
+  const uploadPath = join(filesDir, "packed-mcp-upload.txt");
+  const downloadPath = join(filesDir, `download-${mode}.txt`);
+  const waitDownloadPath = join(filesDir, `wait-download-${mode}.txt`);
+  const downloadDir = join(filesDir, "browser-downloads");
+  mkdirSync(downloadDir, { recursive: true });
+  writeFileSync(uploadPath, "packed MCP upload fixture\n");
+  const modeResult = {
+    mode,
+    mcp: true,
+    profile,
+    profilePath,
+    fixtureUrl: fixtureUrl(fixture, "files.html"),
+    uploadPath,
+    downloadPath,
+    waitDownloadPath,
+    downloadDir,
+    success: false,
+  };
+  summary.profiles.push({ mode, profile, profilePath });
+  summary.modes.push(modeResult);
+  summary.mcpFiles = modeResult;
+  writeSummary(summary, artifactDir, env);
+
+  try {
+    runPire(command, installCommandArgs({ firefoxPath }), { cwd: commandCwd, env, recorder });
+    runPire(command, ["doctor", "--json"], { cwd: commandCwd, env, recorder });
+    warmWebExtCache({ cwd: commandCwd, env, recorder });
+
+    const result = runPire(command, ["mcp", "--tools", "core"], {
+      cwd: commandCwd,
+      env,
+      timeoutMs: 300_000,
+      recorder,
+      input: packedMcpFilesSmokeInput({
+        profile,
+        url: modeResult.fixtureUrl,
+        uploadPath,
+        downloadPath,
+        waitDownloadPath,
+        downloadDir,
+        executablePath: firefoxPath,
+      }),
+    });
+    modeResult.validation = validatePackedMcpFilesSmokeOutput(result.stdout, { uploadPath, downloadPath, waitDownloadPath });
     modeResult.success = true;
   } finally {
     runPire(command, ["--profile", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });

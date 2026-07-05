@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pire-browser files fixture</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 32px;
+        max-width: 720px;
+      }
+      input,
+      a,
+      pre {
+        display: block;
+        margin: 12px 0;
+      }
+      pre {
+        background: #f4f4f4;
+        padding: 12px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>pire-browser files fixture</h1>
+    <a id="download-link" href="download-smoke.txt" download="download-smoke.txt">Download fixture</a>
+    <label for="upload">Upload fixture</label>
+    <input id="upload" type="file" />
+    <pre id="upload-summary">empty</pre>
+
+    <script>
+      document.querySelector("#upload").addEventListener("change", async (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) {
+          document.querySelector("#upload-summary").textContent = "empty";
+          return;
+        }
+        const text = await file.text();
+        document.querySelector("#upload-summary").textContent = `${file.name}:${file.size}:${text}`;
+      });
+    </script>
+  </body>
+</html>

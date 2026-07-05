@@ -12,7 +12,7 @@ pire-browser mcp --tools core,debug
 pire-browser mcp --tools core,tabs
 pire-browser mcp --tools core,react
 pire-browser mcp --tools all`),
-  p("Use the smallest MCP profile that fits the task. <code>core</code> is the default inspect-before-act workflow. Add comma-separated profiles only when a workflow needs more surface, such as <code>core,network</code> for request/response waits and diagnostics, <code>core,state</code> for cookies, storage, auth, configured plugin discovery, and state files, or <code>core,react</code> for React Fiber inspection. The <code>pire_browser_tools_profiles</code> tool describes available profiles in-band."),
+  p("Use the smallest MCP profile that fits the task. <code>core</code> is the default inspect-before-act workflow and includes downloads/uploads. Add comma-separated profiles only when a workflow needs more surface, such as <code>core,network</code> for request/response waits and diagnostics, <code>core,state</code> for cookies, storage, auth, configured plugin discovery, clipboard, profile import, and state files, or <code>core,react</code> for React Fiber inspection. The <code>pire_browser_tools_profiles</code> tool describes available profiles in-band."),
   p("<code>pire-browser mcp --help</code> is served by the JavaScript launcher even when the optional native platform package is missing, so MCP-first agent hosts can still discover the startup recipe before following repair guidance."),
   h2("Client Config", "client-config"),
   code(`{
@@ -23,7 +23,7 @@ pire-browser mcp --tools all`),
     }
   }
 }`),
-  p("Start MCP clients with <code>--tools core</code>. If the active profile does not include a needed tool, restart with the smallest combined profile that adds it: <code>core,network</code> for request/response waits and HAR, <code>core,state</code> for cookies, storage, auth, downloads/uploads, profile import, and plugin discovery, <code>core,tabs</code> for labels, frames, dialogs, and windows, <code>core,debug</code> for install/doctor, console/errors, trace/record/stream evidence, and batch, or <code>core,react</code> for React inspection. Use <code>all</code> only when the host can tolerate the full tool list."),
+  p("Start MCP clients with <code>--tools core</code>. Core includes the inspect-before-act loop plus screenshots, PDFs, downloads, and uploads. If the active profile does not include a needed tool, restart with the smallest combined profile that adds it: <code>core,network</code> for request/response waits and HAR, <code>core,state</code> for cookies, storage, auth, clipboard, profile import, and plugin discovery, <code>core,tabs</code> for labels, frames, dialogs, and windows, <code>core,debug</code> for install/doctor, console/errors, trace/record/stream evidence, and batch, or <code>core,react</code> for React inspection. Use <code>all</code> only when the host can tolerate the full tool list."),
   h2("First Tool Loop", "first-tool-loop"),
   code(`1. pire_browser_open({ "url": "https://example.com" })
 2. pire_browser_snapshot({ "interactive": true })
@@ -35,9 +35,9 @@ pire-browser mcp --tools all`),
   table(
     ["Profile", "Purpose"],
     [
-      ["core", "Open/goto/navigate, read, inspect, semantic find, interact, typed get/check verification, typed waits, back/forward/reload, SPA pushstate, init scripts, set-content fixtures, screenshot/PDF/diff evidence, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, and skill guidance."],
+      ["core", "Open/goto/navigate, read, inspect, semantic find, interact, typed get/check verification, typed waits, back/forward/reload, SPA pushstate, init scripts, set-content fixtures, screenshot/PDF/diff evidence, downloads/uploads, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, and skill guidance."],
       ["network", "Headers, credentials, offline toggle, request/response waits, network request inspection with redacted headers, safe outgoing request-body previews, bounded text-like response previews, HAR export, and route/unroute controls."],
-      ["state", "Cookies, storage, encrypted auth vault helpers, configured plugin discovery, plaintext or opt-in encrypted state files, sessions, profiles including Firefox profile import, downloads/uploads, typed clipboard tools, and skills."],
+      ["state", "Cookies, storage, encrypted auth vault helpers, configured plugin discovery, plaintext or opt-in encrypted state files, sessions, profiles including Firefox profile import, typed clipboard tools, and skills."],
       ["debug", "Lower-level launch, explicit install/repair, user-requested package upgrade, batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, Firefox trace bundles, screenshot-sequence recording bundles, dashboard-backed stream preview controls, best-effort vitals, diffs, status, sessions/profiles, and close."],
       ["tabs", "Broader tab/window workflows: compatible tabs_* aliases, tab labels, iframe selection, JavaScript dialogs, windows, and close."],
       ["mobile", "Viewport, device preset, geolocation, media/offline settings, keyboard, tap-as-click, swipe-as-scroll, mouse, scroll, and screenshot helpers."],

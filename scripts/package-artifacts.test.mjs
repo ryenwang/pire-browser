@@ -16,10 +16,12 @@ import {
 import {
   installCommandArgs,
   packedMcpBrowserSmokeInput,
+  packedMcpFilesSmokeInput,
   packedMcpNetworkSmokeInput,
   packedMcpSmokeInput,
   packedMcpStateSmokeInput,
   validatePackedMcpBrowserSmokeOutput,
+  validatePackedMcpFilesSmokeOutput,
   validatePackedMcpNetworkSmokeOutput,
   validatePackedMcpSmokeOutput,
   validatePackedMcpStateSmokeOutput,
@@ -411,6 +413,81 @@ describe("npm artifact metadata", () => {
     }
   });
 
+  it("validates packed-package MCP file transfer smoke input and output", () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), "pire-browser-mcp-files-smoke-"));
+    const uploadPath = join(tempRoot, "packed-mcp-upload.txt");
+    const downloadPath = join(tempRoot, "download.txt");
+    const waitDownloadPath = join(tempRoot, "wait-download.txt");
+    const downloadDir = join(tempRoot, "browser-downloads");
+    writeFileSync(uploadPath, "packed MCP upload fixture\n");
+    writeFileSync(downloadPath, "packed MCP download fixture\n");
+    writeFileSync(waitDownloadPath, "packed MCP download fixture\n");
+    try {
+      const input = packedMcpFilesSmokeInput({
+        profile: "packed-mcp-files-test",
+        url: "http://127.0.0.1:4321/files.html",
+        uploadPath,
+        downloadPath,
+        waitDownloadPath,
+        downloadDir,
+        executablePath: "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+      });
+      for (const tool of [
+        "pire_browser_open",
+        "pire_browser_upload",
+        "pire_browser_wait_for_text",
+        "pire_browser_get_text",
+        "pire_browser_click",
+        "pire_browser_wait_download",
+        "pire_browser_download",
+        "pire_browser_close",
+      ]) {
+        expect(input).toContain(`"name":"${tool}"`);
+      }
+      expect(input).toContain('"profile":"packed-mcp-files-test"');
+      expect(input).toContain('"downloadPath"');
+      expect(input).toContain(uploadPath.replace(/\\/g, "\\\\"));
+
+      const envelope = (data) => ({ success: true, data, warnings: [] });
+      const ok = (id, text, data = { text }) => ({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          isError: false,
+          structuredContent: envelope(data),
+          content: [{ type: "text", text }],
+        },
+      });
+      const stdout = [
+        { jsonrpc: "2.0", id: 1, result: { serverInfo: { name: "pire-browser", version: "0.2.20" } } },
+        ok(2, "opened"),
+        ok(3, "Uploaded packed-mcp-upload.txt", { fileCount: 1 }),
+        ok(4, "waited upload"),
+        ok(5, "packed-mcp-upload.txt:27:packed MCP upload fixture"),
+        ok(6, "clicked download link"),
+        ok(7, `Downloaded ${waitDownloadPath}`, { path: waitDownloadPath }),
+        ok(8, `Downloaded ${downloadPath}`, { path: downloadPath }),
+        { jsonrpc: "2.0", id: 9, result: { isError: true, structuredContent: { success: false, error: { code: "command_failed", message: "close failed for the targeted session" } }, content: [{ type: "text", text: "close failed for the targeted session" }] } },
+      ].map((message) => JSON.stringify(message)).join("\n");
+
+      expect(validatePackedMcpFilesSmokeOutput(stdout, { uploadPath, downloadPath, waitDownloadPath })).toEqual({
+        responses: 9,
+        serverVersion: "0.2.20",
+        uploadVerified: true,
+        downloadVerified: true,
+        waitDownloadVerified: true,
+        closeWarning: "close failed for the targeted session",
+      });
+      expect(() =>
+        validatePackedMcpFilesSmokeOutput(stdout.replaceAll("packed MCP upload fixture", "wrong upload"), { uploadPath, downloadPath, waitDownloadPath })
+      ).toThrow(/upload summary/);
+      writeFileSync(downloadPath, "wrong download\n");
+      expect(() => validatePackedMcpFilesSmokeOutput(stdout, { uploadPath, downloadPath, waitDownloadPath })).toThrow(/fixture content/);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("validates packed-package MCP state/auth smoke input and output", () => {
     const statePath = join(tmpdir(), "pire-browser-mcp-state-smoke.json");
     writeFileSync(statePath, JSON.stringify({ kind: "active-origin-state" }));
@@ -556,6 +633,7 @@ describe("npm artifact metadata", () => {
     const packedSmokeScript = readFileSync(join(root, "scripts", "smoke-packed-package.mjs"), "utf8");
     expect(packedSmokeScript).toContain("runPackedMcpSmoke");
     expect(packedSmokeScript).toContain("runMcpBrowserSmoke");
+    expect(packedSmokeScript).toContain("runMcpFilesSmoke");
     expect(packedSmokeScript).toContain("runMcpNetworkSmoke");
     expect(packedSmokeScript).toContain("runMcpStateSmoke");
 

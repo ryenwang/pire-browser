@@ -49,7 +49,7 @@ Then follow this MCP loop:
 4. Wait with the narrowest typed wait tool, such as `pire_browser_wait_for_selector`, `pire_browser_wait_for_text`, `pire_browser_wait_for_url`, `pire_browser_wait_for_load`, or `pire_browser_wait_ms`.
 5. Verify with a fresh `pire_browser_snapshot`, `pire_browser_get_text`, `pire_browser_get_url`, or another typed get/check tool before reporting success.
 
-Profile rule of thumb: start with `core`; use `core,network` for request/response waits and HAR; `core,state` for cookies, storage, auth, profile import, downloads/uploads, and plugin discovery; `core,tabs` for labels, frames, dialogs, and windows; `core,debug` for install/doctor, console/errors, trace/record/stream evidence, and batch; `core,react` for React inspection; use `all` only when the host can tolerate the full tool surface.
+Profile rule of thumb: start with `core`, which includes downloads/uploads; use `core,network` for request/response waits and HAR; `core,state` for cookies, storage, auth, profile import, clipboard, and plugin discovery; `core,tabs` for labels, frames, dialogs, and windows; `core,debug` for install/doctor, console/errors, trace/record/stream evidence, and batch; `core,react` for React inspection; use `all` only when the host can tolerate the full tool surface.
 
 Use `pire-browser mcp --help` when setup is incomplete; it is served by the
 JavaScript launcher even if the optional native platform package is missing and
@@ -762,7 +762,7 @@ The stdio MCP server exposes typed tools through agent-browser-style profiles.
 find, click, tap-as-click, swipe-as-scroll, double-click, hover, focus, select,
 check/uncheck, scroll/scroll-into-view, fill, type, press, keyboard/mouse
 basics, typed get/check verification tools, typed waits, back/forward/reload,
-SPA pushstate navigation, init scripts, screenshots/PDFs/diffs, eval/evaluate, status,
+SPA pushstate navigation, init scripts, screenshots/PDFs/diffs, downloads/uploads, eval/evaluate, status,
 confirmation follow-up, tab list/new/switch/close, profile discovery, close, and skill
 guidance. Generic `pire_browser_get`, `pire_browser_is`, and `pire_browser_wait`
 remain available for compatibility, but new agents should prefer the typed

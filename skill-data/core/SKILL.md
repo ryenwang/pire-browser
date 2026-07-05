@@ -794,8 +794,8 @@ pire-browser mcp --tools all
 
 Use the smallest MCP profile that fits the task. `core` is the default
 inspect-before-act workflow: open/goto/navigate, snapshot, semantic find, interact, typed get/check,
-typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff
-evidence, eval/evaluate, status, confirmation follow-up, tab list/new/switch/close, profile discovery,
+typed waits, back/forward/reload, SPA pushstate, init scripts, screenshot/PDF/diff evidence,
+downloads/uploads, eval/evaluate, status, confirmation follow-up, tab list/new/switch/close, profile discovery,
 close, and skill guidance. Add comma-separated profiles only when needed:
 `network` for request/response waits, request diagnostics, routes, and HAR, `state` for cookies/storage/auth,
 configured plugin discovery, and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair,
