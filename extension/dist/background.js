@@ -24,11 +24,14 @@
     let port;
     let profileId = "";
     let nextTabNumber = 1;
+    let nextWindowNumber = 1;
     let controlledCloseScheduled = false;
     let nativeReconnectEnabled = true;
     let autoDialogEnabled = true;
     const tabsByBrowserId = new Map();
     const tabsByAgentId = new Map();
+    const windowsByBrowserId = new Map();
+    const windowsByAgentId = new Map();
     const labels = new Map();
     const refs = new Map();
     const selectedFramesByTabId = new Map();
@@ -438,7 +441,11 @@
                     return "navigate";
                 return null;
             case "window":
-                return subcommand === "new" ? "navigate" : null;
+                if (!subcommand || subcommand === "list")
+                    return "get";
+                if (["new", "switch", "select", "focus", "close"].includes(subcommand))
+                    return "navigate";
+                return null;
             case "click":
             case "dblclick":
             case "tap":
@@ -3513,10 +3520,41 @@
         return { text: `${command} requested` };
     }
     async function windowCommand(args) {
-        if (args[0] !== "new")
-            return { error: { code: "InvalidArgumentError", message: "window requires new" } };
-        const created = await browser.windows.create({ focused: true });
-        return { text: `Opened window ${created.id ?? ""}`.trim(), window: created };
+        const [subcommand, target] = args;
+        await reconcileWindows();
+        if (!subcommand || subcommand === "list") {
+            const windows = liveWindowRecords();
+            const rows = windows.map((window) => {
+                const active = window.activeTabAgentId ? ` active=${window.activeTabAgentId}` : "";
+                const title = window.title || window.url || "";
+                return `${window.agentId}${window.focused ? " *" : ""} tabs=${window.tabIds.length}${active} ${title}`.trim();
+            });
+            return { text: rows.join("\n") || "No windows tracked", windows };
+        }
+        if (subcommand === "new") {
+            const created = await browser.windows.create({ focused: true });
+            const record = await rememberWindowById(created.id);
+            return { text: `Opened ${record?.agentId ?? `window ${created.id ?? ""}`}`.trim(), window: record ?? created };
+        }
+        if (subcommand === "switch" || subcommand === "select" || subcommand === "focus" || findWindow(subcommand)) {
+            const window = findWindow(subcommand === "switch" || subcommand === "select" || subcommand === "focus" ? target : subcommand);
+            if (!window)
+                return { error: { code: "window_closed", message: `No live window found: ${target ?? subcommand}` } };
+            await browser.windows.update(window.windowId, { focused: true });
+            if (typeof window.activeTabId === "number")
+                await browser.tabs.update(window.activeTabId, { active: true });
+            const updated = await rememberWindowById(window.windowId);
+            return { text: `Selected ${updated?.agentId ?? window.agentId}`, window: updated ?? window };
+        }
+        if (subcommand === "close") {
+            const window = target ? findWindow(target) : await activeWindowRecord();
+            if (!window)
+                return { error: { code: "window_closed", message: `No live window found: ${target ?? "active"}` } };
+            await browser.windows.remove(window.windowId);
+            markWindowClosed(window.windowId);
+            return { text: `Closed ${window.agentId}`, window };
+        }
+        return { error: { code: "InvalidArgumentError", message: "window requires list, new, switch <wN>, or close [wN]" } };
     }
     async function frameCommand(args) {
         const target = args[0];
@@ -6722,6 +6760,77 @@
             .filter((tab) => typeof tab.id === "number" && typeof tab.windowId === "number" && windowIdSet.has(tab.windowId))
             .map((tab) => tab.id);
     }
+    function rememberWindow(window) {
+        if (typeof window.id !== "number") {
+            throw new Error("window_missing_id: Firefox window is missing windowId");
+        }
+        let record = windowsByBrowserId.get(window.id);
+        if (!record) {
+            record = {
+                windowId: window.id,
+                agentId: `w${nextWindowNumber++}`,
+                tabIds: [],
+            };
+            windowsByBrowserId.set(window.id, record);
+            windowsByAgentId.set(record.agentId, record);
+        }
+        const tabs = Array.isArray(window.tabs) ? window.tabs : [];
+        const tabRecords = tabs
+            .filter((tab) => typeof tab.id === "number" && typeof tab.windowId === "number")
+            .map((tab) => rememberTab(tab));
+        const active = tabRecords.find((tab) => tab.active) ?? tabRecords[0];
+        record.focused = Boolean(window.focused);
+        record.activeTabId = active?.tabId;
+        record.activeTabAgentId = active?.agentId;
+        record.tabIds = tabRecords.map((tab) => tab.tabId);
+        record.title = active?.title;
+        record.url = active?.url;
+        record.closed = false;
+        return record;
+    }
+    async function rememberWindowById(windowId) {
+        if (typeof windowId !== "number")
+            return undefined;
+        const window = await browser.windows.get(windowId, { populate: true }).catch(() => null);
+        return window ? rememberWindow(window) : undefined;
+    }
+    async function reconcileWindows() {
+        const windows = await browser.windows.getAll({ populate: true });
+        const liveIds = new Set();
+        for (const window of windows) {
+            if (typeof window.id === "number") {
+                liveIds.add(window.id);
+                rememberWindow(window);
+            }
+        }
+        for (const window of windowsByAgentId.values()) {
+            if (!liveIds.has(window.windowId))
+                window.closed = true;
+        }
+    }
+    function liveWindowRecords() {
+        return Array.from(windowsByAgentId.values()).filter((window) => !window.closed);
+    }
+    function findWindow(target) {
+        if (!target)
+            return undefined;
+        const normalized = /^\d+$/.test(target) ? `w${target}` : target;
+        return windowsByAgentId.get(normalized) || Array.from(windowsByAgentId.values()).find((window) => String(window.windowId) === target);
+    }
+    async function activeWindowRecord() {
+        await reconcileWindows();
+        return liveWindowRecords().find((window) => window.focused) ?? liveWindowRecords()[0];
+    }
+    function markWindowClosed(windowId) {
+        const record = windowsByBrowserId.get(windowId);
+        if (record)
+            record.closed = true;
+        for (const tabId of record?.tabIds ?? []) {
+            const tab = tabsByBrowserId.get(tabId);
+            if (tab)
+                tab.closed = true;
+        }
+    }
     function findTab(target) {
         if (!target)
             return undefined;
@@ -6745,6 +6854,11 @@
             if (!liveIds.has(tab.tabId))
                 tab.closed = true;
         }
+        const liveWindowIds = new Set(liveTabs.map((tab) => tab.windowId).filter((windowId) => typeof windowId === "number"));
+        for (const window of windowsByAgentId.values()) {
+            if (!liveWindowIds.has(window.windowId))
+                window.closed = true;
+        }
     }
     function registerBrowserListeners() {
         browser.tabs.onCreated.addListener((tab) => {
@@ -6766,6 +6880,15 @@
             void postSessionEvent("tabs_changed", {});
         });
         browser.tabs.onActivated.addListener(() => void postSessionEvent("focused", {}));
+        browser.windows.onCreated.addListener((window) => {
+            if (typeof window.id === "number")
+                void rememberWindowById(window.id).catch(() => undefined);
+            void postSessionEvent("tabs_changed", {});
+        });
+        browser.windows.onRemoved.addListener((windowId) => {
+            markWindowClosed(windowId);
+            void postSessionEvent("tabs_changed", {});
+        });
         browser.windows.onFocusChanged.addListener(() => void postSessionEvent("focused", {}));
     }
     function registerHeaderListener() {

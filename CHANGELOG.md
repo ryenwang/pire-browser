@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.23
+
+- Adds Firefox window lifecycle commands for popup-style workflows: `pire-browser window list`, `pire-browser window switch <wN>`, and `pire-browser window close [wN]`, plus matching MCP tools in the `tabs` profile.
+- Clarifies the agent-browser-style tab workflow across help, README, docs, and the bundled core skill: bare `pire-browser tab` lists tracked tabs, `pire-browser tab <id-or-label>` switches directly, and `pire-browser tab close` closes the active tab.
+
 ## 0.2.22
 
 - Makes bare `pire-browser session [--json]` an agent-browser-compatible alias for current/default session diagnostics, while keeping `pire-browser session list` and plural `pire-browser sessions` for live-session inventory.

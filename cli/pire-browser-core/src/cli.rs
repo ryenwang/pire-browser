@@ -3464,9 +3464,10 @@ Common commands:
                                   Print a stable project-scoped session name
   screenshot out.png              Capture screenshot evidence
   pdf page.pdf                    Capture an image-backed PDF of the page
+  tab                             List tracked tabs
   tab new <url>                   Open a new tab and switch to it
-  tabs list                       List tracked tabs
   frame '@e3'                     Scope snapshots/actions to an iframe
+  window                          List tracked Firefox windows
   window new                      Open a separate Firefox window
   close                           Close the targeted managed Firefox session
   close --all                     Close all live pire-browser sessions
@@ -4543,16 +4544,21 @@ evidence; pass `--hide-scrollbars false` to keep them visible.
 
 const TABS_HELP: &str = r##"
 Usage:
+  pire-browser tab
+  pire-browser tab <tN-or-label>
   pire-browser tab new <url> [--label <name>]
   pire-browser tab list
+  pire-browser tab close [tN-or-label]
+  pire-browser tab label <tN> <label>
   pire-browser tabs list
   pire-browser tabs new <url> [--label <name>]
   pire-browser tabs select <tN-or-label>
-  pire-browser tabs close <tN-or-label>
+  pire-browser tabs close [tN-or-label]
   pire-browser tabs label <tN> <label>
 
-`tab` and `tabs` are aliases. Use this for new tabs inside the current managed
-Firefox window.
+`tab` and `tabs` are aliases. Bare `tab` lists tracked tabs, matching
+agent-browser. `tab <tN-or-label>` switches to a tab, and `tab close` closes the
+active tab. Use this for new tabs inside the current managed Firefox window.
 "##;
 
 const FRAME_HELP: &str = r##"
@@ -4573,11 +4579,18 @@ switching frames and use fresh refs.
 
 const WINDOW_HELP: &str = r##"
 Usage:
+  pire-browser window
+  pire-browser window list
   pire-browser window new
+  pire-browser window switch <wN>
+  pire-browser window close [wN]
 
-Opens a separate Firefox window in the active managed session. To follow a user
-request such as "open a new window and go to a site", run `pire-browser window
-new`, then `pire-browser open <url>`.
+Lists, opens, focuses, or closes Firefox windows in the active managed session.
+Window ids are stable strings such as `w1` and `w2`. To follow a user request
+such as "open a new window and go to a site", run `pire-browser window new`,
+then `pire-browser open <url>`. Use `window list`, `window switch <wN>`, and
+`window close <wN>` for popup-style OAuth, checkout, or SSO flows that escape
+the original tab.
 "##;
 
 const CLOSE_HELP: &str = r##"
@@ -8032,8 +8045,26 @@ mod tests {
         assert!(help_text(Some("auth"))
             .unwrap()
             .contains("--password-stdin"));
-        assert!(help_text(Some("tabs")).unwrap().contains("tab new"));
+        assert!(help_text(Some("tabs")).unwrap().contains("pire-browser tab"));
+        assert!(help_text(Some("tabs"))
+            .unwrap()
+            .contains("tab <tN-or-label>"));
+        assert!(help_text(Some("tabs"))
+            .unwrap()
+            .contains("tab close [tN-or-label]"));
+        assert!(help_text(Some("tabs"))
+            .unwrap()
+            .contains("Bare `tab` lists tracked tabs"));
         assert!(help_text(Some("window")).unwrap().contains("window new"));
+        assert!(help_text(Some("window"))
+            .unwrap()
+            .contains("window switch <wN>"));
+        assert!(help_text(Some("window"))
+            .unwrap()
+            .contains("window close [wN]"));
+        assert!(help_text(Some("window"))
+            .unwrap()
+            .contains("popup-style OAuth"));
         assert!(help_text(Some("close")).unwrap().contains("quit"));
         assert!(help_text(Some("quit")).unwrap().contains("close --all"));
         assert!(help_text(Some("clipboard"))

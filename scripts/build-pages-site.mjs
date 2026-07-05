@@ -604,8 +604,8 @@ async function validateSite() {
   }
   const commandsHtml = await readFile(routeToFile("/commands/"), "utf8");
   const commandsCodeBlocks = (commandsHtml.match(/class="code-block/g) || []).length;
-  if (commandsCodeBlocks !== 43) {
-    throw new Error(`Expected /commands/ to render 43 code blocks, got ${commandsCodeBlocks}`);
+  if (commandsCodeBlocks !== 44) {
+    throw new Error(`Expected /commands/ to render 44 code blocks, got ${commandsCodeBlocks}`);
   }
   for (const page of pages) {
     for (const block of page.blocks) {

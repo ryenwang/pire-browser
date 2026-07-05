@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.23", "0-2-23"),
+  list([
+    "Adds Firefox window lifecycle commands for popup-style workflows: <code>pire-browser window list</code>, <code>pire-browser window switch &lt;wN&gt;</code>, and <code>pire-browser window close [wN]</code>, plus matching MCP tools in the <code>tabs</code> profile.",
+    "Clarifies the agent-browser-style tab workflow across help, README, docs, and the bundled core skill: bare <code>pire-browser tab</code> lists tracked tabs, <code>pire-browser tab &lt;id-or-label&gt;</code> switches directly, and <code>pire-browser tab close</code> closes the active tab.",
+  ]),
   h2("0.2.20", "0-2-20"),
   list([
     "Preserves stdin for Windows npm-launched native commands that require it, including MCP stdio, <code>chat</code>, <code>eval --stdin</code>, <code>auth save --password-stdin</code>, <code>cookies set --curl -</code>, and stdin-driven <code>batch</code>.",

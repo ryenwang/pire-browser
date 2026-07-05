@@ -156,7 +156,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "tabs",
             bits: PROFILE_TABS,
-            description: "Broader tab/window workflows: back/forward/reload, tab list/new/switch/label/close, iframe switch/main helpers, JavaScript dialogs, windows, and close.",
+            description: "Broader tab/window workflows: back/forward/reload, tab list/new/switch/label/close, window list/new/switch/close, iframe switch/main helpers, JavaScript dialogs, and close.",
         },
         McpProfileDescriptor {
             name: "mobile",
@@ -335,7 +335,10 @@ fn tool_profile_bits(name: &str) -> u16 {
         "pire_browser_frame_select"
         | "pire_browser_frame_switch"
         | "pire_browser_frame_main"
-        | "pire_browser_window_new" => PROFILE_TABS,
+        | "pire_browser_window_list"
+        | "pire_browser_window_new"
+        | "pire_browser_window_switch"
+        | "pire_browser_window_close" => PROFILE_TABS,
         "pire_browser_add_init_script" | "pire_browser_remove_init_script" => {
             PROFILE_CORE | PROFILE_DEBUG
         }
@@ -1962,6 +1965,22 @@ fn tool_command_args(
         (_, "pire_browser_window_new") => {
             args.push("window".to_string());
             args.push("new".to_string());
+        }
+        (_, "pire_browser_window_list") => {
+            args.push("window".to_string());
+            args.push("list".to_string());
+        }
+        (_, "pire_browser_window_switch") => {
+            args.push("window".to_string());
+            args.push("switch".to_string());
+            args.push(required_string(object, "window")?);
+        }
+        (_, "pire_browser_window_close") => {
+            args.push("window".to_string());
+            args.push("close".to_string());
+            if let Some(window) = optional_string(object, "window")? {
+                args.push(window);
+            }
         }
         (_, "pire_browser_eval") => {
             args.push("eval".to_string());
@@ -4322,10 +4341,31 @@ fn core_tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "pire_browser_window_list",
+            "List windows",
+            "List tracked Firefox windows in the active managed session.",
+            tool_schema(vec![], &[]),
+            true,
+        ),
+        tool(
             "pire_browser_window_new",
             "New window",
             "Open a separate Firefox window in the active managed session.",
             tool_schema(vec![], &[]),
+            false,
+        ),
+        tool(
+            "pire_browser_window_switch",
+            "Switch window",
+            "Focus an existing Firefox window by window id such as w2.",
+            tool_schema(vec![("window", string_prop("Window id such as w2."))], &["window"]),
+            false,
+        ),
+        tool(
+            "pire_browser_window_close",
+            "Close window",
+            "Close an existing Firefox window by id, or the active window when omitted.",
+            tool_schema(vec![("window", string_prop("Optional window id such as w2."))], &[]),
             false,
         ),
         tool(
@@ -5253,6 +5293,15 @@ mod tests {
         assert!(tabs
             .iter()
             .any(|tool| tool["name"] == "pire_browser_window_new"));
+        assert!(tabs
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_window_list"));
+        assert!(tabs
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_window_switch"));
+        assert!(tabs
+            .iter()
+            .any(|tool| tool["name"] == "pire_browser_window_close"));
         assert!(tabs.iter().any(|tool| tool["name"] == "pire_browser_back"));
         assert!(tabs
             .iter()
@@ -7497,6 +7546,32 @@ mod tests {
         let args = tool_command_args("pire_browser_window_new", &json!({}), McpToolsProfile::Core)
             .unwrap();
         assert_eq!(args, vec!["--json", "window", "new"]);
+
+        let args =
+            tool_command_args("pire_browser_window_list", &json!({}), McpToolsProfile::Tabs)
+                .unwrap();
+        assert_eq!(args, vec!["--json", "window", "list"]);
+
+        let args = tool_command_args(
+            "pire_browser_window_switch",
+            &json!({ "window": "w2" }),
+            McpToolsProfile::Tabs,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "window", "switch", "w2"]);
+
+        let args = tool_command_args(
+            "pire_browser_window_close",
+            &json!({ "window": "w2" }),
+            McpToolsProfile::Tabs,
+        )
+        .unwrap();
+        assert_eq!(args, vec!["--json", "window", "close", "w2"]);
+
+        let args =
+            tool_command_args("pire_browser_window_close", &json!({}), McpToolsProfile::Tabs)
+                .unwrap();
+        assert_eq!(args, vec!["--json", "window", "close"]);
 
         let args = tool_command_args(
             "pire_browser_evaluate",

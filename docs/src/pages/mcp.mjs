@@ -39,7 +39,7 @@ pire-browser mcp --tools all`),
       ["network", "Headers, credentials, offline toggle, request/response waits, network request inspection with redacted headers, safe outgoing request-body previews, bounded text-like response previews, HAR export, and route/unroute controls."],
       ["state", "Cookies, storage, encrypted auth vault helpers, configured plugin discovery, plaintext or opt-in encrypted state files, sessions, profiles including Firefox profile import, typed clipboard tools, and skills."],
       ["debug", "Lower-level launch, explicit install/repair, user-requested package upgrade, batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, Firefox trace bundles, screenshot-sequence recording bundles, dashboard-backed stream preview controls, best-effort vitals, diffs, status, sessions/profiles, and close."],
-      ["tabs", "Broader tab/window workflows: compatible tabs_* aliases, tab labels, iframe selection, JavaScript dialogs, windows, and close."],
+      ["tabs", "Broader tab/window workflows: compatible tabs_* aliases, tab labels, window list/new/switch/close, iframe selection, JavaScript dialogs, and close."],
       ["mobile", "Viewport, device preset, geolocation, media/offline settings, keyboard, tap-as-click, swipe-as-scroll, mouse, scroll, and screenshot helpers."],
       ["react", "Best-effort Firefox React Fiber tree/inspect/render recording/Suspense tools plus vitals."],
       ["all", "Every currently implemented pire-browser MCP tool."],
@@ -108,8 +108,8 @@ pire-browser mcp --tools all`),
       ["pire_browser_status", "Inspect install/session state."],
       ["pire_browser_confirm / deny", "Approve or deny a pending confirmation id after explicit user approval."],
       ["pire_browser_tab_list / tab_new / tab_switch / tab_close / tabs_label", "Agent-browser-style tab tools for listing, creating, switching, and closing tabs; tabs_list/tabs_select/tabs_close remain compatible."],
+      ["pire_browser_window_list / window_new / window_switch / window_close", "List, create, focus, or close Firefox windows for OAuth, checkout, SSO, and popup-style workflows."],
       ["pire_browser_frame_switch / frame_select / frame_main", "Scope snapshots and selector-based actions to an iframe by ref, selector, name, or URL; iframe refs from snapshots can usually be acted on directly. Prefer frame_switch for new MCP clients; frame_select remains compatible."],
-      ["pire_browser_window_new", "Open a separate Firefox window."],
       ["pire_browser_close", "Close managed sessions."],
       ["pire_browser_skills_get_core / skills_get_dogfood", "Return version-matched core guidance or exploratory QA/bug-hunt guidance."],
     ]
@@ -131,8 +131,9 @@ pire-browser mcp --tools all`),
 14. Use debug-profile pire_browser_install only when the user wants explicit native-host setup or repair; pass withDeps only for agent-browser-style dependency setup. On Windows/macOS it may install Firefox when missing; on Linux it reports non-Snap/non-Flatpak guidance. Use pire_browser_upgrade only when the user wants package update.
 15. Keep pire_browser_status and plain pire_browser_doctor observational.
 16. Use debug-profile pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output.
-17. Call the typed wait tool that matches the condition: wait_ms, wait_for_selector, wait_for_text, wait_for_url, wait_for_load, or wait_for_function. Use pire_browser_wait only for compatibility.
-18. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
+17. For popup-style flows, add the tabs profile and use window_list/window_switch/window_close instead of guessing which Firefox window is active.
+18. Call the typed wait tool that matches the condition: wait_ms, wait_for_selector, wait_for_text, wait_for_url, wait_for_load, or wait_for_function. Use pire_browser_wait only for compatibility.
+19. Re-run pire_browser_snapshot or capture screenshot/PDF evidence before reporting success.`),
   p("MCP tool calls return text content for compatibility and structured command output when the underlying CLI emits JSON. If a tool is missing from the active profile, restart the MCP server with <code>--tools all</code> or a comma-separated profile list such as <code>--tools core,network</code>."),
 ];
 

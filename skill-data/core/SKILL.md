@@ -699,13 +699,18 @@ Open tabs and windows:
 
 ```bash
 pire-browser click '<link-ref>' --new-tab
+pire-browser tab
 pire-browser tab new https://example.com
-pire-browser tabs list
+pire-browser tab docs
+pire-browser tab close
+pire-browser window
 pire-browser window new
+pire-browser window switch w2
+pire-browser window close w2
 pire-browser open https://example.com
 ```
 
-`open --new` and `open --new-tab` create a new tab, not a new window. For the user phrase "open a new window", run `pire-browser window new`, then `pire-browser open <url>`.
+Bare `tab` lists tracked tabs, matching agent-browser. `tab <tN-or-label>` switches directly, and `tab close` closes the active tab when no target is provided. Window ids are stable strings such as `w1` and `w2`; use `window list`, `window switch <wN>`, and `window close [wN]` for OAuth, checkout, SSO, or popup-style flows that open a separate Firefox window. `open --new` and `open --new-tab` create a new tab, not a new window. For the user phrase "open a new window", run `pire-browser window new`, then `pire-browser open <url>`.
 
 Register a script for the next navigation:
 

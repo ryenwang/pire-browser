@@ -220,12 +220,17 @@ pire-browser network requests --clear`),
 p("The current network-related surface is cooperative domain allowlists, extension-applied proxy settings, origin-scoped request headers, active-tab network-idle waiting, request/response waits, recent request diagnostics with redacted request/response headers, redacted/truncated outgoing request bodies, and bounded redacted text-like response previews when Firefox exposes them, agent-browser-style HAR start/stop, direct HAR export, and best-effort active-tab route interception for mocks or aborts. Full CDP-style response control plus raw cookie/header/body secret inspection remain outside the current Firefox runtime."),
 
   h2("Tabs & frames", "tabs-frames"),
-  code(`pire-browser tab list
+  code(`pire-browser tab
+pire-browser tab list
 pire-browser tab new [url] [--label <name>]
-pire-browser tab select <tN-or-label>
-pire-browser tab close <tN-or-label>
+pire-browser tab <tN-or-label>
+pire-browser tab close [tN-or-label]
 pire-browser tab label <tN> <label>
+pire-browser window
+pire-browser window list
 pire-browser window new
+pire-browser window switch <wN>
+pire-browser window close [wN]
 pire-browser frame <sel>
 pire-browser frame '@e3'
 pire-browser frame payment-frame
@@ -237,6 +242,13 @@ pire-browser tab docs
 pire-browser snapshot -i
 pire-browser click '@e3'
 pire-browser tab close docs`),
+  p("<code>tab</code> with no subcommand lists tracked tabs, matching agent-browser. <code>tab &lt;tN-or-label&gt;</code> switches directly, and <code>tab close</code> closes the active tab when no target is provided."),
+  h3("Window lifecycle", "window-lifecycle"),
+  code(`pire-browser window
+pire-browser window new
+pire-browser window switch w2
+pire-browser window close w2`),
+  p("Window ids are stable strings such as <code>w1</code> and <code>w2</code>. Use window list/switch/close for OAuth, checkout, SSO, or popup-style flows that leave the original tab."),
   h3("Iframe support", "iframe-support"),
   code(`pire-browser snapshot -i
 # @e3 [Iframe] "payment-frame"

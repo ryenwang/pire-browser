@@ -508,16 +508,23 @@ The network surface is Firefox-backed: cooperative domain allowlists, extension-
 ### Tabs & Windows
 
 ```bash
+pire-browser tab
 pire-browser tab list
 pire-browser tab new [url]
 pire-browser tab new --label docs [url]
 pire-browser tab <tN-or-label>
 pire-browser tab close [tN-or-label]
 pire-browser tab label <tN> <label>
+pire-browser window
+pire-browser window list
 pire-browser window new
+pire-browser window switch <wN>
+pire-browser window close [wN]
 ```
 
-Tab ids are stable strings such as `t1`, `t2`, and `t3`. Labels are user-assigned and can be used anywhere a tab id is accepted.
+Bare `tab` lists tracked tabs, matching agent-browser. Tab ids are stable strings such as `t1`, `t2`, and `t3`. Labels are user-assigned and can be used anywhere a tab id is accepted. `tab <tN-or-label>` switches directly, and `tab close` closes the active tab when no target is provided.
+
+Window ids are stable strings such as `w1` and `w2`. Use `window list`, `window switch <wN>`, and `window close [wN]` for OAuth, checkout, SSO, or popup-style flows that open a separate Firefox window.
 
 ### Frames
 
