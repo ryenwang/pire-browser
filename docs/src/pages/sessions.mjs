@@ -7,8 +7,8 @@ const sessionsBlocks = [
   p("Sessions are live Firefox extension connections. Named sessions map to managed Firefox profiles so agents can keep projects isolated."),
   h2("Session targeting", "session-targeting"),
   code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
-pire-browser --session "$SESSION" open https://app.example.com
-pire-browser --session "$SESSION" snapshot -i
+pire-browser --session "$SESSION" --restore open https://app.example.com
+pire-browser --session "$SESSION" --restore snapshot -i
 
 pire-browser session list
 pire-browser session id --scope worktree --prefix my-app
@@ -22,8 +22,8 @@ pire-browser --session-name work open https://example.com
 AGENT_BROWSER_SESSION=work pire-browser snapshot -i
 pire-browser --session-name work snapshot -i
 pire-browser --session-name work close`),
-  p("For app QA, derive one stable worktree-scoped session name and pass it with <code>--session</code> on every command. The name is deterministic for the current Git worktree and prefix, so separate projects do not collide. <code>session id --scope cwd</code> scopes to the current directory, and <code>--scope global</code> returns the sanitized prefix without a path hash."),
-  p("<code>--session &lt;uuid&gt;</code> targets a strict live session id from <code>session list</code>. <code>--session &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION=&lt;name&gt;</code>, <code>AGENT_BROWSER_SESSION=&lt;name&gt;</code>, <code>--session-name &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION_NAME=&lt;name&gt;</code>, and <code>AGENT_BROWSER_SESSION_NAME=&lt;name&gt;</code> are named-profile aliases that may reuse or launch managed Firefox."),
+  p("For app QA, derive one stable worktree-scoped session name and pass it with <code>--session</code> and <code>--restore</code> on every command. This mirrors agent-browser's persistent-session recipe, but the persistence mechanism is the named managed Firefox profile. The name is deterministic for the current Git worktree and prefix, so separate projects do not collide. <code>session id --scope cwd</code> scopes to the current directory, and <code>--scope global</code> returns the sanitized prefix without a path hash."),
+  p("<code>--session &lt;uuid&gt;</code> targets a strict live session id from <code>session list</code>. <code>--session &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION=&lt;name&gt;</code>, <code>AGENT_BROWSER_SESSION=&lt;name&gt;</code>, <code>--session-name &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION_NAME=&lt;name&gt;</code>, and <code>AGENT_BROWSER_SESSION_NAME=&lt;name&gt;</code> are named-profile aliases that may reuse or launch managed Firefox. <code>--restore &lt;name&gt;</code> is a short spelling for <code>--session &lt;name&gt; --restore</code> when no session/profile target is already present. <code>--restore-save auto|always|never</code> is accepted for agent-browser recipe compatibility; named Firefox profiles persist automatically."),
   h2("Managed profiles", "managed-profiles"),
   code(`pire-browser profiles --json
 pire-browser profiles import /path/to/firefox-profile --name Work
@@ -39,10 +39,11 @@ pire-browser --profile ~/.myapp-profile open https://example.com`),
 pire-browser --auto-connect state save ./.pire-state/app-work.json
 PIRE_BROWSER_ENCRYPTION_KEY=<64-hex-key> pire-browser --session-name work state save ./.pire-state/app-work.json
 AGENT_BROWSER_ENCRYPTION_KEY=<64-hex-key> pire-browser --session-name review state load ./.pire-state/app-work.json
+pire-browser --session-name work --restore open https://app.example.com/dashboard
 pire-browser --state ./.pire-state/app-work.json open https://app.example.com/dashboard
 AGENT_BROWSER_STATE=./.pire-state/app-work.json pire-browser open https://app.example.com/dashboard
 pire-browser --session-name review state load --require-inspected ./.pire-state/app-work.json`),
-  p("State files are plaintext by default for compatibility. Set <code>PIRE_BROWSER_ENCRYPTION_KEY</code> or <code>AGENT_BROWSER_ENCRYPTION_KEY</code> to a 64-character hex AES-256 key to save and load encrypted active-origin state files. <code>PIRE_BROWSER_STATE</code> and the agent-browser-compatible <code>AGENT_BROWSER_STATE</code> preload active-origin state before browser-control commands when no explicit <code>--state</code> is present."),
+  p("Use <code>--session &lt;name&gt; --restore</code> for normal agent-browser-style QA continuity. State files are plaintext by default for compatibility and contain only active-origin cookies and Web Storage. Set <code>PIRE_BROWSER_ENCRYPTION_KEY</code> or <code>AGENT_BROWSER_ENCRYPTION_KEY</code> to a 64-character hex AES-256 key to save and load encrypted active-origin state files. <code>PIRE_BROWSER_STATE</code> and the agent-browser-compatible <code>AGENT_BROWSER_STATE</code> preload active-origin state before browser-control commands when no explicit <code>--state</code> is present."),
 ];
 
 export default page({

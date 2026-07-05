@@ -43,7 +43,7 @@ export const featureStatuses = {
   },
   namedSessions: {
     status: "best_effort",
-    summary: "`--session <uuid>` targets a strict live session id, while `--session <name>` and `--session-name <name>` reuse or launch managed Firefox profiles.",
+    summary: "`--session <uuid>` targets a strict live session id, while `--session <name>`, `--session-name <name>`, and agent-browser-compatible `--restore` recipes reuse or launch managed Firefox profiles.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/cli.rs"],
   },
   activeOriginState: {

@@ -11,7 +11,7 @@ Use this for named sessions, profile reuse, persisted state, downloads, uploads,
 ## Process
 
 1. Use default sessions for one-off work; use named sessions or profiles when continuity matters.
-2. For project QA loops, derive a deterministic session name with `SESSION="$(pire-browser session id --scope worktree --prefix <app>)"` and pass `--session "$SESSION"` on every browser command.
+2. For project QA loops, derive a deterministic session name with `SESSION="$(pire-browser session id --scope worktree --prefix <app>)"` and pass `--session "$SESSION" --restore` on every browser command.
 3. Inspect live sessions with `pire-browser session list --json` and managed profiles with `pire-browser profiles --json`.
 4. Use `pire-browser profiles import <firefox-profile-dir> --name <managed-name>` when the user already has Firefox login state to copy into a managed profile. The import is a copy, not a live mount.
 5. Use `pire-browser --profile <name-or-path> ...` for reusable managed Firefox profiles.
@@ -23,6 +23,7 @@ Use this for named sessions, profile reuse, persisted state, downloads, uploads,
 
 - `PIRE_BROWSER_PROFILE`/`AGENT_BROWSER_PROFILE`, `PIRE_BROWSER_SESSION`/`AGENT_BROWSER_SESSION`, and `PIRE_BROWSER_SESSION_NAME`/`AGENT_BROWSER_SESSION_NAME` supply defaults only when no explicit flag is present.
 - `pire-browser session id --scope worktree --prefix <app>` returns an agent-browser-style stable named session for the nearest Git worktree; `--scope cwd` hashes the current directory, and `--scope global` returns the sanitized prefix without a path hash.
+- `--restore` is accepted for agent-browser-style persistent-session recipes. In pire-browser, named sessions persist through their managed Firefox profile; use state files only when an active-origin cookie/storage artifact is needed.
 - `PIRE_BROWSER_STATE` and `AGENT_BROWSER_STATE` preload active-origin state before browser-control commands when no explicit `--state` is present.
 - Path-like profile values map to managed Firefox profile names under the `pire-browser` data directory.
 - Profile import never mutates the source Firefox profile and future source changes do not sync. If import reports a lock file, ask the user to close Firefox before retrying. Use `--overwrite` only after closing the managed profile being replaced.

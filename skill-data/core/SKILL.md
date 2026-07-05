@@ -85,15 +85,17 @@ Persist a browser context for a project QA loop:
 
 ```bash
 SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
-pire-browser --session "$SESSION" open https://app.example.com
-pire-browser --session "$SESSION" snapshot -i
+pire-browser --session "$SESSION" --restore open https://app.example.com
+pire-browser --session "$SESSION" --restore snapshot -i
 ```
 
 Derive one stable worktree-scoped session name per app or task and reuse it on
-every command. Do this instead of hand-building profile names or state paths
-when the user wants to keep login, tabs, and managed Firefox profile state tied
-to the current repository. Use `--scope cwd` for directory-scoped scratch work
-and `--scope global` only when the same named session should be shared across
+every command with `--restore`. This mirrors agent-browser's persistent-session
+recipe; in pire-browser, the named managed Firefox profile is the persistence
+store. Do this instead of hand-building profile names or state paths when the
+user wants to keep login, tabs, and managed Firefox profile state tied to the
+current repository. Use `--scope cwd` for directory-scoped scratch work and
+`--scope global` only when the same named session should be shared across
 repositories.
 
 Search a site:
@@ -754,7 +756,8 @@ pire-browser --profile Work open https://example.com
 PIRE_BROWSER_PROFILE=Work pire-browser snapshot -i
 AGENT_BROWSER_PROFILE=Work pire-browser snapshot -i
 SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
-pire-browser --session "$SESSION" open https://example.com
+pire-browser --session "$SESSION" --restore open https://example.com
+pire-browser --session "$SESSION" --restore snapshot -i
 pire-browser session list --json
 pire-browser session id --scope worktree --prefix my-app
 pire-browser session attach <session-id>
@@ -769,7 +772,7 @@ pire-browser close --all
 
 Use `profiles import <firefox-profile-dir> --name <managed-name>` when a user already has Firefox login state to reuse. It copies the source Firefox profile into managed pire-browser state, never mutates the original, and future source changes do not sync. Ask the user to close Firefox before import if lock files are present. Use `--overwrite` only after closing the managed profile being replaced.
 
-Use `--profile <name-or-path>` for reusable managed Firefox profiles. `PIRE_BROWSER_PROFILE=<name-or-path>` supplies the same default when no explicit profile/session flag is present. Path-like profile values are mapped to stable managed Firefox names, not raw browser profile directories. Prefer `session id --scope worktree --prefix <app>` to derive stable named sessions for repository QA. Use `--session <uuid>` only when targeting a strict live id from `session list`. `--session <name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION=<name>`, and `PIRE_BROWSER_SESSION_NAME=<name>` remain available as named-profile aliases.
+Use `--profile <name-or-path>` for reusable managed Firefox profiles. `PIRE_BROWSER_PROFILE=<name-or-path>` supplies the same default when no explicit profile/session flag is present. Path-like profile values are mapped to stable managed Firefox names, not raw browser profile directories. Prefer `session id --scope worktree --prefix <app>` plus `--session "$SESSION" --restore` to derive stable named sessions for repository QA. Use `--session <uuid>` only when targeting a strict live id from `session list`. `--session <name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION=<name>`, and `PIRE_BROWSER_SESSION_NAME=<name>` remain available as named-profile aliases. `--restore <name>` is a short spelling for `--session <name> --restore` when no session/profile target is already present. `--restore-save auto|always|never` is accepted for agent-browser recipe compatibility; named Firefox profiles persist automatically.
 
 Use `pire-browser close` for normal end-of-loop teardown of the targeted managed Firefox session. Use `pire-browser close --all` when you need to close every live managed `pire-browser` Firefox session.
 
@@ -787,7 +790,7 @@ pire-browser --session work state load ./.pire-state/app-ready.json
 pire-browser state clear app-ready
 ```
 
-State files contain active-origin cookies and Web Storage. They are plaintext by default for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY` or the agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY` to a 64-character hex AES-256 key when saved state should be AES-256-GCM encrypted; keep that key out of logs and shell history. `state list`, `state show`, and `state inspect` are metadata-only and do not print cookie or storage values. Bare state names resolve inside `.pire-state`; explicit paths remain supported for save/load/show/rename. Use managed profiles or `profiles import` when IndexedDB, service workers, cross-origin SSO state, or full Firefox profile continuity matters.
+State files contain active-origin cookies and Web Storage. They are plaintext by default for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY` or the agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY` to a 64-character hex AES-256 key when saved state should be AES-256-GCM encrypted; keep that key out of logs and shell history. `state list`, `state show`, and `state inspect` are metadata-only and do not print cookie or storage values. Bare state names resolve inside `.pire-state`; explicit paths remain supported for save/load/show/rename. Prefer named sessions with `--restore` for normal QA login continuity. Use portable state files only when you need active-origin cookies/storage as an artifact, and use managed profiles or `profiles import` when IndexedDB, service workers, cross-origin SSO state, or full Firefox profile continuity matters.
 `--auto-connect state save <path>` saves from the selected live managed Firefox session. `--state <path> <command>` preloads the saved active-origin state before the requested browser command; `PIRE_BROWSER_STATE` and `AGENT_BROWSER_STATE` supply the same default when no explicit `--state` is present. Follow it with `snapshot -i` if the page is noisy or still loading.
 
 Use the packaged schema for autocomplete when creating project configs:

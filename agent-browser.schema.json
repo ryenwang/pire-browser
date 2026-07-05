@@ -30,6 +30,18 @@
       "type": "string",
       "description": "Default active-origin state file to preload before browser-control commands."
     },
+    "restore": {
+      "description": "Agent-browser-compatible persistent session assertion. Boolean true is accepted; a string acts like --restore <name> when no session/profile target is present.",
+      "oneOf": [
+        { "type": "boolean" },
+        { "type": "string", "minLength": 1 }
+      ]
+    },
+    "restoreSave": {
+      "type": "string",
+      "enum": ["auto", "always", "never"],
+      "description": "Agent-browser-compatible restore save mode accepted for config portability. Named Firefox profiles persist automatically."
+    },
     "allowedDomains": {
       "description": "Default allowed-domain guardrail list.",
       "oneOf": [

@@ -971,8 +971,8 @@ credentials stay in extension memory and are not echoed in command output.
 
 ```bash
 SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
-pire-browser --session "$SESSION" open https://app.example.com
-pire-browser --session "$SESSION" snapshot -i
+pire-browser --session "$SESSION" --restore open https://app.example.com
+pire-browser --session "$SESSION" --restore snapshot -i
 
 pire-browser session list
 pire-browser session id --scope worktree --prefix my-app
@@ -987,12 +987,15 @@ pire-browser --session-name work close
 ```
 
 For app QA, derive one stable worktree-scoped session name and pass it with
-`--session` on every command. The name is deterministic for the current Git
-worktree and prefix, so separate projects do not collide. `session id --scope
-cwd` scopes to the current directory, and `--scope global` returns the sanitized
-prefix without a path hash.
+`--session` and `--restore` on every command. This mirrors agent-browser's
+persistent-session recipe, but the persistence mechanism is the managed Firefox
+profile for that named session. Cookies, tabs, IndexedDB, service workers, saved
+passwords, and other Firefox profile data survive browser restarts. The name is
+deterministic for the current Git worktree and prefix, so separate projects do
+not collide. `session id --scope cwd` scopes to the current directory, and
+`--scope global` returns the sanitized prefix without a path hash.
 
-`--session <uuid>` targets a strict live session id from `session list`. `--session <name>`, `PIRE_BROWSER_SESSION=<name>`, `AGENT_BROWSER_SESSION=<name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION_NAME=<name>`, and `AGENT_BROWSER_SESSION_NAME=<name>` are named-profile aliases that may reuse or launch managed Firefox.
+`--session <uuid>` targets a strict live session id from `session list`. `--session <name>`, `PIRE_BROWSER_SESSION=<name>`, `AGENT_BROWSER_SESSION=<name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION_NAME=<name>`, and `AGENT_BROWSER_SESSION_NAME=<name>` are named-profile aliases that may reuse or launch managed Firefox. `--restore <name>` may be used as a short spelling for `--session <name> --restore` when no session/profile target is already present. `--restore-save auto|always|never` is accepted for agent-browser recipe compatibility; named Firefox profiles persist automatically.
 
 ## Firefox Profile Reuse
 
@@ -1024,6 +1027,8 @@ Deleting a managed profile folder clears that saved browser state.
 ## Session Persistence
 
 ```bash
+pire-browser --session-name work --restore open https://app.example.com/dashboard
+pire-browser --restore work open https://app.example.com/dashboard
 pire-browser --session-name work open https://app.example.com/dashboard
 pire-browser --session-name work state save ./.pire-state/app-work.json
 pire-browser --auto-connect state save ./.pire-state/app-work.json
@@ -1032,7 +1037,7 @@ AGENT_BROWSER_STATE=./.pire-state/app-work.json pire-browser open https://app.ex
 pire-browser --session-name review state load --require-inspected ./.pire-state/app-work.json
 ```
 
-State files contain active-origin cookies, `localStorage`, and `sessionStorage`. By default they are plaintext for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY`, or the agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY`, to a 64-character hex AES-256 key before `state save` to write encrypted AES-256-GCM files and before `state load` to decrypt them. `state list`, `state show`, and non-recording `state inspect` remain metadata-only and do not print cookie or storage values. State files do not include saved passwords, full browser profiles, service workers, IndexedDB, or cross-origin SSO state. Use managed profiles or `profiles import` when IndexedDB, service workers, cross-origin SSO state, or full Firefox login continuity matters.
+Use `--session <name> --restore` for normal agent-browser-style project QA continuity. It reuses the named managed Firefox profile and does not require a separate state file. State files contain active-origin cookies, `localStorage`, and `sessionStorage`. By default they are plaintext for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY`, or the agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY`, to a 64-character hex AES-256 key before `state save` to write encrypted AES-256-GCM files and before `state load` to decrypt them. `state list`, `state show`, and non-recording `state inspect` remain metadata-only and do not print cookie or storage values. State files do not include saved passwords, full browser profiles, service workers, IndexedDB, or cross-origin SSO state. Use managed profiles or `profiles import` when IndexedDB, service workers, cross-origin SSO state, or full Firefox login continuity matters.
 `PIRE_BROWSER_STATE` and the agent-browser-compatible `AGENT_BROWSER_STATE` preload active-origin state before browser-control commands when no explicit `--state` is present.
 
 ## Security
@@ -1095,6 +1100,8 @@ Screenshots hide native scrollbars by default for agent-browser-style stable evi
 --session <name>                # Reuse or launch a named managed Firefox profile
 --session-name <name>           # Explicit named Firefox profile spelling
 --profile <name-or-path>        # Managed Firefox profile alias
+--restore [name]                # Agent-browser-compatible profile persistence assertion
+--restore-save <mode>           # Accepted compatibility mode: auto, always, or never
 --state <path>                  # Load active-origin state before a browser command
 --auto-connect                  # Select a live managed session when saving state
 --headers <json>                # HTTP headers scoped to URL's origin

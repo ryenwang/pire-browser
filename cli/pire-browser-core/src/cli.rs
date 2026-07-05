@@ -388,6 +388,8 @@ const GLOBAL_VALUE_FLAGS: &[&str] = &[
     "--session-name",
     "--profile",
     "--state",
+    "--restore-save",
+    "--restore-check-text",
     "--color-scheme",
     "--max-output",
     "--allowed-domains",
@@ -421,6 +423,8 @@ const GLOBAL_BOOL_FLAGS: &[&str] = &[
     "--quiet",
     "--verbose",
 ];
+
+const GLOBAL_OPTIONAL_VALUE_FLAGS: &[&str] = &["--restore"];
 
 pub fn apply_config_defaults(raw: &[String]) -> Result<ConfigApplyResult> {
     apply_config_defaults_with_options(raw, default_config_options()?)
@@ -481,6 +485,7 @@ pub fn apply_config_defaults_with_options(
 
     let mut args = config_args_from_map(&merged, raw);
     push_session_env_defaults(&mut args, raw);
+    push_restore_env_defaults(&mut args, raw);
     push_state_env_defaults(&mut args, raw);
     args.extend_from_slice(raw);
     push_init_script_env_defaults(&mut args);
@@ -525,6 +530,36 @@ fn push_session_env_defaults_from_values(
     }
     if let Some(value) = session_env {
         args.push("--session".to_string());
+        args.push(value);
+    }
+}
+
+fn push_restore_env_defaults(args: &mut Vec<String>, raw: &[String]) {
+    push_restore_env_defaults_from_value(
+        args,
+        raw,
+        env_var_nonempty_alias("PIRE_BROWSER_RESTORE", "AGENT_BROWSER_RESTORE"),
+    );
+}
+
+fn push_restore_env_defaults_from_value(
+    args: &mut Vec<String>,
+    raw: &[String],
+    value: Option<String>,
+) {
+    if raw_has_any_flag(raw, &["--restore"]) || raw_has_any_flag(args, &["--restore"]) {
+        return;
+    }
+    let Some(value) = value else {
+        return;
+    };
+    if parse_bool_literal(&value) == Some(false) {
+        return;
+    }
+    args.push("--restore".to_string());
+    let explicit_target = raw_has_any_flag(raw, &["--session", "--session-name", "--profile"])
+        || raw_has_any_flag(args, &["--session", "--session-name", "--profile"]);
+    if parse_bool_literal(&value) != Some(true) && !explicit_target {
         args.push(value);
     }
 }
@@ -671,6 +706,15 @@ fn first_command_index(args: &[String]) -> Option<usize> {
     let mut index = 0;
     while index < args.len() {
         let arg = args[index].as_str();
+        if GLOBAL_OPTIONAL_VALUE_FLAGS.contains(&arg) {
+            index += 1;
+            if let Some(value) = args.get(index) {
+                if is_optional_restore_key(value) {
+                    index += 1;
+                }
+            }
+            continue;
+        }
         if GLOBAL_VALUE_FLAGS.contains(&arg) {
             index += 2;
             continue;
@@ -867,6 +911,15 @@ fn config_args_from_map(config: &Map<String, Value>, raw: &[String]) -> Vec<Stri
         "--session",
         &["--session", "--session-name"],
     );
+    push_restore_config(&mut args, config, raw);
+    push_value_config(
+        &mut args,
+        config,
+        raw,
+        "restoreSave",
+        "--restore-save",
+        &["--restore-save"],
+    );
     push_value_config(&mut args, config, raw, "state", "--state", &["--state"]);
     if !command_allows_state_default(raw) {
         remove_flag_and_value(&mut args, "--state");
@@ -1015,6 +1068,29 @@ fn config_args_from_map(config: &Map<String, Value>, raw: &[String]) -> Vec<Stri
     push_value_config(&mut args, config, raw, "model", "--model", &["--model"]);
 
     args
+}
+
+fn push_restore_config(args: &mut Vec<String>, config: &Map<String, Value>, raw: &[String]) {
+    if raw_has_any_flag(raw, &["--restore"]) || raw_has_any_flag(args, &["--restore"]) {
+        return;
+    }
+    let Some(value) = config.get("restore") else {
+        return;
+    };
+    let explicit_target = raw_has_any_flag(raw, &["--session", "--session-name", "--profile"])
+        || raw_has_any_flag(args, &["--session", "--session-name", "--profile"]);
+    match value {
+        Value::Bool(false) | Value::Null => {}
+        Value::Bool(true) => args.push("--restore".to_string()),
+        _ => {
+            if let Some(value) = config_value_to_string(value) {
+                args.push("--restore".to_string());
+                if !explicit_target {
+                    args.push(value);
+                }
+            }
+        }
+    }
 }
 
 fn remove_flag_and_value(args: &mut Vec<String>, flag: &str) {
@@ -1188,6 +1264,113 @@ fn parse_bool_literal(value: &str) -> Option<bool> {
     }
 }
 
+fn is_optional_restore_key(value: &str) -> bool {
+    if value.trim().is_empty() || value.starts_with('-') {
+        return false;
+    }
+    !is_known_command_name(value)
+}
+
+fn is_known_command_name(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    matches!(
+        lower.as_str(),
+        "activity"
+            | "addinitscript"
+            | "auth"
+            | "back"
+            | "batch"
+            | "chat"
+            | "check"
+            | "click"
+            | "clipboard"
+            | "close"
+            | "config"
+            | "confirm"
+            | "console"
+            | "cookies"
+            | "dashboard"
+            | "deny"
+            | "device"
+            | "dialog"
+            | "dialogs"
+            | "diff"
+            | "doctor"
+            | "download"
+            | "drag"
+            | "errors"
+            | "eval"
+            | "evaluate"
+            | "exit"
+            | "fill"
+            | "find"
+            | "focus"
+            | "forward"
+            | "frame"
+            | "frames"
+            | "get"
+            | "goto"
+            | "help"
+            | "highlight"
+            | "hover"
+            | "install"
+            | "install-status"
+            | "is"
+            | "key"
+            | "keyboard"
+            | "keydown"
+            | "keyup"
+            | "launch"
+            | "mcp"
+            | "mouse"
+            | "navigate"
+            | "network"
+            | "open"
+            | "pdf"
+            | "plugin"
+            | "plugins"
+            | "press"
+            | "profiles"
+            | "profiler"
+            | "pushstate"
+            | "quit"
+            | "react"
+            | "read"
+            | "record"
+            | "reload"
+            | "removeinitscript"
+            | "screenshot"
+            | "scroll"
+            | "scrollinto"
+            | "scrollintoview"
+            | "select"
+            | "session"
+            | "sessions"
+            | "set"
+            | "setcontent"
+            | "skills"
+            | "skill"
+            | "snapshot"
+            | "state"
+            | "status"
+            | "storage"
+            | "stream"
+            | "swipe"
+            | "tab"
+            | "tabs"
+            | "tap"
+            | "trace"
+            | "type"
+            | "uncheck"
+            | "update"
+            | "upgrade"
+            | "upload"
+            | "vitals"
+            | "wait"
+            | "window"
+    )
+}
+
 pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     if raw.is_empty() {
         return Ok(LocalCommand::Help { topic: None });
@@ -1211,6 +1394,17 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     let mut action_policy = ActionPolicyArgs::default();
     let mut confirmation_policy = ConfirmationPolicyArgs::default();
     while let Some(first) = args.first().cloned() {
+        if first == "--restore" {
+            args.remove(0);
+            if let Some(value) = args.first().filter(|value| is_optional_restore_key(value)) {
+                let value = value.clone();
+                args.remove(0);
+                if session_id.is_none() && session_name.is_none() {
+                    set_session_name(&session_id, &mut session_name, value)?;
+                }
+            }
+            continue;
+        }
         if GLOBAL_VALUE_FLAGS.contains(&first.as_str()) {
             let flag = args.remove(0);
             let Some(value) = args.first().cloned() else {
@@ -1227,6 +1421,8 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 "--confirm-actions" => {
                     set_confirm_actions(&mut confirmation_policy, value)?;
                 }
+                "--restore-save" => validate_restore_save(&value)?,
+                "--restore-check-text" => validate_non_empty_flag_value(&flag, &value)?,
                 _ => {}
             }
             if ignored_with_warning_global_flag(&flag) {
@@ -2511,6 +2707,20 @@ fn set_global_state_path(state_path: &mut Option<String>, value: String) -> Resu
     Ok(())
 }
 
+fn validate_restore_save(value: &str) -> Result<()> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "auto" | "always" | "never" => Ok(()),
+        _ => bail!("invalid_args: --restore-save requires auto, always, or never"),
+    }
+}
+
+fn validate_non_empty_flag_value(flag: &str, value: &str) -> Result<()> {
+    if value.trim().is_empty() {
+        bail!("invalid_args: {flag} requires a non-empty value");
+    }
+    Ok(())
+}
+
 fn profile_name_from_profile_value(value: &str) -> Result<String> {
     let value = value.trim();
     if value.is_empty() {
@@ -3183,6 +3393,8 @@ Common commands:
   --content-boundaries snapshot   Mark page-sourced output boundaries
   --max-output 50000 get text body Cap emitted browser command text
   --session work open <url>       Reuse or launch a named Firefox profile
+  --session work --restore open <url>
+                                  Agent-browser-style persistent session recipe
   --session-name work open <url>  Explicit named Firefox profile spelling
   --profile Work open <url>       Managed Firefox profile alias
   profiles [--json]               List managed Firefox profiles
@@ -3274,13 +3486,17 @@ warning and continue; explicit --config, PIRE_BROWSER_CONFIG, or
 AGENT_BROWSER_CONFIG paths must exist and contain a JSON object.
 
 Supported camelCase defaults include json, profile, sessionName, session,
-state, autoConnect, allowedDomains, noAllowedDomains, actionPolicy,
+restore, restoreSave, state, autoConnect, allowedDomains, noAllowedDomains, actionPolicy,
 confirmActions, confirmInteractive, noAutoDialog, hideScrollbars,
 allowFileAccess, headed, headless, colorScheme, proxy, proxyBypass, args, userAgent, downloadPath,
 maxOutput, contentBoundaries, engine, provider, model, and plugins. `plugins` configures
 credential-provider and command/custom integrations; `plugin add` can write
 entries, but configured plugins do not synthesize CLI flags. CLI flags override
-config defaults. Unknown keys are ignored. `headless: true`, `--headless`,
+config defaults. Unknown keys are ignored. `restore: true` or `--restore`
+is an agent-browser-compatible persistence assertion; with a named session,
+the managed Firefox profile already preserves browser state. `restore: "work"`
+acts like `--restore work` when no explicit session/profile target is present.
+`restoreSave: "auto"` is accepted for compatibility. `headless: true`, `--headless`,
 PIRE_BROWSER_HEADLESS=1, and AGENT_BROWSER_HEADLESS=1 make newly launched
 managed Firefox sessions run headlessly; existing live sessions keep their
 current mode. `--no-auto-dialog`, AGENT_BROWSER_NO_AUTO_DIALOG=1, and
@@ -4148,6 +4364,10 @@ saved display URL when no live named session exists. `--auto-connect state save`
 saves from the selected live managed Firefox session. `--state <path> <command>`
 preloads saved active-origin state before the requested browser command. Active
 domain allowlists also check the saved state origin.
+For agent-browser-style project QA persistence, prefer
+`--session <name> --restore <command>` with a name from `session id`; the named
+Firefox profile preserves full browser state. Use state files when you need a
+portable active-origin cookie/storage artifact.
 "##;
 
 const ACTION_POLICY_HELP: &str = r##"
@@ -4185,6 +4405,8 @@ Usage:
   pire-browser session cleanup [--json]
   pire-browser --session <uuid> snapshot -i
   pire-browser --session <name> open <url>
+  pire-browser --session <name> --restore open <url>
+  pire-browser --restore <name> open <url>
   pire-browser --session-name <name> open <url>
   pire-browser --profile <name-or-path> open <url>
   pire-browser --session-name <name> close
@@ -4200,6 +4422,13 @@ root and falls back to the current directory; `cwd` uses the current directory;
 `--session <uuid>` is strict live-id targeting. `--session <name>` reuses a
 managed named Firefox profile; `--session-name <name>` is the explicit
 named-profile spelling.
+`--restore` is accepted for agent-browser-style persistent-session recipes.
+With a named session, persistence is the managed Firefox profile itself, so
+cookies, tabs, IndexedDB, service workers, saved passwords, and other Firefox
+profile data survive browser restarts. `--restore <name>` may be used as a
+short spelling for `--session <name> --restore` when no session/profile target
+is already present. `--restore-save auto|always|never` is accepted for
+compatibility; named Firefox profiles persist automatically.
 `--profile <name-or-path>` is an alias for a reusable managed
 Firefox profile. Path-like profile values are converted to stable managed names.
 Close targets an existing named session only. Profile names may contain letters,
@@ -4697,6 +4926,78 @@ mod tests {
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
                 target: SessionTarget::Name("Work".to_string()),
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["open", "https://example.com"])
+            }
+        );
+    }
+
+    #[test]
+    fn applies_restore_config_default_as_named_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("agent-browser.json");
+        fs::write(&config, r#"{ "restore": "Work", "restoreSave": "auto" }"#).unwrap();
+
+        let expanded = apply_config_defaults_with_options(
+            &s(&["open", "https://example.com"]),
+            config_options(Some(config)),
+        )
+        .unwrap();
+        assert_eq!(
+            expanded.args[0..4],
+            s(&["--restore", "Work", "--restore-save", "auto"])
+        );
+        assert_eq!(
+            parse_cli_args(&expanded.args).unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Name("Work".to_string()),
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["open", "https://example.com"])
+            }
+        );
+
+        let config = dir.path().join("pire-browser-bool.json");
+        fs::write(&config, r#"{ "restore": true }"#).unwrap();
+        let expanded = apply_config_defaults_with_options(
+            &s(&["--session", "work", "snapshot", "-i"]),
+            config_options(Some(config)),
+        )
+        .unwrap();
+        assert_eq!(expanded.args[0], "--restore");
+        assert_eq!(
+            parse_cli_args(&expanded.args).unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Name("work".to_string()),
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["snapshot", "-i"])
+            }
+        );
+
+        let config = dir.path().join("pire-browser-explicit.json");
+        fs::write(&config, r#"{ "restore": "ConfigName" }"#).unwrap();
+        let expanded = apply_config_defaults_with_options(
+            &s(&["--session", "explicit", "open", "https://example.com"]),
+            config_options(Some(config)),
+        )
+        .unwrap();
+        assert_eq!(expanded.args[0], "--restore");
+        assert_eq!(expanded.args[1], "--session");
+        assert_eq!(
+            parse_cli_args(&expanded.args).unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Name("explicit".to_string()),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5269,6 +5570,74 @@ mod tests {
     }
 
     #[test]
+    fn parses_agent_browser_restore_flags_as_session_persistence_compat() {
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "--session",
+                "work",
+                "--restore",
+                "--restore-save",
+                "auto",
+                "open",
+                "https://example.com"
+            ]))
+            .unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Name("work".to_string()),
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["open", "https://example.com"])
+            }
+        );
+
+        assert_eq!(
+            parse_cli_args(&s(&["--restore", "work", "open", "https://example.com"])).unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Name("work".to_string()),
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["open", "https://example.com"])
+            }
+        );
+
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "--session",
+                "work",
+                "--restore",
+                "--restore-check-text",
+                "Dashboard",
+                "snapshot",
+                "-i"
+            ]))
+            .unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Name("work".to_string()),
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["snapshot", "-i"])
+            }
+        );
+
+        assert!(parse_cli_args(&s(&[
+            "--restore-save",
+            "sometimes",
+            "open",
+            "https://example.com"
+        ]))
+        .is_err());
+    }
+
+    #[test]
     fn applies_pire_browser_session_env_defaults() {
         let mut args = Vec::new();
         push_session_env_defaults_from_values(
@@ -5343,6 +5712,53 @@ mod tests {
             Some("agent1".to_string()),
         );
         assert_eq!(args, s(&["--profile", "cli-profile"]));
+    }
+
+    #[test]
+    fn applies_agent_browser_restore_env_default_as_named_session() {
+        let mut args = Vec::new();
+        push_restore_env_defaults_from_value(
+            &mut args,
+            &s(&["open", "https://example.com"]),
+            Some("work".to_string()),
+        );
+        assert_eq!(args, s(&["--restore", "work"]));
+        assert_eq!(
+            parse_cli_args(&[args, s(&["open", "https://example.com"])].concat()).unwrap(),
+            LocalCommand::Remote {
+                target: SessionTarget::Name("work".to_string()),
+                json: false,
+                ignored_global_flags: vec![],
+                domain_policy: default_domain_policy(),
+                action_policy: default_action_policy(),
+                confirmation_policy: default_confirmation_policy(),
+                args: s(&["open", "https://example.com"])
+            }
+        );
+
+        let mut args = Vec::new();
+        push_restore_env_defaults_from_value(
+            &mut args,
+            &s(&["open", "https://example.com"]),
+            Some("1".to_string()),
+        );
+        assert_eq!(args, s(&["--restore"]));
+
+        let mut args = Vec::new();
+        push_restore_env_defaults_from_value(
+            &mut args,
+            &s(&["--session", "explicit", "open", "https://example.com"]),
+            Some("work".to_string()),
+        );
+        assert_eq!(args, s(&["--restore"]));
+
+        let mut args = Vec::new();
+        push_restore_env_defaults_from_value(
+            &mut args,
+            &s(&["open", "https://example.com"]),
+            Some("false".to_string()),
+        );
+        assert!(args.is_empty());
     }
 
     #[test]
@@ -7110,6 +7526,7 @@ mod tests {
         assert!(text.contains("scrollintoview '@e4'"));
         assert!(text.contains("skills cat core"));
         assert!(text.contains("pushstate /dashboard"));
+        assert!(text.contains("--session work --restore open <url>"));
         assert!(text.contains("get text '@e1'"));
         assert!(text.contains("is visible '@e1'"));
         assert!(text.contains("console"));
@@ -7193,6 +7610,7 @@ mod tests {
             .unwrap()
             .contains("agent-browser.json"));
         assert!(help_text(Some("config")).unwrap().contains("state"));
+        assert!(help_text(Some("config")).unwrap().contains("restoreSave"));
         assert!(help_text(Some("config")).unwrap().contains("plugins"));
         assert!(help_text(Some("auth"))
             .unwrap()
@@ -7572,6 +7990,9 @@ mod tests {
             .unwrap()
             .contains("session attach"));
         assert!(help_text(Some("session")).unwrap().contains("session id"));
+        assert!(help_text(Some("session"))
+            .unwrap()
+            .contains("--restore <name>"));
         assert!(help_text(None)
             .unwrap()
             .contains("session id --scope worktree"));
