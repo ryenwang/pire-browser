@@ -11,16 +11,18 @@ Use this for named sessions, profile reuse, persisted state, downloads, uploads,
 ## Process
 
 1. Use default sessions for one-off work; use named sessions or profiles when continuity matters.
-2. Inspect live sessions with `pire-browser session list --json` and managed profiles with `pire-browser profiles --json`.
-3. Use `pire-browser profiles import <firefox-profile-dir> --name <managed-name>` when the user already has Firefox login state to copy into a managed profile. The import is a copy, not a live mount.
-4. Use `pire-browser --profile <name-or-path> ...` for reusable managed Firefox profiles.
-5. Use `pire-browser --session <name> ...` for reusable named sessions, and `--session <uuid>` only for strict live-id targeting.
-6. Use `state list --json`, `state show <name-or-path> --json`, `state save`, `state rename`, `state clear`, and `state clean` for `.pire-state` maintenance.
-7. Verify downloaded files on disk and verify uploads through fresh page state.
+2. For project QA loops, derive a deterministic session name with `SESSION="$(pire-browser session id --scope worktree --prefix <app>)"` and pass `--session "$SESSION"` on every browser command.
+3. Inspect live sessions with `pire-browser session list --json` and managed profiles with `pire-browser profiles --json`.
+4. Use `pire-browser profiles import <firefox-profile-dir> --name <managed-name>` when the user already has Firefox login state to copy into a managed profile. The import is a copy, not a live mount.
+5. Use `pire-browser --profile <name-or-path> ...` for reusable managed Firefox profiles.
+6. Use `pire-browser --session <name> ...` for reusable named sessions, and `--session <uuid>` only for strict live-id targeting.
+7. Use `state list --json`, `state show <name-or-path> --json`, `state save`, `state rename`, `state clear`, and `state clean` for `.pire-state` maintenance.
+8. Verify downloaded files on disk and verify uploads through fresh page state.
 
 ## Audit
 
 - `PIRE_BROWSER_PROFILE`/`AGENT_BROWSER_PROFILE`, `PIRE_BROWSER_SESSION`/`AGENT_BROWSER_SESSION`, and `PIRE_BROWSER_SESSION_NAME`/`AGENT_BROWSER_SESSION_NAME` supply defaults only when no explicit flag is present.
+- `pire-browser session id --scope worktree --prefix <app>` returns an agent-browser-style stable named session for the nearest Git worktree; `--scope cwd` hashes the current directory, and `--scope global` returns the sanitized prefix without a path hash.
 - `PIRE_BROWSER_STATE` and `AGENT_BROWSER_STATE` preload active-origin state before browser-control commands when no explicit `--state` is present.
 - Path-like profile values map to managed Firefox profile names under the `pire-browser` data directory.
 - Profile import never mutates the source Firefox profile and future source changes do not sync. If import reports a lock file, ask the user to close Firefox before retrying. Use `--overwrite` only after closing the managed profile being replaced.

@@ -970,7 +970,13 @@ credentials stay in extension memory and are not echoed in command output.
 ## Sessions
 
 ```bash
+SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser --session "$SESSION" open https://app.example.com
+pire-browser --session "$SESSION" snapshot -i
+
 pire-browser session list
+pire-browser session id --scope worktree --prefix my-app
+pire-browser session id --scope worktree --prefix my-app --json
 pire-browser session list --json
 pire-browser session attach <session-id>
 pire-browser session cleanup
@@ -979,6 +985,12 @@ pire-browser --session work open https://example.com
 pire-browser --session-name work open https://example.com
 pire-browser --session-name work close
 ```
+
+For app QA, derive one stable worktree-scoped session name and pass it with
+`--session` on every command. The name is deterministic for the current Git
+worktree and prefix, so separate projects do not collide. `session id --scope
+cwd` scopes to the current directory, and `--scope global` returns the sanitized
+prefix without a path hash.
 
 `--session <uuid>` targets a strict live session id from `session list`. `--session <name>`, `PIRE_BROWSER_SESSION=<name>`, `AGENT_BROWSER_SESSION=<name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION_NAME=<name>`, and `AGENT_BROWSER_SESSION_NAME=<name>` are named-profile aliases that may reuse or launch managed Firefox.
 

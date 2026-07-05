@@ -36,8 +36,9 @@ Create a predictable output directory:
 
 ```bash
 mkdir -p dogfood-artifacts/screenshots dogfood-artifacts/recordings
-pire-browser --session-name dogfood open https://app.example.com
-pire-browser --session-name dogfood snapshot -i -c
+SESSION="$(pire-browser session id --scope worktree --prefix dogfood)"
+pire-browser --session "$SESSION" open https://app.example.com
+pire-browser --session "$SESSION" snapshot -i -c
 ```
 
 For CI-style dogfood runs, add `--headless` before the command or set
@@ -59,12 +60,12 @@ pire-browser --state ./.pire-state/app.json open https://app.example.com
 For each major user journey:
 
 ```bash
-pire-browser --session-name dogfood snapshot -i -c
-pire-browser --session-name dogfood find role button --name "Continue"
-pire-browser --session-name dogfood click '<fresh-ref>'
-pire-browser --session-name dogfood wait --load networkidle
-pire-browser --session-name dogfood snapshot -i -c
-pire-browser --session-name dogfood screenshot dogfood-artifacts/screenshots/NN-step.png
+pire-browser --session "$SESSION" snapshot -i -c
+pire-browser --session "$SESSION" find role button --name "Continue"
+pire-browser --session "$SESSION" click '<fresh-ref>'
+pire-browser --session "$SESSION" wait --load networkidle
+pire-browser --session "$SESSION" snapshot -i -c
+pire-browser --session "$SESSION" screenshot dogfood-artifacts/screenshots/NN-step.png
 ```
 
 Use `type` instead of `fill` when you are collecting human-readable repro
@@ -95,9 +96,9 @@ For static visual issues, one annotated screenshot plus URL/snapshot context is
 usually enough:
 
 ```bash
-pire-browser --session-name dogfood screenshot --annotate dogfood-artifacts/screenshots/issue-01.png
-pire-browser --session-name dogfood get url
-pire-browser --session-name dogfood snapshot -i -c
+pire-browser --session "$SESSION" screenshot --annotate dogfood-artifacts/screenshots/issue-01.png
+pire-browser --session "$SESSION" get url
+pire-browser --session "$SESSION" snapshot -i -c
 ```
 
 For interactive bugs, start a recording bundle before reproducing. In
@@ -105,18 +106,18 @@ For interactive bugs, start a recording bundle before reproducing. In
 not native WebM video:
 
 ```bash
-pire-browser --session-name dogfood record start dogfood-artifacts/recordings/issue-01
-pire-browser --session-name dogfood type '<input-ref>' "example"
-pire-browser --session-name dogfood press Enter
-pire-browser --session-name dogfood wait 1000
-pire-browser --session-name dogfood screenshot dogfood-artifacts/screenshots/issue-01-final.png
-pire-browser --session-name dogfood record stop dogfood-artifacts/recordings/issue-01
+pire-browser --session "$SESSION" record start dogfood-artifacts/recordings/issue-01
+pire-browser --session "$SESSION" type '<input-ref>' "example"
+pire-browser --session "$SESSION" press Enter
+pire-browser --session "$SESSION" wait 1000
+pire-browser --session "$SESSION" screenshot dogfood-artifacts/screenshots/issue-01-final.png
+pire-browser --session "$SESSION" record stop dogfood-artifacts/recordings/issue-01
 ```
 
 If the first reproduction attempt gets noisy, use:
 
 ```bash
-pire-browser --session-name dogfood record restart dogfood-artifacts/recordings/issue-01-retake
+pire-browser --session "$SESSION" record restart dogfood-artifacts/recordings/issue-01-retake
 ```
 
 ## Debugging A Finding
@@ -124,12 +125,12 @@ pire-browser --session-name dogfood record restart dogfood-artifacts/recordings/
 Use these only when they help explain the user-visible bug:
 
 ```bash
-pire-browser --session-name dogfood console --json
-pire-browser --session-name dogfood errors --json
-pire-browser --session-name dogfood network wait-for-request "**/api/**"
-pire-browser --session-name dogfood network wait-for-response "**/api/**"
-pire-browser --session-name dogfood vitals
-pire-browser --session-name dogfood diff screenshot --baseline before.png after.png
+pire-browser --session "$SESSION" console --json
+pire-browser --session "$SESSION" errors --json
+pire-browser --session "$SESSION" network wait-for-request "**/api/**"
+pire-browser --session "$SESSION" network wait-for-response "**/api/**"
+pire-browser --session "$SESSION" vitals
+pire-browser --session "$SESSION" diff screenshot --baseline before.png after.png
 ```
 
 Avoid over-collecting private data. Redact or omit secrets from reports.

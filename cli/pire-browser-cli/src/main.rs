@@ -20,8 +20,8 @@ use pire_browser_core::auth_vault::{
 };
 use pire_browser_core::cli::{
     apply_config_defaults, build_command_request, format_cli_result, help_text, parse_cli_args,
-    ConfigWarning, DashboardAction, GlobalFlagWarning, LocalCommand, ReadActiveUrlOptions,
-    SessionTarget, StreamAction,
+    session_id_value, ConfigWarning, DashboardAction, GlobalFlagWarning, LocalCommand,
+    ReadActiveUrlOptions, SessionTarget, StreamAction,
 };
 use pire_browser_core::confirmation_policy::{
     confirmation_policy_diagnostic_from_args, confirmation_policy_text,
@@ -529,6 +529,10 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             } else {
                 println!("{}", session_status_text(&sessions));
             }
+        }
+        LocalCommand::SessionId { options } => {
+            let value = session_id_value(&options)?;
+            println!("{}", format_cli_result(&value, options.json)?);
         }
         LocalCommand::SessionAttach { session, json } => {
             let session = match select_session(Some(&session)) {

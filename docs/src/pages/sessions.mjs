@@ -6,7 +6,13 @@ const sessionsBlocks = [
   statusNote("managedProfiles"),
   p("Sessions are live Firefox extension connections. Named sessions map to managed Firefox profiles so agents can keep projects isolated."),
   h2("Session targeting", "session-targeting"),
-  code(`pire-browser session list
+  code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser --session "$SESSION" open https://app.example.com
+pire-browser --session "$SESSION" snapshot -i
+
+pire-browser session list
+pire-browser session id --scope worktree --prefix my-app
+pire-browser session id --scope worktree --prefix my-app --json
 pire-browser session list --json
 pire-browser session attach <session-id>
 pire-browser session cleanup
@@ -16,6 +22,7 @@ pire-browser --session-name work open https://example.com
 AGENT_BROWSER_SESSION=work pire-browser snapshot -i
 pire-browser --session-name work snapshot -i
 pire-browser --session-name work close`),
+  p("For app QA, derive one stable worktree-scoped session name and pass it with <code>--session</code> on every command. The name is deterministic for the current Git worktree and prefix, so separate projects do not collide. <code>session id --scope cwd</code> scopes to the current directory, and <code>--scope global</code> returns the sanitized prefix without a path hash."),
   p("<code>--session &lt;uuid&gt;</code> targets a strict live session id from <code>session list</code>. <code>--session &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION=&lt;name&gt;</code>, <code>AGENT_BROWSER_SESSION=&lt;name&gt;</code>, <code>--session-name &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION_NAME=&lt;name&gt;</code>, and <code>AGENT_BROWSER_SESSION_NAME=&lt;name&gt;</code> are named-profile aliases that may reuse or launch managed Firefox."),
   h2("Managed profiles", "managed-profiles"),
   code(`pire-browser profiles --json

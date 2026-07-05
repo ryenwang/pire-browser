@@ -43,6 +43,11 @@ pire-browser snapshot -i`),
 # 4. pire_browser_wait_for_load({ "state": "networkidle" })
 # 5. pire_browser_snapshot({ "interactive": true })`),
   p("Use <code>pire_browser_get_text</code>, <code>pire_browser_get_url</code>, <code>pire_browser_is_visible</code>, and the other typed get/check tools for targeted verification before reporting success. Start with <code>--tools core</code>; add <code>network</code>, <code>state</code>, <code>tabs</code>, <code>debug</code>, <code>mobile</code>, or <code>react</code> only when that workflow needs the extra tools. If the native package is missing, <code>pire-browser mcp --help</code> still prints startup and repair guidance from the launcher."),
+  h2("Project QA sessions", "project-qa-sessions"),
+  code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser --session "$SESSION" open http://localhost:3000
+pire-browser --session "$SESSION" snapshot -i`),
+  p("Use one worktree-scoped session for a local app QA loop so cookies, tabs, and managed Firefox profile state stay isolated to that project."),
   h2("Common commands", "common-commands"),
   code(`pire-browser open                         # Launch/reuse Firefox without navigating
 pire-browser open https://example.com

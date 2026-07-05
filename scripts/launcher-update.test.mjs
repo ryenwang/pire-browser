@@ -492,7 +492,10 @@ describe("launcher update UX", () => {
         },
       },
     });
-    expect(body.data.skill.content).toContain("--session-name dogfood");
+    expect(body.data.skill.content).toContain(
+      'SESSION="$(pire-browser session id --scope worktree --prefix dogfood)"'
+    );
+    expect(body.data.skill.content).toContain('--session "$SESSION"');
     expect(body.data.skill.content).toContain("not native WebM video");
     expect(body.data.skill.content).not.toContain("\r");
   });

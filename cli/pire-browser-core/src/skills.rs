@@ -291,7 +291,10 @@ mod tests {
         let skill = skill_content("dogfood").unwrap();
         assert!(skill.content.starts_with("---\nname: dogfood\n"));
         assert!(skill.content.contains("pire-browser skills get core"));
-        assert!(skill.content.contains("--session-name dogfood"));
+        assert!(skill
+            .content
+            .contains("session id --scope worktree --prefix dogfood"));
+        assert!(skill.content.contains("--session \"$SESSION\""));
         assert!(skill
             .content
             .contains("record start dogfood-artifacts/recordings"));

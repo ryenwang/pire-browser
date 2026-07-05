@@ -81,6 +81,21 @@ pire-browser snapshot -i
 Use `install --with-deps`, `doctor`, or `doctor --json` only when Firefox is
 missing, setup fails, or the first browser command reports setup diagnostics.
 
+Persist a browser context for a project QA loop:
+
+```bash
+SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser --session "$SESSION" open https://app.example.com
+pire-browser --session "$SESSION" snapshot -i
+```
+
+Derive one stable worktree-scoped session name per app or task and reuse it on
+every command. Do this instead of hand-building profile names or state paths
+when the user wants to keep login, tabs, and managed Firefox profile state tied
+to the current repository. Use `--scope cwd` for directory-scoped scratch work
+and `--scope global` only when the same named session should be shared across
+repositories.
+
 Search a site:
 
 ```bash
@@ -738,7 +753,10 @@ pire-browser profiles import /path/to/firefox-profile --name Work --overwrite
 pire-browser --profile Work open https://example.com
 PIRE_BROWSER_PROFILE=Work pire-browser snapshot -i
 AGENT_BROWSER_PROFILE=Work pire-browser snapshot -i
+SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser --session "$SESSION" open https://example.com
 pire-browser session list --json
+pire-browser session id --scope worktree --prefix my-app
 pire-browser session attach <session-id>
 pire-browser --session <session-id> snapshot -i
 pire-browser --session agent1 open https://example.com
@@ -751,7 +769,7 @@ pire-browser close --all
 
 Use `profiles import <firefox-profile-dir> --name <managed-name>` when a user already has Firefox login state to reuse. It copies the source Firefox profile into managed pire-browser state, never mutates the original, and future source changes do not sync. Ask the user to close Firefox before import if lock files are present. Use `--overwrite` only after closing the managed profile being replaced.
 
-Use `--profile <name-or-path>` for reusable managed Firefox profiles. `PIRE_BROWSER_PROFILE=<name-or-path>` supplies the same default when no explicit profile/session flag is present. Path-like profile values are mapped to stable managed Firefox names, not raw browser profile directories. Use `--session <uuid>` only when targeting a strict live id from `session list`. `--session <name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION=<name>`, and `PIRE_BROWSER_SESSION_NAME=<name>` remain available as named-profile aliases.
+Use `--profile <name-or-path>` for reusable managed Firefox profiles. `PIRE_BROWSER_PROFILE=<name-or-path>` supplies the same default when no explicit profile/session flag is present. Path-like profile values are mapped to stable managed Firefox names, not raw browser profile directories. Prefer `session id --scope worktree --prefix <app>` to derive stable named sessions for repository QA. Use `--session <uuid>` only when targeting a strict live id from `session list`. `--session <name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION=<name>`, and `PIRE_BROWSER_SESSION_NAME=<name>` remain available as named-profile aliases.
 
 Use `pire-browser close` for normal end-of-loop teardown of the targeted managed Firefox session. Use `pire-browser close --all` when you need to close every live managed `pire-browser` Firefox session.
 

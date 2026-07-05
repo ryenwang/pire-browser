@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use serde_json::{json, Map, Value};
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::action_policy::ActionPolicyArgs;
@@ -47,6 +47,30 @@ pub enum SessionTarget {
     Default,
     Id(String),
     Name(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionIdScope {
+    Worktree,
+    Cwd,
+    Global,
+}
+
+impl SessionIdScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SessionIdScope::Worktree => "worktree",
+            SessionIdScope::Cwd => "cwd",
+            SessionIdScope::Global => "global",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionIdOptions {
+    pub scope: SessionIdScope,
+    pub prefix: String,
+    pub json: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -214,6 +238,9 @@ pub enum LocalCommand {
     },
     SessionList {
         json: bool,
+    },
+    SessionId {
+        options: SessionIdOptions,
     },
     SessionAttach {
         session: String,
@@ -1922,6 +1949,41 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 }
                 return Ok(LocalCommand::SessionList { json: json_output });
             }
+            "id" => {
+                args.remove(0);
+                remove_json_flags(&mut args, &mut json_output);
+                let mut scope = SessionIdScope::Worktree;
+                let mut prefix = "pire-browser".to_string();
+                let mut i = 0;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--json" => json_output = true,
+                        "--scope" => {
+                            i += 1;
+                            let Some(value) = args.get(i) else {
+                                bail!("session id --scope requires worktree, cwd, or global");
+                            };
+                            scope = parse_session_id_scope(value)?;
+                        }
+                        "--prefix" => {
+                            i += 1;
+                            let Some(value) = args.get(i) else {
+                                bail!("session id --prefix requires a value");
+                            };
+                            prefix = value.clone();
+                        }
+                        other => bail!("unsupported session id option: {other}"),
+                    }
+                    i += 1;
+                }
+                return Ok(LocalCommand::SessionId {
+                    options: SessionIdOptions {
+                        scope,
+                        prefix,
+                        json: json_output,
+                    },
+                });
+            }
             "attach" => {
                 args.remove(0);
                 remove_json_flags(&mut args, &mut json_output);
@@ -2534,6 +2596,91 @@ fn validate_managed_profile_name(profile_name: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn session_id_value(options: &SessionIdOptions) -> Result<Value> {
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    session_id_value_for_cwd(options, &cwd)
+}
+
+fn session_id_value_for_cwd(options: &SessionIdOptions, cwd: &Path) -> Result<Value> {
+    let prefix = sanitize_session_id_prefix(&options.prefix)?;
+    let root = match options.scope {
+        SessionIdScope::Worktree => Some(worktree_root_for_cwd(cwd)?),
+        SessionIdScope::Cwd => Some(normalize_existing_path(cwd)),
+        SessionIdScope::Global => None,
+    };
+    let root_text = root.as_ref().map(|path| session_path_string(path));
+    let session = if let Some(root_key) = &root_text {
+        format!("{prefix}-{}", short_stable_hash(&root_key))
+    } else {
+        prefix.clone()
+    };
+    validate_managed_profile_name(&session)?;
+    let usage = format!("pire-browser --session {session} open <url>");
+    Ok(json!({
+        "text": session.clone(),
+        "session": session.clone(),
+        "scope": options.scope.as_str(),
+        "prefix": prefix,
+        "root": root_text,
+        "usage": usage
+    }))
+}
+
+fn session_path_string(path: &Path) -> String {
+    let value = path.to_string_lossy().to_string();
+    #[cfg(windows)]
+    {
+        if let Some(rest) = value.strip_prefix("\\\\?\\UNC\\") {
+            return format!("\\\\{rest}");
+        }
+        if let Some(rest) = value.strip_prefix("\\\\?\\") {
+            return rest.to_string();
+        }
+    }
+    value
+}
+
+fn sanitize_session_id_prefix(value: &str) -> Result<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        bail!("invalid_args: session id --prefix requires a non-empty value");
+    }
+    let mut sanitized = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else if matches!(ch, '_' | '-' | '.' | ' ') {
+                '-'
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    while sanitized.contains("--") {
+        sanitized = sanitized.replace("--", "-");
+    }
+    sanitized = sanitized.trim_matches(['-', '.']).to_string();
+    if sanitized.is_empty() {
+        bail!("invalid_args: session id --prefix must contain at least one letter or number");
+    }
+    Ok(sanitized)
+}
+
+fn worktree_root_for_cwd(cwd: &Path) -> Result<PathBuf> {
+    let cwd = normalize_existing_path(cwd);
+    for candidate in cwd.ancestors() {
+        if candidate.join(".git").exists() {
+            return Ok(candidate.to_path_buf());
+        }
+    }
+    Ok(cwd)
+}
+
+fn normalize_existing_path(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
 fn session_target_from_flags(
     session_id: Option<String>,
     session_name: Option<String>,
@@ -2544,6 +2691,15 @@ fn session_target_from_flags(
         SessionTarget::Name(session_name)
     } else {
         SessionTarget::Default
+    }
+}
+
+fn parse_session_id_scope(value: &str) -> Result<SessionIdScope> {
+    match value {
+        "worktree" => Ok(SessionIdScope::Worktree),
+        "cwd" => Ok(SessionIdScope::Cwd),
+        "global" => Ok(SessionIdScope::Global),
+        _ => bail!("session id --scope must be worktree, cwd, or global"),
     }
 }
 
@@ -3033,6 +3189,8 @@ Common commands:
   profiles import <dir> --name Work
                                   Copy a Firefox profile into a managed profile
   session list                    List live Firefox sessions
+  session id --scope worktree --prefix my-app
+                                  Print a stable project-scoped session name
   screenshot out.png              Capture screenshot evidence
   pdf page.pdf                    Capture an image-backed PDF of the page
   tab new <url>                   Open a new tab and switch to it
@@ -4022,6 +4180,7 @@ user's pire-browser data directory. They expire after about 60 seconds. Use
 const SESSION_HELP: &str = r##"
 Usage:
   pire-browser session list [--json]
+  pire-browser session id [--scope worktree|cwd|global] [--prefix <name>] [--json]
   pire-browser session attach <id> [--json]
   pire-browser session cleanup [--json]
   pire-browser --session <uuid> snapshot -i
@@ -4031,9 +4190,16 @@ Usage:
   pire-browser --session-name <name> close
 
 Lists live Firefox extension sessions, prints the `--session <id>` prefix for a
-chosen session, or removes stale session files. `--session <uuid>` is strict
-live-id targeting. `--session <name>` reuses a managed named Firefox profile;
-`--session-name <name>` is the explicit named-profile spelling.
+chosen session, derives a stable agent-browser-style named session id for the
+current project, or removes stale session files. `session id --scope worktree
+--prefix my-app` prints a deterministic name that can be passed directly to
+`--session <name>` for project QA loops. `worktree` uses the nearest `.git`
+root and falls back to the current directory; `cwd` uses the current directory;
+`global` returns the sanitized prefix without a path hash.
+
+`--session <uuid>` is strict live-id targeting. `--session <name>` reuses a
+managed named Firefox profile; `--session-name <name>` is the explicit
+named-profile spelling.
 `--profile <name-or-path>` is an alias for a reusable managed
 Firefox profile. Path-like profile values are converted to stable managed names.
 Close targets an existing named session only. Profile names may contain letters,
@@ -6065,10 +6231,90 @@ mod tests {
             }
         );
         assert_eq!(
+            parse_cli_args(&s(&["session", "id"])).unwrap(),
+            LocalCommand::SessionId {
+                options: SessionIdOptions {
+                    scope: SessionIdScope::Worktree,
+                    prefix: "pire-browser".to_string(),
+                    json: false
+                }
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&[
+                "session", "id", "--scope", "worktree", "--prefix", "my-app", "--json"
+            ]))
+            .unwrap(),
+            LocalCommand::SessionId {
+                options: SessionIdOptions {
+                    scope: SessionIdScope::Worktree,
+                    prefix: "my-app".to_string(),
+                    json: true
+                }
+            }
+        );
+        assert_eq!(
             parse_cli_args(&s(&["session", "cleanup"])).unwrap(),
             LocalCommand::SessionCleanup { json: false }
         );
+        assert!(parse_cli_args(&s(&["session", "id", "--scope", "branch"])).is_err());
         assert!(parse_cli_args(&s(&["session", "rename", "abc"])).is_err());
+    }
+
+    #[test]
+    fn derives_stable_worktree_session_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("repo");
+        let child = root.join("app").join("web");
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::create_dir_all(&child).unwrap();
+
+        let options = SessionIdOptions {
+            scope: SessionIdScope::Worktree,
+            prefix: "My App".to_string(),
+            json: true,
+        };
+        let value = session_id_value_for_cwd(&options, &child).unwrap();
+        let session = value["session"].as_str().unwrap();
+        assert!(session.starts_with("my-app-"));
+        assert_eq!(value["text"].as_str(), Some(session));
+        assert_eq!(value["scope"].as_str(), Some("worktree"));
+        assert_eq!(
+            value["root"].as_str(),
+            Some(session_path_string(&fs::canonicalize(&root).unwrap()).as_str())
+        );
+        assert_eq!(
+            session_id_value_for_cwd(&options, &child).unwrap()["session"],
+            value["session"]
+        );
+
+        let cwd_options = SessionIdOptions {
+            scope: SessionIdScope::Cwd,
+            prefix: "My App".to_string(),
+            json: true,
+        };
+        let cwd_value = session_id_value_for_cwd(&cwd_options, &child).unwrap();
+        assert_ne!(cwd_value["session"], value["session"]);
+        assert_eq!(
+            cwd_value["root"].as_str(),
+            Some(session_path_string(&fs::canonicalize(&child).unwrap()).as_str())
+        );
+    }
+
+    #[test]
+    fn derives_global_session_id_from_sanitized_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let options = SessionIdOptions {
+            scope: SessionIdScope::Global,
+            prefix: " My App! ".to_string(),
+            json: false,
+        };
+        let value = session_id_value_for_cwd(&options, dir.path()).unwrap();
+        assert_eq!(value["session"].as_str(), Some("my-app"));
+        assert_eq!(value["text"].as_str(), Some("my-app"));
+        assert_eq!(value["prefix"].as_str(), Some("my-app"));
+        assert_eq!(value["scope"].as_str(), Some("global"));
+        assert!(value["root"].is_null());
     }
 
     #[test]
@@ -7325,6 +7571,10 @@ mod tests {
         assert!(help_text(Some("session"))
             .unwrap()
             .contains("session attach"));
+        assert!(help_text(Some("session")).unwrap().contains("session id"));
+        assert!(help_text(None)
+            .unwrap()
+            .contains("session id --scope worktree"));
         assert!(help_text(Some("profiles"))
             .unwrap()
             .contains("managed Firefox profiles"));

@@ -349,7 +349,11 @@ pire-browser --session-name review state load --require-inspected ./.pire-state/
 
   h2("Sessions", "sessions"),
   statusNote("namedSessions"),
-  code(`pire-browser session list
+  code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser --session "$SESSION" open https://example.com
+pire-browser session list
+pire-browser session id --scope worktree --prefix my-app
+pire-browser session id --scope worktree --prefix my-app --json
 pire-browser session list --json
 pire-browser session attach <session-id>
 pire-browser session cleanup
