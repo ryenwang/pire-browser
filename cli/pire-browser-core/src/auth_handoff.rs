@@ -57,7 +57,7 @@ pub fn auth_handoff_text(info: &AuthHandoffInfo) -> String {
 fn guidance_text(profile_name: &str, profile_exists: bool) -> String {
     let launch = if profile_exists { "Use" } else { "Run" };
     format!(
-        "{launch} `pire-browser launch --url <login-url>`, sign in manually in Firefox, then reuse the {profile_name} profile. pire-browser does not inspect cookies, saved passwords, or token values."
+        "{launch} `pire-browser open <login-url>`, sign in manually in Firefox, then reuse the {profile_name} profile. pire-browser does not inspect cookies, saved passwords, or token values."
     )
 }
 
@@ -77,7 +77,8 @@ mod tests {
         assert!(!info.profile_exists);
         assert_eq!(info.login_state, "not_inspected");
         assert!(!info.secrets_inspected);
-        assert!(info.guidance.contains("launch --url <login-url>"));
+        assert!(info.guidance.contains("open <login-url>"));
+        assert!(!info.guidance.contains("launch --url"));
     }
 
     #[test]

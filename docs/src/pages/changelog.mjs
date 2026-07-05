@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.18", "0-2-18"),
+  list([
+    "Replaces remaining first-run status/auth/session guidance that pointed agents at lower-level <code>launch</code> with the public <code>open</code> workflow.",
+    "Clarifies <code>launch --help</code> as a lower-level diagnostic path and keeps <code>open</code> as the normal launch/navigation command.",
+  ]),
   h2("0.2.17", "0-2-17"),
   list([
     "Makes <code>doctor --json</code> and <code>install-status --json</code> recommend <code>pire-browser install</code> when Firefox Native Messaging registration is missing or mismatched, aligning machine-readable repair guidance with the documented first-run setup path.",
@@ -79,7 +84,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The repository package version is currently <code>pire-browser@0.2.17</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
+  p("The repository package version is currently <code>pire-browser@0.2.18</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
 ];
 
 export default page({

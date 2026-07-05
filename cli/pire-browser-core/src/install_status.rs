@@ -527,7 +527,7 @@ fn check_default_profile() -> (CheckStatus, CheckStatus) {
                 CheckStatus::fail(
                     format!("Managed Firefox profile {DEFAULT_PROFILE_NAME}"),
                     Some(path),
-                    "not created yet; run pire-browser launch",
+                    "not created yet; run pire-browser open",
                 )
             };
 
@@ -575,7 +575,7 @@ fn check_firefox_startup_policy() -> CheckStatus {
         Ok(false) => CheckStatus::fail(
             "Firefox startup popup suppression",
             None,
-            "not set yet; run pire-browser launch",
+            "not set yet; run pire-browser open",
         ),
         Err(err) => CheckStatus::fail("Firefox startup popup suppression", None, err.to_string()),
     }

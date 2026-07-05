@@ -223,7 +223,7 @@ pub fn session_attach_value(session: &SessionInfo) -> Value {
 
 pub fn session_status_text(sessions: &[SessionInfo]) -> String {
     if sessions.is_empty() {
-        return "No live pire-browser Firefox sessions. Run `pire-browser open <url>` to auto-launch the default profile or `pire-browser launch` to start Firefox."
+        return "No live pire-browser Firefox sessions. Run `pire-browser open <url>` to auto-launch and navigate, or `pire-browser open` to start Firefox without navigating."
             .into();
     }
 
@@ -409,6 +409,14 @@ mod tests {
         let session = test_session("s1", "p1", 10, 10);
         assert!(!session.is_stale(10 + SESSION_TTL_MS));
         assert!(session.is_stale(11 + SESSION_TTL_MS));
+    }
+
+    #[test]
+    fn empty_status_prefers_open_for_first_launch_guidance() {
+        let text = session_status_text(&[]);
+        assert!(text.contains("pire-browser open <url>"));
+        assert!(text.contains("pire-browser open` to start Firefox"));
+        assert!(!text.contains("pire-browser launch"));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 {
   "name": "@ryenw/pire-browser-win32-x64",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "description": "Windows x64 native binaries for pire-browser",
   "repository": {
     "type": "git",

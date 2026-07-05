@@ -4187,6 +4187,8 @@ Usage:
   pire-browser --args "-private-window" launch --url <url>
   pire-browser --user-agent "qa-bot/1.0" launch --url <url>
 
+Lower-level launcher diagnostic. Prefer `pire-browser open` or
+`pire-browser open <url>` for normal launch/navigation workflows.
 Starts the managed Firefox profile and waits for the extension to connect.
 `--headless` starts Firefox headlessly when creating a new managed session;
 the default is visible/headed Firefox through web-ext.
@@ -6991,6 +6993,10 @@ mod tests {
             .unwrap()
             .contains("--headers <json>"));
         assert!(help_text(Some("open")).unwrap().contains("--proxy <url>"));
+        let launch_help = help_text(Some("launch")).unwrap();
+        assert!(launch_help.contains("Lower-level launcher diagnostic"));
+        assert!(launch_help.contains("Prefer `pire-browser open`"));
+        assert!(launch_help.contains("normal launch/navigation workflows"));
         assert!(help_text(Some("read")).unwrap().contains("active tab URL"));
         assert!(help_text(Some("snapshot"))
             .unwrap()

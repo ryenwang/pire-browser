@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.18
+
+- Replaces remaining first-run status/auth/session guidance that pointed agents at lower-level `launch` with the public `open` workflow.
+- Clarifies `launch --help` as a lower-level diagnostic path and keeps `open` as the normal launch/navigation command.
+
 ## 0.2.17
 
 - Makes `doctor --json` and `install-status --json` recommend `pire-browser install` when Firefox Native Messaging registration is missing or mismatched, aligning machine-readable repair guidance with the documented first-run setup path.
