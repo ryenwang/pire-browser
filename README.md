@@ -77,6 +77,7 @@ pire-browser snapshot -i
 
 `npm install` runs best-effort setup; `pire-browser install` is safe to run again and makes the setup step explicit.
 If npm policy blocks lifecycle scripts with `--ignore-scripts` or an `allow-scripts` warning, the install is still usable; run `pire-browser install` after npm finishes.
+The package installs the default `web-ext` launch helper as a normal dependency, so the first browser command should not need a surprise `npx` registry fetch.
 
 ### Try Without Global Install
 
@@ -1382,7 +1383,7 @@ Use `&&` when you do not need to parse intermediate output. Run commands separat
 
 ## Headed And Headless Mode
 
-`pire-browser` controls a managed Firefox session. The public default is a visible session launched through `web-ext`. Use `--headless`, `PIRE_BROWSER_HEADLESS=1`, `AGENT_BROWSER_HEADLESS=1`, or `"headless": true` in config for CI-style runs where a command starts a new managed Firefox session. Existing live sessions keep their current mode.
+`pire-browser` controls a managed Firefox session. The public default is a visible session launched through the package-local `web-ext` helper installed with `pire-browser`. Use `--headless`, `PIRE_BROWSER_HEADLESS=1`, `AGENT_BROWSER_HEADLESS=1`, or `"headless": true` in config for CI-style runs where a command starts a new managed Firefox session. Existing live sessions keep their current mode.
 
 ```bash
 pire-browser --headed open https://example.com

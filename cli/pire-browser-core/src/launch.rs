@@ -110,6 +110,13 @@ enum ExtensionLaunch {
     Xpi(PathBuf),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WebExtInvocation {
+    executable: PathBuf,
+    prefix_args: Vec<&'static str>,
+    description: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LauncherMetadata {
@@ -212,6 +219,7 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
     let log = open_append(&log_path)?;
     let log_err = log.try_clone()?;
 
+    let mut web_ext_launcher_description = None;
     let mut command = match &extension_launch {
         ExtensionLaunch::Xpi(xpi) => {
             install_profile_xpi(&profile_path, xpi)?;
@@ -236,10 +244,13 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
             command
         }
         ExtensionLaunch::WebExt(extension_source) => {
-            let mut command = Command::new(npx_command());
+            let invocation = web_ext_invocation(extension_source);
+            web_ext_launcher_description = Some(invocation.description.clone());
+            let mut command = Command::new(&invocation.executable);
+            for arg in &invocation.prefix_args {
+                command.arg(arg);
+            }
             command
-                .arg("--yes")
-                .arg("web-ext")
                 .arg("run")
                 .arg("--source-dir")
                 .arg(extension_source)
@@ -272,8 +283,10 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
     let mut child = command.spawn().with_context(|| {
         if matches!(&extension_launch, ExtensionLaunch::WebExt(_)) {
             format!(
-                "failed to start web-ext with {}; make sure Node.js/npm are installed",
-                npx_command().display()
+                "failed to start web-ext with {}; make sure the packaged web-ext dependency is installed or Node.js/npm are available",
+                web_ext_launcher_description
+                    .as_deref()
+                    .unwrap_or("web-ext")
             )
         } else {
             format!(
@@ -856,6 +869,37 @@ fn discover_extension_source() -> Result<PathBuf> {
         .context("could not locate extension source directory; run from the repo or install extension files next to the binary")
 }
 
+fn web_ext_invocation(extension_source: &Path) -> WebExtInvocation {
+    let package_root = extension_source.parent().unwrap_or_else(|| Path::new("."));
+    web_ext_invocation_for_platform(package_root, cfg!(windows), npx_command())
+}
+
+fn web_ext_invocation_for_platform(
+    package_root: &Path,
+    windows: bool,
+    npx: PathBuf,
+) -> WebExtInvocation {
+    if let Some(local) = local_web_ext_binary_for_platform(package_root, windows) {
+        return WebExtInvocation {
+            executable: local.clone(),
+            prefix_args: Vec::new(),
+            description: format!("local web-ext at {}", local.display()),
+        };
+    }
+
+    WebExtInvocation {
+        executable: npx.clone(),
+        prefix_args: vec!["--yes", "web-ext"],
+        description: format!("{} --yes web-ext", npx.display()),
+    }
+}
+
+fn local_web_ext_binary_for_platform(package_root: &Path, windows: bool) -> Option<PathBuf> {
+    let binary = if windows { "web-ext.cmd" } else { "web-ext" };
+    let candidate = package_root.join("node_modules").join(".bin").join(binary);
+    candidate.exists().then_some(candidate)
+}
+
 fn extension_source_from_env(value: Option<std::ffi::OsString>) -> Option<PathBuf> {
     let path = PathBuf::from(value?);
     path.join("manifest.json").exists().then_some(path)
@@ -1002,7 +1046,7 @@ fn launch_connect_failure_message(
     text.push_str("\n- Run `pire-browser install` to refresh Native Messaging setup.");
     text.push_str("\n- Close managed Firefox/web-ext processes for this profile, then retry.");
     if launcher_name == "web-ext" {
-        text.push_str("\n- If `web-ext` or `npx` failed, confirm Node.js/npm can run `npx --yes web-ext --version`.");
+        text.push_str("\n- If `web-ext` failed, reinstall `pire-browser` with normal dependencies; source checkouts can run `npm install`.");
     }
     if let Some(tail) = redacted_log_tail(log_path, 6) {
         text.push_str(&format!("\nRecent {launcher_name} log:\n{tail}"));
@@ -1503,6 +1547,52 @@ mod tests {
     }
 
     #[test]
+    fn web_ext_invocation_prefers_package_local_binary() {
+        let root = tempfile::tempdir().unwrap();
+        let package_root = root.path();
+        let local_bin = package_root
+            .join("node_modules")
+            .join(".bin")
+            .join("web-ext");
+        fs::create_dir_all(local_bin.parent().unwrap()).unwrap();
+        fs::write(&local_bin, "web-ext").unwrap();
+
+        let invocation = web_ext_invocation_for_platform(package_root, false, PathBuf::from("npx"));
+
+        assert_eq!(invocation.executable, local_bin);
+        assert!(invocation.prefix_args.is_empty());
+        assert!(invocation.description.contains("local web-ext"));
+    }
+
+    #[test]
+    fn web_ext_invocation_uses_windows_cmd_binary() {
+        let root = tempfile::tempdir().unwrap();
+        let package_root = root.path();
+        let local_bin = package_root
+            .join("node_modules")
+            .join(".bin")
+            .join("web-ext.cmd");
+        fs::create_dir_all(local_bin.parent().unwrap()).unwrap();
+        fs::write(&local_bin, "web-ext").unwrap();
+
+        let invocation =
+            web_ext_invocation_for_platform(package_root, true, PathBuf::from("npx.cmd"));
+
+        assert_eq!(invocation.executable, local_bin);
+        assert!(invocation.prefix_args.is_empty());
+    }
+
+    #[test]
+    fn web_ext_invocation_falls_back_to_npx_when_local_binary_is_missing() {
+        let root = tempfile::tempdir().unwrap();
+        let invocation = web_ext_invocation_for_platform(root.path(), false, PathBuf::from("npx"));
+
+        assert_eq!(invocation.executable, PathBuf::from("npx"));
+        assert_eq!(invocation.prefix_args, vec!["--yes", "web-ext"]);
+        assert!(invocation.description.contains("--yes web-ext"));
+    }
+
+    #[test]
     fn xpi_mode_requires_packaged_xpi() {
         assert!(choose_extension_launch(ExtensionLaunchMode::Xpi, None, None).is_err());
         let xpi = PathBuf::from("extension/pire-browser.xpi");
@@ -1547,7 +1637,7 @@ mod tests {
         assert!(message.contains("Log: "));
         assert!(message.contains("pire-browser doctor --json"));
         assert!(message.contains("pire-browser install"));
-        assert!(message.contains("npx --yes web-ext --version"));
+        assert!(message.contains("reinstall `pire-browser` with normal dependencies"));
         assert!(message.contains("Recent web-ext log:"));
         assert!(message.contains("failed to launch"));
         assert!(!message.contains("sk-test-secret"));

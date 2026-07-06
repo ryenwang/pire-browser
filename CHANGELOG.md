@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.27
+
+- Makes default `web-ext` launches prefer the package-local runtime dependency installed with `pire-browser`, falling back to `npx --yes web-ext` only for source/dev environments without npm dependencies.
+- Adds packed-smoke and artifact-verifier coverage so release candidates fail before publishing if the root package is missing the default `web-ext` dependency.
+
 ## 0.2.26
 
 - Bounds managed-profile process discovery during Firefox launch recovery so a stalled Windows WMI/PowerShell or Unix `ps` scan cannot freeze later named-session commands before they reach the browser bridge.

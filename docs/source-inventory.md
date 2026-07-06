@@ -27,7 +27,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 | `tests` fixture tree | Test fixtures | Local HTML/session fixtures and shared policy contract fixtures. |
 | `scripts/` | Maintainer automation | Install, package, npx no-global-install package smoke, Pi fresh-install/runtime-discovery smoke, packed-package CLI/browser/MCP browser/file-transfer/network/state-auth smoke, state/session/policy/download/upload lifecycle, trusted npm publishing helpers, release validation, and repository-only tests for packaged install helpers. |
 | `.github/workflows/` | Public CI/release automation | Pages deployment, platform package builds, trusted npm publish gated by reusable packed browser plus MCP stdio/browser/file-transfer/network/state-auth smoke, post-publish Pi install/runtime-discovery smoke, and manual packed-release smoke checks. |
-| `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `.gitattributes` | Public entry points | Product scope, usage, release notes, package scripts, license terms, npm package shape including optional Pi core peers, and repository line-ending/binary policy. |
+| `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `.gitattributes` | Public entry points | Product scope, usage, release notes, package scripts, license terms, npm package shape including the default `web-ext` runtime dependency and optional Pi core peers, and repository line-ending/binary policy. |
 
 ## Generated Or Runtime Artifacts
 
@@ -48,7 +48,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 ## Conflicts Or Ambiguities
 
 - `extension/dist/` can diverge from `extension/src/`; prefer `extension/src/` for implementation review and rebuild dist intentionally.
-- Launch defaults to `web-ext` even when `extension/pire-browser.xpi` exists; direct Firefox/XPI launch is opt-in through `PIRE_BROWSER_EXTENSION_MODE=xpi`.
+- Launch defaults to the package-local `web-ext` helper even when `extension/pire-browser.xpi` exists; source checkouts without installed npm dependencies fall back to `npx --yes web-ext`. Direct Firefox/XPI launch is opt-in through `PIRE_BROWSER_EXTENSION_MODE=xpi`.
 - Runtime session artifacts under `target/`, `.pire-state/`, and OS app-data directories may be useful evidence for a session but are not product source.
 - Installed package guidance under `agent/` is authoritative for public installs; repository docs under `docs/` are product-facing development context.
 - The public Pages site under `site/` is generated from `docs/src/` and `docs/public/`; regenerate instead of editing generated pages by hand.

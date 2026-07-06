@@ -46,6 +46,7 @@ function verifyRootTarball(tarball, rootPackage) {
   if (packageJson.version !== rootPackage.version) throw new Error(`${basename(tarball)} has wrong version`);
   verifyRepositoryUrl(tarball, packageJson, rootPackage);
   verifyOptionalPiPeers(tarball, packageJson);
+  verifyRuntimeDependencies(tarball, packageJson);
   rejectCommonLeakage(tarball, entries);
   const required = new Set([
     "package/bin/pire-browser.js",
@@ -75,6 +76,12 @@ function verifyRootTarball(tarball, rootPackage) {
     if (entry.name.endsWith("pire-browser.xpi") && entry.name !== "package/extension/pire-browser.xpi") {
       throw new Error(`${basename(tarball)} placed XPI outside package/extension: ${entry.name}`);
     }
+  }
+}
+
+function verifyRuntimeDependencies(tarball, packageJson) {
+  if (typeof packageJson.dependencies?.["web-ext"] !== "string") {
+    throw new Error(`${basename(tarball)} must declare web-ext as a runtime dependency`);
   }
 }
 

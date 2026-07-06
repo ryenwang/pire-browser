@@ -12152,7 +12152,7 @@ fn rpc_error_data_for_message(code: &str, phase: &str, message: &str) -> Value {
             "Run `pire-browser doctor --json` and follow `data.nextActions`.",
             "Run `pire-browser install` to refresh Native Messaging setup.",
             "Close managed Firefox/web-ext processes for this profile, then retry.",
-            "If web-ext or npx failed, confirm Node.js/npm can run `npx --yes web-ext --version`."
+            "If web-ext failed, reinstall `pire-browser` with normal dependencies; source checkouts can run `npm install`."
         ]);
         if let Some(log_path) = extract_launch_log_path(message) {
             data["logPath"] = json!(redact_text(&log_path));

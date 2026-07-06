@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.27", "0-2-27"),
+  list([
+    "Makes default <code>web-ext</code> launches prefer the package-local runtime dependency installed with <code>pire-browser</code>, falling back to <code>npx --yes web-ext</code> only for source/dev environments without npm dependencies.",
+    "Adds packed-smoke and artifact-verifier coverage so release candidates fail before publishing if the root package is missing the default <code>web-ext</code> dependency.",
+  ]),
   h2("0.2.26", "0-2-26"),
   list([
     "Bounds managed-profile process discovery during Firefox launch recovery so a stalled Windows WMI/PowerShell or Unix <code>ps</code> scan cannot freeze later named-session commands before they reach the browser bridge.",

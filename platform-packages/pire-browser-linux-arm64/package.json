@@ -1,6 +1,6 @@
 {
   "name": "@ryenw/pire-browser-linux-arm64",
-  "version": "0.2.26",
+  "version": "0.2.27",
   "description": "Linux ARM64 native binaries for pire-browser",
   "repository": {
     "type": "git",

@@ -15,6 +15,7 @@ import {
 } from "./smoke-pi-install.mjs";
 import {
   installCommandArgs,
+  installedWebExtBin,
   packedMcpBrowserSmokeInput,
   packedMcpFilesSmokeInput,
   packedMcpNetworkSmokeInput,
@@ -71,6 +72,11 @@ describe("npm artifact metadata", () => {
       expect(rootPackage.peerDependencies?.[peer]).toBe("*");
       expect(rootPackage.peerDependenciesMeta?.[peer]).toEqual({ optional: true });
     }
+  });
+
+  it("declares web-ext as a runtime dependency for default browser launches", () => {
+    const rootPackage = readJson(join(root, "package.json"));
+    expect(rootPackage.dependencies?.["web-ext"]).toBe("^10.4.0");
   });
 
   it("prefers freshly built source binaries before optional sidecars and transitional checked-in binaries", () => {
@@ -174,6 +180,12 @@ describe("npm artifact metadata", () => {
       "help",
       "window",
     ]);
+  });
+
+  it("resolves installed web-ext from the packed package dependency tree", () => {
+    expect(installedWebExtBin("pkg-root", "win32")).toBe(join("pkg-root", "node_modules", ".bin", "web-ext.cmd"));
+    expect(installedWebExtBin("pkg-root", "darwin")).toBe(join("pkg-root", "node_modules", ".bin", "web-ext"));
+    expect(installedWebExtBin("pkg-root", "linux")).toBe(join("pkg-root", "node_modules", ".bin", "web-ext"));
   });
 
   it("validates no-global-install npx smoke outputs", () => {

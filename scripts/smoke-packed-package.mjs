@@ -116,6 +116,10 @@ export function installedPackageRoot(prefix, packageName = "pire-browser", platf
   return found;
 }
 
+export function installedWebExtBin(packageRoot, platform = process.platform) {
+  return join(packageRoot, "node_modules", ".bin", platform === "win32" ? "web-ext.cmd" : "web-ext");
+}
+
 export function sanitizedSmokeEnv(baseEnv = process.env, dirs = {}, platform = process.platform) {
   const env = { ...baseEnv };
   delete env.PIRE_BROWSER_BINARY;
@@ -798,6 +802,7 @@ async function main(argv) {
       rootTarball: null,
       platformTarball: null,
       installedPackageRoot: null,
+      webExt: null,
       nativeResolution: null,
       mcp: null,
       mcpBrowser: null,
@@ -827,6 +832,13 @@ async function main(argv) {
 
     const packageRoot = installedPackageRoot(prefix);
     summary.installedPackageRoot = packageRoot;
+    summary.webExt = assertInstalledWebExtDependency({
+      packageRoot,
+      platform: smokePlatform,
+      cwd: packageRoot,
+      env,
+      recorder,
+    });
     const resolved = await assertInstalledNativeResolution({ packageRoot, commandCwd, env });
     summary.nativeResolution = resolved;
     writeSummary(summary, artifactDir, env);
@@ -1116,7 +1128,6 @@ async function runMcpBrowserSmoke({
   try {
     runPire(command, installCommandArgs({ firefoxPath }), { cwd: commandCwd, env, recorder });
     runPire(command, ["doctor", "--json"], { cwd: commandCwd, env, recorder });
-    warmWebExtCache({ cwd: commandCwd, env, recorder });
 
     const result = runPire(command, ["mcp", "--tools", "core"], {
       cwd: commandCwd,
@@ -1193,7 +1204,6 @@ async function runMcpFilesSmoke({
   try {
     runPire(command, installCommandArgs({ firefoxPath }), { cwd: commandCwd, env, recorder });
     runPire(command, ["doctor", "--json"], { cwd: commandCwd, env, recorder });
-    warmWebExtCache({ cwd: commandCwd, env, recorder });
 
     const result = runPire(command, ["mcp", "--tools", "core"], {
       cwd: commandCwd,
@@ -1264,7 +1274,6 @@ async function runMcpNetworkSmoke({
   try {
     runPire(command, installCommandArgs({ firefoxPath }), { cwd: commandCwd, env, recorder });
     runPire(command, ["doctor", "--json"], { cwd: commandCwd, env, recorder });
-    warmWebExtCache({ cwd: commandCwd, env, recorder });
 
     const result = runPire(command, ["mcp", "--tools", "core,network"], {
       cwd: commandCwd,
@@ -1335,7 +1344,6 @@ async function runMcpStateSmoke({
   try {
     runPire(command, installCommandArgs({ firefoxPath }), { cwd: commandCwd, env, recorder });
     runPire(command, ["doctor", "--json"], { cwd: commandCwd, env, recorder });
-    warmWebExtCache({ cwd: commandCwd, env, recorder });
 
     const result = runPire(command, ["mcp", "--tools", "core,state"], {
       cwd: commandCwd,
@@ -1404,9 +1412,6 @@ async function runBrowserSmoke({
   try {
     runPire(command, installCommandArgs({ firefoxPath }), { cwd: commandCwd, env, recorder });
     runPire(command, ["doctor", "--json"], { cwd: commandCwd, env, recorder });
-    if (mode === "web-ext") {
-      warmWebExtCache({ cwd: commandCwd, env, recorder });
-    }
 
     const launchArgs = ["launch", "--profile", profile, "--url", fixture.url];
     if (firefoxPath) launchArgs.push("--firefox-path", firefoxPath);
@@ -1455,14 +1460,25 @@ function runPire(command, args, options = {}) {
   });
 }
 
-function warmWebExtCache({ cwd, env, recorder }) {
-  runChecked("Warm web-ext npx cache", npxCommand(), ["--yes", "web-ext", "--version"], {
+function assertInstalledWebExtDependency({ packageRoot, platform = process.platform, cwd = packageRoot, env, recorder }) {
+  const webExt = installedWebExtBin(packageRoot, platform);
+  if (!existsSync(webExt)) {
+    throw new Error(
+      `Installed pire-browser package is missing local web-ext binary: ${webExt}. ` +
+      "Reinstall with normal dependencies enabled before running browser smoke."
+    );
+  }
+  const result = runChecked("Verify installed web-ext dependency", webExt, ["--version"], {
     cwd,
     env,
-    shell: process.platform === "win32",
-    timeoutMs: 180_000,
+    shell: platform === "win32",
+    timeoutMs: 30_000,
     recorder,
   });
+  return {
+    path: webExt,
+    version: String(result.stdout || result.stderr || "").trim(),
+  };
 }
 
 function runChecked(label, command, args, options = {}) {
@@ -1657,10 +1673,6 @@ function isUnixSmokeProcess(commandLine) {
 
 function npmCommand() {
   return process.platform === "win32" ? "npm.cmd" : "npm";
-}
-
-function npxCommand() {
-  return process.platform === "win32" ? "npx.cmd" : "npx";
 }
 
 function requiredValue(argv, index, flag) {
