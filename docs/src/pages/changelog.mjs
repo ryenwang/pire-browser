@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.28", "0-2-28"),
+  list([
+    "Adds agent-browser-style help/discovery for supported browser history commands: <code>pire-browser back</code>, <code>pire-browser forward</code>, and <code>pire-browser reload</code>.",
+    "Updates the bundled core skill with a short navigation-history recipe so agents re-snapshot after history navigation or reloads.",
+  ]),
   h2("0.2.27", "0-2-27"),
   list([
     "Makes default <code>web-ext</code> launches prefer the package-local runtime dependency installed with <code>pire-browser</code>, falling back to <code>npx --yes web-ext</code> only for source/dev environments without npm dependencies.",

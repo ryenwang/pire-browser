@@ -3275,6 +3275,7 @@ pub fn help_text(topic: Option<&str>) -> Option<String> {
         "scroll" => SCROLL_HELP,
         "scrollintoview" | "scrollinto" => SCROLL_INTO_VIEW_HELP,
         "wait" => WAIT_HELP,
+        "back" | "forward" | "reload" => HISTORY_NAVIGATION_HELP,
         "pushstate" => PUSHSTATE_HELP,
         "console" => CONSOLE_HELP,
         "errors" => ERRORS_HELP,
@@ -3388,6 +3389,9 @@ Common commands:
   get text '@e1'                  Read text/title/url/attrs/box/styles
   is visible '@e1'                Check visible/enabled/checked state
   wait --selector "#done"         Wait for page state
+  back                            Navigate active tab back in history
+  forward                         Navigate active tab forward in history
+  reload                          Reload the active tab
   pushstate /dashboard            SPA client-side navigation in active page
   console                         Show recent page console messages
   errors                          Show recent page errors
@@ -3929,6 +3933,19 @@ then for Firefox WebRequest activity in the active tab to stay quiet briefly.
 truthy, so prefer short predicate expressions and avoid side effects.
 Positional refs and selectors use the same locator handling as click/fill. Quote
 refs in PowerShell, for example: pire-browser wait '@e1'.
+"##;
+
+const HISTORY_NAVIGATION_HELP: &str = r##"
+Usage:
+  pire-browser back
+  pire-browser forward
+  pire-browser reload
+
+Navigates the active Firefox tab through browser history or reloads the current
+page, matching agent-browser's history command shape. These commands may change
+the page URL, document, focused frame, and element refs. Run `pire-browser wait`
+when the destination needs time to settle, then take a fresh
+`pire-browser snapshot -i` before acting on refs from the new page.
 "##;
 
 const PUSHSTATE_HELP: &str = r##"
@@ -7699,6 +7716,9 @@ mod tests {
         assert!(text.contains("upgrade"));
         assert!(text.contains("--config ./ci-config.json open <url>"));
         assert!(text.contains("open <url> --headers"));
+        assert!(text.contains("back"));
+        assert!(text.contains("forward"));
+        assert!(text.contains("reload"));
         assert!(text.contains("--proxy http://proxy.example:8080 open <url>"));
         assert!(text.contains("tab new <url>"));
         assert!(text.contains("frame '@e3'"));
@@ -7782,6 +7802,13 @@ mod tests {
             .contains("launch.initScripts"));
         assert!(help_text(Some("config")).unwrap().contains("autoConnect"));
         assert!(help_text(Some("config")).unwrap().contains("proxyBypass"));
+        assert!(help_text(Some("back"))
+            .unwrap()
+            .contains("pire-browser back"));
+        assert!(help_text(Some("forward"))
+            .unwrap()
+            .contains("pire-browser forward"));
+        assert!(help_text(Some("reload")).unwrap().contains("fresh"));
         assert!(help_text(Some("state"))
             .unwrap()
             .contains("--auto-connect state save"));

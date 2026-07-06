@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.28
+
+- Adds agent-browser-style help/discovery for supported browser history commands: `pire-browser back`, `pire-browser forward`, and `pire-browser reload`.
+- Updates the bundled core skill with a short navigation-history recipe so agents re-snapshot after history navigation or reloads.
+
 ## 0.2.27
 
 - Makes default `web-ext` launches prefer the package-local runtime dependency installed with `pire-browser`, falling back to `npx --yes web-ext` only for source/dev environments without npm dependencies.

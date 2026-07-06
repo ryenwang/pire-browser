@@ -259,6 +259,8 @@ mod tests {
         assert!(skill.content.contains("pire-browser tap"));
         assert!(skill.content.contains("pire-browser swipe up"));
         assert!(skill.content.contains("pire-browser window new"));
+        assert!(skill.content.contains("pire-browser back"));
+        assert!(skill.content.contains("pire-browser reload"));
         assert!(skill.content.contains("pire-browser open --init-script"));
         assert!(skill.content.contains("pire-browser addinitscript"));
         assert!(skill.content.contains("pire-browser removeinitscript"));

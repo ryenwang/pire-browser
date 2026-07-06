@@ -297,6 +297,20 @@ client-side navigation in the active page, preferring `window.next.router.push`
 when present and falling back to `history.pushState`. Reinspect before acting on
 refs from the new route.
 
+Use browser history commands when the user asks to go back, go forward, refresh,
+or reload:
+
+```bash
+pire-browser back
+pire-browser forward
+pire-browser reload
+pire-browser wait --load domcontentloaded
+pire-browser snapshot -i
+```
+
+Treat `back`, `forward`, and `reload` as navigation. Old refs may point at the
+previous document, so wait as needed and re-snapshot before acting.
+
 Create a tiny active-page fixture or reproduction without a server:
 
 ```bash
