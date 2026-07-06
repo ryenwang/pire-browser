@@ -52,23 +52,23 @@ For normal page work, start at open/snapshot:
 ```bash
 pire-browser open
 pire-browser open https://example.com
-pire-browser snapshot -i
+pire-browser snapshot
 pire-browser fill '@e2' "hello@example.com"
 pire-browser press Enter
 pire-browser wait '@e4'
 pire-browser click '@e4'
-pire-browser snapshot -i
+pire-browser snapshot
 ```
 
 Always inspect before page actions. Use refs only from the latest snapshot or find output. Quote refs in PowerShell, for example `click '@e4'`.
 If a click reports that the target is covered by another element, dismiss or
-interact with the reported covering element, then run `snapshot -i` before
+interact with the reported covering element, then run `snapshot` before
 retrying the original ref.
 
 ## Core Loop
 
 1. Open or select the page. Use `pire-browser open` with no URL when you need to launch/reuse Firefox before staging state, cookies, routes, or init scripts.
-2. Inspect with `pire-browser snapshot -i`.
+2. Inspect with `pire-browser snapshot`.
 3. Act with refs or semantic find commands.
 4. Wait only when page state needs time to settle.
 5. Reinspect and report success only after verification confirms the requested state.
@@ -81,14 +81,14 @@ Fresh direct CLI install:
 npm install -g pire-browser
 pire-browser install
 pire-browser open https://example.com
-pire-browser snapshot -i
+pire-browser snapshot
 ```
 
 One-off trial without global install:
 
 ```bash
 npx -y pire-browser@latest open https://example.com
-npx -y pire-browser@latest snapshot -i
+npx -y pire-browser@latest snapshot
 ```
 
 Use `install --with-deps`, `doctor`, or `doctor --json` only when Firefox is
@@ -122,10 +122,10 @@ Search a site:
 
 ```bash
 pire-browser open https://duckduckgo.com
-pire-browser snapshot -i --compact
+pire-browser snapshot --compact
 pire-browser fill '<search-ref>' "Pire-Browser"
 pire-browser click '<search-button-ref>'
-pire-browser snapshot -i --compact
+pire-browser snapshot --compact
 ```
 
 Use semantic find when labels are clear:
@@ -167,14 +167,14 @@ already know the element you need. `scrollinto <target>` is the short
 compatibility alias.
 
 ```bash
-pire-browser snapshot -i
+pire-browser snapshot
 pire-browser hover '<menu-ref>'
 pire-browser focus '<input-ref>'
 pire-browser select '<country-ref>' US
 pire-browser check '<terms-ref>'
 pire-browser scrollintoview '<submit-ref>'
 pire-browser dblclick '<item-ref>'
-pire-browser snapshot -i
+pire-browser snapshot
 ```
 
 Use chat only when the user specifically wants natural-language browser control
@@ -212,7 +212,7 @@ Use `read <url>` for no-browser markdown/plain/html text fetches. Omit the URL
 to read rendered text from the active Firefox tab, including client-side state
 and authenticated content. When `--llms`, `--require-md`, `--raw`, or
 `--timeout` is used without a URL, `pire-browser` first reads the active tab URL
-and then performs the same guarded URL fetch. Use `snapshot -i` when you need
+and then performs the same guarded URL fetch. Use `snapshot` when you need
 interaction refs.
 
 Read and check state without dumping a whole snapshot when you already know the
@@ -229,12 +229,12 @@ pire-browser is enabled '#submit'
 ```
 
 Use `get` and `is` after a fresh snapshot or semantic find when you need a
-specific value for verification. Re-run `snapshot -i` first if the page changed
+specific value for verification. Re-run `snapshot` first if the page changed
 or the ref may be stale.
 
 Use `eval -b <base64-utf8-js>` or pipe JavaScript to `eval --stdin` when shell
 quoting would make an inline script brittle. Prefer targeted commands such as
-`get`, `is`, `find`, and `snapshot -i` when they can answer the question without
+`get`, `is`, `find`, and `snapshot` when they can answer the question without
 custom JavaScript.
 
 When using MCP, prefer the agent-browser-style typed verification tools instead
@@ -247,9 +247,9 @@ of the generic compatibility tools: `pire_browser_get_text`,
 Batch short command sequences to reduce process churn:
 
 ```bash
-pire-browser batch "open https://example.com" "snapshot -i" "screenshot result.png"
+pire-browser batch "open https://example.com" "snapshot" "screenshot result.png"
 pire-browser batch --bail "open https://example.com" "click '@e1'" "screenshot result.png"
-echo '[["open","https://example.com"],["snapshot","-i"],["click","@e1"]]' | pire-browser batch --json
+echo '[["open","https://example.com"],["snapshot"],["click","@e1"]]' | pire-browser batch --json
 ```
 
 Use `--bail` when later commands depend on earlier commands succeeding. With no inline commands, `batch` reads a JSON array from stdin; entries can be command strings or arrays of args.
@@ -923,17 +923,18 @@ steps do not depend on parsing intermediate output.
 ## Snapshot Options
 
 ```bash
+pire-browser snapshot
 pire-browser snapshot -i
-pire-browser snapshot -i -c
-pire-browser snapshot -i -C
+pire-browser snapshot -c
+pire-browser snapshot -C
 pire-browser snapshot -d 3
-pire-browser snapshot -i -c -C -d 5
-pire-browser snapshot -i -u
+pire-browser snapshot -c -C -d 5
+pire-browser snapshot -u
 pire-browser snapshot -s "#main"
 pire-browser snapshot --selector "#main"
 ```
 
-Use `-c`/`--compact` on noisy pages. Use `-C`/`--cursor-interactive` when custom clickable `div`s, cards, menu rows, or cursor-pointer controls are missing from the default snapshot. Use `-d <n>`/`--depth <n>` to limit depth on complex pages. Use `-u`/`--urls` when choosing among links. Use `-s <selector>` or `--selector <selector>` to scope inspection to one area. If a ref is stale or a page changes, run `snapshot -i` again.
+Bare `snapshot` is the agent-browser-compatible default. Use `snapshot -i` only when you specifically want the explicit legacy ref-list format. Use `-c`/`--compact` on noisy pages. Use `-C`/`--cursor-interactive` when custom clickable `div`s, cards, menu rows, or cursor-pointer controls are missing from the default snapshot. Use `-d <n>`/`--depth <n>` to limit depth on complex pages. Use `-u`/`--urls` when choosing among links. Use `-s <selector>` or `--selector <selector>` to scope inspection to one area. If a ref is stale or a page changes, run `snapshot` again.
 
 ## Iframes
 
@@ -941,7 +942,7 @@ Snapshots inspect iframe content when Firefox can reach it. Refs inside iframes
 carry frame context, so direct actions usually work without switching first:
 
 ```bash
-pire-browser snapshot -i
+pire-browser snapshot
 pire-browser fill @e3 "value"   # @e3 may be inside an iframe
 pire-browser click @e4
 ```
@@ -950,7 +951,7 @@ Use `frame <ref|selector|name|url>` only when you want scoped snapshots or selec
 
 ```bash
 pire-browser frame @e2
-pire-browser snapshot -i
+pire-browser snapshot
 pire-browser fill '#card-number' "4111111111111111"
 pire-browser frame main
 ```
@@ -959,7 +960,7 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 
 ## Setup And Diagnostics
 
-- For a fresh direct CLI install, use `npm install -g pire-browser`, optionally verify the package with `pire-browser --version`, then run `pire-browser install`. For a one-off trial without global install, use `npx -y pire-browser@latest open <url>` and then `npx -y pire-browser@latest snapshot -i`. For Pi, use `pi install npm:pire-browser`. Do not start by inspecting package source or running broad diagnostics unless an install or browser command fails.
+- For a fresh direct CLI install, use `npm install -g pire-browser`, optionally verify the package with `pire-browser --version`, then run `pire-browser install`. For a one-off trial without global install, use `npx -y pire-browser@latest open <url>` and then `npx -y pire-browser@latest snapshot`. For Pi, use `pi install npm:pire-browser`. Do not start by inspecting package source or running broad diagnostics unless an install or browser command fails.
 - `pire-browser install` registers the platform native messaging host.
 - `pire-browser install --with-deps` is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux.
 - If npm reports skipped lifecycle scripts, `--ignore-scripts`, or an `allow-scripts` policy warning, run `pire-browser install` explicitly after npm finishes.
@@ -973,7 +974,7 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 - In MCP, use debug-profile `pire_browser_install` for explicit native-host setup or repair. Pass `withDeps: true` only when following an agent-browser-style install recipe or the user asks about dependencies; on Windows/macOS it may install Firefox when missing, while Linux stays guided/manual. Use `pire_browser_upgrade` for user-requested package update; keep `pire_browser_status` and plain `pire_browser_doctor` observational.
 - Browser commands that need auto-launch may run lazy setup when native host registration is missing or mismatched.
 - If launch fails with `web-ext exited before pire-browser connected` or a connect timeout, read the printed `Log:` path and follow JSON `data.nextActions` when available: run `pire-browser doctor --json`, refresh setup with `pire-browser install`, close managed Firefox/web-ext processes for that profile, then retry.
-- If `open` reports a recoverable page-readiness warning, continue with `pire-browser snapshot -i`.
+- If `open` reports a recoverable page-readiness warning, continue with `pire-browser snapshot`.
 - If Pi reports a duplicate `pire-browser` tool from `npm:pire-browser` and an older GitHub, local-checkout, or legacy shim install, run `pire-browser pi conflicts` and then `pire-browser pi repair`. If `pire-browser` is not on PATH because Pi cannot start, ask the user to run `npx -y pire-browser@latest pi repair` in a normal terminal. Local checkout entries are reported but not removed unless repair is rerun with `--include-local`.
 - If an installed command reports a missing optional native package, reinstall with optional dependencies enabled.
 

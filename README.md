@@ -19,7 +19,7 @@ Then use the browser:
 
 ```bash
 pire-browser open https://example.com
-pire-browser snapshot -i
+pire-browser snapshot
 ```
 
 `npm install` runs best-effort setup; `pire-browser install` is safe to run again and makes the setup step explicit.
@@ -53,7 +53,7 @@ For projects that want to pin the version in `package.json`:
 npm install pire-browser
 npx pire-browser install
 npx pire-browser open https://example.com
-npx pire-browser snapshot -i
+npx pire-browser snapshot
 ```
 
 Then use via `package.json` scripts or by invoking `npx pire-browser`.
@@ -64,7 +64,7 @@ For a one-off agent-browser-style trial, use `npx`:
 
 ```bash
 npx -y pire-browser@latest open https://example.com
-npx -y pire-browser@latest snapshot -i
+npx -y pire-browser@latest snapshot
 ```
 
 Repeated use should prefer the global or project install above so the package path stays stable.
@@ -175,8 +175,9 @@ On Linux, distro Firefox builds work best. Snap and Flatpak Firefox are detected
 
 ```bash
 pire-browser open https://example.com
-pire-browser snapshot -i                    # Get accessibility tree with refs
-pire-browser snapshot -i -C                 # Include cursor-pointer controls
+pire-browser snapshot                       # Get accessibility tree with refs
+pire-browser snapshot -i                    # Explicit legacy ref-list format
+pire-browser snapshot -C                    # Include cursor-pointer controls
 pire-browser click '@e2'                    # Click by ref from snapshot
 pire-browser fill '@e3' "test@example.com"  # Fill by ref
 pire-browser press Enter                    # Press a key at current focus
@@ -197,7 +198,7 @@ pire-browser --user-agent "qa-bot/1.0" open https://example.com
 
 Clicks fail early when another element covers the target's click point, such as
 a consent banner or modal. Dismiss or interact with the reported covering
-element, then run `snapshot -i` before retrying the original ref.
+element, then run `snapshot` before retrying the original ref.
 
 ### Traditional Selectors (also supported)
 
@@ -243,7 +244,8 @@ pire-browser screenshot --hide-scrollbars false # Keep native scrollbars visible
 pire-browser screenshot --screenshot-dir ./shots
 pire-browser screenshot --screenshot-format jpeg --screenshot-quality 80
 pire-browser pdf page.pdf            # Image-backed page PDF
-pire-browser snapshot -i             # Accessibility tree with refs
+pire-browser snapshot                # Accessibility tree with refs
+pire-browser snapshot -i             # Explicit legacy ref-list format
 pire-browser eval <js>               # Run JavaScript; supports -b and --stdin
 pire-browser setcontent '<h1>Hello</h1>' # Replace active page HTML for a repro
 pire-browser dashboard start         # Local status/session/preview/activity dashboard
@@ -261,7 +263,7 @@ pire-browser close --all             # Close all managed Firefox sessions
 
 `keyboard type`, `keyboard inserttext`, `keydown`, and `keyup` act at the
 current page focus. Click or focus the intended control first, then verify with
-`get value`, `snapshot -i`, or another targeted check.
+`get value`, `snapshot`, or another targeted check.
 `tap` uses the same Firefox WebExtension page-level click path as `click`; it is
 not native touch input or mobile browser chrome emulation. `swipe` maps touch
 direction to page scroll (`swipe up` scrolls down); use `scroll` when you want
@@ -273,7 +275,7 @@ PDF capture is available as an image-backed visual evidence file. Natural-langua
 
 Use `eval -b <base64-utf8-js>` or pipe JavaScript to `eval --stdin` when shell
 quoting would make an inline script brittle. Prefer targeted commands such as
-`get`, `is`, `find`, and `snapshot -i` when they can answer the question without
+`get`, `is`, `find`, and `snapshot` when they can answer the question without
 custom JavaScript.
 
 ### Read Agent-Friendly Text
@@ -293,7 +295,7 @@ pire-browser read https://example.com/article --json
 
 `read <url>` fetches markdown, plain text, or HTML directly from the CLI without launching Firefox. It extracts readable text from HTML, supports `--filter`, `--outline`, nearest-ancestor `llms.txt` / `llms-full.txt`, `--require-md`, `--raw`, and `--timeout <ms>`, and still honors domain/output guardrails.
 
-Omit the URL to read rendered text from the active Firefox tab, including client-side state and authenticated content. When `--llms`, `--require-md`, `--raw`, or `--timeout` is used without a URL, `pire-browser` first reads the active tab URL and then performs the same guarded no-browser URL fetch for that HTTP resource. Use `read` for documents and articles; use `snapshot -i` when you need interaction refs.
+Omit the URL to read rendered text from the active Firefox tab, including client-side state and authenticated content. When `--llms`, `--require-md`, `--raw`, or `--timeout` is used without a URL, `pire-browser` first reads the active tab URL and then performs the same guarded no-browser URL fetch for that HTTP resource. Use `read` for documents and articles; use `snapshot` when you need interaction refs.
 
 ### Get Info
 
@@ -363,7 +365,7 @@ pire-browser wait "#spinner" --state hidden
 `wait --fn <expression>` polls a page-world JavaScript expression until it is
 truthy. Use short, side-effect-free predicates such as
 `document.querySelector("#ready")` or `window.appReady === true`, then re-run
-`snapshot -i` before acting on refs.
+`snapshot` before acting on refs.
 Use `--download-path <dir>` or `PIRE_BROWSER_DOWNLOAD_PATH` before launching
 when browser-initiated downloads should land in a known folder.
 
@@ -372,14 +374,14 @@ when browser-initiated downloads should land in a known folder.
 Execute multiple commands in a single invocation.
 
 ```bash
-pire-browser batch "open https://example.com" "snapshot -i" "screenshot result.png"
+pire-browser batch "open https://example.com" "snapshot" "screenshot result.png"
 pire-browser batch --bail "open https://example.com" "click '@e1'" "screenshot result.png"
-echo '[["open","https://example.com"],["snapshot","-i"],["click","@e1"]]' | pire-browser batch --json
+echo '[["open","https://example.com"],["snapshot"],["click","@e1"]]' | pire-browser batch --json
 ```
 
 Use commands separately when an agent needs to parse intermediate output first, such as snapshot refs before clicking.
 When using MCP, add the `debug` profile and call `pire_browser_batch` with a typed `commands` array for short command sequences; prefer individual typed tools when intermediate output determines the next action.
-Example MCP arguments: `{"commands":[["open","https://example.com"],["snapshot","-i"]],"bail":true}`.
+Example MCP arguments: `{"commands":[["open","https://example.com"],["snapshot"]],"bail":true}`.
 
 ### Clipboard
 
@@ -524,7 +526,7 @@ Dialog support is Firefox WebExtension mediated. `alert`, `confirm`, and
 loop. `dialog accept [text]` configures the next shimmed confirm or prompt to
 accept, using `text` as the prompt return value; `dialog dismiss` configures
 the next shimmed confirm or prompt to cancel. When a dialog is observed during
-another command, output includes a `PAGE_DIALOG` warning. Re-run `snapshot -i`
+another command, output includes a `PAGE_DIALOG` warning. Re-run `snapshot`
 after handling a dialog before acting on refs. Use global `--no-auto-dialog` or
 `AGENT_BROWSER_NO_AUTO_DIALOG=1` when you need agent-browser-style debugging
 with the page dialog shim disabled; native Firefox page dialogs may block until
@@ -1051,17 +1053,19 @@ pire-browser --confirm-actions eval,download eval "document.title"
 ## Snapshot Options
 
 ```bash
+pire-browser snapshot
 pire-browser snapshot -i
-pire-browser snapshot -i --compact
-pire-browser snapshot -i --cursor-interactive
-pire-browser snapshot -i --urls
-pire-browser snapshot -i -d 5
+pire-browser snapshot --compact
+pire-browser snapshot --cursor-interactive
+pire-browser snapshot --urls
+pire-browser snapshot --depth 5
 pire-browser snapshot -s "#main"
 pire-browser snapshot --selector "#main"
 pire-browser snapshot --json
 ```
 
-Refs are short lived. Re-run `snapshot -i` after navigation, reloads, DOM changes, dialogs, downloads, uploads, or failed actions.
+Bare `snapshot` is the agent-browser-compatible default for AI inspection; `snapshot -i` keeps the explicit legacy ref-list format available.
+Refs are short lived. Re-run `snapshot` after navigation, reloads, DOM changes, dialogs, downloads, uploads, or failed actions.
 Use `-C`/`--cursor-interactive` when a page uses clickable `div`s, custom controls, or cursor-pointer elements that are missing from the default accessibility-oriented snapshot.
 
 ## Annotated Screenshots
@@ -1313,7 +1317,7 @@ Use text output for human-readable agent context and `--json` for scripts.
 ```bash
 # 1. Navigate and get snapshot
 pire-browser open https://example.com
-pire-browser snapshot -i
+pire-browser snapshot
 
 # 2. Identify target refs from snapshot output
 
@@ -1321,13 +1325,13 @@ pire-browser snapshot -i
 pire-browser click '@e2'
 
 # 4. Get new snapshot if page changed
-pire-browser snapshot -i
+pire-browser snapshot
 ```
 
 ### Command Chaining
 
 ```bash
-pire-browser open https://example.com && pire-browser wait --selector "#main" && pire-browser snapshot -i
+pire-browser open https://example.com && pire-browser wait --selector "#main" && pire-browser snapshot
 pire-browser fill '@e1' "user@example.com" && pire-browser fill '@e2' "pass" && pire-browser click '@e3'
 pire-browser open https://example.com && pire-browser screenshot page.png
 ```
@@ -1504,7 +1508,7 @@ Use `pire-browser` for Firefox automation. Run `pire-browser --help` for command
 Core workflow:
 
 1. `pire-browser open <url>` - Navigate to page
-2. `pire-browser snapshot -i` - Get interactive elements with refs (`@e1`, `@e2`)
+2. `pire-browser snapshot` - Get interactive elements with refs (`@e1`, `@e2`)
 3. `pire-browser click '@e1'` / `fill '@e2' "text"` - Interact using refs
 4. Re-snapshot after page changes
 

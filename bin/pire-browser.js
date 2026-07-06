@@ -145,7 +145,7 @@ Launcher-served commands available before native binary resolution:
 
 Common browser commands after native package repair:
   open <url>                       Launch/reuse Firefox and navigate
-  snapshot -i                      Inspect the active page and print refs
+  snapshot                         Inspect the active page and print refs
   click '@e4'                      Click a fresh ref from snapshot/find
   fill '@e2' "text"                Fill a fresh ref
   press Enter                      Press a key at page focus
@@ -367,7 +367,7 @@ Normal path:
   npm install -g pire-browser
   pire-browser install
   pire-browser open https://example.com
-  pire-browser snapshot -i
+  pire-browser snapshot
 
 If the optional native package is missing, this launcher-served path reports
 concrete repair commands instead of requiring the native binary first.
@@ -381,7 +381,7 @@ Usage:
 
 Lower-level setup command for Firefox Native Messaging. Prefer
 \`pire-browser install\` for first-run setup. After setup, run
-\`pire-browser open https://example.com\` and \`pire-browser snapshot -i\`.
+\`pire-browser open https://example.com\` and \`pire-browser snapshot\`.
 `.trim()}\n${repairHint}`.trim();
   }
   if (topic === "doctor" || topic === "install-status") {

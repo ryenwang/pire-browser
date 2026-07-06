@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.30", "0-2-30"),
+  list([
+    "Documents bare <code>pire-browser snapshot</code> as the agent-browser-compatible default across CLI help, README, docs, installed agent context, Pi prompt guidance, and the bundled core skill.",
+    "Keeps <code>snapshot -i</code> available and documented as the explicit legacy ref-list format so existing workflows remain compatible.",
+  ]),
   h2("0.2.29", "0-2-29"),
   list([
     "Compresses the public README and docs-site first-use path to match agent-browser's installation-first shape: global install, <code>pire-browser install</code>, then <code>open</code> and <code>snapshot -i</code>.",

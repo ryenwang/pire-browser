@@ -283,7 +283,8 @@ describe("launcher update UX", () => {
     expect(text).toContain("pire-browser install [--with-deps]");
     expect(text).toContain("First-run setup command");
     expect(text).toContain("pire-browser open https://example.com");
-    expect(text).toContain("pire-browser snapshot -i");
+    expect(text).toContain("pire-browser snapshot");
+    expect(text).not.toContain("pire-browser snapshot -i");
     expect(text).not.toContain("pire-browser install status: needs attention");
   });
 

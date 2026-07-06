@@ -4,14 +4,14 @@ const quickStartBlocks = [
   h2("Before first command", "before-first-command"),
   code(`npm install -g pire-browser
 pire-browser install`),
-  p("Run setup once after installing. It is safe to run again. If this fails, use the Installation page's first-run repair section. For Pi, use <code>pi install npm:pire-browser</code> and then ask the agent to use the tool. For a one-off trial without global install, use <code>npx -y pire-browser@latest open https://example.com</code>, then <code>npx -y pire-browser@latest snapshot -i</code>."),
+  p("Run setup once after installing. It is safe to run again. If this fails, use the Installation page's first-run repair section. For Pi, use <code>pi install npm:pire-browser</code> and then ask the agent to use the tool. For a one-off trial without global install, use <code>npx -y pire-browser@latest open https://example.com</code>, then <code>npx -y pire-browser@latest snapshot</code>."),
   h2("Core workflow", "core-workflow"),
   p("Every browser automation follows this pattern:"),
   code(`# 1. Navigate
 pire-browser open https://example.com
 
 # 2. Snapshot to get element refs
-pire-browser snapshot -i
+pire-browser snapshot
 # Output:
 # @e1 [heading] "Example Domain"
 # @e2 [link] "More information..."
@@ -20,8 +20,8 @@ pire-browser snapshot -i
 pire-browser click '@e2'
 
 # 4. Re-snapshot after page changes
-pire-browser snapshot -i`),
-  p("If a click reports that the target is covered by another element, dismiss or interact with the reported covering element, then run <code>snapshot -i</code> before retrying the original ref."),
+pire-browser snapshot`),
+  p("If a click reports that the target is covered by another element, dismiss or interact with the reported covering element, then run <code>snapshot</code> before retrying the original ref. <code>snapshot -i</code> remains available when you specifically want the legacy ref-list format."),
   h2("MCP-first agents", "mcp-first-agents"),
   p("When an agent host supports MCP, start the typed core profile and keep the same inspect-before-act loop in tool calls."),
   code(`pire-browser mcp --tools core
@@ -46,14 +46,15 @@ pire-browser snapshot -i`),
   h2("Project QA sessions", "project-qa-sessions"),
   code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
 pire-browser --session "$SESSION" --restore open http://localhost:3000
-pire-browser --session "$SESSION" --restore snapshot -i`),
+pire-browser --session "$SESSION" --restore snapshot`),
   p("Use one worktree-scoped session with <code>--restore</code> for a local app QA loop so cookies, tabs, and managed Firefox profile state stay isolated to that project. In pire-browser, named Firefox profiles provide the persistence store."),
   h2("Common commands", "common-commands"),
   code(`pire-browser open                         # Launch/reuse Firefox without navigating
 pire-browser open https://example.com
 pire-browser read https://example.com/docs   # Read docs/articles without launching Firefox
 pire-browser read                            # Read rendered text from the active tab
-pire-browser snapshot -i                 # Get interactive elements with refs
+pire-browser snapshot                    # Get interactive elements with refs
+pire-browser snapshot -i                 # Explicit legacy ref-list format
 pire-browser click '@e2'                 # Click by ref
 pire-browser click '@link-ref' --new-tab # Open a link target in a new tab
 pire-browser fill '@e3' "test@example.com" # Fill input by ref
@@ -87,12 +88,12 @@ pire-browser wait --url "**/dashboard"  # Wait for URL pattern
 pire-browser wait --fn "window.appReady === true"
 pire-browser wait 2000                  # Wait milliseconds`),
   h2("Command chaining", "command-chaining"),
-  code(`pire-browser open https://example.com && pire-browser wait --selector "#main" && pire-browser snapshot -i
+  code(`pire-browser open https://example.com && pire-browser wait --selector "#main" && pire-browser snapshot
 pire-browser fill '@e1' "user@example.com" && pire-browser fill '@e2' "pass" && pire-browser click '@e3'
 pire-browser open https://example.com && pire-browser screenshot page.png`),
   p("Use <code>&&</code> when you do not need intermediate output. Run commands separately when you need to parse output first, such as snapshot refs before interacting."),
   h2("JSON output", "json-output"),
-  code(`pire-browser snapshot -i --json
+  code(`pire-browser snapshot --json
 pire-browser get text '@e1' --json`),
   p("The default text output is more compact and preferred for AI agents."),
 ];

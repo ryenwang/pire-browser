@@ -13,7 +13,7 @@ Use this when output includes warnings, errors, policy blocks, or confirmations.
 - `unsupported_command`: the CLI did not recognize the command in this context.
 - `invalid_args`: command shape or flags are wrong.
 - Native host or registry failures: run setup or allow lazy setup through an auto-launchable browser command.
-- Stale refs: run `snapshot -i` again and retry with a fresh ref.
+- Stale refs: run `snapshot` again and retry with a fresh ref.
 
 ## Reporting
 

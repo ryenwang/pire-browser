@@ -214,13 +214,14 @@ mod tests {
         assert!(skill
             .content
             .contains("pire-browser open https://example.com"));
+        assert!(skill.content.contains("pire-browser snapshot"));
         assert!(skill.content.contains("pire-browser snapshot -i"));
-        assert!(skill.content.contains("pire-browser snapshot -i -c"));
+        assert!(skill.content.contains("pire-browser snapshot -c"));
         assert!(skill.content.contains("pire-browser snapshot -d 3"));
-        assert!(skill.content.contains("pire-browser snapshot -i -C"));
+        assert!(skill.content.contains("pire-browser snapshot -C"));
         assert!(skill
             .content
-            .contains("pire-browser snapshot -i -c -C -d 5"));
+            .contains("pire-browser snapshot -c -C -d 5"));
         assert!(skill.content.contains("pire-browser wait '@"));
         assert!(skill
             .content

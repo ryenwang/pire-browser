@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.30
+
+- Documents bare `pire-browser snapshot` as the agent-browser-compatible default across CLI help, README, docs, installed agent context, Pi prompt guidance, and the bundled core skill.
+- Keeps `snapshot -i` available and documented as the explicit legacy ref-list format so existing workflows remain compatible.
+
 ## 0.2.29
 
 - Compresses the public README and docs-site first-use path to match agent-browser's installation-first shape: global install, `pire-browser install`, then `open` and `snapshot -i`.

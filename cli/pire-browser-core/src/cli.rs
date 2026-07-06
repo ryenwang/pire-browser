@@ -3364,7 +3364,7 @@ Common commands:
   --allow-file-access open file:///path/to/page.html
   read <url>                      Fetch agent-readable text without Firefox
   read                            Read rendered text from the active Firefox tab
-  snapshot -i                     Inspect the active page and print refs
+  snapshot                        Inspect the active page and print refs
   diff snapshot                    Compare current snapshot to previous
   diff screenshot --baseline before.png Compare current screenshot to baseline
   diff url <url1> <url2>           Compare two URLs by snapshot
@@ -3423,7 +3423,7 @@ Common commands:
   mouse move 80 80                Dispatch page mouse events at viewport coords
   swipe up 500                    Best-effort mobile swipe as page scroll
   drag '@e1' '@e2'                Dispatch page drag/drop events
-  batch "open <url>" "snapshot -i" Run multiple commands in one invocation
+  batch "open <url>" "snapshot"    Run multiple commands in one invocation
   addinitscript <js>              Register a document-start init script
   removeinitscript init1          Remove a runtime init script
   setcontent '<h1>Hello</h1>'      Replace active page HTML for a repro
@@ -3648,6 +3648,7 @@ narrows emitted lines to matches plus heading context.
 
 const SNAPSHOT_HELP: &str = r##"
 Usage:
+  pire-browser snapshot
   pire-browser snapshot -i
   pire-browser snapshot -i -C
   pire-browser snapshot -i -c
@@ -3658,8 +3659,9 @@ Usage:
   pire-browser snapshot --selector "#main"
   pire-browser snapshot --json
 
-Prints a page snapshot with refs such as @e1. `-i` keeps the output ref-oriented
-for interaction. `-c`/`--compact` suppresses low-value generic elements,
+Prints a page snapshot with refs such as @e1. Bare `snapshot` is the
+agent-browser-compatible default for AI inspection; `-i`/`--interactive` keeps
+the compact legacy ref-list format available. `-c`/`--compact` suppresses low-value generic elements,
 `-C`/`--cursor-interactive` includes visible cursor-pointer or inline onclick
 elements such as clickable divs, `-d`/`--depth` limits DOM depth in the Firefox
 snapshot model, `-u`/`--urls` includes link URLs, and `-s`/`--selector` scopes
@@ -4278,9 +4280,9 @@ compatibility path, not native OS drag control.
 
 const BATCH_HELP: &str = r##"
 Usage:
-  pire-browser batch "open <url>" "snapshot -i" "screenshot out.png"
+  pire-browser batch "open <url>" "snapshot" "screenshot out.png"
   pire-browser batch --bail "open <url>" "click '@e1'" "screenshot out.png"
-  echo '[["open","https://example.com"],["snapshot","-i"]]' | pire-browser batch --json
+  echo '[["open","https://example.com"],["snapshot"]]' | pire-browser batch --json
 
 Runs multiple browser commands in one invocation. `--bail` stops and returns the
 first command error. With no inline commands, `batch` reads a JSON array from
@@ -4641,7 +4643,7 @@ current user. Normal path:
   npm install -g pire-browser
   pire-browser install
   pire-browser open https://example.com
-  pire-browser snapshot -i
+  pire-browser snapshot
 
 `--firefox-path` accepts the Firefox executable, a directory containing the
 executable, or a macOS Firefox.app bundle. Use `pire-browser doctor` for
@@ -4675,7 +4677,7 @@ is a deprecated compatibility alias and is ignored on non-Windows platforms.
 `--firefox-path` accepts the Firefox executable, a directory containing the
 executable, or a macOS Firefox.app bundle. `pire-browser install` is a public
 alias for this setup step and is preferred for first-run setup. After setup,
-run `pire-browser open https://example.com` and `pire-browser snapshot -i`.
+run `pire-browser open https://example.com` and `pire-browser snapshot`.
 `--with-deps` prints platform dependency guidance and, on Windows/macOS only,
 can try the supported userland Firefox installer when Firefox is missing.
 "##;
@@ -7674,6 +7676,7 @@ mod tests {
         let text = help_text(None).unwrap();
         assert!(text
             .contains("open                            Launch/reuse Firefox without navigating"));
+        assert!(text.contains("snapshot                        Inspect the active page and print refs"));
         assert!(text.contains("click '@e4'"));
         assert!(text.contains("tap '@e4'"));
         assert!(text.contains("dblclick '@e4'"));
@@ -7754,7 +7757,7 @@ mod tests {
             .contains("pire-browser open https://example.com"));
         assert!(help_text(Some("install"))
             .unwrap()
-            .contains("pire-browser snapshot -i"));
+            .contains("pire-browser snapshot"));
         assert!(help_text(Some("tap"))
             .unwrap()
             .contains("pire-browser tap '@e4'"));
@@ -7840,22 +7843,17 @@ mod tests {
         assert!(launch_help.contains("Prefer `pire-browser open`"));
         assert!(launch_help.contains("normal launch/navigation workflows"));
         assert!(help_text(Some("read")).unwrap().contains("active tab URL"));
-        assert!(help_text(Some("snapshot"))
-            .unwrap()
-            .contains("snapshot -i -c"));
-        assert!(help_text(Some("snapshot"))
-            .unwrap()
-            .contains("snapshot -i -C"));
-        assert!(help_text(Some("snapshot"))
-            .unwrap()
-            .contains("snapshot -d 3"));
-        assert!(help_text(Some("snapshot"))
-            .unwrap()
-            .contains("snapshot -i -c -C -d 5"));
-        assert!(help_text(Some("snapshot"))
-            .unwrap()
-            .contains("--cursor-interactive"));
-        assert!(help_text(Some("snapshot")).unwrap().contains("-s"));
+        let snapshot_help = help_text(Some("snapshot")).unwrap();
+        assert!(snapshot_help.contains("pire-browser snapshot"));
+        assert!(snapshot_help.contains("snapshot -i"));
+        assert!(snapshot_help.contains("agent-browser-compatible default"));
+        assert!(snapshot_help.contains("legacy ref-list format"));
+        assert!(snapshot_help.contains("snapshot -i -c"));
+        assert!(snapshot_help.contains("snapshot -i -C"));
+        assert!(snapshot_help.contains("snapshot -d 3"));
+        assert!(snapshot_help.contains("snapshot -i -c -C -d 5"));
+        assert!(snapshot_help.contains("--cursor-interactive"));
+        assert!(snapshot_help.contains("-s"));
         assert!(help_text(Some("pdf"))
             .unwrap()
             .contains("pire-browser pdf <path>"));

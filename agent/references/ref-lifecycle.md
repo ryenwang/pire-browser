@@ -15,7 +15,7 @@ Use a fresh ref after:
 
 ## Safe Use
 
-- Run `pire-browser snapshot -i`.
+- Run `pire-browser snapshot`.
 - Select the ref from the newest output.
 - Act once.
 - Verify with command output or another snapshot.

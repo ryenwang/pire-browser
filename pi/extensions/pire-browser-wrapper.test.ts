@@ -53,10 +53,10 @@ describe("pire-browser Pi wrapper", () => {
       "Run `pire-browser skills get core` for quickstart recipes; use `pire-browser open` with no URL to launch or reuse Firefox before staging state, cookies, routes, or init scripts."
     );
     expect(tool.promptGuidelines).toContain(
-      "Inspect with `pire-browser snapshot -i --compact` before page actions, use fresh quoted refs such as `click '@e4'`, and use `get`/`is` for targeted verification."
+      "Inspect with `pire-browser snapshot --compact` before page actions, use fresh quoted refs such as `click '@e4'`, and use `get`/`is` for targeted verification."
     );
     expect(tool.promptGuidelines).toContain(
-      "If navigation is recovered or returns a page-readiness warning, continue with `pire-browser snapshot -i`."
+      "If navigation is recovered or returns a page-readiness warning, continue with `pire-browser snapshot`."
     );
     expect(tool.promptGuidelines.length).toBeLessThanOrEqual(7);
   });
@@ -74,7 +74,7 @@ describe("pire-browser Pi wrapper", () => {
 
     const tool = registerTool();
     await tool.execute("call-1", { command: "status" }, new AbortController().signal);
-    const second = await tool.execute("call-2", { command: "snapshot -i" }, new AbortController().signal);
+    const second = await tool.execute("call-2", { command: "snapshot" }, new AbortController().signal);
 
     expect(runMock).toHaveBeenCalledTimes(1);
     expect(second.content[0].text).toContain("stopped after 1 tool call");

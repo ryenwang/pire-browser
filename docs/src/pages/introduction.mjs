@@ -6,8 +6,8 @@ const introBlocks = [
 pire-browser install                 # first-time Firefox setup
 
 pire-browser open https://example.com
-pire-browser snapshot -i`),
-  p("For Pi, install the package with <code>pi install npm:pire-browser</code>, then ask the agent to use <code>pire-browser</code>. For one-off shell trials, use <code>npx -y pire-browser@latest open https://example.com</code> followed by <code>npx -y pire-browser@latest snapshot -i</code>."),
+pire-browser snapshot`),
+  p("For Pi, install the package with <code>pi install npm:pire-browser</code>, then ask the agent to use <code>pire-browser</code>. For one-off shell trials, use <code>npx -y pire-browser@latest open https://example.com</code> followed by <code>npx -y pire-browser@latest snapshot</code>."),
   h2("Features", "features"),
   list([
     "<strong>Agent-first:</strong> compact text output uses fewer tokens than a DOM dump and is easy for agents to parse.",
@@ -22,7 +22,7 @@ pire-browser snapshot -i`),
   h2("Example", "example"),
   code(`# Navigate and get snapshot
 pire-browser open https://example.com
-pire-browser snapshot -i
+pire-browser snapshot
 
 # Output:
 # @e1 [heading] "Example Domain"

@@ -34,15 +34,16 @@ pire-browser drag <src> <dst>        # Drag and drop with page-level events
 pire-browser upload <sel> <files>    # Upload to file inputs or dropzones
 pire-browser screenshot [path]       # Capture screenshot evidence
 pire-browser pdf page.pdf            # Capture image-backed PDF evidence
-pire-browser snapshot -i             # Accessibility tree with refs
-pire-browser snapshot -i -C          # Include cursor-pointer custom controls
+pire-browser snapshot                # Accessibility tree with refs
+pire-browser snapshot -i             # Explicit legacy ref-list format
+pire-browser snapshot -C             # Include cursor-pointer custom controls
 pire-browser eval <js>               # Run JavaScript; supports -b and --stdin
 pire-browser setcontent '<main><h1>Hello</h1></main>' # Replace page HTML for a repro
 pire-browser close                   # Close targeted session`),
-  p("Refs must usually be quoted in PowerShell, for example <code>pire-browser click '@e2'</code>. Re-run <code>snapshot -i</code> after navigation, DOM changes, dialogs, downloads, or failed actions. Use <code>snapshot -i -C</code> when custom clickable cards, menu rows, or cursor-pointer controls are missing from the default snapshot. If a click reports that the target is covered by another element, handle the covering element first, then re-snapshot before retrying."),
+  p("Refs must usually be quoted in PowerShell, for example <code>pire-browser click '@e2'</code>. Re-run <code>snapshot</code> after navigation, DOM changes, dialogs, downloads, or failed actions. Use <code>snapshot -C</code> when custom clickable cards, menu rows, or cursor-pointer controls are missing from the default snapshot. <code>snapshot -i</code> remains available for the explicit legacy ref-list format. If a click reports that the target is covered by another element, handle the covering element first, then re-snapshot before retrying."),
   p("<code>tap</code> uses the same Firefox WebExtension page-level click path as <code>click</code>; it is not native touch input or mobile browser chrome emulation. Use <code>click &lt;link-ref&gt; --new-tab</code> or <code>click &lt;link-ref&gt; --new</code> when a link target should open in a new tab. <code>swipe</code> maps touch direction to page scroll, so <code>swipe up</code> scrolls down. Use <code>scroll</code> when you want direct scroll direction."),
-  p("<code>keyboard type</code>, <code>keyboard inserttext</code>, <code>keydown</code>, and <code>keyup</code> act at the current page focus. Click or focus the intended control first, then verify with <code>get value</code>, <code>snapshot -i</code>, or another targeted check."),
-  p("Use <code>eval -b &lt;base64-utf8-js&gt;</code> or pipe JavaScript to <code>eval --stdin</code> when shell quoting would make an inline script brittle. Prefer targeted <code>get</code>, <code>is</code>, <code>find</code>, and <code>snapshot -i</code> commands when they can answer the question without custom JavaScript."),
+  p("<code>keyboard type</code>, <code>keyboard inserttext</code>, <code>keydown</code>, and <code>keyup</code> act at the current page focus. Click or focus the intended control first, then verify with <code>get value</code>, <code>snapshot</code>, or another targeted check."),
+  p("Use <code>eval -b &lt;base64-utf8-js&gt;</code> or pipe JavaScript to <code>eval --stdin</code> when shell quoting would make an inline script brittle. Prefer targeted <code>get</code>, <code>is</code>, <code>find</code>, and <code>snapshot</code> commands when they can answer the question without custom JavaScript."),
   code(`pire-browser screenshot page.png
 pire-browser screenshot --screenshot-dir ./shots page.png
 pire-browser screenshot --screenshot-dir ./shots
@@ -53,7 +54,7 @@ pire-browser screenshot --hide-scrollbars false page.png
 pire-browser pdf page.pdf
 pire-browser pdf viewport.pdf --viewport`),
   p("Screenshot capture hides native scrollbars by default for stable evidence. Pass <code>--hide-scrollbars false</code> when the scrollbar itself is part of the UI state you need to show."),
-  code(`pire-browser snapshot -i
+  code(`pire-browser snapshot
 pire-browser click '@e4'
 pire-browser diff snapshot
 pire-browser diff snapshot --baseline before.txt
@@ -77,7 +78,7 @@ pire-browser read --llms index --filter auth
 pire-browser read --require-md
 pire-browser read example.com/article --require-md
 pire-browser read https://example.com/article --json`),
-  p("<code>read &lt;url&gt;</code> fetches markdown, plain text, or HTML directly from the CLI without launching Firefox. Omit the URL to read rendered text from the active Firefox tab, including client-side state and authenticated content. When <code>--llms</code>, <code>--require-md</code>, <code>--raw</code>, or <code>--timeout</code> is used without a URL, <code>pire-browser</code> first reads the active tab URL and then performs the same guarded no-browser URL fetch. Use <code>read</code> for documents and articles; use <code>snapshot -i</code> when you need interaction refs."),
+  p("<code>read &lt;url&gt;</code> fetches markdown, plain text, or HTML directly from the CLI without launching Firefox. Omit the URL to read rendered text from the active Firefox tab, including client-side state and authenticated content. When <code>--llms</code>, <code>--require-md</code>, <code>--raw</code>, or <code>--timeout</code> is used without a URL, <code>pire-browser</code> first reads the active tab URL and then performs the same guarded no-browser URL fetch. Use <code>read</code> for documents and articles; use <code>snapshot</code> when you need interaction refs."),
 
   h2("Get info", "get-info"),
   code(`pire-browser get text <sel>          # Get text content
@@ -122,7 +123,7 @@ pire-browser wait --url "**/dashboard"
 pire-browser wait --fn "window.appReady === true"
 pire-browser wait --download out.txt --timeout 60000
 pire-browser wait --download --timeout 60000`),
-  p("<code>wait --fn &lt;expression&gt;</code> polls a page-world JavaScript expression until it is truthy. Prefer short, side-effect-free predicates, then re-run <code>snapshot -i</code> before acting on refs."),
+  p("<code>wait --fn &lt;expression&gt;</code> polls a page-world JavaScript expression until it is truthy. Prefer short, side-effect-free predicates, then re-run <code>snapshot</code> before acting on refs."),
 
   h2("Downloads", "downloads"),
   code(`pire-browser --download-path ./downloads open <url>
@@ -242,7 +243,7 @@ pire-browser frame main`),
   h3("Stable tab ids and labels", "stable-tab-ids-and-labels"),
   code(`pire-browser tab new --label docs https://docs.example.com
 pire-browser tab docs
-pire-browser snapshot -i
+pire-browser snapshot
 pire-browser click '@e3'
 pire-browser tab close docs`),
   p("<code>tab</code> with no subcommand lists tracked tabs, matching agent-browser. <code>tab &lt;tN-or-label&gt;</code> switches directly, and <code>tab close</code> closes the active tab when no target is provided."),
@@ -253,7 +254,7 @@ pire-browser window switch w2
 pire-browser window close w2`),
   p("Window ids are stable strings such as <code>w1</code> and <code>w2</code>. Use window list/switch/close for OAuth, checkout, SSO, or popup-style flows that leave the original tab."),
   h3("Iframe support", "iframe-support"),
-  code(`pire-browser snapshot -i
+  code(`pire-browser snapshot
 # @e3 [Iframe] "payment-frame"
 #   @e4 [input] "Card number"
 #   @e5 [button] "Pay"
@@ -261,7 +262,7 @@ pire-browser fill '@e4' "4111111111111111"
 pire-browser click '@e5'
 
 pire-browser frame '@e3'
-pire-browser snapshot -i
+pire-browser snapshot
 pire-browser frame main`),
   p("Refs inside iframes carry frame context, so direct actions such as <code>fill '@e4'</code> and <code>click '@e5'</code> usually work without switching first. Use <code>frame &lt;ref|selector|name|url&gt;</code> for scoped snapshots or selector-based actions inside one iframe, then <code>frame main</code> before returning to outer-page selectors."),
 
@@ -270,8 +271,8 @@ pire-browser frame main`),
   code(`pire-browser dialog status
 pire-browser dialog accept [text]
 pire-browser dialog dismiss
-pire-browser snapshot -i`),
-  p("Dialog support is Firefox WebExtension mediated. <code>alert</code>, <code>confirm</code>, and <code>prompt</code> are shimmed in the page context so they do not hard-block the agent loop. <code>dialog accept [text]</code> configures the next shimmed confirm or prompt to accept, using text as the prompt return value; <code>dialog dismiss</code> configures the next shimmed confirm or prompt to cancel. Observed dialogs surface as <code>PAGE_DIALOG</code> warnings. Re-run <code>snapshot -i</code> after handling a dialog before acting on refs."),
+pire-browser snapshot`),
+  p("Dialog support is Firefox WebExtension mediated. <code>alert</code>, <code>confirm</code>, and <code>prompt</code> are shimmed in the page context so they do not hard-block the agent loop. <code>dialog accept [text]</code> configures the next shimmed confirm or prompt to accept, using text as the prompt return value; <code>dialog dismiss</code> configures the next shimmed confirm or prompt to cancel. Observed dialogs surface as <code>PAGE_DIALOG</code> warnings. Re-run <code>snapshot</code> after handling a dialog before acting on refs."),
 
   h2("Streaming", "streaming"),
   code(`# Dashboard-backed WebSocket screenshot stream.
@@ -464,7 +465,7 @@ pire-browser react suspense --only-dynamic
 pire-browser vitals
 pire-browser vitals https://app.example.com/dashboard
 pire-browser vitals --json
-pire-browser snapshot -i
+pire-browser snapshot
 pire-browser get text <sel>
 pire-browser screenshot page.png`),
 
@@ -495,18 +496,18 @@ pire-browser setcontent '<main><h1>Hello</h1></main>'`),
 --debug                       # Extra diagnostic output`),
 
   h2("Batch execution", "batch-execution"),
-  code(`pire-browser batch "open https://example.com" "snapshot -i" "screenshot page.png"
+  code(`pire-browser batch "open https://example.com" "snapshot" "screenshot page.png"
 pire-browser batch --bail "open https://example.com" "click '@e1'"`),
   code(`echo '[
   ["open", "https://example.com"],
-  ["snapshot", "-i"],
+  ["snapshot"],
   ["click", "@e1"],
   ["screenshot", "result.png"]
 ]' | pire-browser batch --json`),
   p("When using MCP, add the <code>debug</code> profile and call <code>pire_browser_batch</code> with a typed <code>commands</code> array for short sequences. Use individual typed tools when an agent needs to read intermediate output before choosing the next action."),
 
   h2("Command chaining", "command-chaining"),
-  code(`pire-browser open https://example.com && pire-browser wait --selector "#main" && pire-browser snapshot -i
+  code(`pire-browser open https://example.com && pire-browser wait --selector "#main" && pire-browser snapshot
 pire-browser fill '@e1' "user@example.com" && pire-browser fill '@e2' "pass" && pire-browser click '@e3'
 pire-browser open https://example.com && pire-browser screenshot page.png`),
 

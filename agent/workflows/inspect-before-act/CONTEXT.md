@@ -10,7 +10,7 @@ Use this before clicking, typing, selecting, waiting on page content, or making 
 
 ## Process
 
-1. Run `pire-browser snapshot -i`.
+1. Run `pire-browser snapshot`.
 2. Choose the target from the latest snapshot.
 3. Act using the fresh ref from that snapshot.
 4. Reinspect after navigation, modal changes, new tabs, reloads, significant DOM changes, downloads, uploads, or failed actions.
