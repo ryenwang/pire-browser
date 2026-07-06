@@ -61,6 +61,16 @@ pub struct ManagedProfileInfo {
     pub started_at: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveredFirefoxProfileInfo {
+    pub name: String,
+    pub path: PathBuf,
+    pub exists: bool,
+    pub is_default: bool,
+    pub source_path: PathBuf,
+}
+
 #[derive(Debug, Clone)]
 pub struct ProfileImportOptions {
     pub source: PathBuf,
@@ -459,13 +469,27 @@ pub fn list_managed_profiles() -> Result<Vec<ManagedProfileInfo>> {
     Ok(profiles)
 }
 
+pub fn discover_firefox_profiles() -> Result<Vec<DiscoveredFirefoxProfileInfo>> {
+    let mut profiles = Vec::new();
+    for root in firefox_profile_roots() {
+        let ini_path = root.join("profiles.ini");
+        let Ok(body) = fs::read_to_string(&ini_path) else {
+            continue;
+        };
+        profiles.extend(parse_firefox_profiles_ini(&root, &ini_path, &body));
+    }
+    dedupe_and_sort_discovered_profiles(profiles)
+}
+
 pub fn import_firefox_profile(options: ProfileImportOptions) -> Result<ProfileImportResult> {
     ensure_runtime_dirs()?;
     validate_profile_name(&options.name)?;
-    let source = options.source.canonicalize().with_context(|| {
+    let requested_source = options.source.clone();
+    let resolved_source = resolve_firefox_profile_source(&requested_source)?;
+    let source = resolved_source.canonicalize().with_context(|| {
         format!(
             "profile_import_not_found: could not read {}",
-            options.source.display()
+            requested_source.display()
         )
     })?;
     if !source.is_dir() {
@@ -566,6 +590,211 @@ pub fn import_firefox_profile(options: ProfileImportOptions) -> Result<ProfileIm
         overwritten: destination_exists,
         warnings,
     })
+}
+
+fn firefox_profile_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    #[cfg(windows)]
+    {
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            roots.push(PathBuf::from(appdata).join("Mozilla").join("Firefox"));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home) = std::env::var_os("HOME") {
+            roots.push(
+                PathBuf::from(home)
+                    .join("Library")
+                    .join("Application Support")
+                    .join("Firefox"),
+            );
+        }
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        if let Some(home) = std::env::var_os("HOME") {
+            roots.push(PathBuf::from(home).join(".mozilla").join("firefox"));
+        }
+    }
+
+    roots
+}
+
+fn resolve_firefox_profile_source(source: &Path) -> Result<PathBuf> {
+    if source.exists() || path_value_is_path_like(source) {
+        return Ok(source.to_path_buf());
+    }
+    resolve_firefox_profile_source_from_profiles(source, discover_firefox_profiles()?)
+}
+
+fn resolve_firefox_profile_source_from_profiles(
+    source: &Path,
+    profiles: Vec<DiscoveredFirefoxProfileInfo>,
+) -> Result<PathBuf> {
+    let Some(query) = source
+        .to_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(source.to_path_buf());
+    };
+    let matches: Vec<DiscoveredFirefoxProfileInfo> = profiles
+        .into_iter()
+        .filter(|profile| discovered_profile_matches(profile, query))
+        .collect();
+    match matches.as_slice() {
+        [profile] => Ok(profile.path.clone()),
+        [] => bail!(
+            "profile_import_not_found: no discovered Firefox profile named `{query}`; run `pire-browser profiles` or pass a Firefox profile directory"
+        ),
+        many => {
+            let names = many
+                .iter()
+                .map(|profile| format!("{} ({})", profile.name, profile.path.display()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            bail!(
+                "profile_import_ambiguous: `{query}` matched multiple Firefox profiles: {names}; pass the exact profile directory"
+            )
+        }
+    }
+}
+
+fn discovered_profile_matches(profile: &DiscoveredFirefoxProfileInfo, query: &str) -> bool {
+    profile.name.eq_ignore_ascii_case(query)
+        || profile
+            .path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(|value| value.eq_ignore_ascii_case(query))
+            .unwrap_or(false)
+        || profile.path.to_string_lossy().eq_ignore_ascii_case(query)
+        || (profile.is_default && query.eq_ignore_ascii_case("Default"))
+}
+
+fn path_value_is_path_like(path: &Path) -> bool {
+    let text = path.to_string_lossy();
+    text.starts_with("~/")
+        || text.starts_with("~\\")
+        || text.starts_with("./")
+        || text.starts_with(".\\")
+        || text.starts_with("../")
+        || text.starts_with("..\\")
+        || text.starts_with('/')
+        || text.starts_with('\\')
+        || text.contains('/')
+        || text.contains('\\')
+        || text
+            .as_bytes()
+            .get(1)
+            .copied()
+            .map(|byte| byte == b':')
+            .unwrap_or(false)
+}
+
+fn parse_firefox_profiles_ini(
+    root: &Path,
+    ini_path: &Path,
+    body: &str,
+) -> Vec<DiscoveredFirefoxProfileInfo> {
+    let mut profiles = Vec::new();
+    let mut section = String::new();
+    let mut values: HashMap<String, String> = HashMap::new();
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with(';') || trimmed.starts_with('#') {
+            continue;
+        }
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            flush_firefox_profile_section(root, ini_path, &section, &values, &mut profiles);
+            section = trimmed
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .trim()
+                .to_string();
+            values.clear();
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        values.insert(key.trim().to_ascii_lowercase(), value.trim().to_string());
+    }
+    flush_firefox_profile_section(root, ini_path, &section, &values, &mut profiles);
+    profiles
+}
+
+fn flush_firefox_profile_section(
+    root: &Path,
+    ini_path: &Path,
+    section: &str,
+    values: &HashMap<String, String>,
+    profiles: &mut Vec<DiscoveredFirefoxProfileInfo>,
+) {
+    if !section.to_ascii_lowercase().starts_with("profile") {
+        return;
+    }
+    let Some(raw_path) = values.get("path").filter(|value| !value.trim().is_empty()) else {
+        return;
+    };
+    let is_relative = values.get("isrelative").map(String::as_str).unwrap_or("1") != "0";
+    let path = if is_relative {
+        root.join(raw_path)
+    } else {
+        PathBuf::from(raw_path)
+    };
+    let name = values
+        .get("name")
+        .filter(|value| !value.trim().is_empty())
+        .cloned()
+        .or_else(|| {
+            path.file_name()
+                .and_then(|value| value.to_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| section.to_string());
+    let is_default = values.get("default").map(String::as_str) == Some("1");
+    profiles.push(DiscoveredFirefoxProfileInfo {
+        name,
+        exists: path.exists(),
+        path,
+        is_default,
+        source_path: ini_path.to_path_buf(),
+    });
+}
+
+fn dedupe_and_sort_discovered_profiles(
+    profiles: Vec<DiscoveredFirefoxProfileInfo>,
+) -> Result<Vec<DiscoveredFirefoxProfileInfo>> {
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::new();
+    for profile in profiles {
+        let key = profile
+            .path
+            .canonicalize()
+            .unwrap_or_else(|_| profile.path.clone())
+            .to_string_lossy()
+            .to_ascii_lowercase();
+        if seen.insert(key) {
+            deduped.push(profile);
+        }
+    }
+    deduped.sort_by(|left, right| {
+        (!left.is_default)
+            .cmp(&(!right.is_default))
+            .then_with(|| {
+                left.name
+                    .to_ascii_lowercase()
+                    .cmp(&right.name.to_ascii_lowercase())
+            })
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    Ok(deduped)
 }
 
 fn collect_profile_names_from_dir(dir: &Path, names: &mut BTreeSet<String>) -> Result<()> {
@@ -1765,6 +1994,90 @@ mod tests {
 
         fs::write(source.join("parent.lock"), b"locked").unwrap();
         assert!(source_has_lock_file(&source));
+    }
+
+    #[test]
+    fn parses_firefox_profiles_ini_for_importable_profiles() {
+        let root = tempfile::tempdir().unwrap();
+        let firefox_root = root.path().join("Firefox");
+        let default_profile = firefox_root.join("Profiles/abc.default-release");
+        let dev_profile = root.path().join("External/dev-edition");
+        fs::create_dir_all(&default_profile).unwrap();
+        fs::create_dir_all(&dev_profile).unwrap();
+        let ini_path = firefox_root.join("profiles.ini");
+        let body = format!(
+            r#"
+[Profile0]
+Name=default-release
+IsRelative=1
+Path=Profiles/abc.default-release
+Default=1
+
+[Profile1]
+Name=Developer
+IsRelative=0
+Path={}
+"#,
+            dev_profile.display()
+        );
+
+        let profiles = parse_firefox_profiles_ini(&firefox_root, &ini_path, &body);
+
+        assert_eq!(profiles.len(), 2);
+        assert_eq!(profiles[0].name, "default-release");
+        assert_eq!(profiles[0].path, default_profile);
+        assert!(profiles[0].exists);
+        assert!(profiles[0].is_default);
+        assert_eq!(profiles[1].name, "Developer");
+        assert_eq!(profiles[1].path, dev_profile);
+    }
+
+    #[test]
+    fn resolves_discovered_firefox_profile_names_for_import() {
+        let root = tempfile::tempdir().unwrap();
+        let default_profile = root.path().join("Profiles/abc.default-release");
+        let other_profile = root.path().join("Profiles/def.work");
+        let profiles = vec![
+            DiscoveredFirefoxProfileInfo {
+                name: "default-release".to_string(),
+                path: default_profile.clone(),
+                exists: true,
+                is_default: true,
+                source_path: root.path().join("profiles.ini"),
+            },
+            DiscoveredFirefoxProfileInfo {
+                name: "work".to_string(),
+                path: other_profile.clone(),
+                exists: true,
+                is_default: false,
+                source_path: root.path().join("profiles.ini"),
+            },
+        ];
+
+        assert_eq!(
+            resolve_firefox_profile_source_from_profiles(Path::new("Default"), profiles.clone())
+                .unwrap(),
+            default_profile
+        );
+        assert_eq!(
+            resolve_firefox_profile_source_from_profiles(Path::new("work"), profiles.clone())
+                .unwrap(),
+            other_profile
+        );
+        assert_eq!(
+            resolve_firefox_profile_source_from_profiles(
+                Path::new("abc.default-release"),
+                profiles.clone()
+            )
+            .unwrap(),
+            default_profile
+        );
+        assert!(
+            resolve_firefox_profile_source_from_profiles(Path::new("missing"), profiles)
+                .unwrap_err()
+                .to_string()
+                .contains("no discovered Firefox profile")
+        );
     }
 
     #[test]

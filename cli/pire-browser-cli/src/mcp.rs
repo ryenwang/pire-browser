@@ -4171,17 +4171,17 @@ fn core_tools() -> Vec<Value> {
         tool(
             "pire_browser_profiles_list",
             "List profiles",
-            "List managed Firefox profiles known to pire-browser.",
+            "List managed pire-browser Firefox profiles and importable local Mozilla Firefox profiles discovered from profiles.ini.",
             tool_schema(vec![], &[]),
             true,
         ),
         tool(
             "pire_browser_profiles_import",
             "Import Firefox profile",
-            "Copy an existing Firefox profile directory into a stopped managed pire-browser profile.",
+            "Copy an existing Firefox profile directory or discovered Firefox profile name into a stopped managed pire-browser profile.",
             tool_schema(
                 vec![
-                    ("source", string_prop("Firefox profile directory to copy.")),
+                    ("source", string_prop("Firefox profile directory, discovered profile name, or Default alias to copy.")),
                     ("name", string_prop("Managed pire-browser profile name to create or replace.")),
                     (
                         "overwrite",
@@ -7564,9 +7564,12 @@ mod tests {
             .unwrap();
         assert_eq!(args, vec!["--json", "window", "new"]);
 
-        let args =
-            tool_command_args("pire_browser_window_list", &json!({}), McpToolsProfile::Tabs)
-                .unwrap();
+        let args = tool_command_args(
+            "pire_browser_window_list",
+            &json!({}),
+            McpToolsProfile::Tabs,
+        )
+        .unwrap();
         assert_eq!(args, vec!["--json", "window", "list"]);
 
         let args = tool_command_args(
@@ -7585,9 +7588,12 @@ mod tests {
         .unwrap();
         assert_eq!(args, vec!["--json", "window", "close", "w2"]);
 
-        let args =
-            tool_command_args("pire_browser_window_close", &json!({}), McpToolsProfile::Tabs)
-                .unwrap();
+        let args = tool_command_args(
+            "pire_browser_window_close",
+            &json!({}),
+            McpToolsProfile::Tabs,
+        )
+        .unwrap();
         assert_eq!(args, vec!["--json", "window", "close"]);
 
         let args = tool_command_args(

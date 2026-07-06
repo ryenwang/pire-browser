@@ -2306,14 +2306,14 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                     }
                     other => {
                         if source.is_some() {
-                            bail!("profiles import accepts exactly one Firefox profile directory");
+                            bail!("profiles import accepts exactly one Firefox profile name or directory");
                         }
                         source = Some(other.to_string());
                     }
                 }
             }
             let Some(source) = source else {
-                bail!("profiles import requires a Firefox profile directory");
+                bail!("profiles import requires a Firefox profile name or directory");
             };
             let Some(name) = name else {
                 bail!("profiles import requires --name <managed-name>");
@@ -4539,15 +4539,17 @@ const PROFILES_HELP: &str = r##"
 Usage:
   pire-browser profiles [--json]
   pire-browser profiles list [--json]
-  pire-browser profiles import <firefox-profile-dir> --name <managed-name> [--overwrite] [--json]
+  pire-browser profiles import <firefox-profile-name-or-dir> --name <managed-name> [--overwrite] [--json]
 
-Lists managed Firefox profiles known to pire-browser, including the default
-profile path, launch metadata, and any live session id. This is best-effort
-Firefox profile management under the local pire-browser data directory.
-Path-like `--profile` values are mapped to stable managed names rather than
-used as raw browser profile paths.
+Lists managed Firefox profiles known to pire-browser and discovered local
+Mozilla Firefox profiles that can be imported. Managed entries include the
+default profile path, launch metadata, and any live session id. Discovered
+Firefox entries come from Mozilla `profiles.ini` files and are copied only when
+you run `profiles import`. Path-like `--profile` values are mapped to stable
+managed names rather than used as raw browser profile paths.
 
-`profiles import` copies an existing Firefox profile directory into a managed
+`profiles import` copies an existing Firefox profile directory, or a discovered
+Firefox profile name such as `default-release` or `Default`, into a managed
 pire-browser profile. It never mutates the source profile and future changes in
 the source do not sync. Close Firefox before importing so lock files and
 partially-written profile data are not copied. Pass `--overwrite` to replace an
@@ -7682,7 +7684,9 @@ mod tests {
         let text = help_text(None).unwrap();
         assert!(text
             .contains("open                            Launch/reuse Firefox without navigating"));
-        assert!(text.contains("snapshot                        Inspect the active page and print refs"));
+        assert!(
+            text.contains("snapshot                        Inspect the active page and print refs")
+        );
         assert!(text.contains("click '@e4'"));
         assert!(text.contains("tap '@e4'"));
         assert!(text.contains("dblclick '@e4'"));
@@ -8101,7 +8105,9 @@ mod tests {
         assert!(help_text(Some("auth"))
             .unwrap()
             .contains("--password-stdin"));
-        assert!(help_text(Some("tabs")).unwrap().contains("pire-browser tab"));
+        assert!(help_text(Some("tabs"))
+            .unwrap()
+            .contains("pire-browser tab"));
         assert!(help_text(Some("tabs"))
             .unwrap()
             .contains("tab <tN-or-label>"));
@@ -8217,7 +8223,7 @@ mod tests {
             .contains("managed Firefox profiles"));
         assert!(help_text(Some("profiles"))
             .unwrap()
-            .contains("profiles import <firefox-profile-dir>"));
+            .contains("profiles import <firefox-profile-name-or-dir>"));
         assert!(help_text(Some("action-policy"))
             .unwrap()
             .contains("PIRE_BROWSER_ACTION_POLICY"));

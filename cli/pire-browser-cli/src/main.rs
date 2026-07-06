@@ -48,10 +48,11 @@ use pire_browser_core::install_status::{
 };
 use pire_browser_core::ipc::send_pipe_request;
 use pire_browser_core::launch::{
-    annotate_session_profile_names, import_firefox_profile, launch_firefox, launch_result_text,
-    list_managed_profiles, live_session_for_profile_name, managed_profile_dir_from_data_dir,
-    validate_profile_name, LaunchOptions, LaunchResult, ManagedProfileInfo, ProfileImportOptions,
-    ProfileImportResult, DEFAULT_PROFILE_NAME,
+    annotate_session_profile_names, discover_firefox_profiles, import_firefox_profile,
+    launch_firefox, launch_result_text, list_managed_profiles, live_session_for_profile_name,
+    managed_profile_dir_from_data_dir, validate_profile_name, DiscoveredFirefoxProfileInfo,
+    LaunchOptions, LaunchResult, ManagedProfileInfo, ProfileImportOptions, ProfileImportResult,
+    DEFAULT_PROFILE_NAME,
 };
 use pire_browser_core::protocol::{RpcRequest, RpcResponse};
 use pire_browser_core::redaction::{redact_json_value, redact_text};
@@ -4427,14 +4428,18 @@ fn shell_word(value: &str) -> String {
 
 fn handle_profiles_list(json_output: bool) -> Result<()> {
     let profiles = list_managed_profiles()?;
+    let browser_profiles = discover_firefox_profiles()?;
     if json_output {
         println!(
             "{}",
-            format_cli_result(&json!({ "profiles": profiles }), true)?
+            format_cli_result(
+                &json!({ "profiles": profiles, "importableFirefoxProfiles": browser_profiles }),
+                true
+            )?
         );
         return Ok(());
     }
-    println!("{}", profiles_text(&profiles));
+    println!("{}", profiles_text(&profiles, &browser_profiles));
     Ok(())
 }
 
@@ -4462,11 +4467,15 @@ fn handle_profiles_import(
     Ok(())
 }
 
-fn profiles_text(profiles: &[ManagedProfileInfo]) -> String {
-    if profiles.is_empty() {
-        return "No managed Firefox profiles found.".to_string();
-    }
-    let mut lines = vec![format!("{} managed Firefox profile(s):", profiles.len())];
+fn profiles_text(
+    profiles: &[ManagedProfileInfo],
+    browser_profiles: &[DiscoveredFirefoxProfileInfo],
+) -> String {
+    let mut lines = if profiles.is_empty() {
+        vec!["No managed Firefox profiles found.".to_string()]
+    } else {
+        vec![format!("{} managed Firefox profile(s):", profiles.len())]
+    };
     for profile in profiles {
         let live = if let Some(session_id) = &profile.session_id {
             format!(" live session={session_id}")
@@ -4487,6 +4496,28 @@ fn profiles_text(profiles: &[ManagedProfileInfo]) -> String {
             last_url,
             profile.path.display()
         ));
+    }
+    if !browser_profiles.is_empty() {
+        lines.push(String::new());
+        lines.push(format!(
+            "{} importable Firefox profile(s) discovered:",
+            browser_profiles.len()
+        ));
+        for profile in browser_profiles {
+            let default = if profile.is_default { " default" } else { "" };
+            let exists = if profile.exists { "" } else { " missing" };
+            lines.push(format!(
+                "- {}{}{} path={}",
+                profile.name,
+                default,
+                exists,
+                profile.path.display()
+            ));
+        }
+        lines.push(
+            "Import one with: pire-browser profiles import <name-or-path> --name <managed-name>"
+                .to_string(),
+        );
     }
     lines.join("\n")
 }
@@ -12873,9 +12904,10 @@ fn launch_url_for_remote_args(args: &[String]) -> Option<String> {
         return None;
     }
     match args.first().map(String::as_str) {
-        Some("open" | "goto" | "navigate") => {
-            first_positional_arg(&args[1..], &["--label", "--init-script", "--enable", "--device"])
-        }
+        Some("open" | "goto" | "navigate") => first_positional_arg(
+            &args[1..],
+            &["--label", "--init-script", "--enable", "--device"],
+        ),
         Some("vitals") => first_positional_arg(&args[1..], &[]),
         Some("batch") => batch_launch_url(args),
         _ => None,
@@ -13006,9 +13038,10 @@ fn batch_launch_url(args: &[String]) -> Option<String> {
 
 fn navigation_url_for_remote_args(args: &[String]) -> Option<String> {
     match args.first().map(String::as_str) {
-        Some("open" | "goto" | "navigate") => {
-            first_positional_arg(&args[1..], &["--label", "--init-script", "--enable", "--device"])
-        }
+        Some("open" | "goto" | "navigate") => first_positional_arg(
+            &args[1..],
+            &["--label", "--init-script", "--enable", "--device"],
+        ),
         Some("tab" | "tabs") if args.get(1).map(String::as_str) == Some("new") => {
             first_positional_arg(&args[2..], &["--label"])
         }
@@ -13135,6 +13168,33 @@ mod tests {
             last_launch_url: Some("https://example.com".to_string()),
             started_at: Some(1),
         }
+    }
+
+    fn discovered_profile(name: &str, is_default: bool) -> DiscoveredFirefoxProfileInfo {
+        DiscoveredFirefoxProfileInfo {
+            name: name.to_string(),
+            path: PathBuf::from(format!("/home/me/.mozilla/firefox/{name}")),
+            exists: true,
+            is_default,
+            source_path: PathBuf::from("/home/me/.mozilla/firefox/profiles.ini"),
+        }
+    }
+
+    #[test]
+    fn profiles_text_includes_importable_firefox_profiles() {
+        let text = profiles_text(
+            &[test_profile("Work", Some("session-1"), true)],
+            &[
+                discovered_profile("default-release", true),
+                discovered_profile("dev-edition", false),
+            ],
+        );
+
+        assert!(text.contains("1 managed Firefox profile"));
+        assert!(text.contains("Work live session=session-1"));
+        assert!(text.contains("2 importable Firefox profile"));
+        assert!(text.contains("default-release default"));
+        assert!(text.contains("profiles import <name-or-path> --name <managed-name>"));
     }
 
     #[test]
@@ -14645,11 +14705,7 @@ mod tests {
             Some("https://example.com".to_string())
         );
         assert_eq!(
-            launch_url_for_remote_args(&s(&[
-                "open",
-                "https://example.com",
-                "--device=iPhone 14"
-            ])),
+            launch_url_for_remote_args(&s(&["open", "https://example.com", "--device=iPhone 14"])),
             None
         );
         assert_eq!(

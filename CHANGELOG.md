@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.32
+
+- Adds local Mozilla Firefox profile discovery to `pire-browser profiles`, including JSON `importableFirefoxProfiles`, so agents can find importable logged-in Firefox profiles without asking for obscure profile paths.
+- Lets `profiles import` accept a discovered Firefox profile name or the `Default` alias for the discovered default profile, while preserving the safer copy-into-managed-profile model.
+- Updates README, docs, installed agent guidance, MCP tool descriptions, and tests for the logged-in QA profile reuse workflow.
+
 ## 0.2.31
 
 - Improves agent-browser parity discoverability for already-supported mouse button/wheel commands, dialog accept/dismiss commands, bare `skills`, and `snapshot --depth`.

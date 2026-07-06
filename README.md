@@ -993,7 +993,10 @@ Use `session list` when you need the full live-session inventory.
 ## Firefox Profile Reuse
 
 ```bash
+pire-browser profiles
 pire-browser profiles --json
+pire-browser profiles import default-release --name Work
+pire-browser profiles import Default --name Work
 pire-browser profiles import "C:\Users\me\AppData\Roaming\Mozilla\Firefox\Profiles\abc.default-release" --name Work
 pire-browser profiles import ~/Library/Application\ Support/Firefox/Profiles/abc.default-release --name Work
 pire-browser --profile Default open https://example.com
@@ -1002,7 +1005,7 @@ pire-browser --profile ~/.myapp-profile open https://example.com
 ```
 
 `--profile <name-or-path>` reuses or launches a managed Firefox profile. Path-like values are mapped to stable managed Firefox profile names under the `pire-browser` data directory. They are not raw browser profile directories.
-Use `profiles import` when you already have a Firefox profile with login state you want to reuse. It copies the source into a managed profile and never mutates the original; close Firefox before importing so lock files and partially-written data are not copied. Future changes in the original Firefox profile do not sync automatically. Use `--overwrite` only after closing the managed `pire-browser` profile you want to replace.
+Use `profiles` to list managed `pire-browser` profiles plus importable local Mozilla Firefox profiles discovered from `profiles.ini`. Use `profiles import <discovered-name-or-path> --name <managed-name>` when you already have a Firefox profile with login state you want to reuse. `Default` selects the discovered default Firefox profile when one is present. Import copies the source into a managed profile and never mutates the original; close Firefox before importing so lock files and partially-written data are not copied. Future changes in the original Firefox profile do not sync automatically. Use `--overwrite` only after closing the managed `pire-browser` profile you want to replace.
 
 ## Persistent Profiles
 

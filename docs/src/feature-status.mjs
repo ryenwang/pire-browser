@@ -38,7 +38,7 @@ export const featureStatuses = {
   },
   managedProfiles: {
     status: "best_effort",
-    summary: "`profiles --json`, `profiles import <firefox-profile-dir> --name <managed-name>`, `--profile <name-or-path>`, and `PIRE_BROWSER_PROFILE` provide managed Firefox profile support. Import copies existing Firefox profile data into managed pire-browser state; Chrome profile import/reuse remains outside the Firefox backend.",
+    summary: "`profiles`, `profiles import <discovered-name-or-firefox-profile-dir> --name <managed-name>`, `--profile <name-or-path>`, and `PIRE_BROWSER_PROFILE` provide managed Firefox profile support. `profiles` lists managed profiles plus importable local Mozilla Firefox profiles discovered from `profiles.ini`; import copies existing Firefox profile data into managed pire-browser state. Chrome profile import/reuse remains outside the Firefox backend.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/cli.rs"],
   },
   namedSessions: {

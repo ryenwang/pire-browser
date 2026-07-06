@@ -219,9 +219,7 @@ mod tests {
         assert!(skill.content.contains("pire-browser snapshot -c"));
         assert!(skill.content.contains("pire-browser snapshot -d 3"));
         assert!(skill.content.contains("pire-browser snapshot -C"));
-        assert!(skill
-            .content
-            .contains("pire-browser snapshot -c -C -d 5"));
+        assert!(skill.content.contains("pire-browser snapshot -c -C -d 5"));
         assert!(skill.content.contains("pire-browser wait '@"));
         assert!(skill
             .content

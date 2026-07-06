@@ -387,7 +387,10 @@ pire-browser --session-name work close`),
 
   h2("Managed Firefox profiles", "managed-firefox-profiles"),
   statusNote("managedProfiles"),
-  code(`pire-browser profiles --json
+  code(`pire-browser profiles
+pire-browser profiles --json
+pire-browser profiles import default-release --name Work
+pire-browser profiles import Default --name Work
 pire-browser profiles import /path/to/firefox-profile --name Work
 pire-browser profiles import /path/to/firefox-profile --name Work --overwrite
 pire-browser launch --profile Default
@@ -395,6 +398,7 @@ pire-browser --profile Work open https://example.com
 pire-browser --profile ~/.myapp-profile open https://example.com
 # Import copies a Firefox profile into managed pire-browser state.
 # Chrome profile import/reuse is not part of the Firefox backend.`),
+  p("<code>profiles</code> lists managed <code>pire-browser</code> profiles plus importable local Mozilla Firefox profiles discovered from <code>profiles.ini</code>. <code>profiles import &lt;discovered-name-or-path&gt; --name &lt;managed-name&gt;</code> copies an existing Firefox profile into a managed profile. <code>Default</code> selects the discovered default Firefox profile when one is present. Import never mutates the source profile and future source changes do not sync; close Firefox before importing so lock files and partially-written data are not copied."),
 
   h2("Dashboard", "dashboard"),
   statusNote("dashboard"),

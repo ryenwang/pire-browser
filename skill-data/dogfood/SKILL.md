@@ -50,7 +50,7 @@ profile, a managed profile, or a saved state file. Useful setup commands:
 
 ```bash
 pire-browser profiles list
-pire-browser profiles import <firefox-profile-dir> --name dogfood
+pire-browser profiles import <discovered-name-or-firefox-profile-dir> --name dogfood
 pire-browser --profile dogfood open https://app.example.com
 pire-browser --state ./.pire-state/app.json open https://app.example.com
 ```

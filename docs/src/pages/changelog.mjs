@@ -1,6 +1,12 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.32", "0-2-32"),
+  list([
+    "Adds local Mozilla Firefox profile discovery to <code>pire-browser profiles</code>, including JSON <code>importableFirefoxProfiles</code>, so agents can find importable logged-in Firefox profiles without asking for obscure profile paths.",
+    "Lets <code>profiles import</code> accept a discovered Firefox profile name or the <code>Default</code> alias for the discovered default profile, while preserving the safer copy-into-managed-profile model.",
+    "Updates README, docs, installed agent guidance, MCP tool descriptions, and tests for the logged-in QA profile reuse workflow.",
+  ]),
   h2("0.2.31", "0-2-31"),
   list([
     "Improves agent-browser parity discoverability for already-supported mouse button/wheel commands, dialog accept/dismiss commands, bare <code>skills</code>, and <code>snapshot --depth</code>.",
@@ -140,7 +146,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The repository package version is currently <code>pire-browser@0.2.31</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
+  p("The repository package version is currently <code>pire-browser@0.2.32</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
 ];
 
 export default page({
