@@ -990,6 +990,26 @@ Use `session list` when you need the full live-session inventory.
 
 `--session <uuid>` targets a strict live session id from `session list`. `--session <name>`, `PIRE_BROWSER_SESSION=<name>`, `AGENT_BROWSER_SESSION=<name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION_NAME=<name>`, and `AGENT_BROWSER_SESSION_NAME=<name>` are named-profile aliases that may reuse or launch managed Firefox. `--restore <name>` may be used as a short spelling for `--session <name> --restore` when no session/profile target is already present. `--restore-save auto|always|never` is accepted for agent-browser recipe compatibility; named Firefox profiles persist automatically.
 
+## Logged-In App QA Starter
+
+When an app needs existing Firefox login state, use one stable managed profile
+for the project instead of asking for obscure Firefox profile paths:
+
+```bash
+SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser profiles
+pire-browser profiles import Default --name "$SESSION"
+pire-browser --session "$SESSION" --restore open http://localhost:3000/app
+pire-browser --session "$SESSION" --restore session info --json
+pire-browser --session "$SESSION" --restore snapshot
+pire-browser --session "$SESSION" --restore screenshot
+```
+
+Run the import once, after closing desktop Firefox if the source profile is in
+use. On later QA runs, skip import and reuse
+`--session "$SESSION" --restore`; that managed profile keeps cookies, tabs,
+IndexedDB, service workers, and saved Firefox login state.
+
 ## Firefox Profile Reuse
 
 ```bash

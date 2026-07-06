@@ -13,11 +13,12 @@ Use this for named sessions, profile reuse, persisted state, downloads, uploads,
 1. Use default sessions for one-off work; use named sessions or profiles when continuity matters.
 2. For project QA loops, derive a deterministic session name with `SESSION="$(pire-browser session id --scope worktree --prefix <app>)"` and pass `--session "$SESSION" --restore` on every browser command.
 3. Inspect the current/default target with `pire-browser session --json`; inspect a selected restore target with `pire-browser --session "$SESSION" --restore session info --json`; inspect all live sessions with `pire-browser session list --json` and managed/importable profiles with `pire-browser profiles`.
-4. Use `pire-browser profiles import <discovered-name-or-firefox-profile-dir> --name <managed-name>` when the user already has Firefox login state to copy into a managed profile. `Default` selects the discovered default Firefox profile when one is present. The import is a copy, not a live mount.
-5. Use `pire-browser --profile <name-or-path> ...` for reusable managed Firefox profiles.
-6. Use `pire-browser --session <name> ...` for reusable named sessions, and `--session <uuid>` only for strict live-id targeting.
-7. Use `state list --json`, `state show <name-or-path> --json`, `state save`, `state rename`, `state clear`, and `state clean` for `.pire-state` maintenance.
-8. Verify downloaded files on disk and verify uploads through fresh page state.
+4. For logged-in app QA, import existing Firefox login state into the same managed profile name as the stable project session: `pire-browser profiles import Default --name "$SESSION"`, then continue with `pire-browser --session "$SESSION" --restore open <url>`, `session info --json`, `snapshot`, and verification commands.
+5. Use `pire-browser profiles import <discovered-name-or-firefox-profile-dir> --name <managed-name>` when the user already has Firefox login state to copy into a managed profile. `Default` selects the discovered default Firefox profile when one is present. The import is a copy, not a live mount.
+6. Use `pire-browser --profile <name-or-path> ...` for reusable managed Firefox profiles.
+7. Use `pire-browser --session <name> ...` for reusable named sessions, and `--session <uuid>` only for strict live-id targeting.
+8. Use `state list --json`, `state show <name-or-path> --json`, `state save`, `state rename`, `state clear`, and `state clean` for `.pire-state` maintenance.
+9. Verify downloaded files on disk and verify uploads through fresh page state.
 
 ## Audit
 

@@ -3466,9 +3466,9 @@ Common commands:
                                   Agent-browser-style persistent session recipe
   --session-name work open <url>  Explicit named Firefox profile spelling
   --profile Work open <url>       Managed Firefox profile alias
-  profiles [--json]               List managed Firefox profiles
-  profiles import <dir> --name Work
-                                  Copy a Firefox profile into a managed profile
+  profiles [--json]               List managed and importable Firefox profiles
+  profiles import Default --name Work
+                                  Copy a discovered Firefox profile into managed state
   session                         Inspect current/default session target
   session list                    List live Firefox sessions
   session id --scope worktree --prefix my-app
@@ -7742,7 +7742,7 @@ mod tests {
         assert!(text.contains("close --all"));
         assert!(text.contains("--profile Work open <url>"));
         assert!(text.contains("profiles [--json]"));
-        assert!(text.contains("profiles import <dir> --name Work"));
+        assert!(text.contains("profiles import Default --name Work"));
         assert!(text.contains("set viewport"));
         assert!(text.contains("mouse move"));
         assert!(text.contains("mouse down [left]"));

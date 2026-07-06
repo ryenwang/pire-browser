@@ -118,6 +118,25 @@ Use bare `pire-browser session --json` for the agent-browser-compatible
 current/default session diagnostic; use `pire-browser session list --json` when
 you need the full live-session inventory.
 
+Authenticated app QA with existing Firefox login state:
+
+```bash
+SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser profiles
+pire-browser profiles import Default --name "$SESSION"
+pire-browser --session "$SESSION" --restore open https://app.example.com
+pire-browser --session "$SESSION" --restore session info --json
+pire-browser --session "$SESSION" --restore snapshot
+pire-browser --session "$SESSION" --restore screenshot
+```
+
+Use this when the user says they are already logged in with desktop Firefox.
+Run `profiles` before asking for profile paths. Import copies the discovered
+Firefox profile into managed `pire-browser` state and does not mutate the
+source. If import reports that the source profile is in use, ask the user to
+close desktop Firefox before retrying. On later runs, skip import and reuse
+`--session "$SESSION" --restore`.
+
 Search a site:
 
 ```bash

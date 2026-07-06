@@ -48,6 +48,15 @@ pire-browser snapshot`),
 pire-browser --session "$SESSION" --restore open http://localhost:3000
 pire-browser --session "$SESSION" --restore snapshot`),
   p("Use one worktree-scoped session with <code>--restore</code> for a local app QA loop so cookies, tabs, and managed Firefox profile state stay isolated to that project. In pire-browser, named Firefox profiles provide the persistence store."),
+  h2("Logged-in app QA", "logged-in-app-qa"),
+  code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser profiles
+pire-browser profiles import Default --name "$SESSION"
+pire-browser --session "$SESSION" --restore open http://localhost:3000/app
+pire-browser --session "$SESSION" --restore session info --json
+pire-browser --session "$SESSION" --restore snapshot
+pire-browser --session "$SESSION" --restore screenshot`),
+  p("When an app needs existing Firefox login state, list importable local Firefox profiles first, then copy the discovered default or named profile into the same managed profile used by the project session. Run the import once after closing desktop Firefox if the source profile is in use. Later QA runs should skip import and reuse <code>--session \"$SESSION\" --restore</code>."),
   h2("Common commands", "common-commands"),
   code(`pire-browser open                         # Launch/reuse Firefox without navigating
 pire-browser open https://example.com

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.33
+
+- Adds a logged-in app QA starter recipe that combines discovered Firefox profile import, stable worktree-scoped sessions, restore diagnostics, snapshots, and screenshot evidence.
+- Tightens top-level CLI help so `profiles` advertises managed plus importable Firefox profiles and shows the `profiles import Default --name Work` path instead of the old directory-only shorthand.
+- Updates README, docs, installed agent context, and bundled skills so agents use the new profile discovery workflow without asking for obscure Firefox profile paths.
+
 ## 0.2.32
 
 - Adds local Mozilla Firefox profile discovery to `pire-browser profiles`, including JSON `importableFirefoxProfiles`, so agents can find importable logged-in Firefox profiles without asking for obscure profile paths.

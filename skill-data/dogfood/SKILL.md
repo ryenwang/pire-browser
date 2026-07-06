@@ -50,10 +50,17 @@ profile, a managed profile, or a saved state file. Useful setup commands:
 
 ```bash
 pire-browser profiles list
-pire-browser profiles import <discovered-name-or-firefox-profile-dir> --name dogfood
-pire-browser --profile dogfood open https://app.example.com
+SESSION="$(pire-browser session id --scope worktree --prefix dogfood)"
+pire-browser profiles import Default --name "$SESSION"
+pire-browser --session "$SESSION" --restore open https://app.example.com
+pire-browser --session "$SESSION" --restore session info --json
 pire-browser --state ./.pire-state/app.json open https://app.example.com
 ```
+
+Prefer the profile import path when the user is already logged in with desktop
+Firefox. Run `profiles` before asking for paths; `Default` selects the
+discovered default Firefox profile when present. Run the import once, then reuse
+the stable `--session "$SESSION" --restore` command for the rest of the QA pass.
 
 ## Exploration Loop
 

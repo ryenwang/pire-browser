@@ -41,6 +41,15 @@ AGENT_BROWSER_PROFILE=Work pire-browser snapshot -i
 pire-browser --profile ~/.myapp-profile open https://example.com`),
   p("<code>--profile &lt;name-or-path&gt;</code> reuses or launches a managed Firefox profile. Path-like values are mapped to stable managed Firefox profile names under the <code>pire-browser</code> data directory; they are not raw browser profile directories."),
   p("<code>profiles</code> lists managed <code>pire-browser</code> profiles plus importable local Mozilla Firefox profiles discovered from <code>profiles.ini</code>. <code>profiles import &lt;discovered-name-or-path&gt; --name &lt;managed-name&gt;</code> copies an existing Firefox profile into a managed profile for login continuity. <code>Default</code> selects the discovered default Firefox profile when one is present. It never mutates the source profile and future source changes do not sync. Close Firefox before importing so lock files and partially-written data are not copied; use <code>--overwrite</code> only after closing the managed profile being replaced."),
+  h2("Logged-in QA starter", "logged-in-qa-starter"),
+  code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser profiles
+pire-browser profiles import Default --name "$SESSION"
+pire-browser --session "$SESSION" --restore open https://app.example.com
+pire-browser --session "$SESSION" --restore session info --json
+pire-browser --session "$SESSION" --restore snapshot
+pire-browser --session "$SESSION" --restore screenshot`),
+  p("This is the shortest recurring QA path when the user already has Firefox login state. Import the discovered <code>Default</code> or a named importable profile into the same managed profile name as the stable project session. On later runs, skip import and reuse the session command so cookies, tabs, IndexedDB, service workers, and saved Firefox login state stay isolated to that project."),
   h2("State persistence", "state-persistence"),
   code(`pire-browser --session-name work state save ./.pire-state/app-work.json
 pire-browser --auto-connect state save ./.pire-state/app-work.json
