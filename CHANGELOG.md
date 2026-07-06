@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.31
+
+- Improves agent-browser parity discoverability for already-supported mouse button/wheel commands, dialog accept/dismiss commands, bare `skills`, and `snapshot --depth`.
+- Updates README, docs, installed agent guidance, CLI help, and tests so agents can find these workflows without source inspection.
+
 ## 0.2.30
 
 - Documents bare `pire-browser snapshot` as the agent-browser-compatible default across CLI help, README, docs, installed agent context, Pi prompt guidance, and the bundled core skill.

@@ -3396,6 +3396,8 @@ Common commands:
   console                         Show recent page console messages
   errors                          Show recent page errors
   dialog status                   Show recently observed JavaScript dialogs
+  dialog accept [text]            Accept next shimmed confirm/prompt
+  dialog dismiss                  Dismiss next shimmed confirm/prompt
   cookies                         Show active URL cookies
   storage local [key]             Read active-origin localStorage
   network requests                Show recent page network requests
@@ -3421,6 +3423,9 @@ Common commands:
   device "iPhone 14"              Best-effort device viewport + UA/navigator shim
   set viewport 1280 720           Approximate the active page viewport
   mouse move 80 80                Dispatch page mouse events at viewport coords
+  mouse down [left]               Press page mouse button
+  mouse up [left]                 Release page mouse button
+  mouse wheel 400 [0]             Dispatch page wheel event
   swipe up 500                    Best-effort mobile swipe as page scroll
   drag '@e1' '@e2'                Dispatch page drag/drop events
   batch "open <url>" "snapshot"    Run multiple commands in one invocation
@@ -3442,7 +3447,7 @@ Common commands:
   plugin run captcha captcha.solve --payload '{"siteKey":"abc"}'
                                   Run a command.run/custom plugin capability
   clipboard read                  Read text from the system clipboard
-  skills list                     List installed agent skills
+  skills [list]                   List installed agent skills
   skills cat core                 Print the version-matched core agent skill
   skills get core                 Agent-browser-style alias for skills cat core
   state save .pire-state/app.json Save active-origin cookies and web storage
@@ -3653,6 +3658,7 @@ Usage:
   pire-browser snapshot -i -C
   pire-browser snapshot -i -c
   pire-browser snapshot -d 3
+  pire-browser snapshot --depth 5
   pire-browser snapshot -i -c -C -d 5
   pire-browser snapshot -i -u
   pire-browser snapshot -s "#main"
@@ -7702,6 +7708,8 @@ mod tests {
         assert!(text.contains("console"));
         assert!(text.contains("errors"));
         assert!(text.contains("dialog status"));
+        assert!(text.contains("dialog accept [text]"));
+        assert!(text.contains("dialog dismiss"));
         assert!(text.contains("cookies"));
         assert!(text.contains("storage local [key]"));
         assert!(text.contains("network requests"));
@@ -7733,6 +7741,9 @@ mod tests {
         assert!(text.contains("profiles import <dir> --name Work"));
         assert!(text.contains("set viewport"));
         assert!(text.contains("mouse move"));
+        assert!(text.contains("mouse down [left]"));
+        assert!(text.contains("mouse up [left]"));
+        assert!(text.contains("mouse wheel 400"));
         assert!(text.contains("swipe up 500"));
         assert!(text.contains("drag '@e1' '@e2'"));
         assert!(text.contains("batch \"open <url>\""));
@@ -7745,6 +7756,7 @@ mod tests {
         assert!(text.contains("plugin list"));
         assert!(text.contains("plugin show vault"));
         assert!(text.contains("plugin run captcha captcha.solve"));
+        assert!(text.contains("skills [list]"));
         assert_eq!(help_text(Some("commands")), Some(text));
         assert!(help_text(Some("status")).unwrap().contains("status"));
         assert!(help_text(Some("install"))
@@ -7851,6 +7863,7 @@ mod tests {
         assert!(snapshot_help.contains("snapshot -i -c"));
         assert!(snapshot_help.contains("snapshot -i -C"));
         assert!(snapshot_help.contains("snapshot -d 3"));
+        assert!(snapshot_help.contains("snapshot --depth 5"));
         assert!(snapshot_help.contains("snapshot -i -c -C -d 5"));
         assert!(snapshot_help.contains("--cursor-interactive"));
         assert!(snapshot_help.contains("-s"));

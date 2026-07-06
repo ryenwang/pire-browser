@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.31", "0-2-31"),
+  list([
+    "Improves agent-browser parity discoverability for already-supported mouse button/wheel commands, dialog accept/dismiss commands, bare <code>skills</code>, and <code>snapshot --depth</code>.",
+    "Updates README, docs, installed agent guidance, CLI help, and tests so agents can find these workflows without source inspection.",
+  ]),
   h2("0.2.30", "0-2-30"),
   list([
     "Documents bare <code>pire-browser snapshot</code> as the agent-browser-compatible default across CLI help, README, docs, installed agent context, Pi prompt guidance, and the bundled core skill.",
@@ -135,7 +140,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The repository package version is currently <code>pire-browser@0.2.20</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
+  p("The repository package version is currently <code>pire-browser@0.2.31</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
 ];
 
 export default page({

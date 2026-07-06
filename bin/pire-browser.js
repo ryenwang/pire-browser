@@ -49,6 +49,7 @@ active. Use lower-level \`pire-browser update check\`, \`update apply\`, and
 
 const LAUNCHER_SKILLS_HELP = `
 Usage:
+  pire-browser skills [--json]
   pire-browser skills list [--json]
   pire-browser skills get core [--json]
   pire-browser skills get dogfood [--json]

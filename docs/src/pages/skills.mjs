@@ -6,7 +6,8 @@ const skillsBlocks = [
   code(`npx skills add ryenwang/pire-browser`),
   p("This installs a thin discovery skill that points agents at the installed <code>pire-browser skills</code> command for current instructions."),
   h2("CLI Command", "cli-command"),
-  code(`pire-browser skills list
+  code(`pire-browser skills
+pire-browser skills list
 pire-browser skills list --json
 pire-browser skills get core
 pire-browser skills get dogfood
@@ -15,7 +16,7 @@ pire-browser skills get --all --json
 pire-browser skills cat core
 pire-browser skills path core
 pire-browser skills --help`),
-  p("<code>skills get</code> is an agent-browser-style alias for <code>skills cat</code>. <code>skills path [name]</code> prints the installed skill directory when the skill is filesystem-backed. Agents retrieve skill content at runtime, so instructions match the installed package version instead of going stale. The JS launcher serves these skill commands and their help when possible, which keeps setup and repair guidance available even if the native binary is missing or stale."),
+  p("Bare <code>skills</code> lists available skills, matching agent-browser. <code>skills get</code> is an agent-browser-style alias for <code>skills cat</code>. <code>skills path [name]</code> prints the installed skill directory when the skill is filesystem-backed. Agents retrieve skill content at runtime, so instructions match the installed package version instead of going stale. The JS launcher serves these skill commands and their help when possible, which keeps setup and repair guidance available even if the native binary is missing or stale."),
   h2("How It Works", "how-it-works"),
   p("The repository skill is intentionally thin and stable. Actual usage instructions, command references, workflows, and safety notes live in <code>skill-data/</code> and are served by the CLI. For local skill development, set <code>PIRE_BROWSER_SKILLS_DIR</code> or the agent-browser-compatible <code>AGENT_BROWSER_SKILLS_DIR</code> to a directory of <code>&lt;name&gt;/SKILL.md</code> files."),
   h2("Available Skills", "available-skills"),

@@ -38,6 +38,7 @@ Skill commands use:
 - `pire-browser stream enable`
 - `pire-browser stream status`
 - `pire-browser stream disable`
+- `pire-browser skills`
 - `pire-browser skills list`
 - `pire-browser skills get core`
 - `pire-browser skills cat core`
@@ -65,7 +66,7 @@ Browser commands may auto-launch a managed Firefox session when safe. Read the r
 - Use `pire-browser record start [output-dir] [url]`, `record status`, `record restart [output-dir] [url]`, and `record stop [output-dir]` for bounded visible-viewport PNG frames plus `recording.json`. This is screenshot-sequence QA evidence, not native WebM video or Chrome DevTools screencast output.
 - Use `pire-browser stream enable`, `stream status`, and `stream disable` for the dashboard-backed WebSocket screenshot stream lifecycle. It reports `transport: "dashboard-websocket-screenshot"`, `webSocketStreaming: true`, `remoteInput: true`, and `webSocketUrl` when enabled. Describe it as screenshot-frame WebSocket streaming, not native WebM video or Chrome DevTools screencast output.
 - Use `pire-browser open --enable react-devtools <url>`, `pire-browser react tree`, `pire-browser react inspect <fiberId|target>`, `pire-browser react renders start/stop`, and `pire-browser react suspense --only-dynamic` for agent-browser-style React inspection. This is best-effort Firefox Fiber introspection and lightweight render recording; rerun `react tree` after route or DOM changes before reusing an `rN` id.
-- Use `pire-browser snapshot -C` when custom clickable `div`s, menu rows, cards, or cursor-pointer controls are missing from the default accessibility-oriented snapshot.
+- Use `pire-browser snapshot -C` when custom clickable `div`s, menu rows, cards, or cursor-pointer controls are missing from the default accessibility-oriented snapshot. Use `pire-browser snapshot --depth <n>` when noisy pages need shallower output.
 - Use `pire-browser get title`, `get url`, `get text <target>`, `get attr <target> <attr>`, and `is visible|enabled|checked <target>` for targeted verification when you already know the page or element to inspect.
 - Use `pire-browser eval -b <base64-utf8-js>` or pipe JavaScript to `pire-browser eval --stdin` when shell quoting would make an inline eval brittle. Prefer targeted `get`, `is`, `find`, and `snapshot` before custom JavaScript when they can answer the question.
 - Use `pire-browser hover <target>`, `focus <target>`, `select <target> <value>`, `check <target>`, `uncheck <target>`, `scroll <direction> [pixels]`, and `scrollintoview <target>` as first-class interaction commands before falling back to JavaScript eval. `scrollinto <target>` is the short alias for `scrollintoview`.

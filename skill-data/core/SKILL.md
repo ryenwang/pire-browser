@@ -928,6 +928,7 @@ pire-browser snapshot -i
 pire-browser snapshot -c
 pire-browser snapshot -C
 pire-browser snapshot -d 3
+pire-browser snapshot --depth 5
 pire-browser snapshot -c -C -d 5
 pire-browser snapshot -u
 pire-browser snapshot -s "#main"
@@ -997,6 +998,7 @@ pire-browser snapshot --help
 pire-browser upgrade --help
 pire-browser update --help
 pire-browser skills --help
+pire-browser skills
 pire-browser mcp --tools core
 pire-browser mcp --tools core,network
 pire-browser mcp --tools all

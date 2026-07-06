@@ -178,6 +178,7 @@ pire-browser open https://example.com
 pire-browser snapshot                       # Get accessibility tree with refs
 pire-browser snapshot -i                    # Explicit legacy ref-list format
 pire-browser snapshot -C                    # Include cursor-pointer controls
+pire-browser snapshot --depth 5             # Limit snapshot depth on noisy pages
 pire-browser click '@e2'                    # Click by ref from snapshot
 pire-browser fill '@e3' "test@example.com"  # Fill by ref
 pire-browser press Enter                    # Press a key at current focus
@@ -696,6 +697,7 @@ pire-browser doctor --json
 ### Skills
 
 ```bash
+pire-browser skills
 pire-browser skills list
 pire-browser skills list --json
 pire-browser skills get core
@@ -706,7 +708,7 @@ pire-browser skills cat core
 pire-browser skills path core
 ```
 
-Installed agents should use the bundled skill command for version-matched guidance instead of relying on stale copied instructions. Start with `core` for general browser automation and use `dogfood` for systematic exploratory QA/bug hunts. `skills get` is an agent-browser-style alias for `skills cat`; `skills get --all` returns all bundled skill content, and `skills path [name]` prints the installed skill directory. Skill commands are served by the JS launcher when possible, so agents can still load setup and repair guidance if the native binary is missing or stale. For local skill development, set `PIRE_BROWSER_SKILLS_DIR` or the agent-browser-compatible `AGENT_BROWSER_SKILLS_DIR` to a directory of `<name>/SKILL.md` files. The package also ships compact routing context under `agent/`.
+Installed agents should use the bundled skill command for version-matched guidance instead of relying on stale copied instructions. Start with `core` for general browser automation and use `dogfood` for systematic exploratory QA/bug hunts. Bare `skills` lists available skills, matching agent-browser. `skills get` is an agent-browser-style alias for `skills cat`; `skills get --all` returns all bundled skill content, and `skills path [name]` prints the installed skill directory. Skill commands are served by the JS launcher when possible, so agents can still load setup and repair guidance if the native binary is missing or stale. For local skill development, set `PIRE_BROWSER_SKILLS_DIR` or the agent-browser-compatible `AGENT_BROWSER_SKILLS_DIR` to a directory of `<name>/SKILL.md` files. The package also ships compact routing context under `agent/`.
 
 ### MCP Server
 
