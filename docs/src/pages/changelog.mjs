@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.29", "0-2-29"),
+  list([
+    "Compresses the public README and docs-site first-use path to match agent-browser's installation-first shape: global install, <code>pire-browser install</code>, then <code>open</code> and <code>snapshot -i</code>.",
+    "Updates bundled core skill guidance so agents treat setup as a one-time direct-CLI step and start normal browser work at open/snapshot instead of rerunning diagnostics.",
+  ]),
   h2("0.2.28", "0-2-28"),
   list([
     "Adds agent-browser-style help/discovery for supported browser history commands: <code>pire-browser back</code>, <code>pire-browser forward</code>, and <code>pire-browser reload</code>.",

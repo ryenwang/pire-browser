@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.29
+
+- Compresses the public README and docs-site first-use path to match agent-browser's installation-first shape: global install, `pire-browser install`, then `open` and `snapshot -i`.
+- Updates bundled core skill guidance so agents treat setup as a one-time direct-CLI step and start normal browser work at open/snapshot instead of rerunning diagnostics.
+
 ## 0.2.28
 
 - Adds agent-browser-style help/discovery for supported browser history commands: `pire-browser back`, `pire-browser forward`, and `pire-browser reload`.

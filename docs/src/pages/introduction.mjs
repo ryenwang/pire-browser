@@ -2,13 +2,12 @@ import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, tabl
 
 const introBlocks = [
   p("Firefox automation CLI designed for AI agents. Compact text output minimizes context usage. Native Rust binaries keep common browser workflows fast, while Firefox does the real page work."),
-  code(`pi install npm:pire-browser       # Pi package
-
-# or direct CLI use
-npm install -g pire-browser
+  code(`npm install -g pire-browser
 pire-browser install                 # first-time Firefox setup
+
 pire-browser open https://example.com
 pire-browser snapshot -i`),
+  p("For Pi, install the package with <code>pi install npm:pire-browser</code>, then ask the agent to use <code>pire-browser</code>. For one-off shell trials, use <code>npx -y pire-browser@latest open https://example.com</code> followed by <code>npx -y pire-browser@latest snapshot -i</code>."),
   h2("Features", "features"),
   list([
     "<strong>Agent-first:</strong> compact text output uses fewer tokens than a DOM dump and is easy for agents to parse.",

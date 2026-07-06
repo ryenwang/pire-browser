@@ -4,73 +4,20 @@ Firefox automation CLI for AI agents. Fast native Rust CLI, Firefox WebExtension
 
 Firefox loads a WebExtension, the WebExtension talks to a Native Messaging host, and the CLI talks to that host through current-user IPC: Windows named pipes on Windows and Unix domain sockets on macOS/Linux.
 
-## AI Agent Quick Start
-
-For Pi users, install the package and ask the agent to use the tool:
-
-```bash
-pi install npm:pire-browser
-```
-
-For direct CLI or MCP-capable agent hosts, install once, run setup, then use
-the same inspect-before-act loop:
-
-```bash
-npm install -g pire-browser
-pire-browser install
-pire-browser open https://example.com
-pire-browser snapshot -i
-```
-
-Or try it once without a global install:
-
-```bash
-npx -y pire-browser@latest open https://example.com
-npx -y pire-browser@latest snapshot -i
-```
-
-When the agent host supports MCP, start the smallest typed tool profile:
-
-```bash
-pire-browser mcp --tools core
-```
-
-MCP client config:
-
-```json
-{
-  "mcpServers": {
-    "pire-browser": {
-      "command": "pire-browser",
-      "args": ["mcp", "--tools", "core"]
-    }
-  }
-}
-```
-
-Then follow this MCP loop:
-
-1. `pire_browser_open` with the target URL.
-2. `pire_browser_snapshot` with `interactive: true`.
-3. Act with fresh refs or semantic tools such as `pire_browser_click`, `pire_browser_fill`, `pire_browser_press`, or `pire_browser_find`.
-4. Wait with the narrowest typed wait tool, such as `pire_browser_wait_for_selector`, `pire_browser_wait_for_text`, `pire_browser_wait_for_url`, `pire_browser_wait_for_load`, or `pire_browser_wait_ms`.
-5. Verify with a fresh `pire_browser_snapshot`, `pire_browser_get_text`, `pire_browser_get_url`, or another typed get/check tool before reporting success.
-
-Profile rule of thumb: start with `core`, which includes downloads/uploads; use `core,network` for request/response waits and HAR; `core,state` for cookies, storage, auth, profile import, clipboard, and plugin discovery; `core,tabs` for labels, frames, dialogs, and windows; `core,debug` for install/doctor, console/errors, trace/record/stream evidence, and batch; `core,react` for React inspection; use `all` only when the host can tolerate the full tool surface.
-
-Use `pire-browser mcp --help` when setup is incomplete; it is served by the
-JavaScript launcher even if the optional native platform package is missing and
-prints the exact repair command.
-
 ## Installation
 
-### Global Installation (recommended for direct CLI use)
+### Global Installation (recommended)
 
 Installs the native launcher and matching platform binary package:
 
 ```bash
 npm install -g pire-browser
 pire-browser install   # first-time Firefox setup
+```
+
+Then use the browser:
+
+```bash
 pire-browser open https://example.com
 pire-browser snapshot -i
 ```
@@ -78,17 +25,6 @@ pire-browser snapshot -i
 `npm install` runs best-effort setup; `pire-browser install` is safe to run again and makes the setup step explicit.
 If npm policy blocks lifecycle scripts with `--ignore-scripts` or an `allow-scripts` warning, the install is still usable; run `pire-browser install` after npm finishes.
 The package installs the default `web-ext` launch helper as a normal dependency, so the first browser command should not need a surprise `npx` registry fetch.
-
-### Try Without Global Install
-
-For a one-off agent-browser-style trial, use `npx`:
-
-```bash
-npx -y pire-browser@latest open https://example.com
-npx -y pire-browser@latest snapshot -i
-```
-
-Repeated use should prefer the global or project install above so the package path stays stable.
 
 ### Pi Package
 
@@ -121,6 +57,53 @@ npx pire-browser snapshot -i
 ```
 
 Then use via `package.json` scripts or by invoking `npx pire-browser`.
+
+### Try Without Global Install
+
+For a one-off agent-browser-style trial, use `npx`:
+
+```bash
+npx -y pire-browser@latest open https://example.com
+npx -y pire-browser@latest snapshot -i
+```
+
+Repeated use should prefer the global or project install above so the package path stays stable.
+
+### Updating
+
+Upgrade to the latest package:
+
+```bash
+pire-browser upgrade
+```
+
+Lower-level update controls are available when an agent or script needs an
+explicit check/apply/configure step:
+
+```bash
+pire-browser update check --json
+pire-browser update apply
+pire-browser update configure --mode off|notify|patch
+```
+
+`upgrade` is the agent-browser-style foreground update path: it checks npm, then
+updates global npm or Pi-managed installs to the latest package when no managed
+Firefox session is active. Local project installs print the exact `npm install`
+command to run in that project. Background auto-update and lower-level
+`update apply` stay patch-only. Update JSON uses `success: true` when the update
+command completed and reports the outcome in `data.status` (`current`,
+`notify`, `deferred`, `offline`, `applied`, or `failed`); invalid arguments use
+`success: false`.
+
+### Requirements
+
+- **Firefox** - Required for all browser sessions.
+- **Pi 0.75.4 or newer** - Required only when installing as a Pi package.
+- **Node.js and npm** - Required for npm installation and source builds.
+- **Rust** - Required only when building from source.
+- **Supported beta targets** - Windows x64, Windows x86, Windows ARM64, macOS x64, macOS ARM64, Linux glibc x64, and Linux glibc ARM64.
+
+Alpine/musl Linux is not part of the beta.
 
 ### First-Run Repair
 
@@ -187,36 +170,6 @@ Use the tuple for your platform: `win32-x64`, `win32-ia32`, `win32-arm64`, `darw
 
 On Linux, distro Firefox builds work best. Snap and Flatpak Firefox are detected, but sandboxed Native Messaging may require the WebExtensions portal or a non-sandboxed Mozilla Firefox build.
 `pire-browser install --with-deps` does not run Linux package managers because distro defaults can install Snap/Flatpak Firefox. Install an unrestricted Mozilla package/tarball or distro non-Snap Firefox, then rerun `pire-browser install --firefox-path <path>` if discovery needs help.
-
-### Updating
-
-Check and apply updates:
-
-```bash
-pire-browser upgrade
-pire-browser update check --json
-pire-browser update apply
-pire-browser update configure --mode off|notify|patch
-```
-
-`upgrade` is the agent-browser-style foreground update path: it checks npm, then
-updates global npm or Pi-managed installs to the latest package when no managed
-Firefox session is active. Local project installs print the exact `npm install`
-command to run in that project. Background auto-update and lower-level
-`update apply` stay patch-only. Update JSON uses `success: true` when the update
-command completed and reports the outcome in `data.status` (`current`,
-`notify`, `deferred`, `offline`, `applied`, or `failed`); invalid arguments use
-`success: false`.
-
-### Requirements
-
-- **Firefox** - Required for all browser sessions.
-- **Pi 0.75.4 or newer** - Required only when installing as a Pi package.
-- **Node.js and npm** - Required for npm installation and source builds.
-- **Rust** - Required only when building from source.
-- **Supported beta targets** - Windows x64, Windows x86, Windows ARM64, macOS x64, macOS ARM64, Linux glibc x64, and Linux glibc ARM64.
-
-Alpine/musl Linux is not part of the beta.
 
 ## Quick Start
 

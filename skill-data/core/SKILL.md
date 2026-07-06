@@ -40,10 +40,16 @@ Start with `core`. Add `network`, `state`, `tabs`, `debug`, `mobile`, or
 `react` only when the task needs those tools; use `all` only when the host can
 tolerate the full tool list.
 
-Use CLI commands when MCP is unavailable or the user asks for shell commands:
+Use CLI commands when MCP is unavailable or the user asks for shell commands.
+For a fresh direct CLI install, run setup once:
 
 ```bash
 pire-browser install
+```
+
+For normal page work, start at open/snapshot:
+
+```bash
 pire-browser open
 pire-browser open https://example.com
 pire-browser snapshot -i

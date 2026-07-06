@@ -3,14 +3,10 @@ import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, tabl
 const installationBlocks = [
   h2("Global installation", "global-installation"),
   code(`npm install -g pire-browser
-pire-browser install  # first-time Firefox setup
-pire-browser open https://example.com
+pire-browser install  # first-time Firefox setup`),
+  code(`pire-browser open https://example.com
 pire-browser snapshot -i`),
   p("This is the recommended path for direct CLI use. <code>npm install</code> runs best-effort setup; <code>pire-browser install</code> is safe to run again and makes Firefox Native Messaging registration explicit. After setup, use <code>open</code> and <code>snapshot -i</code> as the basic inspect-before-act loop. If npm policy blocks lifecycle scripts with <code>--ignore-scripts</code> or an <code>allow-scripts</code> warning, run <code>pire-browser install</code> after npm finishes. The package installs the default <code>web-ext</code> launch helper as a normal dependency, so the first browser command should not need a surprise <code>npx</code> registry fetch."),
-  h2("Try without global install", "try-without-global-install"),
-  code(`npx -y pire-browser@latest open https://example.com
-npx -y pire-browser@latest snapshot -i`),
-  p("Use this for a one-off agent-browser-style trial. Repeated direct CLI use should prefer the global or project install so the package path stays stable."),
   h2("Pi package", "pi-package"),
   code(`pi install npm:pire-browser`),
   p("Use this when Pi should load the packaged extension and skill. After install, ask Pi to use <code>pire-browser</code> for browser automation."),
@@ -21,6 +17,10 @@ npx pire-browser install
 npx pire-browser open https://example.com
 npx pire-browser snapshot -i`),
   p("Use this when a project wants to pin the package version. Invoke through <code>npx pire-browser</code> or <code>package.json</code> scripts."),
+  h2("Try without global install", "try-without-global-install"),
+  code(`npx -y pire-browser@latest open https://example.com
+npx -y pire-browser@latest snapshot -i`),
+  p("Use this for a one-off agent-browser-style trial. Repeated direct CLI use should prefer the global or project install so the package path stays stable."),
   h2("First-run repair", "first-run-repair"),
   code(`pire-browser install --with-deps
 pire-browser doctor --json`),
