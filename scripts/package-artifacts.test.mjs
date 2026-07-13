@@ -368,6 +368,9 @@ describe("npm artifact metadata", () => {
     }
     expect(input).toContain('"profile":"packed-mcp-test"');
     expect(input).toContain('"executablePath"');
+    expect(input).toContain('"selector":"#email","text":"mcp-smoke@example.com"');
+    expect(input).toContain('"selector":"[data-testid=\'submit-button\']"');
+    expect(input).not.toContain('"selector":"#email","value":"mcp-smoke@example.com"');
 
     const stdout = [
       { jsonrpc: "2.0", id: 1, result: { serverInfo: { name: "pire-browser", version: "0.2.20" } } },
@@ -735,6 +738,9 @@ describe("npm artifact metadata", () => {
     expect(packedSmokeScript).toContain("runMcpFilesSmoke");
     expect(packedSmokeScript).toContain("runMcpNetworkSmoke");
     expect(packedSmokeScript).toContain("runMcpStateSmoke");
+    expect(packedSmokeScript).toMatch(
+      /async function runMcpFilesSmoke[\s\S]*?runPire\(command, \["mcp", "--tools", "core,state"\]/
+    );
 
     expect(publishWorkflow).toMatch(
       /packed-browser-smoke:\s*\n\s*name: Packed browser smoke[\s\S]*uses: \.\/\.github\/workflows\/release-smoke\.yml/
