@@ -190,9 +190,11 @@ pub enum LocalCommand {
     SkillsCat {
         name: String,
         json: bool,
+        full: bool,
     },
     SkillsCatAll {
         json: bool,
+        full: bool,
     },
     SkillsPath {
         name: String,
@@ -1593,21 +1595,28 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 if args.first().is_some_and(|arg| arg == "--all") {
                     args.remove(0);
                     remove_json_flags(&mut args, &mut json_output);
+                    let mut full = false;
                     while args.first().is_some_and(|arg| arg == "--full") {
+                        full = true;
                         args.remove(0);
                         remove_json_flags(&mut args, &mut json_output);
                     }
                     if let Some(extra) = args.first() {
                         bail!("unsupported skills {verb} option: {extra}");
                     }
-                    return Ok(LocalCommand::SkillsCatAll { json: json_output });
+                    return Ok(LocalCommand::SkillsCatAll {
+                        json: json_output,
+                        full,
+                    });
                 }
                 let Some(name) = args.first().cloned() else {
                     bail!("invalid_args: skills {verb} requires <name>");
                 };
                 args.remove(0);
                 remove_json_flags(&mut args, &mut json_output);
+                let mut full = false;
                 while args.first().is_some_and(|arg| arg == "--full") {
+                    full = true;
                     args.remove(0);
                     remove_json_flags(&mut args, &mut json_output);
                 }
@@ -1617,6 +1626,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 return Ok(LocalCommand::SkillsCat {
                     name,
                     json: json_output,
+                    full,
                 });
             }
             "path" => {
@@ -4763,10 +4773,10 @@ Usage:
   pire-browser mcp --tools all
 
 Starts a Model Context Protocol server over stdio. Use the smallest tools
-profile that fits the task. `core` is the default inspect-before-act workflow:
-open/goto/navigate, inspect, interact, typed get/check state, semantic find, typed waits, navigation
-helpers, screenshots/PDFs, diffs, eval/evaluate, status, tab list/new/switch/close, profiles, close, and
-installed skill guidance. Add comma-separated profiles when needed: `network`,
+profile that fits the task. `core` is a compact 31-tool inspect-before-act
+workflow: profile discovery, open/read/snapshot, common actions, narrow waits,
+screenshot, URL/title/text verification, tabs, history, eval, close, and
+confirmation follow-up. Add comma-separated profiles when needed: `network`,
 `state`, `debug`, `tabs`, `mobile`, or `react`. The `state` profile includes
 auth/state tools, plugin discovery, clipboard helpers, and profile import. The `debug` profile includes
 lower-level launch, install/repair, user-requested package upgrade, typed batch, doctor/activity
@@ -4801,15 +4811,16 @@ Usage:
   pire-browser skills cat core [--json]
   pire-browser skills get core [--full] [--json]
   pire-browser skills get dogfood [--full] [--json]
-  pire-browser skills get --all [--json]
+  pire-browser skills get --all [--full] [--json]
   pire-browser skills path [core] [--json]
 
 Lists or prints installed agent skill guidance. `get` is an agent-browser-style
-alias for `cat`; `--full` is accepted for compatibility because bundled skill
-content is self-contained. `path` prints the installed skill directory when the
-skill is filesystem-backed; native embedded skills report an `embedded:<name>`
-source. The `skill` root is accepted as a compatibility alias, but public docs
-prefer `skills`.
+alias for `cat`. The default core skill is a compact workflow guide; `--full`
+loads its extended command reference. Skills without an extended reference
+return their normal content. `path` prints the installed skill directory when
+the skill is filesystem-backed; native embedded skills report an
+`embedded:<name>` source. The `skill` root is accepted as a compatibility alias,
+but public docs prefer `skills`.
 "##;
 
 pub fn build_command_request(args: Vec<String>) -> RpcRequest {
@@ -7020,37 +7031,47 @@ mod tests {
             parse_cli_args(&s(&["skills", "cat", "core"])).unwrap(),
             LocalCommand::SkillsCat {
                 name: "core".to_string(),
-                json: false
+                json: false,
+                full: false,
             }
         );
         assert_eq!(
             parse_cli_args(&s(&["skill", "cat", "core", "--json"])).unwrap(),
             LocalCommand::SkillsCat {
                 name: "core".to_string(),
-                json: true
+                json: true,
+                full: false,
             }
         );
         assert_eq!(
             parse_cli_args(&s(&["skills", "get", "core", "--full", "--json"])).unwrap(),
             LocalCommand::SkillsCat {
                 name: "core".to_string(),
-                json: true
+                json: true,
+                full: true,
             }
         );
         assert_eq!(
             parse_cli_args(&s(&["skills", "get", "dogfood", "--json"])).unwrap(),
             LocalCommand::SkillsCat {
                 name: "dogfood".to_string(),
-                json: true
+                json: true,
+                full: false,
             }
         );
         assert_eq!(
             parse_cli_args(&s(&["skills", "get", "--all", "--json"])).unwrap(),
-            LocalCommand::SkillsCatAll { json: true }
+            LocalCommand::SkillsCatAll {
+                json: true,
+                full: false,
+            }
         );
         assert_eq!(
             parse_cli_args(&s(&["skill", "cat", "--all"])).unwrap(),
-            LocalCommand::SkillsCatAll { json: false }
+            LocalCommand::SkillsCatAll {
+                json: false,
+                full: false,
+            }
         );
         assert_eq!(
             parse_cli_args(&s(&["skills", "path"])).unwrap(),
@@ -8169,7 +8190,10 @@ mod tests {
         assert!(help_text(Some("mcp")).unwrap().contains("tabs"));
         assert!(help_text(Some("mcp")).unwrap().contains("mobile"));
         assert!(help_text(Some("mcp")).unwrap().contains("react"));
-        assert!(help_text(Some("mcp")).unwrap().contains("semantic find"));
+        assert!(help_text(Some("mcp")).unwrap().contains("compact 31-tool"));
+        assert!(help_text(Some("mcp"))
+            .unwrap()
+            .contains("confirmation follow-up"));
         assert!(help_text(Some("mcp")).unwrap().contains("2025-11-25"));
         assert!(help_text(Some("mcp")).unwrap().contains("paginated"));
         assert!(help_text(Some("mcp")).unwrap().contains("\"mcpServers\""));

@@ -1,6 +1,12 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.35", "0-2-35"),
+  list([
+    "Reduces default agent context: <code>skills get core</code> now returns a compact workflow guide, while <code>skills get core --full</code> preserves the extended command reference.",
+    "Shrinks the MCP core profile to 31 first-use tools and compact shared schemas while keeping advanced tools and compatibility aliases in focused profiles or <code>all</code>.",
+    "Adds deterministic skill/MCP context budgets, native server-version alignment checks, and optional live agent workflow evaluations with structured reports.",
+  ]),
   h2("0.2.34", "0-2-34"),
   list([
     "Adds one canonical QA evidence loop across README, docs, installed agent context, and bundled skills: stable session, trace, optional recording/HAR, fresh-ref reproduction, final screenshot/URL/snapshot, reverse-order collector shutdown, and artifact-path reporting.",
@@ -157,7 +163,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The repository package version is currently <code>pire-browser@0.2.34</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
+  p("The repository package version is currently <code>pire-browser@0.2.35</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
 ];
 
 export default page({

@@ -51,16 +51,17 @@ const LAUNCHER_SKILLS_HELP = `
 Usage:
   pire-browser skills [--json]
   pire-browser skills list [--json]
-  pire-browser skills get core [--json]
-  pire-browser skills get dogfood [--json]
-  pire-browser skills get --all [--json]
+  pire-browser skills get core [--full] [--json]
+  pire-browser skills get dogfood [--full] [--json]
+  pire-browser skills get --all [--full] [--json]
   pire-browser skills cat core [--json]
   pire-browser skills path [core] [--json]
 
 Serves version-matched agent guidance from the installed package before native
 binary resolution. \`skills get\` is the agent-browser-style spelling, \`skills
 cat\` is the lower-level compatibility spelling, and \`skill\` is accepted as a
-root alias. Set PIRE_BROWSER_SKILLS_DIR or AGENT_BROWSER_SKILLS_DIR to override
+root alias. The default core skill is compact; \`--full\` loads its extended
+reference. Set PIRE_BROWSER_SKILLS_DIR or AGENT_BROWSER_SKILLS_DIR to override
 the skill directory during local development.
 `;
 
@@ -94,10 +95,9 @@ Usage:
 
 Starts a Model Context Protocol server over stdio once the native platform
 package is available. Use the smallest tools profile that fits the task.
-\`core\` is the default inspect-before-act workflow: open/goto/navigate,
-snapshots, semantic find/action tools, typed get/check tools, typed waits,
-screenshots/PDFs/diffs, eval/evaluate, status, confirmation follow-up, tab
-list/new/switch/close, profile discovery, close, and skill guidance.
+\`core\` is a compact 31-tool inspect-before-act workflow: profile discovery,
+open/read/snapshot, common actions, narrow waits, screenshot, URL/title/text
+verification, tabs, history, eval, close, and confirmation follow-up.
 
 Add comma-separated profiles when needed: \`network\` for request/response
 waits and HAR, \`state\` for cookies/storage/auth/state/plugin discovery,
@@ -138,7 +138,8 @@ Launcher-served commands available before native binary resolution:
                                    Lower-level install alias
   doctor [--json]                  Diagnose setup; JSON includes nextActions
   install-status [--json]          Alias for doctor diagnostics
-  skills get core [--json]         Print version-matched agent guidance
+  skills get core [--full] [--json]
+                                   Print compact or extended agent guidance
   skills get dogfood [--json]      Print exploratory QA guidance
   mcp --tools core                 Start typed MCP server after native repair
   pi conflicts | pi repair         Inspect/repair duplicate Pi registrations
@@ -556,12 +557,11 @@ export function handleLauncherSkills(args, options = {}) {
   }
   if (subcommand === "cat" || subcommand === "get") {
     const full = removeFlag(skillArgs, "--full");
-    void full;
     if (removeFlag(skillArgs, "--all")) {
       if (skillArgs.length > 0) {
         return outputSkillsError(`unsupported skills ${subcommand} option: ${skillArgs[0]}`, json, output, error);
       }
-      return outputSkillsCatAll(json, output);
+      return outputSkillsCatAll(json, output, full);
     }
     const name = skillArgs.shift();
     if (!name) {
@@ -570,7 +570,7 @@ export function handleLauncherSkills(args, options = {}) {
     if (skillArgs.length > 0) {
       return outputSkillsError(`unsupported skills ${subcommand} option: ${skillArgs[0]}`, json, output, error);
     }
-    return outputSkillsCat(name, json, output, error);
+    return outputSkillsCat(name, json, output, error, full);
   }
   if (subcommand === "path") {
     const name = skillArgs.shift() ?? "core";
@@ -597,8 +597,8 @@ function outputSkillsList(json, output) {
   return 0;
 }
 
-function outputSkillsCat(name, json, output, error) {
-  const skill = launcherSkillContent(name);
+function outputSkillsCat(name, json, output, error, full = false) {
+  const skill = launcherSkillContent(name, full);
   if (!skill) {
     const available = launcherSkills().map((item) => item.name).join(", ");
     return outputSkillsError(`unknown skill: No skill named \`${name}\`. Available skills: ${available}.`, json, output, error);
@@ -608,8 +608,8 @@ function outputSkillsCat(name, json, output, error) {
   return 0;
 }
 
-function outputSkillsCatAll(json, output) {
-  const skills = launcherSkills().map((skill) => launcherSkillContent(skill.name)).filter(Boolean);
+function outputSkillsCatAll(json, output, full = false) {
+  const skills = launcherSkills().map((skill) => launcherSkillContent(skill.name, full)).filter(Boolean);
   if (json) output(successEnvelope({ skills }));
   else process.stdout.write(skills.map((skill) => skill.content).join("\n"));
   return 0;
@@ -662,9 +662,10 @@ function launcherSkills() {
   return [{ name: "core", description: "Core pire-browser workflow for safe Firefox automation." }];
 }
 
-function launcherSkillContent(name) {
+function launcherSkillContent(name, full = false) {
   if (!/^[A-Za-z0-9_.-]+$/.test(name)) return null;
-  const path = launcherSkillFile(name);
+  const fullPath = launcherSkillFullFile(name);
+  const path = full && existsSync(fullPath) ? fullPath : launcherSkillFile(name);
   if (!existsSync(path)) return null;
   const content = normalizeSkillText(readFileSync(path, "utf8"));
   const frontmatter = skillFrontmatter(content);
@@ -683,6 +684,10 @@ function launcherSkillPath(name) {
 
 function launcherSkillFile(name) {
   return join(launcherSkillsRoot(), name, "SKILL.md");
+}
+
+function launcherSkillFullFile(name) {
+  return join(launcherSkillsRoot(), name, "references", "full.md");
 }
 
 function launcherSkillsRoot(env = process.env) {

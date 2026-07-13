@@ -1,0 +1,82 @@
+name: Agent Workflow Evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "Agent CLI used to propose workflows"
+        required: true
+        type: choice
+        options:
+          - codex
+          - claude
+        default: codex
+      model:
+        description: "Optional provider model override"
+        required: false
+        type: string
+      category:
+        description: "Optional comma-separated categories: skill, workflow, qa, context"
+        required: false
+        type: string
+      case:
+        description: "Optional comma-separated case IDs"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - run: npm install --package-lock=false --no-audit --no-fund
+      - name: Install Codex CLI
+        if: ${{ inputs.provider == 'codex' }}
+        run: npm install -g @openai/codex
+      - name: Install Claude Code CLI
+        if: ${{ inputs.provider == 'claude' }}
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Verify provider credentials
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EVAL_PROVIDER: ${{ inputs.provider }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$EVAL_PROVIDER" = "codex" ] && [ -z "$OPENAI_API_KEY" ]; then
+            echo "Agent Workflow Evals requires the OPENAI_API_KEY repository secret for Codex." >&2
+            exit 1
+          fi
+          if [ "$EVAL_PROVIDER" = "claude" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "Agent Workflow Evals requires the ANTHROPIC_API_KEY repository secret for Claude." >&2
+            exit 1
+          fi
+      - name: Run workflow evals
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EVAL_PROVIDER: ${{ inputs.provider }}
+          EVAL_MODEL: ${{ inputs.model }}
+          EVAL_CATEGORY: ${{ inputs.category }}
+          EVAL_CASE: ${{ inputs.case }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--provider "$EVAL_PROVIDER" --json --output target/evals/agent-workflows.json)
+          if [ -n "$EVAL_MODEL" ]; then args+=(--model "$EVAL_MODEL"); fi
+          if [ -n "$EVAL_CATEGORY" ]; then args+=(--category "$EVAL_CATEGORY"); fi
+          if [ -n "$EVAL_CASE" ]; then args+=(--case "$EVAL_CASE"); fi
+          node evals/run.mjs "${args[@]}"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: agent-workflow-evals-${{ inputs.provider }}
+          path: target/evals/agent-workflows.json
+          if-no-files-found: warn

@@ -42,6 +42,7 @@ jobs:
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
       - run: npm install --package-lock=false --no-audit --no-fund
       - run: npm test -- scripts/package-artifacts.test.mjs
+      - run: npm run test:evals
 
   platform-native:
     name: ${{ matrix.tuple }}
@@ -75,11 +76,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm install --package-lock=false --no-audit --no-fund
       - run: node scripts/build-platform.mjs ${{ matrix.tuple }}
+      - name: Enforce installed skill and MCP context budgets
+        if: ${{ matrix.tuple == 'linux-x64' }}
+        run: node evals/context-footprint.mjs --binary bin/linux-x64/pire-browser --output target/evals/context-footprint.json
       - run: node scripts/package-platform.mjs ${{ matrix.tuple }} --pack --pack-destination dist/npm
       - uses: actions/upload-artifact@v7
         with:
           name: platform-${{ matrix.tuple }}
-          path: dist/npm/*.tgz
+          path: |
+            dist/npm/*.tgz
+            target/evals/context-footprint.json
 
   root:
     name: root package

@@ -15,6 +15,10 @@ on:
       - "cli/Cargo.lock"
       - "cli/**"
       - "bin/pire-browser.js"
+      - "evals/**"
+      - "skill-data/**"
+      - "skills/**"
+      - "agent/**"
       - "scripts/**"
       - "platform-packages/**"
       - "package.json"
@@ -50,6 +54,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm install
       - run: node scripts/build-platform.mjs ${{ matrix.tuple }}
+      - name: Enforce installed skill and MCP context budgets
+        if: ${{ matrix.tuple == 'linux-x64' }}
+        run: node evals/context-footprint.mjs --binary bin/linux-x64/pire-browser --output target/evals/context-footprint.json
       - run: node scripts/package-platform.mjs ${{ matrix.tuple }} --pack --pack-destination dist/npm
       - uses: actions/upload-artifact@v7
         with:
@@ -57,6 +64,7 @@ jobs:
           path: |
             dist/npm/*.tgz
             bin/${{ matrix.tuple }}/*
+            target/evals/context-footprint.json
 
   platform-native-optional:
     name: native-${{ matrix.tuple }}
@@ -133,6 +141,7 @@ jobs:
         with:
           node-version: "22"
       - run: npm install
+      - run: npm run test:evals
       - run: npm --prefix extension install
       - run: npm --prefix extension run build
       - run: mkdir -p dist/npm

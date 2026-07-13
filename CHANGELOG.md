@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.35
+
+- Makes `skills get core` a compact first-use workflow and moves the extended command catalog behind `skills get core --full`.
+- Reduces the default MCP core profile to 31 tools with smaller shared schemas while preserving advanced tools and aliases in focused profiles or `all`.
+- Adds deterministic context-budget and release-version gates plus optional live agent workflow evaluations.
+
+## 0.2.34
+
+- Adds one canonical QA evidence loop across README, docs, installed agent context, and bundled skills.
+- Aligns the README and Pages site with agent-browser.dev, including the logo, compatibility tagline, and a first-class Plugins reference.
+
 ## 0.2.33
 
 - Adds a logged-in app QA starter recipe that combines discovered Firefox profile import, stable worktree-scoped sessions, restore diagnostics, snapshots, and screenshot evidence.

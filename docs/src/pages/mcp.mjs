@@ -12,7 +12,7 @@ pire-browser mcp --tools core,debug
 pire-browser mcp --tools core,tabs
 pire-browser mcp --tools core,react
 pire-browser mcp --tools all`),
-  p("Use the smallest MCP profile that fits the task. <code>core</code> is the default inspect-before-act workflow and includes downloads/uploads. Add comma-separated profiles only when a workflow needs more surface, such as <code>core,network</code> for request/response waits and diagnostics, <code>core,state</code> for cookies, storage, auth, configured plugin discovery, clipboard, profile import, and state files, or <code>core,react</code> for React Fiber inspection. The <code>pire_browser_tools_profiles</code> tool describes available profiles in-band."),
+  p("Use the smallest MCP profile that fits the task. <code>core</code> is a compact open, inspect, act, wait, and verify workflow. Add comma-separated profiles only when a workflow needs more surface, such as <code>core,network</code> for request/response waits and diagnostics, <code>core,state</code> for cookies, storage, auth, configured plugin discovery, clipboard, profile import, and files, or <code>core,react</code> for React Fiber inspection. The <code>pire_browser_tools_profiles</code> tool describes available profiles in-band."),
   p("<code>pire-browser mcp --help</code> is served by the JavaScript launcher even when the optional native platform package is missing, so MCP-first agent hosts can still discover the startup recipe before following repair guidance."),
   h2("Client Config", "client-config"),
   code(`{
@@ -23,19 +23,19 @@ pire-browser mcp --tools all`),
     }
   }
 }`),
-  p("Start MCP clients with <code>--tools core</code>. Core includes the inspect-before-act loop plus screenshots, PDFs, downloads, and uploads. If the active profile does not include a needed tool, restart with the smallest combined profile that adds it: <code>core,network</code> for request/response waits and HAR, <code>core,state</code> for cookies, storage, auth, clipboard, profile import, and plugin discovery, <code>core,tabs</code> for labels, frames, dialogs, and windows, <code>core,debug</code> for install/doctor, console/errors, trace/record/stream evidence, and batch, or <code>core,react</code> for React inspection. Use <code>all</code> only when the host can tolerate the full tool list."),
+  p("Start MCP clients with <code>--tools core</code>. Core has 31 tools for profile discovery, open/read/snapshot, common actions, narrow waits, screenshot, URL/title/text verification, tabs, history, eval, close, and confirmation follow-up. If a needed tool is absent, restart with the smallest combined profile that adds it: <code>core,network</code> for request/response waits and HAR, <code>core,state</code> for cookies, storage, auth, downloads/uploads, clipboard, profile import, and plugin discovery, <code>core,tabs</code> for labels, frames, dialogs, and windows, <code>core,debug</code> for install/doctor, console/errors, trace/record/stream evidence, and batch, or <code>core,react</code> for React inspection. Use <code>all</code> only when the host can tolerate the full tool list."),
   h2("First Tool Loop", "first-tool-loop"),
   code(`1. pire_browser_open({ "url": "https://example.com" })
 2. pire_browser_snapshot({ "interactive": true })
 3. pire_browser_click({ "selector": "@e2" })
 4. pire_browser_wait_for_load({ "state": "networkidle" })
 5. pire_browser_snapshot({ "interactive": true })`),
-  p("Use fresh refs from the most recent snapshot or a semantic find result. Prefer typed verification tools such as <code>pire_browser_get_text</code>, <code>pire_browser_get_url</code>, <code>pire_browser_get_value</code>, <code>pire_browser_is_visible</code>, and <code>pire_browser_is_enabled</code> before reporting success. Use <code>pire_browser_wait_ms</code> only when no page-specific condition is available."),
+  p("Use fresh refs from the most recent snapshot. Core verification includes <code>pire_browser_get_text</code>, <code>pire_browser_get_url</code>, <code>pire_browser_get_title</code>, <code>pire_browser_eval</code>, and a fresh snapshot. Broader semantic find and typed get/is variants remain available through the complete surface. Use <code>pire_browser_wait_ms</code> only when no page-specific condition is available."),
   h2("Profiles", "profiles"),
   table(
     ["Profile", "Purpose"],
     [
-      ["core", "Open/goto/navigate, read, inspect, semantic find, interact, typed get/check verification, typed waits, back/forward/reload, SPA pushstate, init scripts, set-content fixtures, screenshot/PDF/diff evidence, downloads/uploads, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, and skill guidance."],
+      ["core", "Compact profile discovery, open/read/snapshot, common form and keyboard actions, scroll, narrow waits, screenshot, URL/title/text verification, tabs, history, eval, close, and confirmation follow-up."],
       ["network", "Headers, credentials, offline toggle, request/response waits, network request inspection with redacted headers, safe outgoing request-body previews, bounded text-like response previews, HAR export, and route/unroute controls."],
       ["state", "Cookies, storage, encrypted auth vault helpers, configured plugin discovery, plaintext or opt-in encrypted state files, sessions, profiles including Firefox profile import, typed clipboard tools, and skills."],
       ["debug", "Lower-level launch, explicit install/repair, user-requested package upgrade, batch diagnostics, doctor/activity diagnostics, console, page errors, JavaScript dialogs, highlight, Firefox trace bundles, screenshot-sequence recording bundles, dashboard-backed stream preview controls, best-effort vitals, diffs, status, sessions/profiles, and close."],
@@ -48,19 +48,13 @@ pire-browser mcp --tools all`),
   p("The server uses the same installed binary and command behavior as the CLI, so policies, setup, sessions, profiles, and Firefox runtime behavior stay shared."),
   p("The server defaults to MCP protocol <code>2025-11-25</code> and accepts older supported client protocol versions during initialization. Tool discovery is paginated for large profiles. Tool annotations distinguish read-only browser inspection from mutating actions and mark local maintenance/context tools such as install, upgrade, status, sessions, profiles, plugin discovery, and skills as non-open-world for clearer host approval prompts."),
   h2("Common Typed Fields", "common-typed-fields"),
-  p("Most browser-command MCP tools accept common typed fields for CLI-global behavior that must be placed before the command. Prefer these fields over <code>extraArgs</code> when setting guardrails or launch context. Use <code>headless</code> for CI-style runs where a tool may launch a new managed Firefox session, <code>headed</code> to force the visible default, <code>args</code> for comma- or newline-separated Firefox launch arguments, or <code>userAgent</code> for a Firefox User-Agent override. Existing live sessions keep their current launch context. The lower-level debug-profile <code>pire_browser_launch</code> tool has a narrower launch-specific schema; prefer <code>pire_browser_open</code>, <code>pire_browser_goto</code>, or <code>pire_browser_navigate</code> for normal launch/navigation."),
+  p("Core schemas keep shared fields small. Session/profile targeting, content boundaries, and output limits remain common. Put launch and policy options on <code>pire_browser_open</code>: state, local-file access, domain and action policy, confirmations, headless/headed mode, Firefox args, User-Agent, device, proxy, executable path, downloads, one-shot headers, and init scripts. Existing live sessions keep their launch context. Use the debug-profile <code>pire_browser_launch</code> only for lower-level launch diagnostics."),
   table(
     ["Field", "Purpose"],
     [
       ["session / sessionName / profile", "Target an existing live session, named managed profile, or managed profile path."],
-      ["statePath", "Load a saved active-origin state file before the browser command. Encrypted files require the same state encryption key in the environment."],
-      ["allowFileAccess", "Allow local file:// URL access for the command."],
-      ["allowedDomains / noAllowedDomains", "Apply or explicitly bypass domain allowlist checks for the command."],
-      ["actionPolicy / confirmActions / confirmInteractive", "Apply action-policy and confirmation guardrails before the command runs."],
       ["contentBoundaries / maxOutput", "Mark page-sourced output boundaries or cap emitted browser command text."],
-      ["headless / headed", "Choose headless CI-style launch or visible launch when a tool starts a new managed Firefox session."],
-      ["args / userAgent", "Pass Firefox launch arguments or a User-Agent override when a tool starts a new managed Firefox session."],
-      ["proxy / proxyBypass / executablePath / downloadPath", "Configure Firefox proxy settings, the Firefox executable used for auto-launch, or the default Firefox download directory for newly launched managed sessions."],
+      ["open launch/policy fields", "State, file access, domains, approvals, headless/headed mode, Firefox args, User-Agent, device, proxy, executable path, downloads, headers, and init scripts are typed on pire_browser_open."],
     ]
   ),
   h2("Tool Surface", "tool-surface"),

@@ -12,12 +12,14 @@ pub const AGENT_BROWSER_SKILLS_DIR_ENV: &str = "AGENT_BROWSER_SKILLS_DIR";
 pub const PIRE_BROWSER_SKILLS_DIR_ENV: &str = "PIRE_BROWSER_SKILLS_DIR";
 
 const CORE_SKILL_RAW: &str = include_str!("../../../skill-data/core/SKILL.md");
+const CORE_SKILL_FULL_RAW: &str = include_str!("../../../skill-data/core/references/full.md");
 const DOGFOOD_SKILL_RAW: &str = include_str!("../../../skill-data/dogfood/SKILL.md");
 
 struct EmbeddedSkill {
     name: &'static str,
     description: &'static str,
     raw: &'static str,
+    full_raw: Option<&'static str>,
 }
 
 const EMBEDDED_SKILLS: &[EmbeddedSkill] = &[
@@ -25,11 +27,13 @@ const EMBEDDED_SKILLS: &[EmbeddedSkill] = &[
         name: CORE_SKILL_NAME,
         description: CORE_SKILL_DESCRIPTION,
         raw: CORE_SKILL_RAW,
+        full_raw: Some(CORE_SKILL_FULL_RAW),
     },
     EmbeddedSkill {
         name: DOGFOOD_SKILL_NAME,
         description: DOGFOOD_SKILL_DESCRIPTION,
         raw: DOGFOOD_SKILL_RAW,
+        full_raw: None,
     },
 ];
 
@@ -72,10 +76,14 @@ fn embedded_skills() -> Vec<SkillSummary> {
 }
 
 pub fn skill_content(name: &str) -> Option<SkillContent> {
+    skill_content_with_full(name, false)
+}
+
+pub fn skill_content_with_full(name: &str, full: bool) -> Option<SkillContent> {
     if let Some(dir) = skills_dir_override_from_env() {
-        return skill_content_from_dir(&dir, name);
+        return skill_content_from_dir_mode(&dir, name, full);
     }
-    embedded_skill_content(name)
+    embedded_skill_content_mode(name, full)
 }
 
 pub fn skill_path(name: &str) -> Option<SkillPath> {
@@ -102,11 +110,20 @@ fn skill_path_from_dir(root: &Path, name: &str) -> Option<SkillPath> {
 }
 
 fn embedded_skill_content(name: &str) -> Option<SkillContent> {
+    embedded_skill_content_mode(name, false)
+}
+
+fn embedded_skill_content_mode(name: &str, full: bool) -> Option<SkillContent> {
     let skill = EMBEDDED_SKILLS.iter().find(|skill| skill.name == name)?;
+    let raw = if full {
+        skill.full_raw.unwrap_or(skill.raw)
+    } else {
+        skill.raw
+    };
     Some(SkillContent {
         name: skill.name.to_string(),
         description: skill.description.to_string(),
-        content: normalize_skill_text(skill.raw),
+        content: normalize_skill_text(raw),
     })
 }
 
@@ -142,10 +159,22 @@ fn list_skills_from_dir(root: &Path) -> Vec<SkillSummary> {
 }
 
 fn skill_content_from_dir(root: &Path, name: &str) -> Option<SkillContent> {
+    skill_content_from_dir_mode(root, name, false)
+}
+
+fn skill_content_from_dir_mode(root: &Path, name: &str, full: bool) -> Option<SkillContent> {
     if !valid_skill_name(name) {
         return None;
     }
-    let content = read_skill_file(&root.join(name).join("SKILL.md"))?;
+    let skill_root = root.join(name);
+    let default_path = skill_root.join("SKILL.md");
+    let full_path = skill_root.join("references").join("full.md");
+    let path = if full && full_path.is_file() {
+        full_path
+    } else {
+        default_path
+    };
+    let content = read_skill_file(&path)?;
     (content.name == name).then_some(content)
 }
 
@@ -211,75 +240,44 @@ mod tests {
     fn core_skill_content_is_embedded_and_normalized() {
         let skill = skill_content("core").unwrap();
         assert!(skill.content.starts_with("---\nname: core\n"));
+        assert!(skill.content.contains("## Core Loop"));
+        assert!(skill.content.contains("pire-browser mcp --tools core"));
         assert!(skill
             .content
             .contains("pire-browser open https://example.com"));
         assert!(skill.content.contains("pire-browser snapshot"));
         assert!(skill.content.contains("pire-browser snapshot -i"));
-        assert!(skill.content.contains("pire-browser snapshot -c"));
-        assert!(skill.content.contains("pire-browser snapshot -d 3"));
-        assert!(skill.content.contains("pire-browser snapshot -C"));
-        assert!(skill.content.contains("pire-browser snapshot -c -C -d 5"));
-        assert!(skill.content.contains("pire-browser wait '@"));
+        assert!(skill.content.contains("pire-browser tab new"));
+        assert!(skill.content.contains("pire-browser window new"));
+        assert!(skill.content.contains("pire-browser install"));
+        assert!(skill.content.contains("pire-browser skills get core"));
         assert!(skill
             .content
-            .contains("pire-browser wait --load networkidle"));
+            .contains("pire-browser skills get core --full"));
+        assert!(skill.content.contains("pire-browser skills get dogfood"));
+        assert!(skill.content.contains("pire-browser skills path core"));
         assert!(skill
             .content
-            .contains("pire-browser find text \"Save\" --exact"));
-        assert!(skill.content.contains("pire-browser mouse move"));
-        assert!(skill.content.contains("pire-browser drag"));
-        assert!(skill.content.contains("pire-browser pdf"));
-        assert!(skill
-            .content
-            .contains("pire-browser screenshot --hide-scrollbars false"));
-        assert!(skill.content.contains("pire-browser set viewport"));
-        assert!(skill.content.contains("pire-browser device"));
-        assert!(skill.content.contains("pire-browser set device"));
-        assert!(skill.content.contains("pire-browser set geo"));
-        assert!(skill.content.contains("pire-browser set headers"));
-        assert!(skill.content.contains("pire-browser set credentials"));
-        assert!(skill.content.contains("pire-browser set offline"));
-        assert!(skill.content.contains("pire-browser vitals"));
-        assert!(skill.content.contains("pire-browser trace start"));
-        assert!(skill.content.contains("pire-browser profiler start"));
-        assert!(skill.content.contains("pire-browser record start"));
-        assert!(skill.content.contains("screenshot-sequence QA"));
-        assert!(skill.content.contains("QA evidence bundle"));
-        assert!(skill
-            .content
-            .contains("pire-browser open https://api.example.com --headers"));
-        assert!(skill
+            .contains("Do not\ninspect installed source code"));
+        assert!(skill.content.len() <= 32 * 1024);
+        assert!(!skill.content.contains("pire-browser profiler start"));
+        assert!(!skill.content.contains("\r"));
+    }
+
+    #[test]
+    fn full_core_skill_preserves_the_extended_reference() {
+        let compact = skill_content("core").unwrap();
+        let full = skill_content_with_full("core", true).unwrap();
+        assert!(full.content.starts_with("---\nname: core\n"));
+        assert!(full.content.len() > compact.content.len());
+        assert!(full.content.contains("pire-browser profiler start"));
+        assert!(full
             .content
             .contains("pire-browser network wait-for-response"));
-        assert!(skill.content.contains("pire-browser batch --bail"));
-        assert!(skill.content.contains("pire-browser auth login"));
-        assert!(skill.content.contains("pire-browser tab new"));
-        assert!(skill.content.contains("pire-browser tap"));
-        assert!(skill.content.contains("pire-browser swipe up"));
-        assert!(skill.content.contains("pire-browser window new"));
-        assert!(skill.content.contains("pire-browser back"));
-        assert!(skill.content.contains("pire-browser reload"));
-        assert!(skill.content.contains("pire-browser open --init-script"));
-        assert!(skill.content.contains("pire-browser addinitscript"));
-        assert!(skill.content.contains("pire-browser removeinitscript"));
-        assert!(skill.content.contains("pire-browser setcontent"));
-        assert!(skill.content.contains("pire-browser install"));
-        assert!(skill.content.contains("pire-browser install --with-deps"));
-        assert!(skill.content.contains("PIRE_BROWSER_FIREFOX_PATH"));
-        assert!(skill.content.contains("/Applications/Firefox.app"));
-        assert!(skill.content.contains("pire-browser skills cat core"));
-        assert!(skill.content.contains("pire-browser skills get core"));
-        assert!(skill.content.contains("pire-browser skills get dogfood"));
-        assert!(skill.content.contains("pire-browser skills get --all"));
-        assert!(skill.content.contains("pire-browser skills path core"));
-        assert!(skill.content.contains("hideScrollbars"));
-        assert!(skill.content.contains("PIRE_BROWSER_HIDE_SCROLLBARS"));
-        assert!(skill.content.contains("AGENT_BROWSER_HIDE_SCROLLBARS"));
-        assert!(skill
-            .content
-            .contains("Do not inspect installed source code"));
-        assert!(!skill.content.contains("\r"));
+        assert!(full.content.contains("pire-browser auth login"));
+        assert!(full.content.contains("pire-browser set viewport"));
+        assert!(full.content.contains("pire-browser skills get --all"));
+        assert!(!full.content.contains("\r"));
     }
 
     #[test]
