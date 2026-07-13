@@ -5,6 +5,7 @@ import skillsPage from "./skills.mjs";
 import mcpPage from "./mcp.mjs";
 import commandsPage from "./commands.mjs";
 import configurationPage from "./configuration.mjs";
+import pluginsPage from "./plugins.mjs";
 import selectorsPage from "./selectors.mjs";
 import snapshotsPage from "./snapshots.mjs";
 import sessionsPage from "./sessions.mjs";
@@ -41,6 +42,7 @@ export const pages = [
   mcpPage,
   commandsPage,
   configurationPage,
+  pluginsPage,
   selectorsPage,
   snapshotsPage,
   sessionsPage,

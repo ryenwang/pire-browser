@@ -8,21 +8,21 @@
 
 :root {
   color-scheme: dark;
-  --bg: #050505;
+  --bg: #0a0a0a;
   --bg-elevated: #0a0a0a;
-  --bg-muted: #111111;
-  --text: #ededed;
+  --bg-muted: #262626;
+  --text: #f5f5f5;
   --muted: #a3a3a3;
   --dim: #737373;
-  --border: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.16);
-  --primary: #ededed;
+  --border: #262626;
+  --border-strong: #404040;
+  --primary: #f5f5f5;
   --accent: #00ca50;
-  --code-text: #f9f9fb;
-  --code-command: #ffb587;
-  --code-flag: #80ebff;
+  --code-text: #ededed;
+  --code-command: #c472fb;
+  --code-flag: #00ca50;
   --code-string: #ffd567;
-  --code-comment: #8f8f9e;
+  --code-comment: #a1a1a1;
   --code-variable: #ff97e2;
   --code-key: #c689ff;
   --code-number: #54ffbd;
@@ -39,17 +39,17 @@ html.light {
   --bg-elevated: #ffffff;
   --bg-muted: #f5f5f5;
   --text: #171717;
-  --muted: #666666;
+  --muted: #525252;
   --dim: #8a8a8a;
-  --border: rgba(0, 0, 0, 0.12);
-  --border-strong: rgba(0, 0, 0, 0.18);
+  --border: #e5e5e5;
+  --border-strong: #d4d4d4;
   --primary: #171717;
-  --accent: #067a46;
-  --code-text: #15141a;
-  --code-command: #cc3d00;
-  --code-flag: #0060df;
+  --accent: #067a6e;
+  --code-text: #171717;
+  --code-command: #6e56cf;
+  --code-flag: #067a6e;
   --code-string: #a7341f;
-  --code-comment: #6d6d6d;
+  --code-comment: #6b7280;
   --code-variable: #952bb9;
   --code-key: #592acb;
   --code-number: #008787;
@@ -84,6 +84,8 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
   letter-spacing: 0;
 }
 
@@ -151,15 +153,15 @@ svg {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   flex: 0 0 auto;
 }
 
 .brand-mark img {
   display: block;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
   image-rendering: pixelated;
 }
@@ -190,7 +192,7 @@ svg {
     Consolas,
     "Liberation Mono",
     monospace;
-  font-size: 1.125rem;
+  font-size: 1rem;
   font-weight: 500;
   line-height: 1;
   text-overflow: ellipsis;
@@ -200,7 +202,7 @@ svg {
 .top-actions {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   color: var(--muted);
 }
 
@@ -220,11 +222,13 @@ svg {
   align-items: center;
   gap: 8px;
   min-height: 34px;
-  padding: 0 10px;
+  padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-muted) 70%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-muted) 50%, transparent);
   color: var(--muted);
+  font-size: 14px;
+  line-height: 20px;
 }
 
 .search-icon-button {
@@ -257,7 +261,8 @@ kbd {
   gap: 6px;
   min-height: 34px;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 14px;
+  line-height: 20px;
 }
 
 .github-link svg {
@@ -324,16 +329,16 @@ html.light .theme-moon {
 .nav-group h4 {
   margin: 0 0 8px;
   color: color-mix(in srgb, var(--muted) 54%, transparent);
-  font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.6px;
+  line-height: 16px;
   text-transform: uppercase;
 }
 
 .nav-group ul {
   display: grid;
-  gap: 4px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -341,11 +346,11 @@ html.light .theme-moon {
 
 .nav-group a {
   display: block;
-  min-height: 24px;
-  padding: 2px 0;
+  min-height: 28px;
+  padding: 4px 0;
   color: var(--muted);
-  font-size: 0.88rem;
-  line-height: 1.45;
+  font-size: 14px;
+  line-height: 20px;
   transition: color 120ms ease;
 }
 
@@ -357,7 +362,7 @@ html.light .theme-moon {
 }
 
 .nav-group a.is-active {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .content {
@@ -377,12 +382,13 @@ html.light .theme-moon {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
-  padding: 0 10px;
+  min-height: 30px;
+  padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 12px;
+  line-height: 16px;
   transition:
     background 120ms ease,
     color 120ms ease,
@@ -397,8 +403,8 @@ html.light .theme-moon {
 
 .prose {
   color: var(--text);
-  font-size: 0.96rem;
-  line-height: 1.72;
+  font-size: 16px;
+  line-height: 24px;
 }
 
 .prose h1,
@@ -406,24 +412,27 @@ html.light .theme-moon {
 .prose h3 {
   position: relative;
   color: var(--text);
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0;
-  line-height: 1.25;
 }
 
 .prose h1 {
   margin: 0 0 24px;
-  font-size: 2.3rem;
+  font-size: 28px;
+  line-height: 42px;
+  letter-spacing: -0.56px;
 }
 
 .prose h2 {
-  margin: 44px 0 14px;
-  font-size: 1.28rem;
+  margin: 48px 0 16px;
+  font-size: 18px;
+  line-height: 27px;
 }
 
 .prose h3 {
-  margin: 30px 0 12px;
-  font-size: 1rem;
+  margin: 32px 0 12px;
+  font-size: 16px;
+  line-height: 24px;
 }
 
 .heading-anchor a {
@@ -440,8 +449,10 @@ html.light .theme-moon {
 }
 
 .prose p {
-  margin: 0 0 18px;
+  margin: 0 0 16px;
   color: var(--muted);
+  font-size: 14px;
+  line-height: 23.1px;
 }
 
 .prose strong {
@@ -450,26 +461,28 @@ html.light .theme-moon {
 }
 
 .prose code {
-  font-size: 0.88em;
+  font-size: 0.875em;
 }
 
 .prose :not(pre) > code {
-  padding: 0.08rem 0.26rem;
-  border: 1px solid color-mix(in srgb, var(--code-flag) 22%, var(--border));
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--code-flag) 10%, transparent);
-  color: var(--code-flag);
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--bg-muted);
+  color: var(--muted);
 }
 
 .prose ul,
 .prose ol {
-  margin: 0 0 22px;
-  padding-left: 22px;
+  margin: 0 0 16px;
+  padding-left: 20px;
   color: var(--muted);
 }
 
 .prose li {
-  margin: 7px 0;
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 22.4px;
 }
 
 .page-badge {
@@ -508,7 +521,7 @@ html.light .theme-moon {
 
 .code-block {
   position: relative;
-  margin: 18px 0 26px;
+  margin: 16px 0 24px;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -522,8 +535,8 @@ html.light .theme-moon {
   background: transparent;
   overflow-x: auto;
   color: var(--code-text);
-  font-size: 0.86rem;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 22.1px;
   scrollbar-color: var(--dim) transparent;
   scrollbar-width: thin;
 }
@@ -616,7 +629,7 @@ table {
   width: 100%;
   border-collapse: collapse;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 14px;
 }
 
 th,
@@ -819,8 +832,8 @@ html.light .sheet-backdrop {
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    min-height: 48px;
-    padding: 0 24px;
+    min-height: 56px;
+    padding: 12px 24px;
     border: 0;
     border-bottom: 1px solid var(--border);
     background: color-mix(in srgb, var(--bg) 86%, transparent);
@@ -849,7 +862,7 @@ html.light .sheet-backdrop {
   .layout {
     display: block;
     width: 100%;
-    padding: 40px 24px 0;
+    padding: 32px 24px 0;
   }
 
   .sidebar {
@@ -883,7 +896,7 @@ html.light .sheet-backdrop {
   }
 
   .layout {
-    padding: 36px 20px 0;
+    padding: 32px 24px 0;
   }
 
   .page-actions {
@@ -891,15 +904,18 @@ html.light .sheet-backdrop {
   }
 
   .prose h1 {
-    font-size: 2rem;
+    font-size: 24px;
+    line-height: 36px;
   }
 
   .prose h2 {
-    margin-top: 38px;
+    margin-top: 48px;
   }
 
   .code-block pre {
-    font-size: 0.82rem;
+    padding: 12px;
+    font-size: 12px;
+    line-height: 20.4px;
   }
 
   .copy-code {
