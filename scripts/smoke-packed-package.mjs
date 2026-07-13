@@ -316,8 +316,8 @@ export function packedMcpBrowserSmokeInput({ profile, url, screenshot, executabl
     { id: 1, method: "initialize", params: {} },
     { id: 2, method: "tools/call", params: { name: "pire_browser_open", arguments: openArgs } },
     { id: 3, method: "tools/call", params: { name: "pire_browser_snapshot", arguments: target({ interactive: true, compact: true }) } },
-    { id: 4, method: "tools/call", params: { name: "pire_browser_fill", arguments: target({ selector: "#email", value: "mcp-smoke@example.com" }) } },
-    { id: 5, method: "tools/call", params: { name: "pire_browser_click", arguments: target({ selector: "button[type=submit]" }) } },
+    { id: 4, method: "tools/call", params: { name: "pire_browser_fill", arguments: target({ selector: "#email", text: "mcp-smoke@example.com" }) } },
+    { id: 5, method: "tools/call", params: { name: "pire_browser_click", arguments: target({ selector: "[data-testid='submit-button']" }) } },
     { id: 6, method: "tools/call", params: { name: "pire_browser_wait_for_selector", arguments: target({ selector: "#done:not([hidden])", waitTimeoutMs: 30_000 }) } },
     { id: 7, method: "tools/call", params: { name: "pire_browser_get_text", arguments: target({ selector: "#done" }) } },
     { id: 8, method: "tools/call", params: { name: "pire_browser_eval", arguments: target({ script: "document.querySelector('#email').value" }) } },
@@ -1205,7 +1205,7 @@ async function runMcpFilesSmoke({
     runPire(command, installCommandArgs({ firefoxPath }), { cwd: commandCwd, env, recorder });
     runPire(command, ["doctor", "--json"], { cwd: commandCwd, env, recorder });
 
-    const result = runPire(command, ["mcp", "--tools", "core"], {
+    const result = runPire(command, ["mcp", "--tools", "core,state"], {
       cwd: commandCwd,
       env,
       timeoutMs: 300_000,
