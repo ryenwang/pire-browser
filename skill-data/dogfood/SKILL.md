@@ -35,7 +35,7 @@ pire-browser skills get core
 Create a predictable output directory:
 
 ```bash
-mkdir -p dogfood-artifacts/screenshots dogfood-artifacts/recordings
+mkdir -p dogfood-artifacts/screenshots dogfood-artifacts/recordings dogfood-artifacts/traces dogfood-artifacts/network
 SESSION="$(pire-browser session id --scope worktree --prefix dogfood)"
 pire-browser --session "$SESSION" open https://app.example.com
 pire-browser --session "$SESSION" snapshot -i -c
@@ -110,16 +110,28 @@ pire-browser --session "$SESSION" snapshot -i -c
 
 For interactive bugs, start a recording bundle before reproducing. In
 `pire-browser`, recording is a bounded screenshot-sequence evidence directory,
-not native WebM video:
+not native WebM video. Pair it with trace and HAR when another engineer needs a
+complete diagnostic bundle:
 
 ```bash
+pire-browser --session "$SESSION" trace start
 pire-browser --session "$SESSION" record start dogfood-artifacts/recordings/issue-01
+pire-browser --session "$SESSION" network har start
 pire-browser --session "$SESSION" type '<input-ref>' "example"
 pire-browser --session "$SESSION" press Enter
-pire-browser --session "$SESSION" wait 1000
+pire-browser --session "$SESSION" wait --load networkidle
 pire-browser --session "$SESSION" screenshot dogfood-artifacts/screenshots/issue-01-final.png
+pire-browser --session "$SESSION" get url
+pire-browser --session "$SESSION" snapshot -i -c
+pire-browser --session "$SESSION" network har stop dogfood-artifacts/network/issue-01.har
 pire-browser --session "$SESSION" record stop dogfood-artifacts/recordings/issue-01
+pire-browser --session "$SESSION" trace stop dogfood-artifacts/traces/issue-01.json
 ```
+
+Start the collectors before the interaction under test and stop HAR, recording,
+and trace in reverse order even when the flow fails. Trace is the compact
+all-in-one diagnostic; the explicit HAR and recording make API and visual
+timing easier to inspect.
 
 If the first reproduction attempt gets noisy, use:
 
@@ -153,8 +165,8 @@ For each issue, capture:
 - Steps to reproduce
 - Expected result
 - Actual result
-- Evidence paths: screenshot(s), recording bundle, relevant console/network
-  notes
+- Evidence paths: screenshot(s), trace JSON, recording bundle, HAR, and any
+  relevant console/network notes
 - Repro confidence: reproduced once, reproduced repeatedly, or intermittent
 
 Close with a short summary of tested areas, issues found, and areas not covered.

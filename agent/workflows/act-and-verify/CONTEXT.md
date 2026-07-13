@@ -23,6 +23,20 @@ Use this after a page action or when deciding whether a browser task is complete
 - If a click fails because the target is covered, handle the reported covering element and re-run `snapshot` before retrying the original ref.
 - If an action fails, inspect before retrying.
 
+## Repro Evidence
+
+When the user asks for QA, a bug report, or a reproducible finding:
+
+1. Keep one stable named session for the issue.
+2. Start `trace`; add `record` and `network har start` when visual timing or API
+   evidence matters.
+3. Reproduce with fresh refs, semantic actions, and targeted waits.
+4. Capture a final screenshot, URL, compact snapshot, and any targeted state
+   check that proves the result.
+5. Stop HAR, recording, and trace in reverse order even when the repro fails.
+6. Report exact steps, expected/actual results, repro confidence, and artifact
+   paths. Do not paste secrets into the report.
+
 ## Outputs
 
 - A concise success report tied to verified evidence.

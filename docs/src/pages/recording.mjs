@@ -2,6 +2,7 @@ import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, tabl
 
 const recordingBlocks = [
   statusNote("debugging", "Screenshot-sequence recording bundles are available for active Firefox tabs. Native WebM/video recording is not implemented."),
+  p("For a complete bug-report workflow, use the <a href=\"../debugging/#qa-evidence-loop\">QA evidence loop</a> to combine a stable session, trace bundle, recording, HAR, final screenshot, URL, and compact snapshot."),
   h2("Screenshot-sequence recording", "screenshot-sequence-recording"),
   code(`pire-browser record start
 pire-browser record start recording-dir https://app.example.com

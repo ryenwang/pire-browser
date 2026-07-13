@@ -1,6 +1,11 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.2.34", "0-2-34"),
+  list([
+    "Adds one canonical QA evidence loop across README, docs, installed agent context, and bundled skills: stable session, trace, optional recording/HAR, fresh-ref reproduction, final screenshot/URL/snapshot, reverse-order collector shutdown, and artifact-path reporting.",
+    "Aligns the public README and Pages site with <code>agent-browser.dev</code>, adds the pire-browser logo and compatibility tagline, and promotes the supported agent-browser plugin protocol to a first-class Plugins reference page.",
+  ]),
   h2("0.2.33", "0-2-33"),
   list([
     "Adds a logged-in app QA starter recipe that combines discovered Firefox profile import, stable worktree-scoped sessions, restore diagnostics, snapshots, and screenshot evidence.",
@@ -152,7 +157,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The repository package version is currently <code>pire-browser@0.2.33</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
+  p("The repository package version is currently <code>pire-browser@0.2.34</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
 ];
 
 export default page({
