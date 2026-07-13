@@ -1,6 +1,12 @@
-# pire-browser
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ryenwang/pire-browser/main/docs/public/assets/pire-browser-logo.png" alt="pire-browser logo" width="96" height="96">
+</p>
 
-Firefox automation CLI for AI agents. Fast native Rust CLI, Firefox WebExtension backend, and Pi package support.
+<h1 align="center">pire-browser</h1>
+
+<p align="center"><strong>Firefox automation for AI agents, inspired and compatible with <a href="https://github.com/vercel-labs/agent-browser">agent-browser</a>.</strong></p>
+
+<p align="center">Fast native Rust CLI, Firefox WebExtension backend, and Pi package support.</p>
 
 Firefox loads a WebExtension, the WebExtension talks to a Native Messaging host, and the CLI talks to that host through current-user IPC: Windows named pipes on Windows and Unix domain sockets on macOS/Linux.
 

@@ -5,7 +5,7 @@ const NPM_URL = "https://www.npmjs.com/package/pire-browser";
 
 export const site = {
   name: "pire-browser",
-  description: "Firefox-backed browser automation CLI and Pi extension for AI agents",
+  description: "Firefox automation for AI agents, inspired and compatible with agent-browser",
   basePath: "/pire-browser",
   canonicalOrigin: "https://ryenwang.github.io/pire-browser",
   githubUrl: GITHUB_URL,
@@ -28,6 +28,7 @@ export const navGroups = [
     links: [
       { title: "Commands", path: "/commands/" },
       { title: "Configuration", path: "/configuration/" },
+      { title: "Plugins", path: "/plugins/" },
       { title: "Selectors", path: "/selectors/" },
       { title: "Snapshots", path: "/snapshots/" },
     ],

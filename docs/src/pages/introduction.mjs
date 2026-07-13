@@ -1,21 +1,25 @@
 import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, table, unavailable } from "../blocks.mjs";
 
 const introBlocks = [
-  p("Firefox automation CLI designed for AI agents. Compact text output minimizes context usage. Native Rust binaries keep common browser workflows fast, while Firefox does the real page work."),
-  code(`npm install -g pire-browser
-pire-browser install                 # first-time Firefox setup
+  p("<strong>Firefox automation for AI agents, inspired and compatible with agent-browser.</strong> Reuse familiar commands, config files, environment aliases, skills, plugins, and session workflows while Firefox-specific backend differences stay explicitly documented."),
+  p("Compact text output minimizes context usage. Native Rust CLI, local Firefox, and a version-matched agent guidance layer keep common workflows fast and predictable."),
+  code(`npm install -g pire-browser        # all supported platforms
+pire-browser install                   # connect Firefox (first time)
+pi install npm:pire-browser            # Pi package
 
-pire-browser open https://example.com
-pire-browser snapshot`),
-  p("For Pi, install the package with <code>pi install npm:pire-browser</code>, then ask the agent to use <code>pire-browser</code>. For one-off shell trials, use <code>npx -y pire-browser@latest open https://example.com</code> followed by <code>npx -y pire-browser@latest snapshot</code>."),
+# or try without installing
+npx -y pire-browser@latest open example.com`),
   h2("Features", "features"),
   list([
-    "<strong>Agent-first:</strong> compact text output uses fewer tokens than a DOM dump and is easy for agents to parse.",
+    "<strong>Agent-browser compatible:</strong> portable command shapes, configuration, <code>AGENT_BROWSER_*</code> aliases, skills, plugin protocol, state, and session recipes work across both tools.",
+    "<strong>Agent-first:</strong> compact text output uses fewer tokens than a DOM dump and is designed for AI context efficiency.",
     "<strong>Ref-based:</strong> snapshots return accessibility trees with refs for deterministic element selection.",
-    "<strong>Firefox native:</strong> commands run through a WebExtension and Native Messaging bridge.",
-    "<strong>Stateful:</strong> sessions, managed Firefox profiles, active-origin state files, cookies, storage, downloads, uploads, and guardrails support long-running agents.",
-    "<strong>Observable:</strong> screenshots, annotated captures, console/errors, network request summaries, status, and doctor output are built in.",
-    "<strong>Agent integrations:</strong> ships Pi extension adapters, a stdio MCP server, and version-matched skill guidance.",
+    "<strong>Complete:</strong> 80+ command groups cover navigation, forms, screenshots, network, storage, files, tabs, frames, sessions, and debugging.",
+    "<strong>Observable:</strong> <a href=\"./recording/\">recording</a>, <a href=\"./streaming/\">streaming</a>, <a href=\"./debugging/\">debugging</a>, <a href=\"./profiler/\">profiler</a>, and <a href=\"./diffing/\">diffing</a> tools are built in.",
+    "<strong>Modern apps:</strong> <a href=\"./network/\">network control</a>, <a href=\"./react/\">React and Web Vitals</a>, <a href=\"./init-scripts/\">init scripts</a>, and <a href=\"./next/\">Next.js and Vercel</a> workflows have first-class docs.",
+    "<strong>Stateful:</strong> <a href=\"./sessions/\">sessions</a>, managed Firefox profiles, encrypted auth, cookies, storage, proxy, and <a href=\"./security/\">security controls</a> support long-running agents.",
+    "<strong>Agent integrations:</strong> <a href=\"./mcp/\">MCP</a>, Pi extension adapters, <a href=\"./skills/\">version-matched skills</a>, and <a href=\"./plugins/\">plugins</a> fit existing agent workflows.",
+    "<strong>Cross-platform:</strong> native binaries for macOS, Linux, and Windows, selected automatically by the npm package.",
   ]),
   h2("Works with", "works-with"),
   p("Claude Code, Cursor, GitHub Copilot, OpenAI Codex, Google Gemini, opencode, and any agent that can run shell commands."),
@@ -48,13 +52,13 @@ pire-browser close`),
     "<strong>Firefox WebExtension:</strong> inspects the page, performs DOM actions, captures screenshots, and reports session state.",
   ]),
   h2("Platforms", "platforms"),
-  p("Native Rust binaries for macOS, Linux, and Windows. The root npm package selects the matching optional platform package for your OS and architecture."),
+  p("Native Rust binaries for macOS (ARM64, x64), Linux glibc (ARM64, x64), and Windows (ARM64, x64, x86). The root npm package selects the matching optional platform package automatically."),
 ];
 
 export default page({
   path: "/",
   title: "pire-browser",
   navTitle: "Introduction",
-  description: "Firefox-backed browser automation for AI agents.",
+  description: "Firefox automation for AI agents, inspired and compatible with agent-browser.",
   blocks: introBlocks,
 });
