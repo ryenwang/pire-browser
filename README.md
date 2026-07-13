@@ -579,6 +579,39 @@ explicit current image path. `diff url` opens two URLs in sequence, compares
 their interactive snapshots, and adds screenshot pixel comparison when
 `--screenshot` is passed.
 
+### QA Evidence Bundle
+
+Use one stable session and one issue directory to leave a reproducible evidence
+set instead of a loose collection of terminal output:
+
+```bash
+mkdir -p qa-artifacts/issue-01/recording
+SESSION="$(pire-browser session id --scope worktree --prefix qa)"
+
+pire-browser --session "$SESSION" --restore open
+pire-browser --session "$SESSION" trace start
+pire-browser --session "$SESSION" record start qa-artifacts/issue-01/recording
+pire-browser --session "$SESSION" network har start
+
+pire-browser --session "$SESSION" navigate https://app.example.com
+pire-browser --session "$SESSION" snapshot -i -c
+# reproduce with fresh refs, semantic actions, and targeted waits
+pire-browser --session "$SESSION" screenshot --annotate qa-artifacts/issue-01/final.png
+pire-browser --session "$SESSION" get url
+pire-browser --session "$SESSION" snapshot -i -c
+
+pire-browser --session "$SESSION" network har stop qa-artifacts/issue-01/network.har
+pire-browser --session "$SESSION" record stop qa-artifacts/issue-01/recording
+pire-browser --session "$SESSION" trace stop qa-artifacts/issue-01/trace.json
+```
+
+Start collectors before the repro and stop them even when the flow fails. The
+trace already includes bounded console, page-error, network/HAR, vitals,
+snapshot, and screenshot evidence; the explicit HAR and recording make API and
+visual timing easier to inspect. Report the route, session, exact repro steps,
+expected and actual results, repro confidence, and artifact paths. Do not paste
+cookie values, authorization headers, or other secrets into the report.
+
 ### Debug
 
 ```bash

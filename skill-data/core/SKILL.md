@@ -371,6 +371,31 @@ pire-browser record restart next-recording-dir
 pire-browser record stop recording-dir
 ```
 
+For a reproducible QA finding, use one stable session and start the evidence
+collectors before navigation or the interaction under test:
+
+```bash
+mkdir -p qa-artifacts/issue-01/recording
+SESSION="$(pire-browser session id --scope worktree --prefix qa)"
+pire-browser --session "$SESSION" --restore open
+pire-browser --session "$SESSION" trace start
+pire-browser --session "$SESSION" record start qa-artifacts/issue-01/recording
+pire-browser --session "$SESSION" network har start
+pire-browser --session "$SESSION" navigate https://app.example.com
+# snapshot, reproduce with fresh refs, and wait for the expected page/API state
+pire-browser --session "$SESSION" screenshot --annotate qa-artifacts/issue-01/final.png
+pire-browser --session "$SESSION" get url
+pire-browser --session "$SESSION" snapshot -i -c
+pire-browser --session "$SESSION" network har stop qa-artifacts/issue-01/network.har
+pire-browser --session "$SESSION" record stop qa-artifacts/issue-01/recording
+pire-browser --session "$SESSION" trace stop qa-artifacts/issue-01/trace.json
+```
+
+Stop HAR, recording, and trace in reverse order even when the repro fails.
+Report the route, session, exact steps, expected and actual results, repro
+confidence, and artifact paths. Do not paste secrets from authenticated pages
+or network traffic into the report.
+
 Use `console`, `errors`, `vitals`, `trace`, `profiler`, and `record` after
 navigation, login, or failed actions when the page looks stuck or broken.
 `trace start` / `trace stop` writes a Firefox QA evidence bundle with console,
