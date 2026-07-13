@@ -32,13 +32,15 @@ const PROFILE_DEBUG: u16 = 1 << 3;
 const PROFILE_TABS: u16 = 1 << 4;
 const PROFILE_MOBILE: u16 = 1 << 5;
 const PROFILE_REACT: u16 = 1 << 6;
+const PROFILE_EXTRA: u16 = 1 << 7;
 const PROFILE_ALL: u16 = PROFILE_CORE
     | PROFILE_NETWORK
     | PROFILE_STATE
     | PROFILE_DEBUG
     | PROFILE_TABS
     | PROFILE_MOBILE
-    | PROFILE_REACT;
+    | PROFILE_REACT
+    | PROFILE_EXTRA;
 const TOOLS_PROFILES_TOOL: &str = "pire_browser_tools_profiles";
 
 impl McpToolsProfile {
@@ -136,7 +138,7 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
         McpProfileDescriptor {
             name: "core",
             bits: PROFILE_CORE,
-            description: "Default inspect-before-act workflow: open/goto/navigate, read, snapshots, semantic find, interactions, typed get/check verification, typed waits, back/forward/reload, SPA pushstate, init scripts, set-content fixtures, screenshots/PDFs/diffs, downloads/uploads, eval/evaluate, status, confirmation follow-up, tab list/new/switch/close, profile discovery, close, and skill guidance.",
+            description: "Compact everyday workflow: open, read, snapshot, primary form interactions, scroll, focused waits, screenshot, text/URL/title reads, back/forward/reload, stable tab list/new/switch/close, eval, confirmation follow-up, and close.",
         },
         McpProfileDescriptor {
             name: "network",
@@ -179,25 +181,46 @@ fn profile_descriptors() -> Vec<McpProfileDescriptor> {
 fn tool_profile_bits(name: &str) -> u16 {
     match name {
         TOOLS_PROFILES_TOOL => PROFILE_ALL,
-        "pire_browser_tabs_list" | "pire_browser_tab_list" | "pire_browser_tab_new" => {
-            PROFILE_CORE | PROFILE_TABS
-        }
-        "pire_browser_profiles_list" => PROFILE_CORE | PROFILE_STATE | PROFILE_DEBUG,
+        "pire_browser_open"
+        | "pire_browser_read"
+        | "pire_browser_snapshot"
+        | "pire_browser_click"
+        | "pire_browser_fill"
+        | "pire_browser_type"
+        | "pire_browser_press"
+        | "pire_browser_select"
+        | "pire_browser_check"
+        | "pire_browser_uncheck"
+        | "pire_browser_wait_ms"
+        | "pire_browser_wait_for_selector"
+        | "pire_browser_wait_for_text"
+        | "pire_browser_wait_for_load"
+        | "pire_browser_get_url"
+        | "pire_browser_get_title"
+        | "pire_browser_get_text"
+        | "pire_browser_eval" => PROFILE_CORE,
+        "pire_browser_scroll" | "pire_browser_screenshot" => PROFILE_CORE | PROFILE_MOBILE,
+        "pire_browser_tab_list"
+        | "pire_browser_tab_new"
+        | "pire_browser_tab_switch"
+        | "pire_browser_tab_close"
+        | "pire_browser_back"
+        | "pire_browser_forward"
+        | "pire_browser_reload" => PROFILE_CORE | PROFILE_TABS,
+        "pire_browser_confirm" | "pire_browser_deny" => PROFILE_CORE | PROFILE_DEBUG,
+        "pire_browser_close" => PROFILE_CORE | PROFILE_DEBUG | PROFILE_TABS,
+        "pire_browser_profiles_list" => PROFILE_STATE | PROFILE_DEBUG,
         "pire_browser_profiles_import" => PROFILE_STATE | PROFILE_DEBUG,
-        "pire_browser_skills_get_core" | "pire_browser_skills_get_dogfood" => {
-            PROFILE_CORE | PROFILE_STATE
-        }
+        "pire_browser_skills_get_core" | "pire_browser_skills_get_dogfood" => PROFILE_STATE,
         "pire_browser_plugin_list" | "pire_browser_plugin_show" => PROFILE_STATE,
-        "pire_browser_status" => PROFILE_CORE | PROFILE_DEBUG,
+        "pire_browser_status" => PROFILE_DEBUG,
         "pire_browser_launch"
         | "pire_browser_batch"
         | "pire_browser_install"
         | "pire_browser_upgrade" => PROFILE_DEBUG,
         "pire_browser_doctor" | "pire_browser_activity_list" => PROFILE_DEBUG,
-        "pire_browser_confirm" | "pire_browser_deny" => PROFILE_CORE | PROFILE_DEBUG,
-        "pire_browser_close" => PROFILE_CORE | PROFILE_DEBUG | PROFILE_TABS,
         "pire_browser_diff_snapshot" | "pire_browser_diff_screenshot" | "pire_browser_diff_url" => {
-            PROFILE_CORE | PROFILE_DEBUG
+            PROFILE_DEBUG
         }
         "pire_browser_keyboard_type"
         | "pire_browser_keyboard_insert_text"
@@ -209,40 +232,22 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_mouse_down"
         | "pire_browser_mouse_up"
         | "pire_browser_mouse_wheel"
-        | "pire_browser_scroll" => PROFILE_CORE | PROFILE_MOBILE,
-        "pire_browser_tap" | "pire_browser_swipe" => PROFILE_CORE | PROFILE_MOBILE,
-        "pire_browser_open"
-        | "pire_browser_goto"
+        | "pire_browser_tap"
+        | "pire_browser_swipe" => PROFILE_MOBILE,
+        "pire_browser_goto"
         | "pire_browser_navigate"
-        | "pire_browser_read"
-        | "pire_browser_snapshot"
         | "pire_browser_find"
-        | "pire_browser_click"
         | "pire_browser_double_click"
         | "pire_browser_dblclick"
-        | "pire_browser_fill"
-        | "pire_browser_type"
-        | "pire_browser_press"
         | "pire_browser_hover"
         | "pire_browser_focus"
-        | "pire_browser_select"
-        | "pire_browser_check"
-        | "pire_browser_uncheck"
         | "pire_browser_scroll_into_view"
         | "pire_browser_drag"
         | "pire_browser_wait"
-        | "pire_browser_wait_ms"
-        | "pire_browser_wait_for_selector"
-        | "pire_browser_wait_for_text"
         | "pire_browser_wait_for_url"
-        | "pire_browser_wait_for_load"
         | "pire_browser_wait_for_function"
-        | "pire_browser_pdf"
         | "pire_browser_get"
         | "pire_browser_is"
-        | "pire_browser_get_url"
-        | "pire_browser_get_title"
-        | "pire_browser_get_text"
         | "pire_browser_get_html"
         | "pire_browser_get_value"
         | "pire_browser_get_attr"
@@ -252,12 +257,10 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_is_visible"
         | "pire_browser_is_enabled"
         | "pire_browser_is_checked"
-        | "pire_browser_eval"
-        | "pire_browser_evaluate"
-        | "pire_browser_set_content" => PROFILE_CORE,
-        "pire_browser_screenshot" => PROFILE_CORE | PROFILE_MOBILE,
+        | "pire_browser_evaluate" => PROFILE_EXTRA,
+        "pire_browser_pdf" | "pire_browser_set_content" => PROFILE_DEBUG,
         "pire_browser_download" | "pire_browser_wait_download" | "pire_browser_upload" => {
-            PROFILE_CORE | PROFILE_STATE
+            PROFILE_STATE
         }
         "pire_browser_set_headers" | "pire_browser_set_credentials" => {
             PROFILE_NETWORK | PROFILE_STATE
@@ -324,14 +327,11 @@ fn tool_profile_bits(name: &str) -> u16 {
         "pire_browser_dialog_status"
         | "pire_browser_dialog_accept"
         | "pire_browser_dialog_dismiss" => PROFILE_DEBUG | PROFILE_TABS,
-        "pire_browser_tab_switch" | "pire_browser_tab_close" => PROFILE_CORE | PROFILE_TABS,
-        "pire_browser_tabs_select" | "pire_browser_tabs_close" | "pire_browser_tabs_label" => {
-            PROFILE_TABS
-        }
-        "pire_browser_back"
-        | "pire_browser_forward"
-        | "pire_browser_reload"
-        | "pire_browser_pushstate" => PROFILE_CORE | PROFILE_TABS,
+        "pire_browser_tabs_list"
+        | "pire_browser_tabs_select"
+        | "pire_browser_tabs_close"
+        | "pire_browser_tabs_label" => PROFILE_TABS,
+        "pire_browser_pushstate" => PROFILE_TABS,
         "pire_browser_frame_select"
         | "pire_browser_frame_switch"
         | "pire_browser_frame_main"
@@ -339,9 +339,7 @@ fn tool_profile_bits(name: &str) -> u16 {
         | "pire_browser_window_new"
         | "pire_browser_window_switch"
         | "pire_browser_window_close" => PROFILE_TABS,
-        "pire_browser_add_init_script" | "pire_browser_remove_init_script" => {
-            PROFILE_CORE | PROFILE_DEBUG
-        }
+        "pire_browser_add_init_script" | "pire_browser_remove_init_script" => PROFILE_DEBUG,
         "pire_browser_device"
         | "pire_browser_set_viewport"
         | "pire_browser_set_device"
@@ -453,7 +451,7 @@ fn initialize_result(params: Option<&Value>) -> Value {
             "title": "pire-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": "Use the smallest MCP tool profile that fits the task. The default core profile covers open/goto/navigate, snapshots, semantic find/action tools, reads/checks, waits, back/forward/reload, pushstate, init scripts, screenshots/PDFs/diffs, downloads/uploads, eval/evaluate, confirmation follow-up, tab list/new/switch/close, profile discovery, status, close, pire_browser_skills_get_core, and pire_browser_skills_get_dogfood. Use pire_browser_skills_get_dogfood for systematic exploratory QA, app review, or bug hunts. Use typed headless for CI-style runs where a tool may launch a new managed Firefox session, headed to force the visible default, args for Firefox launch args, or userAgent for a Firefox User-Agent override; existing live sessions keep their current launch context. Use pire_browser_tap only as click-equivalent page interaction, not native touch input. Use pire_browser_swipe only as touch-direction page scroll, not native touch input. Prefer pire_browser_open, pire_browser_goto, or pire_browser_navigate for normal launch/navigation; use enableReactDevtools on those tools before React inspection. Add the debug profile and use pire_browser_launch only for lower-level launch diagnostics. Use debug-profile pire_browser_trace_start/status/stop for Firefox QA evidence bundles, not Chrome DevTools performance traces. Use debug-profile pire_browser_profiler_start/status/stop for Firefox Performance Timeline trace-event evidence, not Chrome CPU profiling. Use debug-profile pire_browser_record_start/status/stop/restart for screenshot-sequence evidence, not native WebM video. Use debug-profile pire_browser_stream_enable/status/disable for dashboard-backed WebSocket screenshot streaming with basic remote input; it is not native WebM video or Chrome DevTools screencast output. Use debug-profile pire_browser_install for explicit native-host setup/repair, pire_browser_upgrade only for user-requested package upgrade, and pire_browser_batch only for short sequences where later steps do not depend on parsing intermediate output. Add profiles such as core,network or core,state when request/response waits, network diagnostics, cookies/storage/auth/state, configured plugin discovery before credential-provider login, Firefox profile import, debugging, tab labels/frames/dialogs/windows, or mobile/emulation tools are needed. Inspect before acting and refresh refs after page changes."
+        "instructions": "The default core profile is deliberately compact. Use open, snapshot, a primary action, the narrowest wait, and a fresh snapshot or read tool before reporting success; refresh refs after page changes. Launch and policy options belong on open in core. Call pire_browser_tools_profiles to discover focused network, state, tabs, debug, mobile, and react profiles, combine only what the task needs, or restart with --tools all for the complete typed surface. Use confirm or deny only after the user decides a pending approval."
     })
 }
 
@@ -2679,7 +2677,47 @@ fn mcp_tools(profile: McpToolsProfile) -> Vec<Value> {
                 .and_then(Value::as_str)
                 .is_some_and(|name| profile.allows_tool(name))
         })
+        .map(|tool| {
+            if profile == McpToolsProfile::Core {
+                compact_core_tool_schema(tool)
+            } else {
+                tool
+            }
+        })
         .collect()
+}
+
+fn compact_core_tool_schema(mut tool: Value) -> Value {
+    if tool.get("name").and_then(Value::as_str) == Some("pire_browser_open") {
+        return tool;
+    }
+    let Some(properties) = tool
+        .get_mut("inputSchema")
+        .and_then(|schema| schema.get_mut("properties"))
+        .and_then(Value::as_object_mut)
+    else {
+        return tool;
+    };
+    for launch_only in [
+        "statePath",
+        "allowFileAccess",
+        "headless",
+        "headed",
+        "args",
+        "userAgent",
+        "allowedDomains",
+        "noAllowedDomains",
+        "actionPolicy",
+        "confirmActions",
+        "confirmInteractive",
+        "proxy",
+        "proxyBypass",
+        "downloadPath",
+        "executablePath",
+    ] {
+        properties.remove(launch_only);
+    }
+    tool
 }
 
 fn core_tools() -> Vec<Value> {
@@ -4491,6 +4529,23 @@ fn tool_schema(properties: Vec<(&str, Value)>, required: &[&str]) -> Value {
     schema
 }
 
+fn tool_schema_with_launch(properties: Vec<(&str, Value)>, required: &[&str]) -> Value {
+    let mut map = common_properties();
+    map.extend(launch_properties());
+    for (key, value) in properties {
+        map.insert(key.to_string(), value);
+    }
+    let mut schema = json!({
+        "type": "object",
+        "properties": map,
+        "additionalProperties": false
+    });
+    if !required.is_empty() {
+        schema["required"] = json!(required);
+    }
+    schema
+}
+
 fn tool_schema_without_common(properties: Vec<(&str, Value)>, required: &[&str]) -> Value {
     let mut map = Map::new();
     for (key, value) in properties {
@@ -4599,7 +4654,7 @@ fn launch_tool_schema() -> Value {
 }
 
 fn open_tool_schema(url_description: &str) -> Value {
-    tool_schema(
+    tool_schema_with_launch(
         vec![
             ("url", string_prop(url_description)),
             ("newTab", bool_prop("Open in a new tab.")),
@@ -4652,30 +4707,49 @@ fn common_properties() -> Map<String, Value> {
         string_prop("Managed Firefox profile name or path."),
     );
     map.insert(
+        "contentBoundaries".to_string(),
+        bool_prop("Mark page-sourced output with content boundaries."),
+    );
+    map.insert(
+        "maxOutput".to_string(),
+        number_prop("Maximum emitted browser command text."),
+    );
+    map.insert(
+        "extraArgs".to_string(),
+        json!({
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Command-specific CLI arguments appended after typed arguments."
+        }),
+    );
+    map
+}
+
+fn launch_properties() -> Map<String, Value> {
+    let mut map = Map::new();
+    map.insert(
         "statePath".to_string(),
-        string_prop("Optional state file path to load before this browser command."),
+        string_prop("Optional state file path to load before opening Firefox."),
     );
     map.insert(
         "allowFileAccess".to_string(),
-        bool_prop("Allow local file:// URL access for this command."),
+        bool_prop("Allow local file:// URL access for this open command."),
     );
     map.insert(
         "headless".to_string(),
-        bool_prop(
-            "Launch the managed Firefox session in headless mode when this command starts one.",
-        ),
+        bool_prop("Launch the managed Firefox session in headless mode."),
     );
     map.insert(
         "headed".to_string(),
-        bool_prop("Launch the managed Firefox session visibly when this command starts one. This is the default."),
+        bool_prop("Launch the managed Firefox session visibly. This is the default."),
     );
     map.insert(
         "args".to_string(),
-        string_prop("Comma- or newline-separated Firefox launch arguments when this command starts a new managed session."),
+        string_prop("Comma- or newline-separated Firefox launch arguments."),
     );
     map.insert(
         "userAgent".to_string(),
-        string_prop("Firefox User-Agent override when this command starts a new managed session."),
+        string_prop("Firefox User-Agent override for the newly launched session."),
     );
     map.insert(
         "allowedDomains".to_string(),
@@ -4685,27 +4759,19 @@ fn common_properties() -> Map<String, Value> {
     );
     map.insert(
         "noAllowedDomains".to_string(),
-        bool_prop("Disable configured domain allowlist checks for this command."),
+        bool_prop("Disable configured domain allowlist checks for this open command."),
     );
     map.insert(
         "actionPolicy".to_string(),
-        string_prop("Action-policy JSON file path for this command."),
+        string_prop("Action-policy JSON file path for this open command."),
     );
     map.insert(
         "confirmActions".to_string(),
-        string_prop("Comma-separated action classes that require explicit confirmation, such as eval,navigate,network."),
+        string_prop("Comma-separated action classes that require explicit confirmation."),
     );
     map.insert(
         "confirmInteractive".to_string(),
         bool_prop("Also require confirmation for interactive page actions."),
-    );
-    map.insert(
-        "contentBoundaries".to_string(),
-        bool_prop("Mark page-sourced output with content boundaries."),
-    );
-    map.insert(
-        "maxOutput".to_string(),
-        number_prop("Maximum emitted browser command text."),
     );
     map.insert(
         "proxy".to_string(),
@@ -4717,19 +4783,11 @@ fn common_properties() -> Map<String, Value> {
     );
     map.insert(
         "downloadPath".to_string(),
-        string_prop("Default Firefox download directory for newly launched managed sessions."),
+        string_prop("Default Firefox download directory for the launched session."),
     );
     map.insert(
         "executablePath".to_string(),
         string_prop("Firefox executable path override for auto-launch."),
-    );
-    map.insert(
-        "extraArgs".to_string(),
-        json!({
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "Command-specific CLI arguments appended after typed arguments."
-        }),
     );
     map
 }
@@ -4884,134 +4942,62 @@ mod tests {
     #[test]
     fn lists_core_tools_with_schemas() {
         let tools = mcp_tools(McpToolsProfile::Core);
-        assert!(tools.iter().any(|tool| tool["name"] == TOOLS_PROFILES_TOOL));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_snapshot"));
-        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_goto"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_navigate"));
-        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_read"));
-        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_get"));
-        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_is"));
-        for name in [
-            "pire_browser_get_text",
-            "pire_browser_get_html",
-            "pire_browser_get_value",
-            "pire_browser_get_attr",
-            "pire_browser_get_count",
-            "pire_browser_get_box",
-            "pire_browser_get_styles",
-            "pire_browser_get_url",
-            "pire_browser_get_title",
-            "pire_browser_is_visible",
-            "pire_browser_is_enabled",
-            "pire_browser_is_checked",
-        ] {
-            assert!(tools.iter().any(|tool| tool["name"] == name), "{name}");
-        }
-        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_find"));
-        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_tap"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_swipe"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_double_click"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_dblclick"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_hover"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_upload"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_wait_download"));
-        for name in [
+        let expected = [
+            TOOLS_PROFILES_TOOL,
+            "pire_browser_open",
+            "pire_browser_read",
+            "pire_browser_snapshot",
+            "pire_browser_click",
+            "pire_browser_fill",
+            "pire_browser_type",
+            "pire_browser_press",
+            "pire_browser_select",
+            "pire_browser_check",
+            "pire_browser_uncheck",
+            "pire_browser_scroll",
             "pire_browser_wait_ms",
             "pire_browser_wait_for_selector",
             "pire_browser_wait_for_text",
-            "pire_browser_wait_for_url",
             "pire_browser_wait_for_load",
-            "pire_browser_wait_for_function",
-        ] {
-            assert!(tools.iter().any(|tool| tool["name"] == name), "{name}");
+            "pire_browser_screenshot",
+            "pire_browser_get_text",
+            "pire_browser_get_url",
+            "pire_browser_get_title",
+            "pire_browser_tab_new",
+            "pire_browser_tab_list",
+            "pire_browser_tab_switch",
+            "pire_browser_tab_close",
+            "pire_browser_back",
+            "pire_browser_forward",
+            "pire_browser_reload",
+            "pire_browser_eval",
+            "pire_browser_confirm",
+            "pire_browser_deny",
+            "pire_browser_close",
+        ];
+        let names = tools
+            .iter()
+            .filter_map(|tool| tool["name"].as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(names.len(), tools.len());
+        assert_eq!(names.len(), expected.len());
+        for name in expected {
+            assert!(names.contains(name), "missing compact core tool {name}");
         }
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_mouse_move"));
-        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_pdf"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_diff_url"));
-        assert!(tools.iter().any(|tool| tool["name"] == "pire_browser_back"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_reload"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_pushstate"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_add_init_script"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_evaluate"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_set_content"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_confirm"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_profiles_list"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_tab_switch"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_tab_close"));
-        assert!(!tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_profiles_import"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_skills_get_core"));
-        assert!(tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_skills_get_dogfood"));
-        assert!(!tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_network_route"));
-        assert!(!tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_auth_login"));
-        assert!(!tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_window_new"));
-        assert!(!tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_clipboard_read"));
-        assert!(!tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_doctor"));
-        assert!(!tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_launch"));
-        assert!(!tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_batch"));
-        assert!(!tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_install"));
-        assert!(!tools
-            .iter()
-            .any(|tool| tool["name"] == "pire_browser_upgrade"));
+        for advanced in [
+            "pire_browser_goto",
+            "pire_browser_find",
+            "pire_browser_get_value",
+            "pire_browser_is_visible",
+            "pire_browser_upload",
+            "pire_browser_status",
+            "pire_browser_skills_get_core",
+        ] {
+            assert!(
+                !names.contains(advanced),
+                "advanced tool leaked into core: {advanced}"
+            );
+        }
         let open = tools
             .iter()
             .find(|tool| tool["name"] == "pire_browser_open")
@@ -5029,14 +5015,11 @@ mod tests {
             snapshot["inputSchema"]["properties"]["extraArgs"]["type"],
             "array"
         );
-        let wait = tools
-            .iter()
-            .find(|tool| tool["name"] == "pire_browser_wait")
-            .unwrap();
-        assert_eq!(
-            wait["inputSchema"]["properties"]["function"]["type"],
-            "string"
-        );
+        assert!(snapshot["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .get("headless")
+            .is_none());
         let wait_for_selector = tools
             .iter()
             .find(|tool| tool["name"] == "pire_browser_wait_for_selector")
@@ -5066,18 +5049,13 @@ mod tests {
             open["inputSchema"]["properties"]["allowedDomains"]["oneOf"][1]["type"],
             "array"
         );
-        let get_attr = tools
-            .iter()
-            .find(|tool| tool["name"] == "pire_browser_get_attr")
-            .unwrap();
+        let all_tools = mcp_tools(McpToolsProfile::All);
+        let get_attr = tool_named(&all_tools, "pire_browser_get_attr");
         assert_eq!(
             get_attr["inputSchema"]["required"],
             json!(["selector", "name"])
         );
-        let is_visible = tools
-            .iter()
-            .find(|tool| tool["name"] == "pire_browser_is_visible")
-            .unwrap();
+        let is_visible = tool_named(&all_tools, "pire_browser_is_visible");
         assert_eq!(is_visible["inputSchema"]["required"], json!(["selector"]));
         assert_eq!(
             open["inputSchema"]["properties"]["headers"]["type"],

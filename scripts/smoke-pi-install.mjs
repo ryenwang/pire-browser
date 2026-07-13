@@ -272,7 +272,7 @@ export async function runPiInstallSmoke(options) {
       throw new Error("installed pire-browser --version did not report the installed package version");
     }
     const skill = runStep("pire-browser-skill", process.execPath, [...nodeArgs, "skills", "get", "core"], stepOptions);
-    if (!skill.stdout.includes("MCP client config") || !skill.stdout.includes("Fresh direct CLI install")) {
+    if (!skill.stdout.includes("## MCP Quick Start") || !skill.stdout.includes("For a direct npm install")) {
       throw new Error("installed core skill did not include first-use/MCP guidance");
     }
 

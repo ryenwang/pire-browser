@@ -1,6 +1,6 @@
 {
   "name": "pire-browser",
-  "version": "0.2.34",
+  "version": "0.2.35",
   "description": "Cross-platform Pi extension and Firefox bridge for local browser automation",
   "keywords": [
     "pi-package",
@@ -50,6 +50,9 @@
     "postinstall": "node scripts/pi-postinstall.mjs",
     "test": "vitest run --exclude \"**/.claude/**\"",
     "test:docs": "node scripts/test-docs.mjs",
+    "test:evals": "node --test evals/agent-workflows.node-test.mjs && vitest run evals/context-footprint.test.mjs",
+    "eval:context": "node evals/context-footprint.mjs",
+    "eval:agent": "node evals/run.mjs",
     "build:extension": "npm --prefix extension run build",
     "pack:platform": "node scripts/package-platform.mjs --all",
     "pack:extension:xpi": "node scripts/package-extension-xpi.mjs",
@@ -94,13 +97,13 @@
     }
   },
   "optionalDependencies": {
-    "@ryenw/pire-browser-win32-x64": "0.2.34",
-    "@ryenw/pire-browser-win32-ia32": "0.2.34",
-    "@ryenw/pire-browser-win32-arm64": "0.2.34",
-    "@ryenw/pire-browser-darwin-x64": "0.2.34",
-    "@ryenw/pire-browser-darwin-arm64": "0.2.34",
-    "@ryenw/pire-browser-linux-x64": "0.2.34",
-    "@ryenw/pire-browser-linux-arm64": "0.2.34"
+    "@ryenw/pire-browser-win32-x64": "0.2.35",
+    "@ryenw/pire-browser-win32-ia32": "0.2.35",
+    "@ryenw/pire-browser-win32-arm64": "0.2.35",
+    "@ryenw/pire-browser-darwin-x64": "0.2.35",
+    "@ryenw/pire-browser-darwin-arm64": "0.2.35",
+    "@ryenw/pire-browser-linux-x64": "0.2.35",
+    "@ryenw/pire-browser-linux-arm64": "0.2.35"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.78.0",

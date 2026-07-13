@@ -41,9 +41,13 @@ Skill commands use:
 - `pire-browser skills`
 - `pire-browser skills list`
 - `pire-browser skills get core`
+- `pire-browser skills get core --full`
 - `pire-browser skills cat core`
 - `pire-browser profiles`
 - `pire-browser profiles import <discovered-name-or-firefox-profile-dir> --name <managed-name>`
+
+`skills get core` returns the compact first-use workflow. Add `--full` only when
+the agent needs the extended command catalog.
 
 ## Pi Repair Exit Codes
 

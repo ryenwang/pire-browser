@@ -1,6 +1,6 @@
 # Source Inventory
 
-Last reviewed: 2026-07-05
+Last reviewed: 2026-07-12
 
 This inventory records which public source sets are authoritative for `pire-browser`, which artifacts are generated or runtime-only, and where public ambiguity lives. It is intentionally not a file-by-file listing.
 
@@ -18,7 +18,8 @@ This inventory records which public source sets are authoritative for `pire-brow
 | `pire-browser.schema.json` | Config schema | Authoritative packaged JSON Schema for `pire-browser` config defaults, launch args/User-Agent defaults, screenshot-capture defaults, and credential-provider plugin entries; referenced from README and skill examples. |
 | `agent-browser.schema.json` | Legacy config schema alias | Tracked filename alias for existing configs that reference the earlier schema path; mirrors the supported config keys including launch, screenshot, and `plugins` defaults. |
 | `skills/pire-browser/SKILL.md` | Installed skill discovery stub | Small skill entry point that points agents to the version-matched runtime skill command. |
-| `skill-data/core/SKILL.md`, `skill-data/dogfood/SKILL.md` | Runtime skill content | Full core and specialized QA skills served by `pire-browser skills cat/get/path <name>` through Rust `include_str!` and by the JS launcher fallback; `PIRE_BROWSER_SKILLS_DIR` / `AGENT_BROWSER_SKILLS_DIR` can override the runtime skill root for local skill development. Keep version matched to CLI behavior. |
+| `skill-data/core/SKILL.md`, `skill-data/core/references/full.md`, `skill-data/dogfood/SKILL.md` | Runtime skill content | Compact core, opt-in extended core reference, and specialized QA guidance served by `pire-browser skills cat/get/path <name>` through Rust `include_str!` and by the JS launcher fallback. `skills get core --full` selects the extended core reference. `PIRE_BROWSER_SKILLS_DIR` / `AGENT_BROWSER_SKILLS_DIR` can override the runtime skill root for local development. Keep these files version matched to CLI behavior. |
+| `evals/` | Public evaluation harness | Deterministic installed-skill/MCP context budgets and optional provider-CLI workflow evaluations. The context gate interrogates a built native binary and writes generated reports under `target/evals/`; live workflow evals propose commands but never execute browser actions. |
 | `bin/pire-browser.js`, `scripts/platform.mjs`, `scripts/pi-install-migration.mjs`, `scripts/pi-postinstall.mjs` | Public npm launcher/install helpers | Root package launcher, platform resolver, launcher-served `pi conflicts`/`pi repair` duplicate-source recovery, verified old managed GitHub checkout quarantine, and best-effort postinstall setup. |
 | `platform-packages/` | Native package metadata | Version-matched scoped optional npm package manifests for each supported OS/architecture. |
 | `docs/src/`, `docs/public/`, `scripts/build-pages-site.mjs` | Public docs site source and generator | Product-facing route registry, one-module-per-route docs content under `docs/src/pages/`, shared block helpers in `docs/src/blocks.mjs`, feature-status labels, search index generation, and static assets for the generated Pages site. |
@@ -26,7 +27,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 | `docs/compatibility-summary.md` | Public compatibility summary | Coarse product-facing status table. Do not use it for detailed planning or implementation priority. |
 | `tests` fixture tree | Test fixtures | Local HTML/session fixtures and shared policy contract fixtures. |
 | `scripts/` | Maintainer automation | Install, package, npx no-global-install package smoke, Pi fresh-install/runtime-discovery smoke, packed-package CLI/browser/MCP browser/file-transfer/network/state-auth smoke, state/session/policy/download/upload lifecycle, trusted npm publishing helpers, release validation, and repository-only tests for packaged install helpers. |
-| `.github/workflows/` | Public CI/release automation | Pages deployment, platform package builds, trusted npm publish gated by reusable packed browser plus MCP stdio/browser/file-transfer/network/state-auth smoke, post-publish Pi install/runtime-discovery smoke, and manual packed-release smoke checks. |
+| `.github/workflows/` | Public CI/release automation | Pages deployment, platform package builds with native context-budget enforcement, optional manual agent workflow evals, trusted npm publish gated by reusable packed browser plus MCP stdio/browser/file-transfer/network/state-auth smoke, post-publish Pi install/runtime-discovery smoke, and manual packed-release smoke checks. |
 | `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `.gitattributes` | Public entry points | Product scope, usage, release notes, package scripts, license terms, npm package shape including the default `web-ext` runtime dependency and optional Pi core peers, and repository line-ending/binary policy. |
 
 ## Generated Or Runtime Artifacts
@@ -35,6 +36,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 | --- | --- | --- |
 | `cli/target/` | Generated Rust build output | Local cargo artifacts for the Rust workspace. Rebuild instead of reviewing as source. |
 | `target/` | Generated/runtime output | Smoke artifacts, staged package artifacts, runtime diagnostics, and release-validation logs. |
+| `target/evals/` | Generated evaluation output | Context-footprint and optional live agent workflow reports. Regenerate from `evals/`; do not treat reports as product source. |
 | `site/` | Generated public Pages output | Ignored local output created by `scripts/build-pages-site.mjs` and uploaded by `.github/workflows/pages.yml`. |
 | `node_modules/`, `extension/node_modules/` | Generated dependency installs | Recreate from lockfiles. |
 | `extension/dist/` | Generated extension output | Built from `extension/src/`; keep in sync only when packaging or tests require checked-in dist output. |

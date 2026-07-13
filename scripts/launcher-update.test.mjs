@@ -129,9 +129,9 @@ describe("launcher update UX", () => {
     expect(logs.pop()).toContain("pire-browser update check [--json]");
 
     expect(main(["skills", "--help"])).toBe(0);
-    expect(logs.pop()).toContain("pire-browser skills get core [--json]");
+    expect(logs.pop()).toContain("pire-browser skills get core [--full] [--json]");
     expect(main(["skills", "--help"])).toBe(0);
-    expect(logs.pop()).toContain("pire-browser skills get dogfood [--json]");
+    expect(logs.pop()).toContain("pire-browser skills get dogfood [--full] [--json]");
 
     expect(main(["skill", "help"])).toBe(0);
     expect(logs.pop()).toContain("AGENT_BROWSER_SKILLS_DIR");
@@ -332,7 +332,7 @@ describe("launcher update UX", () => {
 
     expect(text).toContain("pire-browser mcp --tools core");
     expect(text).toContain("Model Context Protocol server");
-    expect(text).toContain("core` is the default inspect-before-act workflow");
+    expect(text).toContain("core` is a compact 31-tool inspect-before-act workflow");
     expect(text).toContain('"mcpServers"');
     expect(text).toContain('"args": ["mcp", "--tools", "core"]');
     expect(text).toContain("--tools core,debug");
@@ -450,10 +450,23 @@ describe("launcher update UX", () => {
     });
     expect(body.data.skill.content).toContain("pire-browser skills get core");
     expect(body.data.skill.content).toContain("pire-browser skills get --all");
-    expect(body.data.skill.content).toContain("MCP client config");
     expect(body.data.skill.content).toContain('"args": ["mcp", "--tools", "core"]');
     expect(body.data.skill.content).toContain("--tools core,debug");
+    expect(body.data.skill.content).not.toContain("pire-browser profiler start");
+    expect(Buffer.byteLength(body.data.skill.content, "utf8")).toBeLessThanOrEqual(32 * 1024);
     expect(body.data.skill.content).not.toContain("\r");
+  });
+
+  it("serves the extended core reference only when --full is requested", () => {
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+    expect(main(["skills", "get", "core", "--full", "--json"])).toBe(0);
+
+    const body = JSON.parse(logs.join("\n"));
+    expect(body.data.skill.content).toContain("pire-browser profiler start");
+    expect(body.data.skill.content).toContain("pire-browser network wait-for-response");
+    expect(Buffer.byteLength(body.data.skill.content, "utf8")).toBeGreaterThan(32 * 1024);
   });
 
   it("serves skills get --all with the success/data envelope", () => {

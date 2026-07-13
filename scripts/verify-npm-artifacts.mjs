@@ -61,6 +61,7 @@ function verifyRootTarball(tarball, rootPackage) {
     "package/scripts/pi-postinstall.mjs",
     "package/skills/pire-browser/SKILL.md",
     "package/skill-data/core/SKILL.md",
+    "package/skill-data/core/references/full.md",
     "package/skill-data/dogfood/SKILL.md",
     "package/README.md",
     "package/LICENSE",

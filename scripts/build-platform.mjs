@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { chmodSync, copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ import {
   PLATFORM_PACKAGES,
   binaryFileName,
   hostFileName,
+  packageDirectoryName,
   platformTuple,
   rootDir,
 } from "./platform.mjs";
@@ -38,7 +39,39 @@ export function isNativeTuple(tuple, platform = process.platform, arch = process
   }
 }
 
+export function cargoWorkspaceVersion(manifestText) {
+  const section = /\[workspace\.package\]([\s\S]*?)(?:\n\[|$)/.exec(manifestText)?.[1] ?? "";
+  const version = /^version\s*=\s*"([^"]+)"\s*$/m.exec(section)?.[1];
+  if (!version) throw new Error("cli/Cargo.toml is missing workspace.package.version");
+  return version;
+}
+
+export function assertReleaseVersionsAligned(rootPath = root) {
+  const rootPackage = JSON.parse(readFileSync(join(rootPath, "package.json"), "utf8"));
+  const cargoVersion = cargoWorkspaceVersion(readFileSync(join(rootPath, "cli", "Cargo.toml"), "utf8"));
+  const mismatches = [];
+  if (cargoVersion !== rootPackage.version) {
+    mismatches.push(`cli/Cargo.toml=${cargoVersion}`);
+  }
+  for (const packageName of Object.values(PLATFORM_PACKAGES)) {
+    const packageJson = JSON.parse(
+      readFileSync(join(rootPath, "platform-packages", packageDirectoryName(packageName), "package.json"), "utf8"),
+    );
+    if (packageJson.version !== rootPackage.version) {
+      mismatches.push(`${packageName}=${packageJson.version}`);
+    }
+    if (rootPackage.optionalDependencies?.[packageName] !== rootPackage.version) {
+      mismatches.push(`optionalDependencies.${packageName}=${rootPackage.optionalDependencies?.[packageName] ?? "missing"}`);
+    }
+  }
+  if (mismatches.length > 0) {
+    throw new Error(`Release versions must match root ${rootPackage.version}: ${mismatches.join(", ")}`);
+  }
+  return rootPackage.version;
+}
+
 export function buildPlatform(tuple, options = {}) {
+  assertReleaseVersionsAligned();
   const target = rustTargetForTuple(tuple);
   const [platform] = tuple.split("-");
   const dryRun = options.dryRun === true;

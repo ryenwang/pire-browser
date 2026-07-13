@@ -63,7 +63,7 @@ use pire_browser_core::session::{
     session_status_value, SessionInfo,
 };
 use pire_browser_core::setup::{setup, setup_result_text, setup_with_deps, SetupResult};
-use pire_browser_core::skills::{list_skills, skill_content, skill_path};
+use pire_browser_core::skills::{list_skills, skill_content_with_full, skill_path};
 use pire_browser_core::state_file::{
     display_url_without_query_or_fragment, read_state_file_summary, read_state_file_with_metadata,
     state_from_extension_export, sweep_expired_state_receipts, validate_state_inspection_receipt,
@@ -378,11 +378,11 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         LocalCommand::SkillsList { json } => {
             handle_skills_list(json)?;
         }
-        LocalCommand::SkillsCat { name, json } => {
-            handle_skills_cat(&name, json)?;
+        LocalCommand::SkillsCat { name, json, full } => {
+            handle_skills_cat(&name, json, full)?;
         }
-        LocalCommand::SkillsCatAll { json } => {
-            handle_skills_cat_all(json)?;
+        LocalCommand::SkillsCatAll { json, full } => {
+            handle_skills_cat_all(json, full)?;
         }
         LocalCommand::SkillsPath { name, json } => {
             handle_skills_path(&name, json)?;
@@ -2638,8 +2638,8 @@ fn handle_skills_list(json_output: bool) -> Result<()> {
     Ok(())
 }
 
-fn handle_skills_cat(name: &str, json_output: bool) -> Result<()> {
-    let Some(skill) = skill_content(name) else {
+fn handle_skills_cat(name: &str, json_output: bool, full: bool) -> Result<()> {
+    let Some(skill) = skill_content_with_full(name, full) else {
         let available = list_skills()
             .into_iter()
             .map(|skill| skill.name)
@@ -2671,10 +2671,10 @@ fn handle_skills_cat(name: &str, json_output: bool) -> Result<()> {
     Ok(())
 }
 
-fn handle_skills_cat_all(json_output: bool) -> Result<()> {
+fn handle_skills_cat_all(json_output: bool, full: bool) -> Result<()> {
     let skills = list_skills()
         .into_iter()
-        .filter_map(|skill| skill_content(&skill.name))
+        .filter_map(|skill| skill_content_with_full(&skill.name, full))
         .collect::<Vec<_>>();
     if json_output {
         println!("{}", format_cli_result(&json!({ "skills": skills }), true)?);

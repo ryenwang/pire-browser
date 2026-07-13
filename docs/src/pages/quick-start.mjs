@@ -42,7 +42,7 @@ pire-browser snapshot`),
 # 3. pire_browser_click({ "selector": "@e2" })
 # 4. pire_browser_wait_for_load({ "state": "networkidle" })
 # 5. pire_browser_snapshot({ "interactive": true })`),
-  p("Use <code>pire_browser_get_text</code>, <code>pire_browser_get_url</code>, <code>pire_browser_is_visible</code>, and the other typed get/check tools for targeted verification before reporting success. Start with <code>--tools core</code>; add <code>network</code>, <code>state</code>, <code>tabs</code>, <code>debug</code>, <code>mobile</code>, or <code>react</code> only when that workflow needs the extra tools. If the native package is missing, <code>pire-browser mcp --help</code> still prints startup and repair guidance from the launcher."),
+  p("Use core <code>pire_browser_get_text</code>, <code>pire_browser_get_url</code>, <code>pire_browser_get_title</code>, or a fresh snapshot for targeted verification before reporting success. Start with <code>--tools core</code>; add <code>network</code>, <code>state</code>, <code>tabs</code>, <code>debug</code>, <code>mobile</code>, or <code>react</code> only when that workflow needs extra tools. The broader typed get/is variants are available through the full surface. If the native package is missing, <code>pire-browser mcp --help</code> still prints startup and repair guidance from the launcher."),
   h2("Project QA sessions", "project-qa-sessions"),
   code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
 pire-browser --session "$SESSION" --restore open http://localhost:3000

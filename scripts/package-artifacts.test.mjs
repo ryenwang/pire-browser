@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PLATFORM_PACKAGES, packageDirectoryName, resolveNativeBinary, rootDir } from "./platform.mjs";
+import { assertReleaseVersionsAligned, cargoWorkspaceVersion } from "./build-platform.mjs";
 import { normalizeRepositoryUrl } from "./verify-npm-artifacts.mjs";
 import {
   expectedPackageSource,
@@ -41,6 +42,13 @@ function readJson(path) {
 }
 
 describe("npm artifact metadata", () => {
+  it("keeps npm sidecars and Rust workspace metadata on the release version", () => {
+    const rootPackage = readJson(join(root, "package.json"));
+    const cargoManifest = readFileSync(join(root, "cli", "Cargo.toml"), "utf8");
+    expect(cargoWorkspaceVersion(cargoManifest)).toBe(rootPackage.version);
+    expect(assertReleaseVersionsAligned(root)).toBe(rootPackage.version);
+  });
+
   it("normalizes npm repository URL variants for provenance checks", () => {
     expect(normalizeRepositoryUrl({ url: "git+https://github.com/ryenwang/pire-browser.git" })).toBe(
       "https://github.com/ryenwang/pire-browser"
@@ -345,13 +353,13 @@ describe("npm artifact metadata", () => {
     for (const tool of [
       "pire_browser_open",
       "pire_browser_snapshot",
-      "pire_browser_find",
+      "pire_browser_fill",
+      "pire_browser_click",
       "pire_browser_wait_for_selector",
       "pire_browser_get_text",
-      "pire_browser_get_value",
+      "pire_browser_eval",
       "pire_browser_get_url",
       "pire_browser_get_title",
-      "pire_browser_is_visible",
       "pire_browser_screenshot",
       "pire_browser_tab_list",
       "pire_browser_close",
@@ -425,7 +433,7 @@ describe("npm artifact metadata", () => {
       for (const tool of [
         "pire_browser_open",
         "pire_browser_network_har_start",
-        "pire_browser_find",
+        "pire_browser_click",
         "pire_browser_network_wait_for_request",
         "pire_browser_network_wait_for_response",
         "pire_browser_network_requests",

@@ -740,6 +740,7 @@ pire-browser skills
 pire-browser skills list
 pire-browser skills list --json
 pire-browser skills get core
+pire-browser skills get core --full
 pire-browser skills get dogfood
 pire-browser skills get core --json
 pire-browser skills get --all --json
@@ -747,7 +748,7 @@ pire-browser skills cat core
 pire-browser skills path core
 ```
 
-Installed agents should use the bundled skill command for version-matched guidance instead of relying on stale copied instructions. Start with `core` for general browser automation and use `dogfood` for systematic exploratory QA/bug hunts. Bare `skills` lists available skills, matching agent-browser. `skills get` is an agent-browser-style alias for `skills cat`; `skills get --all` returns all bundled skill content, and `skills path [name]` prints the installed skill directory. Skill commands are served by the JS launcher when possible, so agents can still load setup and repair guidance if the native binary is missing or stale. For local skill development, set `PIRE_BROWSER_SKILLS_DIR` or the agent-browser-compatible `AGENT_BROWSER_SKILLS_DIR` to a directory of `<name>/SKILL.md` files. The package also ships compact routing context under `agent/`.
+Installed agents should use the bundled skill command for version-matched guidance instead of relying on stale copied instructions. `skills get core` returns the compact first-use workflow; add `--full` only when the task needs the extended command reference. Use `dogfood` for systematic exploratory QA and bug hunts. Bare `skills` lists available skills, matching agent-browser. `skills get` is an agent-browser-style alias for `skills cat`; `skills get --all` returns all bundled skill content, and `skills path [name]` prints the installed skill directory. Skill commands are served by the JS launcher when possible, so setup and repair guidance remains available if the native binary is missing or stale. For local skill development, set `PIRE_BROWSER_SKILLS_DIR` or the agent-browser-compatible `AGENT_BROWSER_SKILLS_DIR` to a directory of `<name>/SKILL.md` files. The package also ships compact routing context under `agent/`.
 
 ### MCP Server
 
@@ -781,34 +782,21 @@ that adds it, such as `--tools core,network`, `--tools core,state`,
 `--tools all` for hosts that can tolerate the full tool list.
 
 The stdio MCP server exposes typed tools through agent-browser-style profiles.
-`core` is the default inspect-before-act workflow: open/goto/navigate, snapshot, semantic
-find, click, tap-as-click, swipe-as-scroll, double-click, hover, focus, select,
-check/uncheck, scroll/scroll-into-view, fill, type, press, keyboard/mouse
-basics, typed get/check verification tools, typed waits, back/forward/reload,
-SPA pushstate navigation, init scripts, screenshots/PDFs/diffs, downloads/uploads, eval/evaluate, status,
-confirmation follow-up, tab list/new/switch/close, profile discovery, close, and skill
-guidance. Generic `pire_browser_get`, `pire_browser_is`, and `pire_browser_wait`
-remain available for compatibility, but new agents should prefer the typed
-tools. Agent-browser-style aliases such as `pire_browser_tap`,
-`pire_browser_swipe`, `pire_browser_dblclick`, `pire_browser_keydown`,
-`pire_browser_keyup`, `pire_browser_tab_list`, `pire_browser_tab_switch`,
-`pire_browser_tab_close`, `pire_browser_scroll_into_view`, and
-`pire_browser_frame_switch` are also available; older `double_click`,
-`key_down`, `key_up`, `tabs_*`, and `frame_select` names remain compatible.
+`core` is deliberately small: profile discovery, open/read/snapshot, common
+form and keyboard actions, scrolling, narrow waits, screenshot, URL/title/text
+verification, tabs, history, eval, close, and explicit confirmation follow-up.
+This is the normal open, inspect, act, wait, and verify loop. Semantic find,
+typed get/is variants, downloads/uploads, state, network capture, frames,
+windows, diagnostics, QA evidence, mobile helpers, React tools, and compatibility
+aliases remain available through focused profiles or `all`.
 
-Most browser-command tools accept common typed fields for session/profile
-targeting, state files, file access, domain allowlists, confirmation/action
-policies, content boundaries, output limits, Firefox launch args, User-Agent
-overrides, proxy settings, and Firefox executable overrides; use those fields
-instead of `extraArgs` for guardrails.
-Use typed `headless` for CI-style runs where a tool may launch a new managed
-Firefox session, `headed` to force the visible default, `args` for comma- or
-newline-separated Firefox launch args, or `userAgent` for a Firefox User-Agent
-override. Existing live sessions keep their current launch context.
-`pire_browser_open`, `pire_browser_goto`, and `pire_browser_navigate` also accept typed one-shot `headers`, `initScriptPaths`,
-and `enableReactDevtools` for pre-navigation setup. Prefer these tools for normal
-launch/navigation; the `debug` profile exposes `pire_browser_launch` as a
-narrower lower-level launch tool, `pire_browser_install` for explicit
+Core tools keep shared schemas compact. Session/profile targeting, content
+boundaries, and output limits remain common. Put launch and policy options such
+as state, file access, domains, confirmations, headless mode, Firefox arguments,
+User-Agent, proxy, executable path, one-shot headers, init scripts, and device
+setup on `pire_browser_open`. Existing sessions retain their launch context.
+The `debug` profile exposes `pire_browser_launch` as a narrower lower-level
+launch tool, `pire_browser_install` for explicit
 native-host setup or repair, `pire_browser_upgrade` for user-requested package upgrades,
 `pire_browser_stream_enable/status/disable` for dashboard-backed live preview
 control, and `pire_browser_batch` for short command sequences. Pass `withDeps: true` to
@@ -1545,6 +1533,7 @@ The installed npm package also serves bundled runtime skills:
 
 ```bash
 pire-browser skills get core
+pire-browser skills get core --full
 pire-browser skills get dogfood
 pire-browser skills path core
 ```
@@ -1621,9 +1610,16 @@ Common checks:
 ```bash
 cd cli && cargo test -q
 npm test
+npm run test:evals
 node scripts/build-pages-site.mjs
 npm pack --dry-run --json
 ```
+
+After building a native CLI, `npm run eval:context -- --binary <path>` writes a
+deterministic installed-skill and MCP footprint report under `target/evals/`.
+The manual `Agent Workflow Evals` GitHub Actions workflow runs optional live
+Codex or Claude command-proposal cases; it is informative rather than a release
+gate because model output can vary.
 
 ## License
 

@@ -1,0 +1,1059 @@
+---
+name: core
+description: Core pire-browser workflow for safe Firefox automation.
+---
+
+# Core pire-browser Skill
+
+Use `pire-browser` when the user asks you to inspect or control Firefox. Do not inspect installed source code to discover commands; use `pire-browser --help`, `pire-browser <command> --help`, and `pire-browser skills get core`.
+
+## Quick Start
+
+Use MCP when the agent host supports typed tools:
+
+```bash
+pire-browser mcp --tools core
+```
+
+MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "pire-browser": {
+      "command": "pire-browser",
+      "args": ["mcp", "--tools", "core"]
+    }
+  }
+}
+```
+
+Then follow this tool loop:
+
+1. `pire_browser_open` with the target URL.
+2. `pire_browser_snapshot` with `interactive: true`.
+3. Act with a fresh ref through `pire_browser_click`, `pire_browser_fill`, `pire_browser_type`, `pire_browser_press`, `pire_browser_select`, `pire_browser_check`, or `pire_browser_uncheck`.
+4. Wait with the narrowest core wait tool: `pire_browser_wait_for_selector`, `pire_browser_wait_for_text`, `pire_browser_wait_for_load`, or `pire_browser_wait_ms`.
+5. Verify with a fresh `pire_browser_snapshot`, `pire_browser_get_text`, `pire_browser_get_url`, `pire_browser_get_title`, or `pire_browser_eval` before reporting success.
+
+Start with `core`. Add `network`, `state`, `tabs`, `debug`, `mobile`, or
+`react` only when the task needs those tools; use `all` only when the host can
+tolerate the full tool list.
+
+Use CLI commands when MCP is unavailable or the user asks for shell commands.
+For a fresh direct CLI install, run setup once:
+
+```bash
+pire-browser install
+```
+
+For normal page work, start at open/snapshot:
+
+```bash
+pire-browser open
+pire-browser open https://example.com
+pire-browser snapshot
+pire-browser fill '@e2' "hello@example.com"
+pire-browser press Enter
+pire-browser wait '@e4'
+pire-browser click '@e4'
+pire-browser snapshot
+```
+
+Always inspect before page actions. Use refs only from the latest snapshot or find output. Quote refs in PowerShell, for example `click '@e4'`.
+If a click reports that the target is covered by another element, dismiss or
+interact with the reported covering element, then run `snapshot` before
+retrying the original ref.
+
+## Core Loop
+
+1. Open or select the page. Use `pire-browser open` with no URL when you need to launch/reuse Firefox before staging state, cookies, routes, or init scripts.
+2. Inspect with `pire-browser snapshot`.
+3. Act with refs or semantic find commands.
+4. Wait only when page state needs time to settle.
+5. Reinspect and report success only after verification confirms the requested state.
+
+## Common Recipes
+
+Fresh direct CLI install:
+
+```bash
+npm install -g pire-browser
+pire-browser install
+pire-browser open https://example.com
+pire-browser snapshot
+```
+
+One-off trial without global install:
+
+```bash
+npx -y pire-browser@latest open https://example.com
+npx -y pire-browser@latest snapshot
+```
+
+Use `install --with-deps`, `doctor`, or `doctor --json` only when Firefox is
+missing, setup fails, or the first browser command reports setup diagnostics.
+
+Persist a browser context for a project QA loop:
+
+```bash
+SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser --session "$SESSION" --restore open https://app.example.com
+pire-browser --session "$SESSION" --restore session info --json
+pire-browser --session "$SESSION" --restore snapshot -i
+```
+
+Derive one stable worktree-scoped session name per app or task and reuse it on
+every command with `--restore`. This mirrors agent-browser's persistent-session
+recipe; in pire-browser, the named managed Firefox profile is the persistence
+store. Do this instead of hand-building profile names or state paths when the
+user wants to keep login, tabs, and managed Firefox profile state tied to the
+current repository. Use `--scope cwd` for directory-scoped scratch work and
+`--scope global` only when the same named session should be shared across
+repositories.
+Use `pire-browser --session "$SESSION" --restore session info --json` before
+guessing about restore problems; it reports the selected live session, managed
+Firefox profile, restore status, and next actions without launching the browser.
+Use bare `pire-browser session --json` for the agent-browser-compatible
+current/default session diagnostic; use `pire-browser session list --json` when
+you need the full live-session inventory.
+
+Authenticated app QA with existing Firefox login state:
+
+```bash
+SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser profiles
+pire-browser profiles import Default --name "$SESSION"
+pire-browser --session "$SESSION" --restore open https://app.example.com
+pire-browser --session "$SESSION" --restore session info --json
+pire-browser --session "$SESSION" --restore snapshot
+pire-browser --session "$SESSION" --restore screenshot
+```
+
+Use this when the user says they are already logged in with desktop Firefox.
+Run `profiles` before asking for profile paths. Import copies the discovered
+Firefox profile into managed `pire-browser` state and does not mutate the
+source. If import reports that the source profile is in use, ask the user to
+close desktop Firefox before retrying. On later runs, skip import and reuse
+`--session "$SESSION" --restore`.
+
+Search a site:
+
+```bash
+pire-browser open https://duckduckgo.com
+pire-browser snapshot --compact
+pire-browser fill '<search-ref>' "Pire-Browser"
+pire-browser click '<search-button-ref>'
+pire-browser snapshot --compact
+```
+
+Use semantic find when labels are clear:
+
+```bash
+pire-browser find label "Email" fill "hello@example.com"
+pire-browser find role button --name "Submit" click
+pire-browser find text "Save" --exact
+```
+
+Use `--exact` when nearby text would otherwise create substring matches.
+Use `click '<link-ref>' --new-tab` or `click '<link-ref>' --new` only when a
+link target with an `href` should open in a new tab.
+
+Use focused keyboard commands when the page behavior depends on key events:
+
+```bash
+pire-browser click '<input-ref>'
+pire-browser keyboard type "hello@example.com"
+pire-browser press Enter
+pire-browser keydown Shift
+pire-browser keyup Shift
+pire-browser get value '<input-ref>'
+```
+
+`keyboard type`, `keyboard inserttext`, `keydown`, and `keyup` act at the
+current page focus. Click or focus the intended control first. Use `type
+<target> <text>` or `fill <target> <text>` when you have a selector/ref and do
+not need focused keyboard edges. Use `focus <target>` before focused keyboard
+commands when you know the target, `hover <target>` for menus/tooltips that
+respond to mouseover, `select <target> <value>` for HTML selects, and
+`check <target>` / `uncheck <target>` for checkboxes. Use `dblclick <target>`
+when the UI requires a double-click. Use `tap <target>` only as a best-effort
+alias for `click <target>`; it is not native touch input or mobile browser
+emulation. Use `swipe <direction> [pixels]` only as a best-effort mobile helper
+that maps touch direction to page scroll (`swipe up` scrolls down); use
+`scroll` for direct scroll direction and `scrollintoview <target>` when you
+already know the element you need. `scrollinto <target>` is the short
+compatibility alias.
+
+```bash
+pire-browser snapshot
+pire-browser hover '<menu-ref>'
+pire-browser focus '<input-ref>'
+pire-browser select '<country-ref>' US
+pire-browser check '<terms-ref>'
+pire-browser scrollintoview '<submit-ref>'
+pire-browser dblclick '<item-ref>'
+pire-browser snapshot
+```
+
+Use chat only when the user specifically wants natural-language browser control
+from the CLI:
+
+```bash
+AI_GATEWAY_API_KEY=... pire-browser chat "open example.com and summarize it"
+pire-browser -q chat "summarize this page"
+pire-browser -v chat "fill the search box with cats and press Enter"
+```
+
+`chat` mirrors agent-browser's AI Gateway-backed command loop. It asks the model
+for JSON command plans, runs those commands through normal `pire-browser` CLI
+paths, and feeds observations back until a final answer or the bounded step
+limit. Prefer direct commands or MCP typed tools when you already know the next
+browser action; chat adds model latency and requires `AI_GATEWAY_API_KEY`.
+The dashboard AI Chat panel uses the same loop, forwards the currently previewed
+session when one exists, and returns the final answer after the loop finishes;
+streamed dashboard chat updates are not available yet.
+
+Read documents, docs pages, and article text before falling back to snapshots:
+
+```bash
+pire-browser read https://example.com/article
+pire-browser read https://example.com/article --filter overview
+pire-browser read https://example.com/article --outline
+pire-browser read https://docs.example.com --llms index --filter auth
+pire-browser read https://docs.example.com --llms full --filter auth
+pire-browser read --llms index --filter auth
+pire-browser read --require-md
+pire-browser read
+```
+
+Use `read <url>` for no-browser markdown/plain/html text fetches. Omit the URL
+to read rendered text from the active Firefox tab, including client-side state
+and authenticated content. When `--llms`, `--require-md`, `--raw`, or
+`--timeout` is used without a URL, `pire-browser` first reads the active tab URL
+and then performs the same guarded URL fetch. Use `snapshot` when you need
+interaction refs.
+
+Read and check state without dumping a whole snapshot when you already know the
+target:
+
+```bash
+pire-browser get title
+pire-browser get url
+pire-browser get text '@e1'
+pire-browser get attr '@e2' href
+pire-browser get count "button"
+pire-browser is visible '@e3'
+pire-browser is enabled '#submit'
+```
+
+Use `get` and `is` after a fresh snapshot or semantic find when you need a
+specific value for verification. Re-run `snapshot` first if the page changed
+or the ref may be stale.
+
+Use `eval -b <base64-utf8-js>` or pipe JavaScript to `eval --stdin` when shell
+quoting would make an inline script brittle. Prefer targeted commands such as
+`get`, `is`, `find`, and `snapshot` when they can answer the question without
+custom JavaScript.
+
+When using MCP core, verify with `pire_browser_get_text`,
+`pire_browser_get_url`, `pire_browser_get_title`, `pire_browser_eval`, or a fresh
+snapshot. The complete surface also provides the agent-browser-style typed
+verification tools `pire_browser_get_html`, `pire_browser_get_value`, `pire_browser_get_attr`,
+`pire_browser_get_count`, `pire_browser_get_box`, `pire_browser_get_styles`,
+`pire_browser_is_visible`, `pire_browser_is_enabled`, and
+`pire_browser_is_checked`.
+
+Batch short command sequences to reduce process churn:
+
+```bash
+pire-browser batch "open https://example.com" "snapshot" "screenshot result.png"
+pire-browser batch --bail "open https://example.com" "click '@e1'" "screenshot result.png"
+echo '[["open","https://example.com"],["snapshot"],["click","@e1"]]' | pire-browser batch --json
+```
+
+Use `--bail` when later commands depend on earlier commands succeeding. With no inline commands, `batch` reads a JSON array from stdin; entries can be command strings or arrays of args.
+When using MCP, add the `debug` profile and call `pire_browser_batch` with a typed
+`commands` array for short sequences. Prefer individual typed tools when an
+agent needs to inspect intermediate output before choosing the next action.
+
+Reduce prompt-injection and context-flooding ambiguity:
+
+```bash
+pire-browser --content-boundaries snapshot -i
+pire-browser --max-output 50000 get text body
+PIRE_BROWSER_CONTENT_BOUNDARIES=1 pire-browser snapshot -i --json
+PIRE_BROWSER_MAX_OUTPUT=50000 pire-browser get html body --json
+```
+
+Use `--content-boundaries` when page text may contain instructions or tool-like text. Use `--max-output <n>` before broad `get text/html` or noisy snapshots. These guards label or cap emitted browser command text; they do not replace inspecting fresh refs or verifying page state.
+
+Wait for page state:
+
+```bash
+pire-browser wait --selector "#done" --timeout 10000
+pire-browser wait '@e7'
+pire-browser wait --text "Saved"
+pire-browser wait --url "**/dashboard"
+pire-browser wait --fn "window.appReady === true"
+pire-browser wait --load networkidle
+```
+
+Use `wait --load networkidle` after opening dynamic apps when fetch/XHR work must
+settle before `snapshot -i`, `find`, or `screenshot`. Use `wait --fn` for a
+short, side-effect-free page-world JavaScript predicate when the app exposes a
+clear readiness signal. Reinspect after the wait.
+
+MCP core includes `pire_browser_wait_ms`, `pire_browser_wait_for_selector`,
+`pire_browser_wait_for_text`, and `pire_browser_wait_for_load`. The complete
+surface adds `pire_browser_wait_for_url`, `pire_browser_wait_for_function`, and
+the generic compatibility wait tool. Use `waitTimeoutMs` on typed condition
+waits when the default timeout is too short.
+
+Navigate inside an SPA without a full page load:
+
+```bash
+pire-browser pushstate /dashboard
+pire-browser wait --url "**/dashboard"
+pire-browser snapshot -i --compact
+```
+
+Use `pushstate <url-or-path>` only after a page is open. It performs same-origin
+client-side navigation in the active page, preferring `window.next.router.push`
+when present and falling back to `history.pushState`. Reinspect before acting on
+refs from the new route.
+
+Use browser history commands when the user asks to go back, go forward, refresh,
+or reload:
+
+```bash
+pire-browser back
+pire-browser forward
+pire-browser reload
+pire-browser wait --load domcontentloaded
+pire-browser snapshot -i
+```
+
+Treat `back`, `forward`, and `reload` as navigation. Old refs may point at the
+previous document, so wait as needed and re-snapshot before acting.
+
+Create a tiny active-page fixture or reproduction without a server:
+
+```bash
+pire-browser open
+pire-browser setcontent '<main><h1>Hello</h1><button>Save</button></main>'
+pire-browser snapshot -i
+```
+
+`setcontent <html>` replaces the active page document HTML. Treat it like
+`eval`: use it only when the user wants a local fixture/repro or explicitly
+approves page mutation, then re-snapshot before acting. It is Firefox
+WebExtension document replacement, not CDP `Page.setDocumentContent`.
+
+Inspect app diagnostics before guessing at failures:
+
+```bash
+pire-browser console
+pire-browser errors
+pire-browser vitals
+pire-browser vitals https://app.example.com/dashboard
+pire-browser console --clear
+pire-browser errors --clear
+pire-browser trace start
+pire-browser trace status
+pire-browser trace stop trace.json
+pire-browser profiler start
+pire-browser profiler status
+pire-browser profiler stop profile.json
+pire-browser record start
+pire-browser record start recording-dir https://app.example.com
+pire-browser record status
+pire-browser record restart next-recording-dir
+pire-browser record stop recording-dir
+```
+
+For a reproducible QA finding, use one stable session and start the evidence
+collectors before navigation or the interaction under test:
+
+```bash
+mkdir -p qa-artifacts/issue-01/recording
+SESSION="$(pire-browser session id --scope worktree --prefix qa)"
+pire-browser --session "$SESSION" --restore open
+pire-browser --session "$SESSION" trace start
+pire-browser --session "$SESSION" record start qa-artifacts/issue-01/recording
+pire-browser --session "$SESSION" network har start
+pire-browser --session "$SESSION" navigate https://app.example.com
+# snapshot, reproduce with fresh refs, and wait for the expected page/API state
+pire-browser --session "$SESSION" screenshot --annotate qa-artifacts/issue-01/final.png
+pire-browser --session "$SESSION" get url
+pire-browser --session "$SESSION" snapshot -i -c
+pire-browser --session "$SESSION" network har stop qa-artifacts/issue-01/network.har
+pire-browser --session "$SESSION" record stop qa-artifacts/issue-01/recording
+pire-browser --session "$SESSION" trace stop qa-artifacts/issue-01/trace.json
+```
+
+Stop HAR, recording, and trace in reverse order even when the repro fails.
+Report the route, session, exact steps, expected and actual results, repro
+confidence, and artifact paths. Do not paste secrets from authenticated pages
+or network traffic into the report.
+
+Use `console`, `errors`, `vitals`, `trace`, `profiler`, and `record` after
+navigation, login, or failed actions when the page looks stuck or broken.
+`trace start` / `trace stop` writes a Firefox QA evidence bundle with console,
+page-error, network/HAR metadata, vitals, compact snapshot, and screenshot
+evidence; it is not a Chrome DevTools performance trace or CPU profile.
+`profiler start` / `profiler stop` writes Chrome Trace Event-shaped JSON from
+Firefox Performance Timeline entries for navigation, resource, paint, mark,
+measure, and long-entry timing evidence; it is not Chrome DevTools CPU sampling
+or a full renderer timeline. `record start [output-dir] [url]`, `record status`,
+`record restart [output-dir] [url]`, and `record stop [output-dir]` write
+bounded visible-viewport PNG frames plus `recording.json` as a
+screenshot-sequence QA evidence bundle; they are not native WebM video, live
+viewport streaming, or Chrome DevTools screencast output. `vitals` reports
+best-effort TTFB, FCP, LCP, CLS,
+INP, DOMContentLoaded, load, readyState, and hydration-warning signals from
+Firefox Performance APIs. Unavailable Chrome-specific metrics are reported as
+unavailable. Console and error commands report Firefox WebExtension-captured
+page-world messages and page errors from reachable frames. They do not expose raw
+Chrome CDP console payloads, and they only capture records observed after the
+pire-browser content script loads.
+
+Inspect React component structure when debugging a React app:
+
+```bash
+pire-browser open --enable react-devtools https://app.example.com
+pire-browser react tree
+pire-browser react tree --selector "#root" --depth 3
+pire-browser react inspect r1
+pire-browser react inspect '@e1'
+pire-browser react renders start
+# interact with the page
+pire-browser react renders stop
+pire-browser react suspense
+pire-browser react suspense --only-dynamic
+```
+
+`react tree`, `react inspect`, `react renders`, and `react suspense` mirror
+agent-browser's command shape through best-effort Firefox Fiber data attached to
+DOM nodes plus a lightweight hook installed by `open --enable react-devtools`.
+Re-run `react tree` after navigation, route changes, or large DOM updates before
+using an `rN` id. Start render recording before the interaction of interest, then
+stop it for the profile. Use `react suspense --only-dynamic` to focus on
+currently fallback/dehydrated boundaries visible through DOM-attached Fiber data.
+Use snapshots, targeted get/is checks, console/errors, and vitals for supporting
+evidence.
+
+Start the local dashboard when a human or agent needs a quick view of setup,
+live sessions, managed profiles, a live viewport preview, WebSocket screenshot
+streaming, optional AI Gateway chat, and recent command activity:
+
+```bash
+pire-browser dashboard start
+pire-browser dashboard start --background
+pire-browser dashboard start --port 4848
+pire-browser dashboard start --port 0 --json
+pire-browser dashboard status --json
+pire-browser dashboard stop
+pire-browser stream enable
+pire-browser stream status --json
+pire-browser stream disable
+```
+
+The dashboard is a localhost server. Without `--background`, stop it with
+`Ctrl+C`; with `--background`, manage it with `dashboard status` and
+`dashboard stop`. It shows install health, live sessions, managed profiles, a
+bounded redacted command activity feed, a live read-only preview for the
+selected session, optional non-streaming dashboard chat, and capability notes.
+The dashboard UI preview polls visible-viewport screenshots from the Firefox
+extension. Agent clients can connect to `ws://127.0.0.1:<port>/api/stream` for
+JSON `frame` messages with base64 PNG data and can send `input_mouse`,
+`input_keyboard`, or `input_touch` events. For scripts, use:
+
+```bash
+pire-browser stream status --json
+pire-browser activity list --json
+```
+
+Activity shows what commands ran; it does not prove page success.
+`stream enable/status/disable` is the agent-browser-style lifecycle surface for
+the dashboard-backed WebSocket screenshot stream and reports
+`transport: "dashboard-websocket-screenshot"`, `webSocketStreaming: true`,
+`remoteInput: true`, and `webSocketUrl` when enabled. This is screenshot-frame
+streaming with basic remote input, not native WebM video or Chrome DevTools
+screencast output. Keep using `snapshot -i`, `screenshot`, `record start` /
+`record stop`, `status`, and `doctor` as the primary machine-readable evidence
+path. `record` is screenshot-sequence evidence, not native WebM video.
+
+Handle page JavaScript dialogs when warnings mention `PAGE_DIALOG`:
+
+```bash
+pire-browser dialog status
+pire-browser dialog accept "prompt text"
+pire-browser dialog dismiss
+pire-browser snapshot -i
+```
+
+`dialog accept [text]` configures the next shimmed confirm or prompt to accept,
+using `text` as the prompt return value. `dialog dismiss` configures the next
+shimmed confirm or prompt to cancel. Firefox dialog support is page-shimmed
+best effort, not native browser chrome control. Reinspect after handling a
+dialog before using old refs. Use global `--no-auto-dialog` or
+`AGENT_BROWSER_NO_AUTO_DIALOG=1` only when you need agent-browser-style debugging
+with the shim disabled; native Firefox page dialogs may block until handled
+manually.
+
+Inspect network activity during QA:
+
+```bash
+pire-browser network requests
+pire-browser network requests --filter /api/
+pire-browser network requests --type xhr,fetch --status 2xx
+pire-browser network request <requestId>
+pire-browser network wait-for-request "**/api/**" --method POST --timeout 10000
+pire-browser network wait-for-response "**/api/**" --status 2xx --timeout 10000
+pire-browser network har start
+pire-browser network har stop network.har
+pire-browser network har
+pire-browser network har network.har --filter /api/
+pire-browser network route "**/api/config**" --body '{"ready":true}'
+pire-browser network route "*" --abort --resource-type script
+pire-browser network unroute "*"
+pire-browser network requests --clear
+```
+
+Use `network requests` after navigation or failed app actions to see recent
+active-tab requests. Filters support URL substring/glob, resource type, method,
+and status. Use `network wait-for-request` around clicks/forms when you need to
+prove an API call started, and `network wait-for-response` when the next
+snapshot/get should wait for a matching HTTP response. Use `network route`
+before triggering a fetch/load when you need a
+best-effort active-tab mock or block, then `network unroute` before returning to
+normal behavior. Firefox route mocking uses WebExtension interception, so treat
+it as QA/debug control rather than full CDP response capture. Use `network har start`
+before a flow and `network har stop <path>` afterward when you need a
+portable request timeline artifact. `network har <path>` also exports the
+current recent request log directly. Network detail and HAR output may include
+redacted request/response headers, redacted/truncated outgoing request bodies,
+and bounded redacted text-like response previews when Firefox exposes them. Use
+these previews to debug API submissions, form posts, and response payloads, but
+do not treat them as full CDP network capture: cookies, binary bodies, streaming
+payloads, and raw header/body secrets are not captured.
+
+Set a responsive viewport before QA screenshots:
+
+```bash
+pire-browser set viewport 1280 720
+pire-browser snapshot -i --compact
+pire-browser screenshot desktop.png
+pire-browser open https://example.com --device "iPhone 14"
+pire-browser device "iPhone 14"
+pire-browser set device "iPhone 14"
+pire-browser set geo 37.7749 -122.4194
+pire-browser snapshot -i --compact
+pire-browser swipe up 500
+pire-browser screenshot mobile.png
+```
+
+`set viewport`, `device`, `set geo`, `tap`, and `swipe` are Firefox best-effort paths. Viewport and device settings resize the browser window to approximate the requested content viewport and return measured `page.innerWidth`/`page.innerHeight`; verify those measurements before relying on pixel-perfect screenshots. `device <name>` is the agent-browser-style spelling; `set device <name>` remains compatible. Device presets also apply a request User-Agent override for future requests and a page-level navigator/touch shim for future navigations plus the active page when possible. Use `open <url> --device <name>` when the first page request must see the mobile User-Agent. This is still not native touch input, mobile browser chrome, or exact deviceScaleFactor emulation; verify page-visible navigator values before relying on mobile-only code paths. `swipe` maps touch direction to page scroll and is not native touch input. `set geo` installs a page-level `navigator.geolocation` shim for managed Firefox pages; it does not change Firefox's native permission prompt, OS location services, IP-based location, or browser chrome state.
+
+When using MCP, prefer the typed setting tools (`pire_browser_set_viewport`,
+`pire_browser_device`, `pire_browser_set_device`, `pire_browser_set_geo`, `pire_browser_set_headers`,
+`pire_browser_set_credentials`, `pire_browser_set_media`, and
+`pire_browser_set_offline`) instead of raw command strings. For first-navigation mobile checks, pass the typed `device` field to `pire_browser_open`, `pire_browser_goto`, or `pire_browser_navigate`.
+
+```sh
+pire-browser --color-scheme dark open https://example.com
+pire-browser set media light
+```
+
+Use `--color-scheme dark|light|auto` before `open`, or `set media dark|light|auto` in a live session, when a page uses `prefers-color-scheme`.
+
+Test offline and reconnect flows with request blocking:
+
+```bash
+pire-browser set offline on
+pire-browser open https://example.com
+pire-browser snapshot -i
+pire-browser set offline off
+pire-browser wait --load networkidle
+```
+
+`set offline on|off` is best-effort Firefox request blocking for managed tabs. It cancels future network requests, but it does not fully emulate Chromium/CDP offline mode: `navigator.onLine`, service worker cache behavior, DNS, and socket state are not controlled.
+
+Route a managed session through a proxy:
+
+```bash
+pire-browser --proxy http://proxy.example:8080 open https://example.com
+pire-browser --proxy socks5://proxy.example:1080 --proxy-bypass "localhost,*.internal" open https://example.com
+PIRE_BROWSER_PROXY=http://proxy.example:8080 pire-browser open https://httpbin.org/ip
+```
+
+Use `--proxy` before `open` or another browser bridge command when proxy routing matters. Proxy credentials can be supplied in the URL or with `PIRE_BROWSER_PROXY_USERNAME` / `PIRE_BROWSER_PROXY_PASSWORD`; agent-browser aliases such as `AGENT_BROWSER_PROXY` and `AGENT_BROWSER_PROXY_BYPASS` also work. Credentials are not echoed. This is a Firefox `browser.proxy.settings` path, not a TLS-ignore or OS-wide proxy setting.
+
+Highlight the visual target before a QA screenshot:
+
+```bash
+pire-browser highlight '#submit'
+pire-browser screenshot submit-highlight.png
+pire-browser screenshot --full full-page.png
+pire-browser screenshot --annotate numbered-elements.png
+pire-browser screenshot --hide-scrollbars false page-with-scrollbars.png
+pire-browser pdf page.pdf
+pire-browser screenshot --screenshot-dir screenshots
+```
+
+Use `highlight <target>` with the same refs, selectors, text, and semantic targets you would use for `click` or `fill`. Use `screenshot --full` when the report needs the whole page, `screenshot --annotate` when numbered element evidence is more useful than a single target overlay, and `pdf <path>` when the report needs a portable visual evidence file. Screenshots hide native scrollbars by default for stable agent-browser-style evidence; pass `--hide-scrollbars false` when scrollbar presence is part of the UI state. `pdf` embeds a screenshot into a one-page image-backed PDF; text is not selectable and print CSS is not applied. `screenshot` with no path writes a generated file under the local `pire-browser/screenshots` data directory and prints the resolved path. `--screenshot-dir <dir>` generates a timestamped filename inside that directory when no filename is provided. Relative screenshot paths resolve from the command's current working directory. These are visual QA helpers; styling is Firefox-specific, so do not rely on pixel-identical annotation behavior across browsers.
+
+Set a default download directory when download location matters:
+
+```bash
+pire-browser --download-path ./downloads open https://example.com
+pire-browser snapshot -i
+pire-browser download '<download-link-ref>' ./downloads/report.csv
+pire-browser wait --download --timeout 60000
+```
+
+Use `--download-path <dir>`, `PIRE_BROWSER_DOWNLOAD_PATH`, or
+`AGENT_BROWSER_DOWNLOAD_PATH` before launching a managed session when
+browser-initiated downloads should land in a known folder. Relative download
+paths resolve from the command's current working directory. Use an explicit
+`download <target> <path>` or `wait --download <path>` output path when the
+final filename must be exact. With no explicit output path, `wait --download`
+reports the completed Firefox file path; verify file type or size when relevant.
+
+Upload local files through file input controls or page dropzones:
+
+```bash
+pire-browser snapshot -i
+pire-browser upload '<file-input-ref-or-selector>' ./fixture.png
+pire-browser upload '<dropzone-ref-or-selector>' ./one.png ./two.json
+pire-browser snapshot -i
+```
+
+Use a fresh snapshot to verify the target is an `input[type=file]`, an
+associated label, a container with a nested file input, or the visible dropzone
+that the web app listens to. Uploads are chunked through the native host and
+capped at 8 MiB total raw bytes per command. Dropzone upload dispatches page
+`dragenter`/`dragover`/`drop` events with `DataTransfer` files. Native OS
+file-picker control, directory upload, and browser-chrome drag state are not
+implemented, so verify success through fresh page state after the upload.
+
+Compare page structure before and after an action:
+
+```bash
+pire-browser snapshot -i
+pire-browser click '@e4'
+pire-browser diff snapshot
+pire-browser diff snapshot --baseline before.txt
+pire-browser diff snapshot --selector "#main" --compact
+pire-browser diff screenshot --baseline before.png
+pire-browser diff screenshot --baseline before.png -o diff.png
+pire-browser diff screenshot --baseline before.png -t 0.2
+pire-browser diff url https://v1.example https://v2.example
+pire-browser diff url https://v1.example https://v2.example --screenshot
+pire-browser diff url https://v1.example https://v2.example --wait-until networkidle
+pire-browser diff url https://v1.example https://v2.example --selector "#main" --compact
+```
+
+Use `diff snapshot` after a baseline snapshot and an action to see structural
+changes without leaving the CLI. `--baseline <path>` compares against a saved
+snapshot text file. Use `diff screenshot --baseline <path>` after capturing a
+visual baseline to compare the current active-page screenshot. Add `-o <path>`
+for a red diff image and `-t <0..1>` when small rendering differences should be
+ignored. Use `diff url <url1> <url2>` for before/after page comparisons without
+manually opening each page; add `--screenshot` when the report needs pixel
+evidence in addition to snapshot differences. When using MCP, prefer
+`pire_browser_diff_snapshot`, `pire_browser_diff_screenshot`, or
+`pire_browser_diff_url` for these QA comparisons.
+
+Authenticate a page or API route with request headers:
+
+```bash
+pire-browser open https://api.example.com --headers '{"Authorization":"Bearer token"}'
+pire-browser set headers '{"X-Custom-Header":"value"}'
+pire-browser set credentials user pass
+pire-browser open https://api.example.com/dashboard
+```
+
+`open --headers` applies headers to the opened URL's origin for the current managed Firefox session. `set headers` applies headers to the active page's origin; use `set headers '{}'` to clear that origin. `set credentials <username> <password>` applies memory-only HTTP Basic auth to the active page's origin. Header values and passwords are not echoed in command output. Reinspect after navigation and do not assume auth applies to other hosts or ports.
+
+Inspect or adjust active-origin cookies and Web Storage:
+
+```bash
+pire-browser cookies
+pire-browser cookies set preview enabled
+pire-browser cookies set --curl ./cookies.curl --domain localhost
+pire-browser storage local
+pire-browser storage local featureFlag
+pire-browser storage local set featureFlag on
+pire-browser storage session clear
+```
+
+Cookies and Web Storage values may contain session secrets. Prefer targeted key
+reads and do not paste raw values back to the user unless they explicitly asked
+for state debugging output. Use `cookies set --curl <file-or-cookie-data>
+--domain <domain>` when staging cookies before navigation; it accepts a
+Copy-as-cURL dump, JSON cookie array, object with a `cookies` array, or bare
+`Cookie:` header and reports counts instead of echoing values.
+
+Use page-level mouse events when a custom widget needs coordinates:
+
+```bash
+pire-browser mouse move 80 80
+pire-browser mouse down
+pire-browser mouse up
+pire-browser mouse wheel 400
+pire-browser tap '<target-ref>'
+pire-browser swipe up 500
+pire-browser scroll down 500 --selector "#panel"
+pire-browser scrollintoview '<target-ref>'  # alias: scrollinto
+pire-browser drag '<source-ref>' '<target-ref>'
+```
+
+Mouse, hover, tap, swipe, scroll, scrollintoview/scrollinto, and drag commands
+are Firefox WebExtension paths. They dispatch page events, not native OS cursor
+movement, native touch input, or browser-chrome drag state. `hover` cannot force
+native `:hover` state on every page, so verify with page state afterwards.
+
+Save and reuse a simple login form profile:
+
+```bash
+echo "pass" | pire-browser auth save app --url https://example.com/login --username user --password-stdin --username-selector "#email" --password-selector "#password" --submit-selector "button[type=submit]"
+pire-browser auth login app
+pire-browser snapshot -i --compact
+```
+
+Prefer `--password-stdin` over `--password` when saving credentials so the password is not placed in shell history. Saved auth profiles live in the local AES-256-GCM encrypted auth vault. The vault key comes from `PIRE_BROWSER_AUTH_ENCRYPTION_KEY`, `PIRE_BROWSER_ENCRYPTION_KEY`, `AGENT_BROWSER_ENCRYPTION_KEY`, or an auto-generated local key file. `auth list` and `auth show` do not print passwords; `auth login` decrypts locally and sends a one-shot profile payload to Firefox.
+
+Use a configured credential-provider plugin when the user keeps credentials in an external vault:
+
+```bash
+pire-browser plugin add agent-browser-plugin-vault
+pire-browser plugin add agent-browser-plugin-captcha --no-manifest --capability command.run --capability captcha.solve
+pire-browser plugin list
+pire-browser plugin show vault
+pire-browser auth login app --credential-provider vault --item "My App" --url https://example.com/login
+pire-browser snapshot -i --compact
+```
+
+Credential providers use the agent-browser plugin protocol with capability
+`credential.read`; add them with `plugin add`, configure them manually in
+`pire-browser.json` / `agent-browser.json` under `plugins`, or set
+`AGENT_BROWSER_PLUGINS` / `PIRE_BROWSER_PLUGINS` to the same JSON array.
+`plugin add` probes an agent-browser plugin manifest when available; use
+`--no-manifest --capability <name>` for plugins that do not expose
+`plugin.manifest`. Use CLI `plugin list` / `plugin show <name>` to inspect
+configured plugins before running one. Use `auth login --credential-provider`
+for `credential.read` providers. Use `plugin run <name> <capability> --payload
+<json>` for plugins that declare `command.run` plus a custom capability:
+
+```bash
+pire-browser plugin run captcha captcha.solve --payload '{"siteKey":"abc","url":"https://example.com"}'
+pire-browser --confirm-actions plugin:captcha:captcha.solve plugin run captcha captcha.solve --payload '{"siteKey":"abc"}'
+```
+
+`plugin run` cannot invoke core protocol paths directly. Configured
+`launch.mutate` plugins run automatically before local Firefox launches and can
+append `launch.args`, set `launch.userAgent`, or provide `launch.initScripts`
+for pre-navigation document-start scripts; returned `launch.extensions` are
+reported as unsupported by this Firefox backend. `browser.provider` is
+discoverable but not executed by this Firefox backend.
+Do not put vault tokens, passwords, or API keys in plugin args. Plugin stderr is
+suppressed. Use `--confirm-actions plugin:vault:credential.read` when provider
+access should require approval before the plugin runs. When using MCP, add the
+`state` profile and inspect providers with `pire_browser_plugin_list` /
+`pire_browser_plugin_show` before `pire_browser_auth_login`; only call
+`pire_browser_auth_save` with user-approved credentials, and use
+`pire_browser_auth_login` with `credentialProvider`, `item`, and `url` for
+configured vault providers. Always verify login with a fresh snapshot, URL, or
+page state before reporting success.
+
+Open tabs and windows:
+
+```bash
+pire-browser click '<link-ref>' --new-tab
+pire-browser tab
+pire-browser tab new https://example.com
+pire-browser tab docs
+pire-browser tab close
+pire-browser window
+pire-browser window new
+pire-browser window switch w2
+pire-browser window close w2
+pire-browser open https://example.com
+```
+
+Bare `tab` lists tracked tabs, matching agent-browser. `tab <tN-or-label>` switches directly, and `tab close` closes the active tab when no target is provided. Window ids are stable strings such as `w1` and `w2`; use `window list`, `window switch <wN>`, and `window close [wN]` for OAuth, checkout, SSO, or popup-style flows that open a separate Firefox window. `open --new` and `open --new-tab` create a new tab, not a new window. For the user phrase "open a new window", run `pire-browser window new`, then `pire-browser open <url>`.
+
+Register a script for the next navigation:
+
+```bash
+pire-browser open --init-script ./before-load.js https://example.com
+AGENT_BROWSER_INIT_SCRIPTS=./before-load.js pire-browser open https://example.com
+pire-browser addinitscript "window.__flag = true"
+pire-browser removeinitscript init1
+```
+
+Use this only when the page needs before-load setup. `open --init-script` applies only to that navigation. `PIRE_BROWSER_INIT_SCRIPTS` and `AGENT_BROWSER_INIT_SCRIPTS` are OS path-lists that add document-start scripts to `open/goto/navigate <url>` when no explicit `--init-script` is present. `addinitscript` registers for future navigations in the current managed Firefox session and returns an id to pass to `removeinitscript`. These are Firefox WebExtension paths, so verify with a fresh snapshot or page state check after navigation.
+
+Open a local HTML file:
+
+```bash
+pire-browser --allow-file-access open file:///path/to/page.html
+```
+
+Use this for local HTML artifacts and fixtures. For portable visual evidence, run `pire-browser pdf page.pdf` after opening the local page.
+
+Capture screenshots:
+
+```bash
+pire-browser screenshot page.png
+pire-browser screenshot --hide-scrollbars false page-with-scrollbars.png
+pire-browser pdf page.pdf
+```
+
+Use a config file for repeated defaults:
+
+```bash
+# from a project that has ./pire-browser.json
+pire-browser open https://example.com
+pire-browser --config ./ci-config.json open https://example.com
+PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com
+```
+
+Config files use camelCase keys. Useful defaults include `json`, `profile`, `sessionName`, `session`, `state`, `allowedDomains`, `confirmActions`, `confirmInteractive`, `noAutoDialog`, `hideScrollbars`, `allowFileAccess`, `headed`, `headless`, `colorScheme`, `args`, `userAgent`, `downloadPath`, `maxOutput`, and `contentBoundaries`. CLI flags override config defaults. Unknown keys are ignored.
+
+Use `--headless`, `PIRE_BROWSER_HEADLESS=1`, `AGENT_BROWSER_HEADLESS=1`, or `headless: true` in config for CI-style runs. Headless applies when a command launches a new managed Firefox session; existing live sessions keep their current mode.
+
+Use `--args "<comma-or-newline-separated Firefox args>"`, `PIRE_BROWSER_ARGS`, `AGENT_BROWSER_ARGS`, or `args` in config when a newly launched managed session needs raw Firefox launch args. Use `--user-agent "<value>"`, `PIRE_BROWSER_USER_AGENT`, `AGENT_BROWSER_USER_AGENT`, or `userAgent` in config when the new managed profile needs a Firefox User-Agent override. Existing live sessions keep their current launch context; close/relaunch the managed session before relying on these settings. If the User-Agent matters, verify with `pire-browser eval "navigator.userAgent"` or app-visible behavior after launch.
+
+Use `--no-auto-dialog`, `PIRE_BROWSER_NO_AUTO_DIALOG=1`, `AGENT_BROWSER_NO_AUTO_DIALOG=1`, or `noAutoDialog: true` in config only when you need agent-browser-style debugging with the page dialog shim disabled. Native Firefox page dialogs may block until handled manually.
+
+Use `--hide-scrollbars false`, `PIRE_BROWSER_HIDE_SCROLLBARS=0`, `AGENT_BROWSER_HIDE_SCROLLBARS=0`, or `hideScrollbars: false` in config only when screenshot evidence should preserve native scrollbars. The default hides them for stable visual comparisons.
+
+List and target managed profiles or live sessions:
+
+```bash
+pire-browser profiles
+pire-browser profiles --json
+pire-browser profiles import default-release --name Work
+pire-browser profiles import Default --name Work
+pire-browser profiles import /path/to/firefox-profile --name Work
+pire-browser profiles import /path/to/firefox-profile --name Work --overwrite
+pire-browser --profile Work open https://example.com
+PIRE_BROWSER_PROFILE=Work pire-browser snapshot -i
+AGENT_BROWSER_PROFILE=Work pire-browser snapshot -i
+SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
+pire-browser --session "$SESSION" --restore open https://example.com
+pire-browser --session "$SESSION" --restore session info --json
+pire-browser --session "$SESSION" --restore snapshot -i
+pire-browser session --json
+pire-browser session list --json
+pire-browser session info --json
+pire-browser session id --scope worktree --prefix my-app
+pire-browser session attach <session-id>
+pire-browser --session <session-id> snapshot -i
+pire-browser --session agent1 open https://example.com
+pire-browser --session-name work open https://example.com
+PIRE_BROWSER_SESSION=agent1 pire-browser snapshot -i
+AGENT_BROWSER_SESSION=agent1 pire-browser snapshot -i
+pire-browser close
+pire-browser close --all
+```
+
+Use `profiles` to list managed `pire-browser` profiles plus importable local Mozilla Firefox profiles discovered from `profiles.ini`. Use `profiles import <discovered-name-or-path> --name <managed-name>` when a user already has Firefox login state to reuse. `Default` selects the discovered default Firefox profile when one is present. It copies the source Firefox profile into managed pire-browser state, never mutates the original, and future source changes do not sync. Ask the user to close Firefox before import if lock files are present. Use `--overwrite` only after closing the managed profile being replaced.
+
+Use `--profile <name-or-path>` for reusable managed Firefox profiles. `PIRE_BROWSER_PROFILE=<name-or-path>` supplies the same default when no explicit profile/session flag is present. Path-like profile values are mapped to stable managed Firefox names, not raw browser profile directories. Prefer `session id --scope worktree --prefix <app>` plus `--session "$SESSION" --restore` to derive stable named sessions for repository QA. Use `--session <uuid>` only when targeting a strict live id from `session list`. `--session <name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION=<name>`, and `PIRE_BROWSER_SESSION_NAME=<name>` remain available as named-profile aliases. `--restore <name>` is a short spelling for `--session <name> --restore` when no session/profile target is already present. `--restore-save auto|always|never` is accepted for agent-browser recipe compatibility; named Firefox profiles persist automatically. Use bare `pire-browser session --json` for the current/default session diagnostic, `pire-browser --session <name> --restore session info --json` to inspect a selected launch/profile/restore target, and `pire-browser session list --json` only when you need the full live-session inventory.
+
+Use `pire-browser close` for normal end-of-loop teardown of the targeted managed Firefox session. Use `pire-browser close --all` when you need to close every live managed `pire-browser` Firefox session.
+
+Save and reuse active-origin state:
+
+```bash
+pire-browser --session work state save ./.pire-state/app-review.json
+pire-browser --auto-connect state save ./.pire-state/app-review.json
+pire-browser --state ./.pire-state/app-review.json open https://example.com/dashboard
+AGENT_BROWSER_STATE=./.pire-state/app-review.json pire-browser open https://example.com/dashboard
+pire-browser state list --json
+pire-browser state show app-review --json
+pire-browser state rename app-review app-ready
+pire-browser --session work state load ./.pire-state/app-ready.json
+pire-browser state clear app-ready
+```
+
+State files contain active-origin cookies and Web Storage. They are plaintext by default for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY` or the agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY` to a 64-character hex AES-256 key when saved state should be AES-256-GCM encrypted; keep that key out of logs and shell history. `state list`, `state show`, and `state inspect` are metadata-only and do not print cookie or storage values. Bare state names resolve inside `.pire-state`; explicit paths remain supported for save/load/show/rename. Prefer named sessions with `--restore` for normal QA login continuity. Use portable state files only when you need active-origin cookies/storage as an artifact, and use managed profiles or `profiles import` when IndexedDB, service workers, cross-origin SSO state, or full Firefox profile continuity matters.
+`--auto-connect state save <path>` saves from the selected live managed Firefox session. `--state <path> <command>` preloads the saved active-origin state before the requested browser command; `PIRE_BROWSER_STATE` and `AGENT_BROWSER_STATE` supply the same default when no explicit `--state` is present. Follow it with `snapshot -i` if the page is noisy or still loading.
+
+Use the packaged schema for autocomplete when creating project configs:
+
+```json
+{
+  "$schema": "./node_modules/pire-browser/pire-browser.schema.json",
+  "json": true
+}
+```
+
+Use MCP when the agent host prefers typed tools:
+
+```bash
+pire-browser mcp --tools core
+pire-browser mcp --tools core,network
+pire-browser mcp --tools core,state
+pire-browser mcp --tools core,debug
+pire-browser mcp --tools core,tabs
+pire-browser mcp --tools all
+```
+
+Use the smallest MCP profile that fits the task. `core` is a compact 31-tool
+inspect-before-act workflow: profile discovery, open/read/snapshot, common
+actions, narrow waits, screenshot, URL/title/text verification, tabs, history,
+eval, close, and confirmation follow-up. Add comma-separated profiles only when needed:
+`network` for request/response waits, request diagnostics, routes, and HAR, `state` for cookies/storage/auth,
+configured plugin discovery, and state files including typed clipboard tools, `debug` for lower-level launch, explicit install/repair,
+user-requested package upgrade, typed batch, doctor/activity diagnostics, console/errors/dialog/highlight/trace/profiler/record/stream/vitals,
+`tabs` for tab labels, frames, dialogs, and separate windows, and `mobile` for viewport/device/geo/media/mouse
+helpers including click-equivalent `pire_browser_tap` and touch-direction page-scroll `pire_browser_swipe`. `react` exposes best-effort typed React Fiber tools
+(`pire_browser_react_tree`, `pire_browser_react_inspect`, `pire_browser_react_renders_start`, `pire_browser_react_renders_stop`, `pire_browser_react_suspense`) plus vitals. Use `all`
+only when the host can tolerate the full tool surface. The
+`pire_browser_tools_profiles` MCP tool returns this profile list in-band.
+The MCP server defaults to protocol `2025-11-25` and accepts older supported
+client protocol versions during initialization. Tool discovery is paginated for
+large profiles. Tool annotations mark local maintenance/context tools such as
+install, upgrade, status, sessions, profiles, plugin discovery, and skills as non-open-world so
+hosts can show clearer approval prompts.
+
+MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "pire-browser": {
+      "command": "pire-browser",
+      "args": ["mcp", "--tools", "core"]
+    }
+  }
+}
+```
+
+If a needed tool is missing from the active profile, restart the MCP server with
+the smallest combined profile that adds it, such as `--tools core,network`,
+`--tools core,state`, `--tools core,tabs`, `--tools core,debug`, or
+`--tools core,react`.
+
+Core schemas keep shared session/profile targeting, content boundaries, and
+output limits small. Put launch and policy fields on `pire_browser_open`,
+including state, file access, domains, confirmations, headless/headed mode,
+Firefox args, User-Agent, device, proxy, executable path, download path, one-shot
+headers, init scripts, and React inspection setup. Existing live sessions keep
+their launch context. The complete surface also exposes typed launch fields on
+compatible navigation tools. Prefer open for normal launch/navigation; use
+`pire_browser_tap` only when an agent-browser-style tap
+recipe means click-equivalent page interaction, and `pire_browser_swipe` only
+when a mobile-style recipe means touch-direction page scroll. Add the `debug` profile and use `pire_browser_launch` only
+for lower-level launch diagnostics. Use debug-profile
+`pire_browser_stream_enable`, `pire_browser_stream_status`, and
+`pire_browser_stream_disable` when the user wants dashboard-backed WebSocket
+screenshot streaming with basic remote input; it is not native WebM video or
+Chrome DevTools screencast output. Use
+debug-profile `pire_browser_install`
+only when the user wants explicit native-host setup or repair, and
+`pire_browser_upgrade` only when the user wants package update. Use
+debug-profile `pire_browser_batch` only for short command sequences where later
+steps do not depend on parsing intermediate output.
+
+## Snapshot Options
+
+```bash
+pire-browser snapshot
+pire-browser snapshot -i
+pire-browser snapshot -c
+pire-browser snapshot -C
+pire-browser snapshot -d 3
+pire-browser snapshot --depth 5
+pire-browser snapshot -c -C -d 5
+pire-browser snapshot -u
+pire-browser snapshot -s "#main"
+pire-browser snapshot --selector "#main"
+```
+
+Bare `snapshot` is the agent-browser-compatible default. Use `snapshot -i` only when you specifically want the explicit legacy ref-list format. Use `-c`/`--compact` on noisy pages. Use `-C`/`--cursor-interactive` when custom clickable `div`s, cards, menu rows, or cursor-pointer controls are missing from the default snapshot. Use `-d <n>`/`--depth <n>` to limit depth on complex pages. Use `-u`/`--urls` when choosing among links. Use `-s <selector>` or `--selector <selector>` to scope inspection to one area. If a ref is stale or a page changes, run `snapshot` again.
+
+## Iframes
+
+Snapshots inspect iframe content when Firefox can reach it. Refs inside iframes
+carry frame context, so direct actions usually work without switching first:
+
+```bash
+pire-browser snapshot
+pire-browser fill @e3 "value"   # @e3 may be inside an iframe
+pire-browser click @e4
+```
+
+Use `frame <ref|selector|name|url>` only when you want scoped snapshots or selector-based actions inside one iframe:
+
+```bash
+pire-browser frame @e2
+pire-browser snapshot
+pire-browser fill '#card-number' "4111111111111111"
+pire-browser frame main
+```
+
+After `frame @e2`, snapshots and selector-based actions are scoped to that iframe. `frame payment-frame` and `frame https://checkout.example/frame` are also supported when a frame name/id/title/label or URL is clearer than a ref. Use `frame main` before returning to outer-page selectors. When using MCP, prefer the agent-browser-style `pire_browser_frame_switch`; `pire_browser_frame_select` remains available for compatibility. Re-run `snapshot -i` after each frame switch and use the fresh refs from the new context.
+
+## Setup And Diagnostics
+
+- For a fresh direct CLI install, use `npm install -g pire-browser`, optionally verify the package with `pire-browser --version`, then run `pire-browser install`. For a one-off trial without global install, use `npx -y pire-browser@latest open <url>` and then `npx -y pire-browser@latest snapshot`. For Pi, use `pi install npm:pire-browser`. Do not start by inspecting package source or running broad diagnostics unless an install or browser command fails.
+- `pire-browser install` registers the platform native messaging host.
+- `pire-browser install --with-deps` is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux.
+- If npm reports skipped lifecycle scripts, `--ignore-scripts`, or an `allow-scripts` policy warning, run `pire-browser install` explicitly after npm finishes.
+- `pire-browser setup` is the lower-level setup command.
+- `--firefox-path` and `PIRE_BROWSER_FIREFOX_PATH` may point to the Firefox executable, a directory containing it, or `/Applications/Firefox.app` on macOS. If discovery fails, follow the platform repair command in the error output.
+- `pire-browser upgrade` checks npm and updates global npm or Pi-managed installs to the latest package when no managed Firefox session is active. Local project installs print the exact project-local `npm install` command. Background auto-update and lower-level `update apply` stay patch-only.
+- `pire-browser status` reports live session and policy state without fixing anything.
+- `pire-browser doctor` and `pire-browser install-status` give read-only install diagnostics.
+- `pire-browser doctor --json` and `pire-browser install-status --json` include `nextActions`; follow those concrete repair commands before guessing. Missing or mismatched Native Messaging should point to `pire-browser install`, the same public setup verb used in the happy path. If the platform-native optional package is missing, top-level help, `install --help`, `setup --help`, `doctor --help`, `mcp --help`, `install`, `setup`, and these diagnostic commands are still served by the JavaScript launcher and report the reinstall command with `--include=optional`.
+- `pire-browser doctor --fix` explicitly reruns native host setup and verifies status; use it when the user wants repair, not for observation. `doctor --fix --with-deps` includes the same dependency behavior as install.
+- In MCP, use debug-profile `pire_browser_install` for explicit native-host setup or repair. Pass `withDeps: true` only when following an agent-browser-style install recipe or the user asks about dependencies; on Windows/macOS it may install Firefox when missing, while Linux stays guided/manual. Use `pire_browser_upgrade` for user-requested package update; keep `pire_browser_status` and plain `pire_browser_doctor` observational.
+- Browser commands that need auto-launch may run lazy setup when native host registration is missing or mismatched.
+- If launch fails with `web-ext exited before pire-browser connected` or a connect timeout, read the printed `Log:` path and follow JSON `data.nextActions` when available: run `pire-browser doctor --json`, refresh setup with `pire-browser install`, close managed Firefox/web-ext processes for that profile, then retry.
+- If `open` reports a recoverable page-readiness warning, continue with `pire-browser snapshot`.
+- If Pi reports a duplicate `pire-browser` tool from `npm:pire-browser` and an older GitHub, local-checkout, or legacy shim install, run `pire-browser pi conflicts` and then `pire-browser pi repair`. If `pire-browser` is not on PATH because Pi cannot start, ask the user to run `npx -y pire-browser@latest pi repair` in a normal terminal. Local checkout entries are reported but not removed unless repair is rerun with `--include-local`.
+- If an installed command reports a missing optional native package, reinstall with optional dependencies enabled.
+
+## Safety Rules
+
+- Use Firefox automation through `pire-browser`; do not silently switch browsers.
+- Reinspect after navigation, reloads, DOM changes, dialogs, downloads, uploads, or failed actions.
+- Treat refs as short lived. Never reuse refs from older snapshots.
+- If output returns `confirm <id>`, ask the user before running it.
+- Stop and report policy blocks instead of bypassing them.
+- Do not claim success until command output, a fresh snapshot, or a file/status check confirms it.
+
+## Reference
+
+```bash
+pire-browser --help
+pire-browser open --help
+pire-browser read --help
+pire-browser snapshot --help
+pire-browser upgrade --help
+pire-browser update --help
+pire-browser skills --help
+pire-browser skills
+pire-browser mcp --tools core
+pire-browser mcp --tools core,network
+pire-browser mcp --tools all
+pire-browser skills list
+pire-browser skills get core
+pire-browser skills get dogfood
+pire-browser skills get --all
+pire-browser skills cat core
+pire-browser skills path core
+```
+
+Use `--json` when another tool or script needs structured output.
+
+Use `pire-browser skills get dogfood` when the user asks for systematic
+exploratory QA, app review, bug hunting, or dogfooding.
+
+For local skill development, `PIRE_BROWSER_SKILLS_DIR` or the agent-browser-compatible `AGENT_BROWSER_SKILLS_DIR` can point to a directory of `<name>/SKILL.md` files.
