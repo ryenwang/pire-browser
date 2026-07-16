@@ -29,6 +29,7 @@ const EPHEMERAL_MARKER_SCHEMA_VERSION: u32 = 1;
 const EPHEMERAL_ORPHAN_GRACE_MS: u64 = 60 * 60 * 1000;
 const EPHEMERAL_SWEEP_INTERVAL_MS: u64 = 24 * 60 * 60 * 1000;
 const SESSION_CLOSE_GRACE: Duration = Duration::from_millis(750);
+const SESSION_FORCE_CLOSE_GRACE: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone)]
 pub struct LaunchOptions {
@@ -596,7 +597,21 @@ pub fn finalize_closed_session_best_effort(session: &SessionInfo) {
         }
         let settle_deadline = Instant::now() + Duration::from_secs(2);
         while Instant::now() < settle_deadline
-            && profile_processes_are_alive(&metadata.profile_path)
+            && (process_is_alive(metadata.launcher_pid)
+                || profile_processes_are_alive(&metadata.profile_path))
+        {
+            thread::sleep(Duration::from_millis(50));
+        }
+        if profile_processes_are_alive(&metadata.profile_path) {
+            let _ = force_terminate_profile_processes_best_effort(&metadata.profile_path);
+        }
+        if process_is_alive(metadata.launcher_pid) {
+            let _ = force_terminate_process_best_effort(metadata.launcher_pid);
+        }
+        let force_deadline = Instant::now() + SESSION_FORCE_CLOSE_GRACE;
+        while Instant::now() < force_deadline
+            && (process_is_alive(metadata.launcher_pid)
+                || profile_processes_are_alive(&metadata.profile_path))
         {
             thread::sleep(Duration::from_millis(50));
         }
@@ -2379,6 +2394,18 @@ fn terminate_profile_processes_best_effort(profile_path: &Path) -> bool {
     terminated
 }
 
+fn force_terminate_profile_processes_best_effort(profile_path: &Path) -> bool {
+    let current_pid = std::process::id();
+    let mut terminated = false;
+    for pid in profile_process_ids(profile_path) {
+        if pid == current_pid {
+            continue;
+        }
+        terminated |= force_terminate_process_best_effort(pid);
+    }
+    terminated
+}
+
 #[cfg(windows)]
 fn profile_process_ids(profile_path: &Path) -> Vec<u32> {
     let script = r#"
@@ -2417,8 +2444,8 @@ Get-CimInstance Win32_Process |
 
 #[cfg(all(unix, not(windows)))]
 fn profile_process_ids(profile_path: &Path) -> Vec<u32> {
-    let needle = profile_path.display().to_string();
-    if needle.is_empty() {
+    let needles = profile_process_path_needles(profile_path);
+    if needles.is_empty() {
         return Vec::new();
     }
     let mut command = Command::new("ps");
@@ -2435,7 +2462,7 @@ fn profile_process_ids(profile_path: &Path) -> Vec<u32> {
         .filter_map(|line| {
             let line = line.trim_start();
             let (pid, command_line) = line.split_once(char::is_whitespace)?;
-            if profile_process_command_matches(command_line, &needle) {
+            if profile_process_command_matches(command_line, &needles) {
                 pid.trim().parse::<u32>().ok()
             } else {
                 None
@@ -2449,24 +2476,40 @@ fn profile_process_ids(_profile_path: &Path) -> Vec<u32> {
     Vec::new()
 }
 
-#[cfg(test)]
-fn profile_process_command_matches(command_line: &str, profile_path: &str) -> bool {
-    profile_process_command_matches_impl(command_line, profile_path)
-}
-
 #[cfg(all(unix, not(windows)))]
-fn profile_process_command_matches(command_line: &str, profile_path: &str) -> bool {
-    profile_process_command_matches_impl(command_line, profile_path)
+fn profile_process_path_needles(profile_path: &Path) -> Vec<String> {
+    let mut needles = BTreeSet::new();
+    let display = profile_path.to_string_lossy().to_string();
+    if !display.is_empty() {
+        needles.insert(display);
+    }
+    if let Ok(canonical) = fs::canonicalize(profile_path) {
+        let canonical = canonical.to_string_lossy().to_string();
+        if !canonical.is_empty() {
+            needles.insert(canonical);
+        }
+    }
+    needles.into_iter().collect()
 }
 
 #[cfg(any(test, all(unix, not(windows))))]
-fn profile_process_command_matches_impl(command_line: &str, profile_path: &str) -> bool {
-    if profile_path.is_empty() || !command_line.contains(profile_path) {
+fn profile_process_command_matches(command_line: &str, profile_paths: &[String]) -> bool {
+    if profile_paths.is_empty() {
         return false;
     }
-    let lowered = command_line.to_ascii_lowercase();
-    let lowered_profile = profile_path.to_ascii_lowercase();
-    let launcher_text = lowered.replace(&lowered_profile, "");
+    let mut matched = false;
+    let mut launcher_text = command_line.to_string();
+    for profile_path in profile_paths {
+        if profile_path.is_empty() || !command_line.contains(profile_path) {
+            continue;
+        }
+        matched = true;
+        launcher_text = launcher_text.replace(profile_path, "");
+    }
+    if !matched {
+        return false;
+    }
+    let launcher_text = launcher_text.to_ascii_lowercase();
     launcher_text.contains("firefox")
         || (launcher_text.contains("node") && launcher_text.contains("web-ext"))
 }
@@ -2516,6 +2559,24 @@ fn terminate_process_best_effort(pid: u32) -> bool {
         let ok = TerminateProcess(handle, 0);
         CloseHandle(handle);
         ok != 0
+    }
+}
+
+#[cfg(windows)]
+fn force_terminate_process_best_effort(pid: u32) -> bool {
+    terminate_process_best_effort(pid)
+}
+
+#[cfg(not(windows))]
+fn force_terminate_process_best_effort(pid: u32) -> bool {
+    #[cfg(unix)]
+    unsafe {
+        libc::kill(pid as i32, libc::SIGKILL) == 0
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
     }
 }
 
@@ -3301,21 +3362,38 @@ Path={}
     #[test]
     fn profile_process_matching_is_limited_to_managed_browser_launchers() {
         let profile = r"C:\Users\me\AppData\Local\pire-browser\firefox-profiles\Default";
+        let profiles = vec![profile.to_string()];
         assert!(profile_process_command_matches(
             r#""C:\Program Files\Mozilla Firefox\firefox.exe" -profile C:\Users\me\AppData\Local\pire-browser\firefox-profiles\Default"#,
-            profile
+            &profiles
         ));
         assert!(profile_process_command_matches(
             r#"node web-ext run --firefox-profile C:\Users\me\AppData\Local\pire-browser\firefox-profiles\Default"#,
-            profile
+            &profiles
         ));
         assert!(!profile_process_command_matches(
             r#""C:\Program Files\Mozilla Firefox\firefox.exe" -profile C:\Users\me\OtherProfile"#,
-            profile
+            &profiles
         ));
         assert!(!profile_process_command_matches(
             r#"node some-script.js C:\Users\me\AppData\Local\pire-browser\firefox-profiles\Default"#,
-            profile
+            &profiles
+        ));
+    }
+
+    #[test]
+    fn profile_process_matching_accepts_canonical_path_aliases() {
+        let profiles = vec![
+            "/var/folders/example/pire-browser/profile".to_string(),
+            "/private/var/folders/example/pire-browser/profile".to_string(),
+        ];
+        assert!(profile_process_command_matches(
+            "/Applications/Firefox.app/Contents/MacOS/firefox -profile /private/var/folders/example/pire-browser/profile",
+            &profiles
+        ));
+        assert!(!profile_process_command_matches(
+            "/Applications/Firefox.app/Contents/MacOS/firefox -profile /private/var/folders/example/other/profile",
+            &profiles
         ));
     }
 

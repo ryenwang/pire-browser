@@ -115,6 +115,7 @@ const CREDENTIAL_PROVIDER_TIMEOUT_MS: u64 = 10_000;
 const CHAT_DEFAULT_BASE_URL: &str = "https://ai-gateway.vercel.sh";
 const CHAT_DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4.6";
 const CHAT_COMMAND_TIMEOUT_MS: u64 = 120_000;
+const CLOSE_TEARDOWN_RECOVERY_TIMEOUT: Duration = Duration::from_secs(2);
 const CHAT_OBSERVATION_CHAR_LIMIT: usize = 24_000;
 const DASHBOARD_PREVIEW_INTERVAL_MS: u64 = 1500;
 const WEBSOCKET_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -2407,7 +2408,9 @@ fn handle_close_one(
         Ok(response) => match serde_json::from_str::<RpcResponse>(&response) {
             Ok(response) => response,
             Err(err) => {
-                if is_close_teardown_response_loss(&response, &err) {
+                if is_close_teardown_response_loss(&response, &err)
+                    || wait_for_close_teardown(&session, CLOSE_TEARDOWN_RECOVERY_TIMEOUT)
+                {
                     return close_one_success(json_output, ignored_global_flags, &session, None);
                 }
                 let failure = close_all_send_failure_value(&session, &err);
@@ -2415,6 +2418,9 @@ fn handle_close_one(
             }
         },
         Err(err) => {
+            if wait_for_close_teardown(&session, CLOSE_TEARDOWN_RECOVERY_TIMEOUT) {
+                return close_one_success(json_output, ignored_global_flags, &session, None);
+            }
             let failure = close_all_send_failure_value(&session, &err);
             return close_one_failure(json_output, ignored_global_flags, failure);
         }
@@ -2558,7 +2564,9 @@ fn handle_close_all(
             Ok(response) => match serde_json::from_str::<RpcResponse>(&response) {
                 Ok(response) => response,
                 Err(err) => {
-                    if is_close_teardown_response_loss(&response, &err) {
+                    if is_close_teardown_response_loss(&response, &err)
+                        || wait_for_close_teardown(session, CLOSE_TEARDOWN_RECOVERY_TIMEOUT)
+                    {
                         let _ = remove_session(&session.session_id);
                         finalize_closed_session_best_effort(session);
                         results.push(close_all_success_value(session, None));
@@ -2571,6 +2579,12 @@ fn handle_close_all(
                 }
             },
             Err(err) => {
+                if wait_for_close_teardown(session, CLOSE_TEARDOWN_RECOVERY_TIMEOUT) {
+                    let _ = remove_session(&session.session_id);
+                    finalize_closed_session_best_effort(session);
+                    results.push(close_all_success_value(session, None));
+                    continue;
+                }
                 let failure = close_all_send_failure_value(session, &err);
                 failures.push(failure.clone());
                 results.push(failure);
@@ -2645,6 +2659,28 @@ fn close_all_send_failure_value(session: &SessionInfo, err: &dyn std::fmt::Displ
 
 fn is_close_teardown_response_loss(raw_response: &str, err: &serde_json::Error) -> bool {
     raw_response.trim().is_empty() && err.is_eof()
+}
+
+fn wait_for_close_teardown(session: &SessionInfo, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if list_sessions()
+            .map(|sessions| close_session_is_absent(&sessions, &session.session_id))
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn close_session_is_absent(sessions: &[SessionInfo], session_id: &str) -> bool {
+    !sessions
+        .iter()
+        .any(|session| session.session_id == session_id)
 }
 
 fn close_all_response_failure_value(
@@ -14127,6 +14163,20 @@ mod tests {
         let invalid = serde_json::from_str::<RpcResponse>("{").unwrap_err();
         assert!(!is_close_teardown_response_loss("{", &invalid));
         assert!(!is_close_teardown_response_loss("not-json", &invalid));
+    }
+
+    #[test]
+    fn close_transport_recovery_requires_the_exact_session_to_disappear() {
+        let session = test_session();
+        assert!(!close_session_is_absent(
+            std::slice::from_ref(&session),
+            &session.session_id
+        ));
+        assert!(close_session_is_absent(&[], &session.session_id));
+
+        let mut other = session.clone();
+        other.session_id = "other-session".to_string();
+        assert!(close_session_is_absent(&[other], &session.session_id));
     }
 
     #[test]
