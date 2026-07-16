@@ -219,7 +219,12 @@ jobs:
             git tag "$tag" "$GITHUB_SHA"
             git push origin "$tag"
           fi
+          release_flags=()
+          if [[ "$VERSION" == *-* ]]; then
+            release_flags+=(--prerelease)
+          fi
           gh release create "$tag" \
             --target "$GITHUB_SHA" \
             --title "$tag" \
-            --notes "pire-browser $VERSION published to npm through trusted publishing."
+            --notes "pire-browser $VERSION published to npm through trusted publishing." \
+            "${release_flags[@]}"

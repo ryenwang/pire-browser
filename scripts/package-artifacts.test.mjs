@@ -100,6 +100,11 @@ describe("npm artifact metadata", () => {
       "--tag",
       "beta",
     ]);
+
+    const publishWorkflow = readFileSync(join(root, ".github", "workflows", "npm-publish.yml"), "utf8");
+    expect(publishWorkflow).toContain('if [[ "$VERSION" == *-* ]]');
+    expect(publishWorkflow).toContain("release_flags+=(--prerelease)");
+    expect(publishWorkflow).toContain('"${release_flags[@]}"');
   });
 
   it("normalizes npm repository URL variants for provenance checks", () => {
