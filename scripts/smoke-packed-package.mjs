@@ -10,13 +10,14 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  realpathSync,
   readdirSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildPlatform } from "./build-platform.mjs";
 import { stagePlatformPackage } from "./package-platform.mjs";
@@ -1781,7 +1782,15 @@ export function samePath(left, right, platform = process.platform) {
     if (platform === "win32") {
       path = path.replace(/^\\\\\?\\UNC\\/i, "\\\\").replace(/^\\\\\?\\/i, "");
     }
-    const normalized = resolve(path);
+    let normalized = platform === "win32" ? resolve(path) : posix.resolve(path);
+    try {
+      normalized = realpathSync.native(normalized);
+    } catch {
+      // The assertion can also compare paths before they exist.
+    }
+    if (platform === "darwin") {
+      normalized = normalized.replace(/^\/private(?=\/(?:var|tmp)(?:\/|$))/, "");
+    }
     return platform === "win32" ? normalized.toLowerCase() : normalized;
   };
   return normalize(left) === normalize(right);

@@ -47,9 +47,10 @@ function readJson(path) {
 }
 
 describe("npm artifact metadata", () => {
-  it("normalizes Windows extended-length paths in packed lifecycle assertions", () => {
+  it("normalizes OS path aliases in packed lifecycle assertions", () => {
     expect(samePath("\\\\?\\C:\\Temp\\profile", "C:\\Temp\\profile", "win32")).toBe(true);
     expect(samePath("\\\\?\\UNC\\server\\share\\profile", "\\\\server\\share\\profile", "win32")).toBe(true);
+    expect(samePath("/private/var/folders/test/profile", "/var/folders/test/profile", "darwin")).toBe(true);
   });
 
   it("isolates packed lifecycle smoke temp data and validates stress counts", () => {
