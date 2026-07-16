@@ -12,7 +12,7 @@ pire-browser dashboard stop
 pire-browser stream enable
 pire-browser stream status --json
 pire-browser stream disable`),
-  p("The dashboard is a localhost server bound to <code>127.0.0.1</code>. Open the printed URL to inspect install health, live Firefox sessions, managed profiles, a live viewport preview, optional AI Gateway chat, recent redacted command activity, and capability notes. Without <code>--background</code>, press <code>Ctrl+C</code> in the terminal to stop it. With <code>--background</code>, use <code>dashboard status</code> and <code>dashboard stop</code> to manage the recorded process. <code>stream enable/status/disable</code> is an agent-browser-style lifecycle alias for the same dashboard-backed stream service."),
+  p("The dashboard is a localhost server bound to <code>127.0.0.1</code>. Open the printed URL to inspect install health, live Firefox sessions, profile sources, a live viewport preview, optional AI Gateway chat, recent redacted command activity, and capability notes. Without <code>--background</code>, press <code>Ctrl+C</code> in the terminal to stop it. With <code>--background</code>, use <code>dashboard status</code> and <code>dashboard stop</code> to manage the recorded process. <code>stream enable/status/disable</code> is an agent-browser-style lifecycle alias for the same dashboard-backed stream service."),
   h2("Current observability", "current-observability"),
   code(`pire-browser dashboard start
 pire-browser dashboard start --background

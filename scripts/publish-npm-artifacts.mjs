@@ -32,9 +32,17 @@ export function publishOrder(rootPackage) {
   ];
 }
 
-export function publishCommand(tarball, { scoped, dryRun = false } = {}) {
+export function npmDistTagForVersion(version) {
+  const match = /^\d+\.\d+\.\d+-([0-9A-Za-z][0-9A-Za-z-]*)/.exec(String(version));
+  if (!match) return null;
+  const candidate = match[1].toLowerCase();
+  return /^[a-z][a-z0-9._-]*$/.test(candidate) ? candidate : "next";
+}
+
+export function publishCommand(tarball, { scoped, dryRun = false, tag = null } = {}) {
   const args = ["publish", tarball];
   if (scoped) args.push("--access", "public");
+  if (tag) args.push("--tag", tag);
   if (dryRun) args.push("--dry-run");
   return args;
 }
@@ -74,6 +82,7 @@ export function publishArtifacts(options) {
   const distDir = resolve(options.distDir);
   const rootPackage = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const version = rootPackage.version;
+  const tag = npmDistTagForVersion(version);
   verifyNpmArtifacts(distDir);
 
   for (const item of publishOrder(rootPackage)) {
@@ -85,7 +94,7 @@ export function publishArtifacts(options) {
       continue;
     }
     const tarball = findArtifactTarball(distDir, item.name, version);
-    const args = publishCommand(tarball, { scoped: item.scoped, dryRun: options.dryRun });
+    const args = publishCommand(tarball, { scoped: item.scoped, dryRun: options.dryRun, tag });
     const result = spawnSync("npm", args, {
       cwd: root,
       stdio: "inherit",

@@ -15,6 +15,7 @@ pub mod native;
 pub mod platform;
 pub mod protocol;
 pub mod redaction;
+pub mod restore_state;
 pub mod session;
 pub mod setup;
 pub mod skills;

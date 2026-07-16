@@ -1,6 +1,13 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.3.0-beta.1", "0-3-0-beta-1"),
+  list([
+    "Separates live session identity, compact restore state, and Firefox profile source. Ordinary and named sessions now use marked temporary profiles.",
+    "Adds multi-origin cookie/localStorage restore with periodic and close autosave, validation guards, namespaces, expiry, and optional AES-256-GCM encryption.",
+    "Makes named Firefox profiles immutable temporary snapshots and explicit profile paths deliberately durable. Default downloads are temporary.",
+    "Preserves 0.2.x managed profiles and adds explicit <code>profiles usage</code>, cache-only <code>profiles clean</code>, and confirmed <code>profiles delete</code> recovery tools.",
+  ]),
   h2("0.2.35", "0-2-35"),
   list([
     "Reduces default agent context: <code>skills get core</code> now returns a compact workflow guide, while <code>skills get core --full</code> preserves the extended command reference.",
@@ -163,7 +170,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The repository package version is currently <code>pire-browser@0.2.35</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
+  p("The repository package version is currently <code>pire-browser@0.3.0-beta.1</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
 ];
 
 export default page({

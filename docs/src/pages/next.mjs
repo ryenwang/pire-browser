@@ -9,9 +9,10 @@ pire-browser snapshot -i
 pire-browser click '@e4'
 pire-browser screenshot next-page.png`),
   h2("Pre-navigation setup", "pre-navigation-setup"),
-  code(`pire-browser --session-name next open
-pire-browser --session-name next state load ./.pire-state/local-next.json
-pire-browser --session-name next navigate http://localhost:3000/dashboard`),
+  code(`pire-browser --session next --restore open
+pire-browser --session next --restore state load ./.pire-state/local-next.json
+pire-browser --session next --restore navigate http://localhost:3000/dashboard`),
+  p("The session profile is temporary. Compact restore keeps cookies and origin-keyed localStorage; use an explicit --profile path only when the app depends on IndexedDB, service workers, history, or cache."),
   h2("Serverless", "serverless"),
   p("The current runtime depends on local Firefox plus Native Messaging. It is not a drop-in serverless browser provider."),
 ];

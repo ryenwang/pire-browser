@@ -104,16 +104,15 @@ pire-browser --session "$SESSION" --restore snapshot -i
 ```
 
 Derive one stable worktree-scoped session name per app or task and reuse it on
-every command with `--restore`. This mirrors agent-browser's persistent-session
-recipe; in pire-browser, the named managed Firefox profile is the persistence
-store. Do this instead of hand-building profile names or state paths when the
-user wants to keep login, tabs, and managed Firefox profile state tied to the
-current repository. Use `--scope cwd` for directory-scoped scratch work and
-`--scope global` only when the same named session should be shared across
-repositories.
+every command with `--restore`. The name selects an isolated live session;
+`--restore` persists compact cookies and origin-keyed `localStorage`. The
+Firefox profile and default downloads remain temporary. Use `--scope cwd` for
+directory-scoped scratch work and `--scope global` only when the same restore
+key should be shared across repositories.
 Use `pire-browser --session "$SESSION" --restore session info --json` before
-guessing about restore problems; it reports the selected live session, managed
-Firefox profile, restore status, and next actions without launching the browser.
+guessing about restore problems; it reports the selected live session,
+temporary profile kind, restore status, and next actions without launching the
+browser.
 Use bare `pire-browser session --json` for the agent-browser-compatible
 current/default session diagnostic; use `pire-browser session list --json` when
 you need the full live-session inventory.
@@ -123,19 +122,18 @@ Authenticated app QA with existing Firefox login state:
 ```bash
 SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
 pire-browser profiles
-pire-browser profiles import Default --name "$SESSION"
-pire-browser --session "$SESSION" --restore open https://app.example.com
+pire-browser --profile Default --session "$SESSION" --restore open https://app.example.com
 pire-browser --session "$SESSION" --restore session info --json
 pire-browser --session "$SESSION" --restore snapshot
 pire-browser --session "$SESSION" --restore screenshot
 ```
 
 Use this when the user says they are already logged in with desktop Firefox.
-Run `profiles` before asking for profile paths. Import copies the discovered
-Firefox profile into managed `pire-browser` state and does not mutate the
-source. If import reports that the source profile is in use, ask the user to
-close desktop Firefox before retrying. On later runs, skip import and reuse
-`--session "$SESSION" --restore`.
+Run `profiles` before asking for profile paths. A named source is copied without
+volatile caches into a temporary snapshot and never mutates the source. If the
+source is in use, ask the user to close desktop Firefox before retrying. On
+later runs, omit `--profile Default` and reuse `--session "$SESSION" --restore`.
+Use a dedicated `--profile <path>` when full profile state must remain durable.
 
 Search a site:
 
@@ -615,8 +613,9 @@ pire-browser wait --download --timeout 60000
 
 Use `--download-path <dir>`, `PIRE_BROWSER_DOWNLOAD_PATH`, or
 `AGENT_BROWSER_DOWNLOAD_PATH` before launching a managed session when
-browser-initiated downloads should land in a known folder. Relative download
-paths resolve from the command's current working directory. Use an explicit
+browser-initiated downloads should remain after close. Without one, downloads
+live inside the temporary session root and are deleted with the session.
+Relative download paths resolve from the command's current working directory. Use an explicit
 `download <target> <path>` or `wait --download <path>` output path when the
 final filename must be exact. With no explicit output path, `wait --download`
 reports the completed Firefox file path; verify file type or size when relevant.
@@ -831,7 +830,7 @@ Use `--no-auto-dialog`, `PIRE_BROWSER_NO_AUTO_DIALOG=1`, `AGENT_BROWSER_NO_AUTO_
 
 Use `--hide-scrollbars false`, `PIRE_BROWSER_HIDE_SCROLLBARS=0`, `AGENT_BROWSER_HIDE_SCROLLBARS=0`, or `hideScrollbars: false` in config only when screenshot evidence should preserve native scrollbars. The default hides them for stable visual comparisons.
 
-List and target managed profiles or live sessions:
+List Firefox profile sources and target live sessions:
 
 ```bash
 pire-browser profiles
@@ -841,6 +840,8 @@ pire-browser profiles import Default --name Work
 pire-browser profiles import /path/to/firefox-profile --name Work
 pire-browser profiles import /path/to/firefox-profile --name Work --overwrite
 pire-browser --profile Work open https://example.com
+mkdir -p .pire-profiles/full-browser
+pire-browser --profile ./.pire-profiles/full-browser open https://example.com
 PIRE_BROWSER_PROFILE=Work pire-browser snapshot -i
 AGENT_BROWSER_PROFILE=Work pire-browser snapshot -i
 SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
@@ -854,20 +855,25 @@ pire-browser session id --scope worktree --prefix my-app
 pire-browser session attach <session-id>
 pire-browser --session <session-id> snapshot -i
 pire-browser --session agent1 open https://example.com
-pire-browser --session-name work open https://example.com
+pire-browser --session-name work open https://example.com # deprecated restore alias
 PIRE_BROWSER_SESSION=agent1 pire-browser snapshot -i
 AGENT_BROWSER_SESSION=agent1 pire-browser snapshot -i
+pire-browser profiles usage --all
+pire-browser profiles clean Work --dry-run
+pire-browser profiles delete Work --yes
 pire-browser close
 pire-browser close --all
 ```
 
-Use `profiles` to list managed `pire-browser` profiles plus importable local Mozilla Firefox profiles discovered from `profiles.ini`. Use `profiles import <discovered-name-or-path> --name <managed-name>` when a user already has Firefox login state to reuse. `Default` selects the discovered default Firefox profile when one is present. It copies the source Firefox profile into managed pire-browser state, never mutates the original, and future source changes do not sync. Ask the user to close Firefox before import if lock files are present. Use `--overwrite` only after closing the managed profile being replaced.
+Use `profiles` to list discovered Firefox sources, imported sources, and preserved 0.2.x profiles. `profiles import <discovered-name-or-path> --name <managed-name>` remains available to create a reusable source copy. `Default` selects the discovered default Firefox profile when present. Import never mutates the original and future source changes do not sync. Ask the user to close Firefox before import if lock files are present. Use `--overwrite` only after closing the source being replaced.
 
-Use `--profile <name-or-path>` for reusable managed Firefox profiles. `PIRE_BROWSER_PROFILE=<name-or-path>` supplies the same default when no explicit profile/session flag is present. Path-like profile values are mapped to stable managed Firefox names, not raw browser profile directories. Prefer `session id --scope worktree --prefix <app>` plus `--session "$SESSION" --restore` to derive stable named sessions for repository QA. Use `--session <uuid>` only when targeting a strict live id from `session list`. `--session <name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION=<name>`, and `PIRE_BROWSER_SESSION_NAME=<name>` remain available as named-profile aliases. `--restore <name>` is a short spelling for `--session <name> --restore` when no session/profile target is already present. `--restore-save auto|always|never` is accepted for agent-browser recipe compatibility; named Firefox profiles persist automatically. Use bare `pire-browser session --json` for the current/default session diagnostic, `pire-browser --session <name> --restore session info --json` to inspect a selected launch/profile/restore target, and `pire-browser session list --json` only when you need the full live-session inventory.
+`--profile <name>` copies that discovered/imported source into an immutable temporary snapshot without volatile caches. `--profile <path>` deliberately uses that exact path as a durable Firefox profile and can retain IndexedDB, service workers, passwords, history, and cache. `PIRE_BROWSER_PROFILE` and `AGENT_BROWSER_PROFILE` supply the same default. Prefer `session id --scope worktree --prefix <app>` plus `--session "$SESSION" --restore` for compact QA login continuity. Use `--session <uuid>` only when targeting a strict live id from `session list`; UUID targets cannot choose restore/profile state. `--session-name <name>` is deprecated and means `--session <name> --restore <name>`. `--restore [key]` defaults to the selected session name. `--namespace`, `PIRE_BROWSER_NAMESPACE`, and `AGENT_BROWSER_NAMESPACE` isolate live sessions, temporary roots, and restore directories. Session, restore, and namespace keys allow only letters, numbers, `_`, and `-`.
+
+Automatic restore saves every 30 seconds while commands are idle and on explicit close. `--restore-save auto` protects a good state after failed import or validation; `always` and `never` are explicit alternatives. Use `--restore-check-url`, `--restore-check-text`, or `--restore-check-fn` to validate a restored login without making the browser unusable when validation fails. Automatic state expires after 30 days by default. Use `profiles usage`, `profiles clean`, and `profiles delete` for explicit inspection and recovery of preserved 0.2.x profiles; cache cleaning never removes cookies, storage, extensions, or associated downloads.
 
 Use `pire-browser close` for normal end-of-loop teardown of the targeted managed Firefox session. Use `pire-browser close --all` when you need to close every live managed `pire-browser` Firefox session.
 
-Save and reuse active-origin state:
+Save and reuse portable state:
 
 ```bash
 pire-browser --session work state save ./.pire-state/app-review.json
@@ -881,8 +887,8 @@ pire-browser --session work state load ./.pire-state/app-ready.json
 pire-browser state clear app-ready
 ```
 
-State files contain active-origin cookies and Web Storage. They are plaintext by default for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY` or the agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY` to a 64-character hex AES-256 key when saved state should be AES-256-GCM encrypted; keep that key out of logs and shell history. `state list`, `state show`, and `state inspect` are metadata-only and do not print cookie or storage values. Bare state names resolve inside `.pire-state`; explicit paths remain supported for save/load/show/rename. Prefer named sessions with `--restore` for normal QA login continuity. Use portable state files only when you need active-origin cookies/storage as an artifact, and use managed profiles or `profiles import` when IndexedDB, service workers, cross-origin SSO state, or full Firefox profile continuity matters.
-`--auto-connect state save <path>` saves from the selected live managed Firefox session. `--state <path> <command>` preloads the saved active-origin state before the requested browser command; `PIRE_BROWSER_STATE` and `AGENT_BROWSER_STATE` supply the same default when no explicit `--state` is present. Follow it with `snapshot -i` if the page is noisy or still loading.
+Current state schema v2 contains all profile cookies plus origin-keyed `localStorage`; legacy 0.2.x active-origin v1 files remain readable. Files are plaintext by default for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY` or `AGENT_BROWSER_ENCRYPTION_KEY` to a 64-character hex AES-256 key for AES-256-GCM encryption; keep that key out of logs and shell history. `state list`, `state show`, and `state inspect` are metadata-only. Automatic restore entries are included in state management; use `project:<name>` or `restore:<namespace>/<key>` when a bare name is ambiguous. Prefer `--restore` for normal compact continuity. Use an explicit persistent profile path when IndexedDB, service workers, saved passwords, history, or cache must persist.
+`--auto-connect state save <path>` saves from the selected live Firefox session. `--state <path> <command>` preloads manual state before the requested browser command; `PIRE_BROWSER_STATE` and `AGENT_BROWSER_STATE` supply the same default. Follow it with `snapshot -i` if the page is noisy or still loading.
 
 Use the packaged schema for autocomplete when creating project configs:
 

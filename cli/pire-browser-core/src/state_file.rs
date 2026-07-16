@@ -51,7 +51,8 @@ pub struct ActiveOriginStateFileSummary {
     pub encryption: StateFileEncryptionInfo,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct StateFileEncryptionInfo {
     pub encrypted: bool,
     pub algorithm: Option<String>,
@@ -85,6 +86,17 @@ pub struct StateFileCounts {
 pub struct StateReceiptValidation {
     pub receipt: StateInspectionReceipt,
     pub tool_version_mismatch: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateInspectionSubject {
+    pub canonical_path: String,
+    pub state_file_sha256: String,
+    pub bytes: u64,
+    pub state_schema_version: u8,
+    pub state_kind: String,
+    pub origin: String,
+    pub display_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -138,6 +150,12 @@ struct EncryptedStateMetadata {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateEncryptionKey {
     bytes: [u8; 32],
+}
+
+impl StateEncryptionKey {
+    pub(crate) fn as_bytes(&self) -> &[u8; 32] {
+        &self.bytes
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -601,6 +619,97 @@ pub fn write_state_inspection_receipt(
     tool_version: &str,
 ) -> Result<(StateInspectionReceipt, PathBuf)> {
     write_state_inspection_receipt_to_dir(read, now_ms, tool_version, &state_receipts_dir()?)
+}
+
+pub fn state_inspection_subject(
+    path: &Path,
+    state_schema_version: u8,
+    state_kind: impl Into<String>,
+    origin: impl Into<String>,
+    display_url: impl Into<String>,
+) -> Result<StateInspectionSubject> {
+    let raw = fs::read(path)
+        .with_context(|| format!("invalid_args: failed to read state file {}", path.display()))?;
+    Ok(StateInspectionSubject {
+        canonical_path: canonical_state_path(path)?,
+        state_file_sha256: sha256_hex(&raw),
+        bytes: raw.len() as u64,
+        state_schema_version,
+        state_kind: state_kind.into(),
+        origin: origin.into(),
+        display_url: display_url.into(),
+    })
+}
+
+pub fn write_state_inspection_receipt_for_subject(
+    subject: &StateInspectionSubject,
+    now_ms: u64,
+    tool_version: &str,
+) -> Result<(StateInspectionReceipt, PathBuf)> {
+    let receipt = StateInspectionReceipt {
+        schema_version: STATE_RECEIPT_SCHEMA_VERSION,
+        tool: STATE_TOOL.to_string(),
+        kind: STATE_RECEIPT_KIND.to_string(),
+        inspected_at: now_ms,
+        expires_at: now_ms.saturating_add(STATE_RECEIPT_TTL_MS),
+        canonical_path: subject.canonical_path.clone(),
+        state_file_sha256: subject.state_file_sha256.clone(),
+        bytes: subject.bytes,
+        state_schema_version: subject.state_schema_version,
+        state_kind: subject.state_kind.clone(),
+        origin: subject.origin.clone(),
+        display_url: subject.display_url.clone(),
+        tool_version: tool_version.to_string(),
+    };
+    let path = state_receipt_file_path(&receipt.canonical_path, &receipt.state_file_sha256)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    let temp = path.with_extension("json.tmp");
+    fs::write(&temp, serde_json::to_vec_pretty(&receipt)?)
+        .with_context(|| format!("failed to write {}", temp.display()))?;
+    fs::rename(&temp, &path).with_context(|| format!("failed to publish {}", path.display()))?;
+    Ok((receipt, path))
+}
+
+pub fn validate_state_inspection_receipt_for_subject(
+    subject: &StateInspectionSubject,
+    now_ms: u64,
+    tool_version: &str,
+) -> Result<StateReceiptValidation> {
+    let path = state_receipt_file_path(&subject.canonical_path, &subject.state_file_sha256)?;
+    let body = fs::read_to_string(&path).with_context(|| {
+        "invalid_args: state file has no fresh inspection receipt; run `state inspect --record <path>` before `state load --require-inspected`"
+    })?;
+    let receipt: StateInspectionReceipt = serde_json::from_str(&body).with_context(|| {
+        "invalid_args: state inspection receipt is invalid; rerun `state inspect --record <path>`"
+    })?;
+    if receipt.schema_version != STATE_RECEIPT_SCHEMA_VERSION
+        || receipt.tool != STATE_TOOL
+        || receipt.kind != STATE_RECEIPT_KIND
+    {
+        bail!("invalid_args: state inspection receipt is invalid; rerun `state inspect --record <path>`");
+    }
+    if receipt.expires_at <= now_ms {
+        bail!("invalid_args: state inspection receipt is stale; rerun `state inspect --record <path>`");
+    }
+    if receipt.canonical_path != subject.canonical_path
+        || receipt.state_file_sha256 != subject.state_file_sha256
+        || receipt.bytes != subject.bytes
+        || receipt.state_schema_version != subject.state_schema_version
+        || receipt.state_kind != subject.state_kind
+        || receipt.origin != subject.origin
+        || receipt.display_url != subject.display_url
+    {
+        bail!("invalid_args: state file changed since inspection; rerun `state inspect --record <path>`");
+    }
+    let tool_version_mismatch =
+        (receipt.tool_version != tool_version).then(|| receipt.tool_version.clone());
+    Ok(StateReceiptValidation {
+        receipt,
+        tool_version_mismatch,
+    })
 }
 
 pub fn write_state_inspection_receipt_to_dir(

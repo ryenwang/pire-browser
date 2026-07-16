@@ -193,19 +193,9 @@ React, mobile emulation, downloads, uploads, and state-management recipes.
 
 ## Sessions And Login State
 
-Use a named managed profile for reusable Firefox state:
-
-```bash
-pire-browser profiles
-pire-browser profiles import Default --name Work
-pire-browser --profile Work open https://example.com
-```
-
-Import copies the source Firefox profile; it does not mutate or continuously
-sync the original. Ask the user to close Firefox before importing a locked
-profile.
-
-Use a stable worktree session for repository QA:
+Ordinary and named sessions use temporary Firefox profiles. Use a name for
+live-session isolation and add `--restore` only when cookies and origin-keyed
+`localStorage` should survive restarts:
 
 ```bash
 SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
@@ -213,6 +203,26 @@ pire-browser --session "$SESSION" --restore open https://example.com
 pire-browser --session "$SESSION" --restore snapshot -i
 pire-browser --session "$SESSION" close
 ```
+
+Use a named Firefox profile only as an immutable bootstrap snapshot. The source
+is copied to temporary storage and never modified:
+
+```bash
+pire-browser profiles
+pire-browser --profile Default --session "$SESSION" --restore open https://example.com
+```
+
+Use an explicit path only when full Firefox state such as IndexedDB, service
+workers, history, cache, or passwords must remain durable:
+
+```bash
+pire-browser --profile ./firefox-data open https://example.com
+```
+
+`--session-name` is deprecated. Do not use it in new commands. Without
+`--download-path`, downloads are temporary and disappear when the session is
+cleaned up. Never claim that compact restore preserves tabs, IndexedDB, service
+workers, passwords, history, or cache.
 
 ## Setup And Recovery
 
@@ -222,6 +232,8 @@ pire-browser --session "$SESSION" close
 - `pire-browser doctor --json` is observational and returns concrete
   `nextActions`.
 - `pire-browser doctor --fix` explicitly repairs setup.
+- `doctor` reports marked orphan temp data; `doctor --fix` may clean only safe
+  marked orphans and expired automatic restore state.
 - If Pi reports duplicate npm/GitHub/local installs, run
   `pire-browser pi conflicts`, then `pire-browser pi repair`. If the command is
   unavailable because Pi cannot start, run
@@ -240,7 +252,7 @@ pire-browser --session "$SESSION" close
 - Stop and report policy blocks instead of bypassing them.
 - Never expose passwords, tokens, cookies, or private page data unnecessarily.
 - Do not claim success until fresh command output confirms the requested state.
-- Close managed sessions when the workflow is complete.
+- Close sessions when the workflow is complete.
 
 ## Command Discovery
 

@@ -1,41 +1,88 @@
 # Sessions, State, And Files
 
-Use this for named sessions, profile reuse, persisted state, downloads, uploads, and schema issues.
+Use this for live-session isolation, compact restore, Firefox profile sources,
+state files, downloads, uploads, and legacy profile recovery.
 
-## Inputs
+## Choose The Persistence Level
 
-- The intended session/profile continuity requirement.
-- Any user-provided state, download, or upload path.
-- The command output that reports live sessions, profile paths, state metadata, or file transfer locations.
+1. One-off work: use `pire-browser open`. The profile and default downloads are
+   temporary.
+2. Isolated live work: add `--session <name>`. A name does not make the profile
+   durable.
+3. Cookie/localStorage continuity: add `--restore [key]`. The key defaults to
+   the session name.
+4. Existing Firefox login bootstrap: add `--profile <name>` for one immutable
+   temporary snapshot of a discovered or preserved source.
+5. Full browser durability: use a dedicated `--profile <path>`. This is the only
+   mode that intentionally preserves IndexedDB, service workers, passwords,
+   history, cache, and other Firefox profile data.
 
-## Process
+## Project QA Recipe
 
-1. Use default sessions for one-off work; use named sessions or profiles when continuity matters.
-2. For project QA loops, derive a deterministic session name with `SESSION="$(pire-browser session id --scope worktree --prefix <app>)"` and pass `--session "$SESSION" --restore` on every browser command.
-3. Inspect the current/default target with `pire-browser session --json`; inspect a selected restore target with `pire-browser --session "$SESSION" --restore session info --json`; inspect all live sessions with `pire-browser session list --json` and managed/importable profiles with `pire-browser profiles`.
-4. For logged-in app QA, import existing Firefox login state into the same managed profile name as the stable project session: `pire-browser profiles import Default --name "$SESSION"`, then continue with `pire-browser --session "$SESSION" --restore open <url>`, `session info --json`, `snapshot`, and verification commands.
-5. Use `pire-browser profiles import <discovered-name-or-firefox-profile-dir> --name <managed-name>` when the user already has Firefox login state to copy into a managed profile. `Default` selects the discovered default Firefox profile when one is present. The import is a copy, not a live mount.
-6. Use `pire-browser --profile <name-or-path> ...` for reusable managed Firefox profiles.
-7. Use `pire-browser --session <name> ...` for reusable named sessions, and `--session <uuid>` only for strict live-id targeting.
-8. Use `state list --json`, `state show <name-or-path> --json`, `state save`, `state rename`, `state clear`, and `state clean` for `.pire-state` maintenance.
-9. Verify downloaded files on disk and verify uploads through fresh page state.
+```bash
+SESSION="$(pire-browser session id --scope worktree --prefix <app>)"
+pire-browser --session "$SESSION" --restore open <url>
+pire-browser --session "$SESSION" --restore snapshot -i
+pire-browser --session "$SESSION" close
+```
 
-## Audit
+For the first run with existing Firefox cookies, inspect `pire-browser profiles`,
+ask the user to close Firefox if the source is locked, then run:
 
-- `PIRE_BROWSER_PROFILE`/`AGENT_BROWSER_PROFILE`, `PIRE_BROWSER_SESSION`/`AGENT_BROWSER_SESSION`, and `PIRE_BROWSER_SESSION_NAME`/`AGENT_BROWSER_SESSION_NAME` supply defaults only when no explicit flag is present.
-- `pire-browser session id --scope worktree --prefix <app>` returns an agent-browser-style stable named session for the nearest Git worktree; `--scope cwd` hashes the current directory, and `--scope global` returns the sanitized prefix without a path hash.
-- `--restore` is accepted for agent-browser-style persistent-session recipes. In pire-browser, named sessions persist through their managed Firefox profile; use state files only when an active-origin cookie/storage artifact is needed.
-- `PIRE_BROWSER_STATE` and `AGENT_BROWSER_STATE` preload active-origin state before browser-control commands when no explicit `--state` is present.
-- Path-like profile values map to managed Firefox profile names under the `pire-browser` data directory.
-- Profile import never mutates the source Firefox profile and future source changes do not sync. If import reports a lock file, ask the user to close Firefox before retrying. Use `--overwrite` only after closing the managed profile being replaced.
-- Current state schema is v1; unsupported future versions should fail clearly.
-- State files are plaintext by default. If `PIRE_BROWSER_ENCRYPTION_KEY` or `AGENT_BROWSER_ENCRYPTION_KEY` is set to a 64-character hex AES-256 key, `state save` writes encrypted files and `state load` decrypts them with the same key. `state list`, `state show`, and non-recording `state inspect` can read encrypted-file metadata without the key.
-- Do not print or summarize cookie, localStorage, or sessionStorage values.
-- Do not print, summarize, or persist the state encryption key.
-- Do not assume repository-relative paths when running from an installed package.
+```bash
+pire-browser --profile Default --session "$SESSION" --restore open <url>
+```
+
+Later runs can omit `--profile Default` and use compact restore. If the app
+requires IndexedDB or service workers, choose a dedicated persistent path with
+the user instead.
+
+## Inspection And Recovery
+
+- `pire-browser session --json`: selected/default live and restore target.
+- `pire-browser session list --json`: live sessions in the namespace.
+- `pire-browser profiles`: discovered sources and preserved 0.2.x profiles.
+- `pire-browser profiles usage --all`: legacy storage totals.
+- `pire-browser profiles clean <name> --dry-run`: cache-only preview.
+- `pire-browser profiles delete <name> --yes`: explicit stopped legacy deletion.
+- `pire-browser doctor --json`: marked orphan count/bytes.
+- `pire-browser doctor --fix`: unthrottled safe orphan and expired-state cleanup.
+
+Never delete profile directories directly when a public command covers the
+operation. Cleanup must not touch discovered sources, explicit profile paths,
+or preserved legacy profiles unless the user runs the confirmed delete command.
+
+## State Contract
+
+- Current state schema v2 contains all profile cookies plus origin-keyed
+  `localStorage`. Legacy v1 active-origin files remain readable.
+- Automatic restore lives under
+  `restore-sessions/<namespace>/<key>.json` in the OS data directory.
+- `state list` includes project and automatic restore states. Use
+  `project:<name>` or `restore:<namespace>/<key>` for management operations;
+  reject ambiguous bare names.
+- `--restore-save auto` protects a good state after failed import or validation.
+  `always` and `never` are explicit alternatives.
+- Automatic restore saves every 30 seconds while commands are idle and on
+  explicit close. `PIRE_BROWSER_AUTOSAVE_INTERVAL_MS=0` means close-only.
+- Automatic restore expires after 30 days unless the user changes
+  `PIRE_BROWSER_STATE_EXPIRE_DAYS`; `0` disables expiry.
+- `AGENT_BROWSER_*` aliases are accepted for namespace, autosave, expiry,
+  encryption, state, profile, session, and download values. Configure restore
+  validation with the documented flags or config keys.
+
+## Secret And File Safety
+
+- State files are plaintext by default. AES-256-GCM is enabled by a 64-character
+  hex `PIRE_BROWSER_ENCRYPTION_KEY` or `AGENT_BROWSER_ENCRYPTION_KEY`.
+- Do not print cookie/localStorage values or encryption keys.
+- Default downloads disappear with the temporary session. Use
+  `--download-path <dir>` when the user expects durable files.
+- Verify downloads on disk and uploads with fresh page state.
+- Do not assume repository-relative paths from an installed package.
 
 ## Outputs
 
-- The selected session/profile/state target.
-- Metadata-only state summaries.
-- Verified file paths and transfer outcomes.
+- The selected namespace, live session, restore key, and profile kind.
+- Metadata-only state and legacy-profile summaries.
+- Verified durable file paths and transfer outcomes.

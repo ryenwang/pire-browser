@@ -16,31 +16,53 @@
     },
     "session": {
       "type": "string",
-      "description": "Default strict session id."
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "description": "Default isolated live session name or strict live UUID."
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "description": "Namespace for live sessions, temporary roots, and automatic restore state."
     },
     "profile": {
       "type": "string",
-      "description": "Default managed Firefox profile name or path-like profile value."
+      "description": "Firefox source profile name for a temporary snapshot, or a deliberately persistent profile path."
     },
     "sessionName": {
       "type": "string",
-      "description": "Default managed profile/session name."
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "description": "Deprecated alias for a matching session and automatic restore key."
     },
     "state": {
       "type": "string",
-      "description": "Default active-origin state file to preload before browser-control commands."
+      "description": "Manual browser state file to preload before browser-control commands."
     },
     "restore": {
-      "description": "Agent-browser-compatible persistent session assertion. Boolean true is accepted; a string acts like --restore <name> when no session/profile target is present.",
+      "description": "Auto-load/save cookie and origin-keyed localStorage state. Boolean true uses the session name; a string supplies an explicit key.",
       "oneOf": [
         { "type": "boolean" },
-        { "type": "string", "minLength": 1 }
+        { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" }
       ]
     },
     "restoreSave": {
       "type": "string",
       "enum": ["auto", "always", "never"],
-      "description": "Agent-browser-compatible restore save mode accepted for config portability. Named Firefox profiles persist automatically."
+      "description": "Automatic restore save policy. Auto protects a known-good state after failed import or validation."
+    },
+    "restoreCheckUrl": {
+      "type": "string",
+      "minLength": 1,
+      "description": "URL substring required after restored navigation."
+    },
+    "restoreCheckText": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Page text required after restored navigation."
+    },
+    "restoreCheckFn": {
+      "type": "string",
+      "minLength": 1,
+      "description": "JavaScript expression that must be truthy after restored navigation."
     },
     "allowedDomains": {
       "description": "Default allowed-domain guardrail list.",
@@ -125,7 +147,7 @@
     },
     "downloadPath": {
       "type": "string",
-      "description": "Default Firefox download directory for newly launched managed sessions."
+      "description": "Explicit durable Firefox download directory. Without it, downloads are temporary."
     },
     "args": {
       "type": "string",

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from "node:net";
+import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import {
   closeSync,
@@ -9,7 +10,9 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -43,6 +46,7 @@ export function parseSmokePackedPackageArgs(argv, defaults = {}) {
     rootTarball: null,
     platformTarball: null,
     firefoxPath: null,
+    lifecycleStressCount: defaults.lifecycleStressCount ?? 0,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -71,6 +75,8 @@ export function parseSmokePackedPackageArgs(argv, defaults = {}) {
       options.platformTarball = resolve(requiredValue(argv, ++i, arg));
     } else if (arg === "--firefox-path") {
       options.firefoxPath = resolve(requiredValue(argv, ++i, arg));
+    } else if (arg === "--lifecycle-stress-count") {
+      options.lifecycleStressCount = Number(requiredValue(argv, ++i, arg));
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -79,6 +85,9 @@ export function parseSmokePackedPackageArgs(argv, defaults = {}) {
   options.packDir = resolve(options.packDir);
   options.artifactDir = resolve(options.artifactDir);
   if (!options.tuple) options.tuple = platformTuple(platform, arch);
+  if (!Number.isInteger(options.lifecycleStressCount) || options.lifecycleStressCount < 0 || options.lifecycleStressCount > 1000) {
+    throw new Error("--lifecycle-stress-count must be an integer from 0 to 1000");
+  }
   packageNameForTuple(options.tuple);
   return options;
 }
@@ -130,6 +139,11 @@ export function sanitizedSmokeEnv(baseEnv = process.env, dirs = {}, platform = p
   if (platform !== "darwin" && dirs.home) env.HOME = dirs.home;
   if (platform !== "darwin" && dirs.xdgDataHome) env.XDG_DATA_HOME = dirs.xdgDataHome;
   if (dirs.firefoxPath) env.PIRE_BROWSER_FIREFOX_PATH = dirs.firefoxPath;
+  if (dirs.tempRoot) {
+    env.TEMP = dirs.tempRoot;
+    env.TMP = dirs.tempRoot;
+    env.TMPDIR = dirs.tempRoot;
+  }
   return env;
 }
 
@@ -305,9 +319,9 @@ export function validatePackedMcpSmokeOutput(stdout) {
   };
 }
 
-export function packedMcpBrowserSmokeInput({ profile, url, screenshot, executablePath = null }) {
+export function packedMcpBrowserSmokeInput({ session, url, screenshot, executablePath = null }) {
   const target = (extra = {}) => ({
-    profile,
+    session,
     ...extra,
   });
   const openArgs = target({ url });
@@ -330,9 +344,9 @@ export function packedMcpBrowserSmokeInput({ profile, url, screenshot, executabl
   ].map((message) => JSON.stringify({ jsonrpc: "2.0", ...message })).join("\n") + "\n";
 }
 
-export function packedMcpNetworkSmokeInput({ profile, url, harPath, executablePath = null }) {
+export function packedMcpNetworkSmokeInput({ session, url, harPath, executablePath = null }) {
   const target = (extra = {}) => ({
-    profile,
+    session,
     ...extra,
   });
   const openArgs = target({ url });
@@ -389,9 +403,9 @@ export function packedMcpNetworkSmokeInput({ profile, url, harPath, executablePa
   ].map((message) => JSON.stringify({ jsonrpc: "2.0", ...message })).join("\n") + "\n";
 }
 
-export function packedMcpFilesSmokeInput({ profile, url, uploadPath, downloadPath, waitDownloadPath, downloadDir, executablePath = null }) {
+export function packedMcpFilesSmokeInput({ session, url, uploadPath, downloadPath, waitDownloadPath, downloadDir, executablePath = null }) {
   const target = (extra = {}) => ({
-    profile,
+    session,
     ...extra,
   });
   const openArgs = target({ url, downloadPath: downloadDir });
@@ -409,9 +423,9 @@ export function packedMcpFilesSmokeInput({ profile, url, uploadPath, downloadPat
   ].map((message) => JSON.stringify({ jsonrpc: "2.0", ...message })).join("\n") + "\n";
 }
 
-export function packedMcpStateSmokeInput({ profile, url, clearUrl, restoreUrl, formUrl, statePath, executablePath = null }) {
+export function packedMcpStateSmokeInput({ session, url, clearUrl, restoreUrl, formUrl, statePath, executablePath = null }) {
   const target = (extra = {}) => ({
-    profile,
+    session,
     ...extra,
   });
   const openArgs = target({ url });
@@ -649,10 +663,9 @@ export function validatePackedMcpStateSmokeOutput(stdout, { statePath = null } =
     ["8", "EMPTY", "sessionStorage was not cleared before load"],
     ["9", "EMPTY", "cookie was not cleared before load"],
     ["13", "mcp-state-smoke", "localStorage was not restored after load"],
-    ["14", "mcp-state-smoke", "sessionStorage was not restored after load"],
+    ["14", "EMPTY", "sessionStorage should remain ephemeral after v2 load"],
     ["15", "mcp-state-smoke", "cookie was not restored after load"],
     ["16", "mcp-state-smoke", "typed localStorage get did not verify restored value"],
-    ["17", "mcp-state-smoke", "typed sessionStorage get did not verify restored value"],
     ["18", "pireStateCookie", "typed cookie list did not include restored cookie"],
     ["21", "packed-mcp-auth", "auth list did not include saved auth profile"],
     ["22", "packed-mcp-auth", "auth show did not describe saved auth profile"],
@@ -670,16 +683,19 @@ export function validatePackedMcpStateSmokeOutput(stdout, { statePath = null } =
   }
 
   const saved = mcpEnvelopeData(byId.get("4"), "MCP state smoke");
-  if ((saved?.cookies ?? 0) < 1 || (saved?.localStorageKeys ?? 0) < 1 || (saved?.sessionStorageKeys ?? 0) < 1) {
-    throw new Error("MCP state smoke save did not capture cookies, localStorage, and sessionStorage");
+  const savedCounts = saved?.counts ?? saved ?? {};
+  if ((savedCounts.cookies ?? 0) < 1 || (savedCounts.localStorageKeys ?? 0) < 1 || (savedCounts.origins ?? 0) < 1) {
+    throw new Error("MCP state smoke save did not capture cookies and origin-keyed localStorage");
   }
   const loaded = mcpEnvelopeData(byId.get("11"), "MCP state smoke");
-  if ((loaded?.cookiesSet ?? 0) < 1 || (loaded?.localStorageKeys ?? 0) < 1 || (loaded?.sessionStorageKeys ?? 0) < 1) {
-    throw new Error("MCP state smoke load did not report restored cookies, localStorage, and sessionStorage");
+  const loadedCounts = loaded?.counts ?? loaded ?? {};
+  const loadedImport = loaded?.import ?? loaded ?? {};
+  if ((loadedCounts.cookies ?? 0) < 1 || (loadedCounts.localStorageKeys ?? 0) < 1 || (loadedCounts.origins ?? 0) < 1 || (loadedImport.cookiesSet ?? 0) < 1) {
+    throw new Error("MCP state smoke load did not report restored cookies and origin-keyed localStorage");
   }
   const summary = mcpEnvelopeData(byId.get("19"), "MCP state smoke");
   const counts = summary?.counts ?? {};
-  if ((counts.cookies ?? 0) < 1 || (counts.localStorageKeys ?? 0) < 1 || (counts.sessionStorageKeys ?? 0) < 1) {
+  if ((counts.cookies ?? 0) < 1 || (counts.localStorageKeys ?? 0) < 1 || (counts.origins ?? 0) < 1) {
     throw new Error("MCP state smoke state_show did not report saved state counts");
   }
   if (statePath && !existsSync(statePath)) {
@@ -692,9 +708,9 @@ export function validatePackedMcpStateSmokeOutput(stdout, { statePath = null } =
   return {
     responses: responses.length,
     serverVersion: initialized.result.serverInfo.version ?? null,
-    cookies: saved.cookies,
-    localStorageKeys: saved.localStorageKeys,
-    sessionStorageKeys: saved.sessionStorageKeys,
+    cookies: savedCounts.cookies,
+    localStorageKeys: savedCounts.localStorageKeys,
+    origins: savedCounts.origins,
     closeWarning: close?.result?.isError === true ? String(close.result.content?.[0]?.text ?? "") : null,
   };
 }
@@ -772,8 +788,9 @@ async function main(argv) {
     localAppData = join(workRoot, "local-app-data");
     const home = join(workRoot, "home");
     const xdgDataHome = join(workRoot, "xdg-data");
+    const tempRoot = join(workRoot, "os-temp");
     const artifactDir = options.artifactDir;
-    for (const dir of [commandCwd, prefix, localAppData, home, xdgDataHome, options.packDir, artifactDir]) {
+    for (const dir of [commandCwd, prefix, localAppData, home, xdgDataHome, tempRoot, options.packDir, artifactDir]) {
       mkdirSync(dir, { recursive: true });
     }
 
@@ -782,6 +799,7 @@ async function main(argv) {
       localAppData,
       home,
       xdgDataHome,
+      tempRoot,
       firefoxPath: options.firefoxPath,
     }, smokePlatform);
     dataRoot = smokeDataRoot(env, smokePlatform);
@@ -795,6 +813,7 @@ async function main(argv) {
       prefix,
       localAppData,
       dataRoot,
+      tempRoot,
       tuple: options.tuple,
       browser: options.browser,
       signedXpi: options.signedXpi,
@@ -808,6 +827,7 @@ async function main(argv) {
       mcpBrowser: null,
       mcpFiles: null,
       mcpNetwork: null,
+      lifecycle: null,
       profiles,
       modes: [],
       steps: recorder.steps,
@@ -864,6 +884,19 @@ async function main(argv) {
         mode: "web-ext",
         recorder,
         summary,
+      });
+      await runSessionLifecycleSmoke({
+        command,
+        commandCwd,
+        env,
+        workRoot,
+        tempRoot,
+        artifactDir,
+        dataRoot,
+        prefix,
+        recorder,
+        summary,
+        stressCount: options.lifecycleStressCount,
       });
       await runMcpBrowserSmoke({
         command,
@@ -1135,7 +1168,7 @@ async function runMcpBrowserSmoke({
       timeoutMs: 300_000,
       recorder,
       input: packedMcpBrowserSmokeInput({
-        profile,
+        session: profile,
         url: fixture.url,
         screenshot,
         executablePath: firefoxPath,
@@ -1145,7 +1178,7 @@ async function runMcpBrowserSmoke({
     if (!existsSync(screenshot)) throw new Error(`Expected MCP screenshot was not created: ${screenshot}`);
     modeResult.success = true;
   } finally {
-    runPire(command, ["--profile", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
+    runPire(command, ["--session", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
     await fixture.close();
     copyDiagnostics({ dataRoot, artifactDir });
     if (process.platform === "win32") {
@@ -1211,7 +1244,7 @@ async function runMcpFilesSmoke({
       timeoutMs: 300_000,
       recorder,
       input: packedMcpFilesSmokeInput({
-        profile,
+        session: profile,
         url: modeResult.fixtureUrl,
         uploadPath,
         downloadPath,
@@ -1223,7 +1256,7 @@ async function runMcpFilesSmoke({
     modeResult.validation = validatePackedMcpFilesSmokeOutput(result.stdout, { uploadPath, downloadPath, waitDownloadPath });
     modeResult.success = true;
   } finally {
-    runPire(command, ["--profile", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
+    runPire(command, ["--session", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
     await fixture.close();
     copyDiagnostics({ dataRoot, artifactDir });
     if (process.platform === "win32") {
@@ -1281,7 +1314,7 @@ async function runMcpNetworkSmoke({
       timeoutMs: 300_000,
       recorder,
       input: packedMcpNetworkSmokeInput({
-        profile,
+        session: profile,
         url: modeResult.fixtureUrl,
         harPath,
         executablePath: firefoxPath,
@@ -1290,7 +1323,7 @@ async function runMcpNetworkSmoke({
     modeResult.validation = validatePackedMcpNetworkSmokeOutput(result.stdout, { harPath });
     modeResult.success = true;
   } finally {
-    runPire(command, ["--profile", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
+    runPire(command, ["--session", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
     await fixture.close();
     copyDiagnostics({ dataRoot, artifactDir });
     if (process.platform === "win32") {
@@ -1351,7 +1384,7 @@ async function runMcpStateSmoke({
       timeoutMs: 300_000,
       recorder,
       input: packedMcpStateSmokeInput({
-        profile,
+        session: profile,
         url: modeResult.fixtureUrl,
         clearUrl: modeResult.clearUrl,
         restoreUrl: modeResult.restoreUrl,
@@ -1363,7 +1396,7 @@ async function runMcpStateSmoke({
     modeResult.validation = validatePackedMcpStateSmokeOutput(result.stdout, { statePath });
     modeResult.success = true;
   } finally {
-    runPire(command, ["--profile", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
+    runPire(command, ["--session", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
     await fixture.close();
     copyDiagnostics({ dataRoot, artifactDir });
     if (process.platform === "win32") {
@@ -1393,7 +1426,8 @@ async function runBrowserSmoke({
   }
   const fixture = await startFixtureServer({ artifactDir });
   const profile = `packed-${mode}-${Date.now()}`;
-  const profilePath = join(dataRoot, "firefox-profiles", profile);
+  let profilePath = null;
+  let ephemeralRoot = null;
   const screenshotDir = join(artifactDir, "screenshots");
   mkdirSync(screenshotDir, { recursive: true });
   const screenshot = join(screenshotDir, `screenshot-${mode}.png`);
@@ -1401,11 +1435,13 @@ async function runBrowserSmoke({
     mode,
     profile,
     profilePath,
+    ephemeralRoot,
     fixtureUrl: fixture.url,
     screenshot,
     success: false,
   };
-  summary.profiles.push({ mode, profile, profilePath });
+  const profileSummary = { mode, profile, profilePath, ephemeralRoot };
+  summary.profiles.push(profileSummary);
   summary.modes.push(modeResult);
   writeSummary(summary, artifactDir, env);
 
@@ -1413,7 +1449,7 @@ async function runBrowserSmoke({
     runPire(command, installCommandArgs({ firefoxPath }), { cwd: commandCwd, env, recorder });
     runPire(command, ["doctor", "--json"], { cwd: commandCwd, env, recorder });
 
-    const launchArgs = ["launch", "--profile", profile, "--url", fixture.url];
+    const launchArgs = ["--session", profile, "launch", "--url", fixture.url];
     if (firefoxPath) launchArgs.push("--firefox-path", firefoxPath);
     runPire(command, launchArgs, {
       cwd: commandCwd,
@@ -1422,8 +1458,22 @@ async function runBrowserSmoke({
       recorder,
       acceptErrorResult: isSuccessfulLaunchTimeout,
     });
+    const sessionData = parseCliData(
+      runPire(command, ["--session", profile, "session", "info", "--json"], {
+        cwd: commandCwd,
+        env,
+        recorder,
+      }).stdout,
+      `session info for ${profile}`
+    );
+    profilePath = sessionData.selectedSession?.profilePath ?? null;
+    ephemeralRoot = sessionData.selectedSession?.ephemeralRoot ?? null;
+    modeResult.profilePath = profilePath;
+    modeResult.ephemeralRoot = ephemeralRoot;
+    profileSummary.profilePath = profilePath;
+    profileSummary.ephemeralRoot = ephemeralRoot;
 
-    const prefixArgs = ["--session-name", profile];
+    const prefixArgs = ["--session", profile];
     const snapshot = runPire(command, [...prefixArgs, "snapshot", "-i"], { cwd: commandCwd, env, recorder });
     if (!snapshot.stdout.includes("@e")) throw new Error("snapshot -i did not include semantic refs");
     runPire(command, [...prefixArgs, "find", "label", "Email", "fill", "packed-smoke@example.com"], { cwd: commandCwd, env, recorder });
@@ -1434,16 +1484,390 @@ async function runBrowserSmoke({
     if (!existsSync(screenshot)) throw new Error(`Expected screenshot was not created: ${screenshot}`);
     modeResult.success = true;
   } finally {
-    runPire(command, ["--session-name", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
+    runPire(command, ["--session", profile, "close"], { cwd: commandCwd, env, allowFailure: true, recorder });
+    if (ephemeralRoot) await waitForPathGone(ephemeralRoot, 60_000);
     await fixture.close();
     copyDiagnostics({ dataRoot, artifactDir });
     if (process.platform === "win32") {
-      cleanupWindowsProcesses({ workRoot, prefix, profilePaths: [profilePath], recorder, env });
+      cleanupWindowsProcesses({ workRoot, prefix, profilePaths: [profilePath].filter(Boolean), recorder, env });
     } else {
-      cleanupUnixProcesses({ workRoot, prefix, profilePaths: [profilePath], recorder, env });
+      cleanupUnixProcesses({ workRoot, prefix, profilePaths: [profilePath].filter(Boolean), recorder, env });
     }
     writeSummary(summary, artifactDir, env);
   }
+}
+
+async function runSessionLifecycleSmoke({
+  command,
+  commandCwd,
+  env,
+  workRoot,
+  tempRoot,
+  artifactDir,
+  dataRoot,
+  prefix,
+  recorder,
+  summary,
+  stressCount = 0,
+}) {
+  const fixture = await startFixtureServer({ artifactDir });
+  const stamp = Date.now();
+  const namespace = `release-smoke-${stamp}`;
+  const activeTargets = [];
+  const result = {
+    namespace,
+    restore: null,
+    ephemeralDownloads: null,
+    explicitDownloads: null,
+    namedSourceSnapshot: null,
+    persistentProfile: null,
+    abruptCleanup: null,
+    stress: null,
+    success: false,
+  };
+  summary.lifecycle = result;
+  writeSummary(summary, artifactDir, env);
+
+  const target = (session, options = []) => ["--namespace", namespace, "--session", session, ...options];
+  const open = (session, url, options = []) => {
+    const args = [...target(session, options), "open"];
+    if (url) args.push(url);
+    const commandResult = runPire(command, args, {
+      cwd: commandCwd,
+      env,
+      timeoutMs: 300_000,
+      recorder,
+      acceptErrorResult: isSuccessfulLaunchTimeout,
+    });
+    activeTargets.push({ session, options });
+    return commandResult;
+  };
+  const info = (session, options = []) => {
+    const commandResult = runPire(command, [...target(session, options), "session", "info", "--json"], {
+      cwd: commandCwd,
+      env,
+      recorder,
+    });
+    const data = parseCliData(commandResult.stdout, `session info for ${session}`);
+    if (!data.selectedSession?.profilePath || !data.selectedSession?.ephemeralRoot) {
+      throw new Error(`session info for ${session} did not include the live profile paths`);
+    }
+    return data;
+  };
+  const close = async (session, options = []) => {
+    const selected = info(session, options).selectedSession;
+    runPire(command, [...target(session, options), "close"], { cwd: commandCwd, env, recorder });
+    removeActiveTarget(activeTargets, session);
+    await waitForPathGone(selected.ephemeralRoot, 60_000);
+    return selected;
+  };
+  const expectText = (session, selector, expected, options = []) => {
+    const commandResult = runPire(command, [...target(session, options), "get", "text", selector], {
+      cwd: commandCwd,
+      env,
+      recorder,
+    });
+    if (!String(commandResult.stdout).includes(expected)) {
+      throw new Error(`expected ${selector} in ${session} to contain ${expected}`);
+    }
+  };
+
+  try {
+    const restoreSession = `restore-${stamp}`;
+    const restoreKey = `auth-${stamp}`;
+    const restoreOptions = ["--restore", restoreKey];
+    const firstOriginValue = `first-${stamp}`;
+    const secondOriginValue = `second-${stamp}`;
+    const firstOrigin = fixtureUrl(fixture, `state.html?value=${firstOriginValue}`);
+    const secondOrigin = fixtureUrl(fixture, `state.html?value=${secondOriginValue}`).replace("127.0.0.1", "localhost");
+    open(restoreSession, firstOrigin, restoreOptions);
+    runPire(command, [...target(restoreSession, restoreOptions), "wait", "--text", firstOriginValue], { cwd: commandCwd, env, recorder });
+    runPire(command, [...target(restoreSession, restoreOptions), "navigate", secondOrigin], { cwd: commandCwd, env, recorder });
+    runPire(command, [...target(restoreSession, restoreOptions), "wait", "--text", secondOriginValue], { cwd: commandCwd, env, recorder });
+    const firstRestoreRoot = (await close(restoreSession, restoreOptions)).ephemeralRoot;
+    const restorePath = join(dataRoot, "restore-sessions", namespace, `${restoreKey}.json`);
+    if (!existsSync(restorePath)) throw new Error(`automatic restore state was not written: ${restorePath}`);
+
+    open(restoreSession, fixtureUrl(fixture, "state.html"), restoreOptions);
+    runPire(command, [...target(restoreSession, restoreOptions), "wait", "--text", firstOriginValue], { cwd: commandCwd, env, recorder });
+    expectText(restoreSession, "#local", firstOriginValue, restoreOptions);
+    expectText(restoreSession, "#cookie", firstOriginValue, restoreOptions);
+    runPire(command, [...target(restoreSession, restoreOptions), "navigate", fixtureUrl(fixture, "state.html").replace("127.0.0.1", "localhost")], { cwd: commandCwd, env, recorder });
+    runPire(command, [...target(restoreSession, restoreOptions), "wait", "--text", secondOriginValue], { cwd: commandCwd, env, recorder });
+    expectText(restoreSession, "#local", secondOriginValue, restoreOptions);
+    expectText(restoreSession, "#cookie", secondOriginValue, restoreOptions);
+    const secondRestoreRoot = (await close(restoreSession, restoreOptions)).ephemeralRoot;
+    result.restore = {
+      key: restoreKey,
+      path: restorePath,
+      firstRootRemoved: !existsSync(firstRestoreRoot),
+      secondRootRemoved: !existsSync(secondRestoreRoot),
+      originsVerified: 2,
+    };
+
+    const temporaryDownloadSession = `temp-download-${stamp}`;
+    open(temporaryDownloadSession, fixtureUrl(fixture, "files.html"));
+    const temporaryInfo = info(temporaryDownloadSession).selectedSession;
+    const temporaryDownloadDir = join(temporaryInfo.ephemeralRoot, "downloads");
+    runPire(command, [...target(temporaryDownloadSession), "click", "#download-link"], { cwd: commandCwd, env, recorder });
+    runPire(command, [...target(temporaryDownloadSession), "wait", "--download", "--timeout", "60000"], { cwd: commandCwd, env, recorder });
+    const temporaryDownload = findFileContaining(temporaryDownloadDir, "packed MCP download fixture");
+    if (!temporaryDownload) throw new Error("default session download was not created below the ephemeral root");
+    await close(temporaryDownloadSession);
+    result.ephemeralDownloads = {
+      path: temporaryDownload,
+      insideEphemeralRoot: isInside(temporaryDownload, temporaryInfo.ephemeralRoot),
+      removedWithSession: !existsSync(temporaryInfo.ephemeralRoot),
+    };
+
+    const explicitDownloadSession = `durable-download-${stamp}`;
+    const explicitDownloadDir = join(workRoot, "durable-downloads");
+    mkdirSync(explicitDownloadDir, { recursive: true });
+    const explicitDownloadOptions = ["--download-path", explicitDownloadDir];
+    open(explicitDownloadSession, fixtureUrl(fixture, "files.html"), explicitDownloadOptions);
+    const explicitInfo = info(explicitDownloadSession, explicitDownloadOptions).selectedSession;
+    runPire(command, [...target(explicitDownloadSession, explicitDownloadOptions), "click", "#download-link"], { cwd: commandCwd, env, recorder });
+    runPire(command, [...target(explicitDownloadSession, explicitDownloadOptions), "wait", "--download", "--timeout", "60000"], { cwd: commandCwd, env, recorder });
+    const explicitDownload = findFileContaining(explicitDownloadDir, "packed MCP download fixture");
+    if (!explicitDownload) throw new Error("explicit download path did not retain the downloaded fixture");
+    await close(explicitDownloadSession, explicitDownloadOptions);
+    result.explicitDownloads = {
+      path: explicitDownload,
+      profileRootRemoved: !existsSync(explicitInfo.ephemeralRoot),
+      retainedAfterClose: existsSync(explicitDownload),
+    };
+
+    const persistentSession = `persistent-${stamp}`;
+    const persistentProfile = join(workRoot, "durable-firefox-profile");
+    const persistentOptions = ["--profile", persistentProfile];
+    open(persistentSession, fixtureUrl(fixture, `state.html?value=persistent-${stamp}`), persistentOptions);
+    const persistentInfo = info(persistentSession, persistentOptions).selectedSession;
+    if (persistentInfo.profileKind !== "persistent" || !samePath(persistentInfo.profilePath, persistentProfile)) {
+      throw new Error("explicit profile path did not launch as a persistent profile");
+    }
+    await close(persistentSession, persistentOptions);
+    if (!existsSync(persistentProfile) || directoryFootprint(persistentProfile).files === 0) {
+      throw new Error("explicit persistent profile was removed or left empty after close");
+    }
+    result.persistentProfile = {
+      path: persistentProfile,
+      retainedAfterClose: true,
+      wrapperRootRemoved: !existsSync(persistentInfo.ephemeralRoot),
+    };
+
+    await delay(1000);
+    const sourceName = `source-${stamp}`;
+    runPire(command, ["profiles", "import", persistentProfile, "--name", sourceName], { cwd: commandCwd, env, recorder });
+    const sourcePath = join(dataRoot, "firefox-profiles", sourceName);
+    const sourceSentinel = join(sourcePath, "pire-source-sentinel.txt");
+    writeFileSync(sourceSentinel, `immutable-${stamp}\n`);
+    const beforeSource = directoryFingerprint(sourcePath);
+    const snapshotSession = `snapshot-${stamp}`;
+    const snapshotOptions = ["--profile", sourceName];
+    open(snapshotSession, fixtureUrl(fixture, `state.html?value=snapshot-${stamp}`), snapshotOptions);
+    const snapshotInfo = info(snapshotSession, snapshotOptions).selectedSession;
+    if (snapshotInfo.profileKind !== "snapshot" || samePath(snapshotInfo.profilePath, sourcePath)) {
+      throw new Error("named profile source did not launch from an isolated snapshot");
+    }
+    await close(snapshotSession, snapshotOptions);
+    const afterSource = directoryFingerprint(sourcePath);
+    if (beforeSource !== afterSource) throw new Error("named profile source changed while its snapshot was running");
+    result.namedSourceSnapshot = {
+      source: sourcePath,
+      snapshot: snapshotInfo.profilePath,
+      sourceUnchanged: true,
+      snapshotRootRemoved: !existsSync(snapshotInfo.ephemeralRoot),
+    };
+
+    const abruptSession = `abrupt-${stamp}`;
+    open(abruptSession, fixture.url);
+    const abruptInfo = info(abruptSession).selectedSession;
+    const markerPath = join(abruptInfo.ephemeralRoot, ".pire-browser-session.json");
+    const marker = JSON.parse(readFileSync(markerPath, "utf8"));
+    if (process.platform === "win32") {
+      cleanupWindowsProcesses({ workRoot, prefix, profilePaths: [abruptInfo.profilePath], recorder, env });
+    } else {
+      cleanupUnixProcesses({ workRoot, prefix, profilePaths: [abruptInfo.profilePath], recorder, env });
+    }
+    removeActiveTarget(activeTargets, abruptSession);
+    await delay(2500);
+    const automaticallyRemoved = !existsSync(abruptInfo.ephemeralRoot);
+    const doctorOrphanRoot = automaticallyRemoved
+      ? createSyntheticOrphan({ tempRoot, namespace, marker, stamp })
+      : abruptInfo.ephemeralRoot;
+    ageOrphanMarker(doctorOrphanRoot);
+    runPire(command, ["doctor", "--fix", "--json"], { cwd: commandCwd, env, recorder, timeoutMs: 300_000 });
+    if (existsSync(doctorOrphanRoot)) throw new Error("doctor --fix did not remove the marked inactive orphan");
+    result.abruptCleanup = {
+      abruptRoot: abruptInfo.ephemeralRoot,
+      automaticallyRemoved,
+      doctorOrphanRoot,
+      doctorRemovedMarkedOrphan: true,
+    };
+
+    const stressNamespace = `stress-${stamp}`;
+    const baseline = lifecycleStorageFootprint({ dataRoot, tempRoot, namespace: stressNamespace });
+    for (let index = 0; index < stressCount; index += 1) {
+      const stressSession = `s${index}`;
+      const stressTarget = ["--namespace", stressNamespace, "--session", stressSession, "--headless"];
+      runPire(command, [...stressTarget, "open"], {
+        cwd: commandCwd,
+        env,
+        timeoutMs: 300_000,
+        recorder,
+        acceptErrorResult: isSuccessfulLaunchTimeout,
+      });
+      const stressData = parseCliData(
+        runPire(command, [...stressTarget, "session", "info", "--json"], { cwd: commandCwd, env, recorder }).stdout,
+        `stress session ${index}`
+      );
+      const root = stressData.selectedSession?.ephemeralRoot;
+      if (!root) throw new Error(`stress session ${index} did not report an ephemeral root`);
+      runPire(command, [...stressTarget, "close"], { cwd: commandCwd, env, recorder });
+      await waitForPathGone(root, 60_000);
+    }
+    const finalFootprint = lifecycleStorageFootprint({ dataRoot, tempRoot, namespace: stressNamespace });
+    if (
+      finalFootprint.temporary.files !== baseline.temporary.files ||
+      finalFootprint.temporary.bytes !== baseline.temporary.bytes ||
+      finalFootprint.appDataProfiles.files !== baseline.appDataProfiles.files ||
+      finalFootprint.appDataProfiles.bytes !== baseline.appDataProfiles.bytes
+    ) {
+      throw new Error(`session lifecycle storage grew from ${JSON.stringify(baseline)} to ${JSON.stringify(finalFootprint)}`);
+    }
+    result.stress = { sessions: stressCount, baseline, final: finalFootprint };
+    result.success = true;
+  } finally {
+    for (const active of [...activeTargets].reverse()) {
+      runPire(command, [...target(active.session, active.options), "close"], {
+        cwd: commandCwd,
+        env,
+        allowFailure: true,
+        recorder,
+      });
+    }
+    await fixture.close();
+    copyDiagnostics({ dataRoot, artifactDir });
+    if (process.platform === "win32") {
+      cleanupWindowsProcesses({ workRoot, prefix, recorder, env });
+    } else {
+      cleanupUnixProcesses({ workRoot, prefix, recorder, env });
+    }
+    writeSummary(summary, artifactDir, env);
+  }
+}
+
+function parseCliData(stdout, label) {
+  let envelope;
+  try {
+    envelope = JSON.parse(String(stdout).trim());
+  } catch (error) {
+    throw new Error(`${label} did not return valid JSON: ${error.message}`);
+  }
+  if (envelope?.success !== true || !envelope.data) {
+    throw new Error(`${label} returned an unsuccessful JSON envelope`);
+  }
+  return envelope.data;
+}
+
+function removeActiveTarget(targets, session) {
+  const index = targets.findIndex((target) => target.session === session);
+  if (index >= 0) targets.splice(index, 1);
+}
+
+export function samePath(left, right, platform = process.platform) {
+  const normalize = (value) => {
+    let path = String(value);
+    if (platform === "win32") {
+      path = path.replace(/^\\\\\?\\UNC\\/i, "\\\\").replace(/^\\\\\?\\/i, "");
+    }
+    const normalized = resolve(path);
+    return platform === "win32" ? normalized.toLowerCase() : normalized;
+  };
+  return normalize(left) === normalize(right);
+}
+
+async function waitForPathGone(path, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (existsSync(path) && Date.now() < deadline) await delay(250);
+  if (existsSync(path)) throw new Error(`timed out waiting for ephemeral cleanup: ${path}`);
+}
+
+function delay(ms) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
+function walkFiles(rootPath) {
+  if (!existsSync(rootPath)) return [];
+  const files = [];
+  const visit = (current) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (entry.isFile()) files.push(path);
+    }
+  };
+  visit(rootPath);
+  return files.sort();
+}
+
+function findFileContaining(rootPath, expected) {
+  return walkFiles(rootPath).find((path) => {
+    try {
+      return readFileSync(path, "utf8").includes(expected);
+    } catch {
+      return false;
+    }
+  }) ?? null;
+}
+
+function directoryFingerprint(rootPath) {
+  const hash = createHash("sha256");
+  for (const path of walkFiles(rootPath)) {
+    hash.update(relative(rootPath, path).replaceAll("\\", "/"));
+    hash.update("\0");
+    hash.update(readFileSync(path));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+function directoryFootprint(rootPath) {
+  const files = walkFiles(rootPath);
+  return {
+    files: files.length,
+    bytes: files.reduce((total, path) => total + statSync(path).size, 0),
+  };
+}
+
+export function lifecycleStorageFootprint({ dataRoot, tempRoot, namespace }) {
+  return {
+    temporary: directoryFootprint(join(tempRoot, "pire-browser", namespace, "sessions")),
+    appDataProfiles: directoryFootprint(join(dataRoot, "firefox-profiles")),
+  };
+}
+
+function createSyntheticOrphan({ tempRoot, namespace, marker, stamp }) {
+  const rootPath = join(tempRoot, "pire-browser", namespace, "sessions", `doctor-orphan-${stamp}`);
+  const profilePath = join(rootPath, "profile");
+  mkdirSync(profilePath, { recursive: true });
+  writeFileSync(join(profilePath, "orphan.txt"), "marked lifecycle orphan\n");
+  writeFileSync(join(rootPath, ".pire-browser-session.json"), JSON.stringify({
+    ...marker,
+    nonce: `doctor-${stamp}`,
+    sessionName: `doctor-${stamp}`,
+    profileKind: "ephemeral",
+    profilePath,
+    profileOwned: true,
+  }, null, 2));
+  return rootPath;
+}
+
+function ageOrphanMarker(rootPath) {
+  const path = join(rootPath, ".pire-browser-session.json");
+  const marker = JSON.parse(readFileSync(path, "utf8"));
+  marker.createdAt = Date.now() - (2 * 60 * 60 * 1000);
+  writeFileSync(path, JSON.stringify(marker, null, 2));
 }
 
 function runPire(command, args, options = {}) {
@@ -1632,12 +2056,12 @@ function cleanupUnixProcesses({ workRoot, prefix, profilePaths = [], recorder, e
 function copyDiagnostics({ dataRoot, artifactDir }) {
   const sourceRoot = dataRoot;
   const destRoot = join(artifactDir, "runtime-data", "pire-browser");
-  for (const name of ["sessions", "profiles"]) {
+  for (const name of ["sessions", "profiles", "runtime", "restore-sessions", "maintenance", "host.log"]) {
     const source = join(sourceRoot, name);
     if (existsSync(source)) {
       rmSync(join(destRoot, name), { recursive: true, force: true });
       mkdirSync(destRoot, { recursive: true });
-      cpSync(source, join(destRoot, name), { recursive: true });
+      cpSync(source, join(destRoot, name), { recursive: statSync(source).isDirectory() });
     }
   }
 }

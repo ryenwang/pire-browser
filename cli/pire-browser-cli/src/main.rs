@@ -19,9 +19,10 @@ use pire_browser_core::auth_vault::{
     auth_vault_value, AuthProfile, AuthProfileInput, AuthSelectors, AuthVault, PublicAuthProfile,
 };
 use pire_browser_core::cli::{
-    apply_config_defaults, build_command_request, format_cli_result, help_text, parse_cli_args,
-    session_id_value, ConfigWarning, DashboardAction, GlobalFlagWarning, LocalCommand,
-    ReadActiveUrlOptions, RestoreCliOptions, SessionTarget, StreamAction,
+    apply_config_defaults, build_command_request, format_cli_result, global_value_from_args,
+    help_text, parse_cli_args, session_id_value, BrowserTarget, ConfigWarning, DashboardAction,
+    GlobalFlagWarning, LocalCommand, ReadActiveUrlOptions, RestoreCliOptions, SessionTarget,
+    StreamAction,
 };
 use pire_browser_core::confirmation_policy::{
     confirmation_policy_diagnostic_from_args, confirmation_policy_text,
@@ -48,26 +49,35 @@ use pire_browser_core::install_status::{
 };
 use pire_browser_core::ipc::send_pipe_request;
 use pire_browser_core::launch::{
-    annotate_session_profile_names, discover_firefox_profiles, import_firefox_profile,
-    launch_firefox, launch_result_text, list_managed_profiles, live_session_for_profile_name,
-    managed_profile_dir_from_data_dir, validate_profile_name, DiscoveredFirefoxProfileInfo,
-    LaunchOptions, LaunchResult, ManagedProfileInfo, ProfileImportOptions, ProfileImportResult,
-    DEFAULT_PROFILE_NAME,
+    all_managed_profile_usage, annotate_session_profile_names, clean_managed_profile_cache,
+    delete_managed_profile, discover_firefox_profiles, finalize_closed_session_best_effort,
+    import_firefox_profile, inspect_ephemeral_profiles, launch_firefox, launch_result_text,
+    list_managed_profiles, managed_profile_usage, sweep_ephemeral_profiles, validate_profile_name,
+    DiscoveredFirefoxProfileInfo, LaunchOptions, LaunchResult, ManagedProfileInfo,
+    ProfileImportOptions, ProfileImportResult,
 };
 use pire_browser_core::protocol::{RpcRequest, RpcResponse};
 use pire_browser_core::redaction::{redact_json_value, redact_text};
+use pire_browser_core::restore_state::{
+    automatic_restore_state_path, clean_expired_restore_states, is_automatic_restore_state_file,
+    list_automatic_restore_states, read_automatic_restore_state, write_automatic_restore_state,
+    AutomaticRestoreState,
+};
+#[cfg(test)]
+use pire_browser_core::session::DEFAULT_NAMESPACE;
 use pire_browser_core::session::{
-    cleanup_stale_sessions, cleanup_stale_sessions_with_report, data_dir, default_session_target,
-    list_sessions, now_ms, remove_session, select_session, session_attach_text,
+    cleanup_stale_sessions, cleanup_stale_sessions_with_report, data_dir, list_sessions,
+    list_sessions_in_namespace, now_ms, remove_session, select_session, session_attach_text,
     session_attach_value, session_cleanup_text, session_cleanup_value, session_status_text,
-    session_status_value, SessionInfo,
+    session_status_value, SessionInfo, DEFAULT_SESSION_NAME,
 };
 use pire_browser_core::setup::{setup, setup_result_text, setup_with_deps, SetupResult};
 use pire_browser_core::skills::{list_skills, skill_content_with_full, skill_path};
 use pire_browser_core::state_file::{
     display_url_without_query_or_fragment, read_state_file_summary, read_state_file_with_metadata,
-    state_from_extension_export, sweep_expired_state_receipts, validate_state_inspection_receipt,
-    write_state_file, write_state_inspection_receipt, ActiveOriginStateFile,
+    state_inspection_subject, sweep_expired_state_receipts, validate_state_inspection_receipt,
+    validate_state_inspection_receipt_for_subject, write_state_inspection_receipt,
+    write_state_inspection_receipt_for_subject, ActiveOriginStateFile,
     ActiveOriginStateFileSummary, StateFileEncryptionInfo, StateInspectionReceipt,
 };
 use pire_browser_core::state_policy::{
@@ -470,6 +480,21 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         } => {
             handle_profiles_import(source, name, overwrite, json)?;
         }
+        LocalCommand::ProfilesUsage { json, name, all } => {
+            handle_profiles_usage(name, all, json)?;
+        }
+        LocalCommand::ProfilesClean {
+            json,
+            name,
+            all,
+            dry_run,
+            yes,
+        } => {
+            handle_profiles_clean(name, all, dry_run, yes, json)?;
+        }
+        LocalCommand::ProfilesDelete { json, name, yes } => {
+            handle_profiles_delete(&name, yes, json)?;
+        }
         LocalCommand::Status {
             json,
             domain_policy,
@@ -519,9 +544,9 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 println!("{}", state_policy_text(&state_policy));
             }
         }
-        LocalCommand::SessionList { json } => {
+        LocalCommand::SessionList { json, namespace } => {
             cleanup_stale_sessions(now_ms())?;
-            let mut sessions = list_sessions()?;
+            let mut sessions = list_sessions_in_namespace(&namespace)?;
             annotate_session_profile_names(&mut sessions)?;
             if json {
                 println!(
@@ -532,18 +557,18 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 println!("{}", session_status_text(&sessions));
             }
         }
-        LocalCommand::SessionInfo {
-            target,
-            restore,
-            json,
-        } => {
-            handle_session_info(target, restore, json)?;
+        LocalCommand::SessionInfo { target, json } => {
+            handle_session_info(target, json)?;
         }
         LocalCommand::SessionId { options } => {
             let value = session_id_value(&options)?;
             println!("{}", format_cli_result(&value, options.json)?);
         }
-        LocalCommand::SessionAttach { session, json } => {
+        LocalCommand::SessionAttach {
+            session,
+            namespace,
+            json,
+        } => {
             let session = match select_session(Some(&session)) {
                 Ok(session) => session,
                 Err(err) => {
@@ -551,6 +576,17 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                     unreachable!();
                 }
             };
+            if session.effective_namespace() != namespace {
+                exit_with_anyhow_error(
+                    anyhow::anyhow!(
+                        "session_not_found: session `{}` is not in namespace `{namespace}`",
+                        session.session_id
+                    ),
+                    json,
+                    &[],
+                )?;
+                unreachable!();
+            }
             let mut sessions = vec![session];
             annotate_session_profile_names(&mut sessions)?;
             let session = sessions.remove(0);
@@ -563,8 +599,11 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 println!("{}", session_attach_text(&session));
             }
         }
-        LocalCommand::SessionCleanup { json } => {
+        LocalCommand::SessionCleanup { json, namespace } => {
             let mut report = cleanup_stale_sessions_with_report(now_ms())?;
+            report
+                .live_sessions
+                .retain(|session| session.effective_namespace() == namespace);
             annotate_session_profile_names(&mut report.live_sessions)?;
             if json {
                 println!(
@@ -578,8 +617,9 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
         LocalCommand::CloseAll {
             json,
             ignored_global_flags,
+            namespace,
         } => {
-            handle_close_all(json, ignored_global_flags)?;
+            handle_close_all(&namespace, json, ignored_global_flags)?;
         }
         LocalCommand::CloseOne {
             target,
@@ -789,7 +829,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             )?;
         }
         LocalCommand::Launch {
-            profile,
+            target,
             url,
             firefox_path,
             domain_policy,
@@ -808,7 +848,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             let confirmation_decision =
                 resolve_confirmation_policy_or_exit(&confirmation_policy, false, &[])?;
             let launch_confirmation_args =
-                launch_args_for_confirmation(&profile, &url, &firefox_path);
+                launch_args_for_confirmation(&target, &url, &firefox_path);
             if url.is_some() {
                 require_confirmation_or_exit(
                     &launch_confirmation_args,
@@ -819,7 +859,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                         action_decision: &action_decision,
                         json_output: false,
                         ignored_global_flags: &[],
-                        metadata: None,
+                        metadata: confirmation_metadata_for_browser_target(&target, None),
                     },
                 )?;
             }
@@ -840,7 +880,9 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             };
             let mut options = apply_launch_mutators(
                 LaunchOptions {
-                    profile,
+                    session_name: target.session_name().to_string(),
+                    namespace: target.namespace.clone(),
+                    profile: target.profile.clone(),
                     url,
                     firefox_path,
                     download_dir: download_path_override.clone(),
@@ -850,18 +892,28 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 },
                 Some(&launch_runtime),
             )?;
-            let post_launch_url =
-                if has_launch_plugin_init_scripts(Some(&launch_runtime)) || !auto_dialog {
-                    options.url.take()
-                } else {
-                    None
-                };
+            let post_launch_url = if target.restore.requested
+                || has_launch_plugin_init_scripts(Some(&launch_runtime))
+                || !auto_dialog
+            {
+                options.url.take()
+            } else {
+                None
+            };
             let result = launch_firefox_with_lazy_setup(options)?;
+            let restore_diagnostic = configure_restore_for_session(&target, &result.session)?;
             apply_launch_plugin_init_scripts_after_launch(
                 &result.session.session_id,
                 post_launch_url.as_deref(),
                 &launch_plugin_init_scripts.borrow(),
             )?;
+            let restore_validation = post_launch_url.as_ref().and_then(|url| {
+                validate_restore_after_navigation(
+                    &target,
+                    &result.session,
+                    &["open".to_string(), url.clone()],
+                )
+            });
             let mut text = launch_result_text(&result);
             if let Some(url) = post_launch_url {
                 text.push_str(&format!(
@@ -872,6 +924,27 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 text.push_str(&format!(
                     "\nWarning [{}]: {}",
                     warning.code, warning.message
+                ));
+            }
+            if let Some(warning) = restore_diagnostic
+                .as_ref()
+                .and_then(|value| value.get("warning"))
+                .and_then(Value::as_str)
+            {
+                text.push_str(&format!("\nWarning [RESTORE_IMPORT_FAILED]: {warning}"));
+            }
+            if let Some(warning) = restore_validation
+                .as_ref()
+                .and_then(|value| value.get("warning"))
+                .and_then(Value::as_str)
+            {
+                text.push_str(&format!("\nWarning [RESTORE_VALIDATION_FAILED]: {warning}"));
+            }
+            if target.legacy_session_name {
+                text.push_str(&format!(
+                    "\nWarning [SESSION_NAME_DEPRECATED]: --session-name is deprecated; use --session {} --restore {} instead.",
+                    target.session_name(),
+                    target.restore_key().unwrap_or(target.session_name())
                 ));
             }
             for warning in launch_plugin_warnings.borrow().iter() {
@@ -990,16 +1063,27 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             confirmation_policy,
         } => {
             let mut report = collect_install_status()?;
+            let ephemeral = inspect_ephemeral_profiles(now_ms());
             report.domain_policy = domain_policy_diagnostic_from_args(&domain_policy);
             report.action_policy = action_policy_diagnostic_from_args(&action_policy);
             report.confirmation_policy =
                 confirmation_policy_diagnostic_from_args(&confirmation_policy);
             if json {
-                let value: serde_json::Value =
+                let mut value: serde_json::Value =
                     serde_json::from_str(&install_status_json(&report)?)?;
+                if let Some(object) = value.as_object_mut() {
+                    object.insert(
+                        "ephemeralProfiles".to_string(),
+                        serde_json::to_value(&ephemeral)?,
+                    );
+                }
                 println!("{}", format_cli_result(&value, true)?);
             } else {
                 println!("{}", install_status_text(&report));
+                println!(
+                    "Ephemeral profiles: {} orphan(s), {} byte(s); {} active.",
+                    ephemeral.orphaned, ephemeral.bytes, ephemeral.active
+                );
             }
             let exit_code = install_status_exit_code(&report);
             if exit_code != 0 {
@@ -1103,12 +1187,12 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
                 &args,
                 ConfirmationGate {
                     confirmation_decision: &confirmation_decision,
-                    target: pending_target_from_session_target(&target),
+                    target: pending_target_from_session_target(&target.selector),
                     domain_decision: &domain_decision,
                     action_decision: &action_decision,
                     json_output: json,
                     ignored_global_flags: &ignored_global_flags,
-                    metadata: None,
+                    metadata: confirmation_metadata_for_browser_target(&target, None),
                 },
             ) {
                 Ok(interactively_approved) => interactively_approved,
@@ -1240,7 +1324,7 @@ fn run_with_args(args: Vec<String>) -> Result<()> {
             let launch_runtime = LaunchPluginRuntime {
                 config: &config_map,
                 command_args: &args,
-                target: pending_target_from_session_target(&target),
+                target: pending_target_from_session_target(&target.selector),
                 domain_decision: &domain_decision,
                 action_decision: &action_decision,
                 confirmation_decision: &confirmation_decision,
@@ -1337,7 +1421,7 @@ fn defer_config_warnings(command: &LocalCommand) -> bool {
 }
 
 fn handle_read_active_url(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
     policies: PolicyArgsBundle,
@@ -1369,12 +1453,12 @@ fn handle_read_active_url(
         &get_url_args,
         ConfirmationGate {
             confirmation_decision: &confirmation_decision,
-            target: pending_target_from_session_target(target),
+            target: pending_target_from_session_target(&target.selector),
             domain_decision: &domain_decision,
             action_decision: &action_decision,
             json_output,
             ignored_global_flags,
-            metadata: None,
+            metadata: confirmation_metadata_for_browser_target(target, None),
         },
     ) {
         Ok(interactively_approved) => interactively_approved,
@@ -1403,7 +1487,7 @@ fn handle_read_active_url(
         Ok(url) => url,
         Err(err) => {
             exit_with_anyhow_error_with_domain_policy(
-                err,
+                err.into(),
                 json_output,
                 ignored_global_flags,
                 &domain_decision.warnings,
@@ -1433,7 +1517,7 @@ fn handle_read_active_url(
         Ok(result) => result,
         Err(err) => {
             exit_with_anyhow_error_with_domain_policy(
-                err,
+                err.into(),
                 json_output,
                 ignored_global_flags,
                 &domain_decision.warnings,
@@ -1686,6 +1770,8 @@ fn handle_doctor_fix(
     firefox_path: Option<String>,
     with_deps: bool,
 ) -> Result<()> {
+    let ephemeral_cleanup = sweep_ephemeral_profiles(true, now_ms());
+    let restore_cleanup = clean_expired_restore_states(now_ms());
     let before = collect_install_status()?;
     let setup_result = match if with_deps {
         setup_with_deps(firefox_path)
@@ -1718,7 +1804,28 @@ fn handle_doctor_fix(
         std::process::exit(1);
     }
 
-    let value = doctor_fix_success_value(&before, &setup_result, &after)?;
+    let mut value = doctor_fix_success_value(&before, &setup_result, &after)?;
+    if let Some(object) = value.as_object_mut() {
+        object.insert(
+            "ephemeralCleanup".to_string(),
+            serde_json::to_value(&ephemeral_cleanup)?,
+        );
+        object.insert(
+            "restoreStateCleanup".to_string(),
+            serde_json::to_value(&restore_cleanup)?,
+        );
+        let base = object
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or("pire-browser doctor --fix complete");
+        object.insert(
+            "text".to_string(),
+            json!(format!(
+                "{base}\nRemoved {} orphan profile(s) and {} expired restore state(s).",
+                ephemeral_cleanup.removed, restore_cleanup.removed
+            )),
+        );
+    }
     println!("{}", format_cli_result(&value, json_output)?);
     Ok(())
 }
@@ -2003,26 +2110,7 @@ fn download_path_override_from_args_and_env(raw: &[String]) -> Result<Option<Pat
 }
 
 fn download_path_override_from_args(raw: &[String]) -> Option<String> {
-    let mut i = 0;
-    while i < raw.len() {
-        match raw[i].as_str() {
-            "--download-path" => return raw.get(i + 1).cloned(),
-            flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" | "--no-auto-dialog" | "--hide-scrollbars" => {
-                i += 1;
-                if raw
-                    .get(i)
-                    .and_then(|value| parse_bool_literal(value))
-                    .is_some()
-                {
-                    i += 1;
-                }
-            }
-            flag if is_output_guard_bool_global_flag(flag) => i += 1,
-            _ => break,
-        }
-    }
-    None
+    global_value_from_args(raw, "--download-path")
 }
 
 fn launch_extra_args_from_args_and_env(raw: &[String]) -> Result<Vec<String>> {
@@ -2036,26 +2124,7 @@ fn launch_extra_args_from_args_and_env(raw: &[String]) -> Result<Vec<String>> {
 }
 
 fn launch_extra_args_from_args(raw: &[String]) -> Option<String> {
-    let mut i = 0;
-    while i < raw.len() {
-        match raw[i].as_str() {
-            "--args" => return raw.get(i + 1).cloned(),
-            flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" | "--no-auto-dialog" | "--hide-scrollbars" => {
-                i += 1;
-                if raw
-                    .get(i)
-                    .and_then(|value| parse_bool_literal(value))
-                    .is_some()
-                {
-                    i += 1;
-                }
-            }
-            flag if is_output_guard_bool_global_flag(flag) => i += 1,
-            _ => break,
-        }
-    }
-    None
+    global_value_from_args(raw, "--args")
 }
 
 fn split_launch_args(value: &str) -> Vec<String> {
@@ -2074,49 +2143,11 @@ fn user_agent_override_from_args_and_env(raw: &[String]) -> Option<String> {
 }
 
 fn user_agent_override_from_args(raw: &[String]) -> Option<String> {
-    let mut i = 0;
-    while i < raw.len() {
-        match raw[i].as_str() {
-            "--user-agent" => return raw.get(i + 1).cloned(),
-            flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" | "--no-auto-dialog" | "--hide-scrollbars" => {
-                i += 1;
-                if raw
-                    .get(i)
-                    .and_then(|value| parse_bool_literal(value))
-                    .is_some()
-                {
-                    i += 1;
-                }
-            }
-            flag if is_output_guard_bool_global_flag(flag) => i += 1,
-            _ => break,
-        }
-    }
-    None
+    global_value_from_args(raw, "--user-agent")
 }
 
 fn firefox_path_override_from_args(raw: &[String]) -> Option<String> {
-    let mut i = 0;
-    while i < raw.len() {
-        match raw[i].as_str() {
-            "--executable-path" => return raw.get(i + 1).cloned(),
-            flag if is_output_guard_value_global_flag(flag) => i += 2,
-            "--headed" | "--headless" | "--no-auto-dialog" | "--hide-scrollbars" => {
-                i += 1;
-                if raw
-                    .get(i)
-                    .and_then(|value| parse_bool_literal(value))
-                    .is_some()
-                {
-                    i += 1;
-                }
-            }
-            flag if is_output_guard_bool_global_flag(flag) => i += 1,
-            _ => break,
-        }
-    }
-    None
+    global_value_from_args(raw, "--executable-path")
 }
 
 fn non_empty_env(name: &str) -> Option<String> {
@@ -2346,7 +2377,7 @@ fn apply_content_boundaries(result: &mut Value, json_output: bool) {
 }
 
 fn handle_close_one(
-    target: SessionTarget,
+    target: BrowserTarget,
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
 ) -> Result<()> {
@@ -2404,6 +2435,7 @@ fn close_one_success(
     result: Option<Value>,
 ) -> Result<()> {
     let _ = remove_session(&session.session_id);
+    finalize_closed_session_best_effort(session);
     let session_result = close_all_success_value(session, result);
     let mut value = json!({
         "text": close_one_text(session),
@@ -2415,33 +2447,57 @@ fn close_one_success(
     });
     append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
     println!("{}", format_cli_result(&value, json_output)?);
-    let _ = io::stdout().flush();
-    thread::sleep(Duration::from_millis(1000));
     Ok(())
 }
 
-fn select_close_session(target: &SessionTarget) -> Result<Option<SessionInfo>> {
+fn select_close_session(target: &BrowserTarget) -> Result<Option<SessionInfo>> {
     cleanup_stale_sessions(now_ms())?;
-    let session = match target {
-        SessionTarget::Default => {
-            if list_sessions()?.is_empty() {
-                return Ok(None);
-            }
-            select_session(None)?
-        }
-        SessionTarget::Id(session_id) => select_session(Some(session_id))?,
-        SessionTarget::Name(profile_name) => {
-            validate_profile_name(profile_name)?;
-            live_session_for_profile_name(profile_name)?.with_context(|| {
-                format!(
-                    "session_not_found: close requires a live pire-browser session for profile name `{profile_name}`. Run `pire-browser --session-name {profile_name} open <url>` first."
-                )
-            })?
-        }
+    let Some(session) = live_session_for_browser_target(target)? else {
+        return Ok(None);
     };
     let mut sessions = vec![session];
     annotate_session_profile_names(&mut sessions)?;
     Ok(sessions.pop())
+}
+
+fn live_session_for_browser_target(target: &BrowserTarget) -> Result<Option<SessionInfo>> {
+    let now = now_ms();
+    let sessions = list_sessions()?;
+    let mut matches = sessions.into_iter().filter(|session| {
+        if session.is_stale(now) {
+            return false;
+        }
+        match &target.selector {
+            SessionTarget::Id(session_id) => session.session_id == *session_id,
+            SessionTarget::Default | SessionTarget::Name(_) => {
+                session.effective_namespace() == target.namespace
+                    && session.effective_session_name() == target.session_name()
+            }
+        }
+    });
+    let selected = matches.next();
+    if matches.next().is_some() {
+        bail!(
+            "ambiguous_session: more than one live session is named `{}` in namespace `{}`; use an explicit session UUID",
+            target.session_name(),
+            target.namespace
+        );
+    }
+    Ok(selected)
+}
+
+fn send_to_browser_target(
+    target: &BrowserTarget,
+    request: &RpcRequest,
+) -> Result<(RpcResponse, String)> {
+    let session = live_session_for_browser_target(target)?.with_context(|| {
+        format!(
+            "session_not_found: no live pire-browser session named `{}` in namespace `{}`",
+            target.session_name(),
+            target.namespace
+        )
+    })?;
+    send_to_session(Some(&session.session_id), request)
 }
 
 fn close_one_failure(
@@ -2481,8 +2537,15 @@ fn close_one_text(session: &SessionInfo) -> String {
     format!("Closed pire-browser session {}.", session.session_id)
 }
 
-fn handle_close_all(json_output: bool, ignored_global_flags: Vec<GlobalFlagWarning>) -> Result<()> {
+fn handle_close_all(
+    namespace: &str,
+    json_output: bool,
+    ignored_global_flags: Vec<GlobalFlagWarning>,
+) -> Result<()> {
     let mut report = cleanup_stale_sessions_with_report(now_ms())?;
+    report
+        .live_sessions
+        .retain(|session| session.effective_namespace() == namespace);
     annotate_session_profile_names(&mut report.live_sessions)?;
     let request = build_command_request(vec!["close".to_string()]);
     let line = serde_json::to_string(&request)?;
@@ -2497,6 +2560,7 @@ fn handle_close_all(json_output: bool, ignored_global_flags: Vec<GlobalFlagWarni
                 Err(err) => {
                     if is_close_teardown_response_loss(&response, &err) {
                         let _ = remove_session(&session.session_id);
+                        finalize_closed_session_best_effort(session);
                         results.push(close_all_success_value(session, None));
                     } else {
                         let failure = close_all_send_failure_value(session, &err);
@@ -2516,6 +2580,7 @@ fn handle_close_all(json_output: bool, ignored_global_flags: Vec<GlobalFlagWarni
 
         if response.ok {
             let _ = remove_session(&session.session_id);
+            finalize_closed_session_best_effort(session);
             results.push(close_all_success_value(session, response.result));
         } else {
             let failure = close_all_response_failure_value(session, response.error);
@@ -2541,10 +2606,6 @@ fn handle_close_all(json_output: bool, ignored_global_flags: Vec<GlobalFlagWarni
 
     if failures.is_empty() {
         println!("{}", format_cli_result(&value, json_output)?);
-        if closed > 0 {
-            let _ = io::stdout().flush();
-            thread::sleep(Duration::from_millis(1000));
-        }
         return Ok(());
     }
 
@@ -4076,17 +4137,13 @@ Rules:
 - Do not claim success until command output proves it."#
 }
 
-fn handle_session_info(
-    target: SessionTarget,
-    restore: RestoreCliOptions,
-    json_output: bool,
-) -> Result<()> {
+fn handle_session_info(target: BrowserTarget, json_output: bool) -> Result<()> {
     let root = data_dir()?;
     let now = now_ms();
     let mut sessions = list_sessions()?;
     annotate_session_profile_names(&mut sessions)?;
     let profiles = list_managed_profiles()?;
-    let value = session_info_value_from_parts(&target, &restore, &root, &sessions, &profiles, now)?;
+    let value = session_info_value_from_parts(&target, &root, &sessions, &profiles, now)?;
     if json_output {
         println!("{}", format_cli_result(&value, true)?);
     } else {
@@ -4096,8 +4153,7 @@ fn handle_session_info(
 }
 
 fn session_info_value_from_parts(
-    target: &SessionTarget,
-    restore: &RestoreCliOptions,
+    target: &BrowserTarget,
     data_root: &Path,
     sessions: &[SessionInfo],
     profiles: &[ManagedProfileInfo],
@@ -4105,23 +4161,24 @@ fn session_info_value_from_parts(
 ) -> Result<Value> {
     let live_sessions: Vec<SessionInfo> = sessions
         .iter()
-        .filter(|session| !session.is_stale(now))
+        .filter(|session| {
+            !session.is_stale(now) && session.effective_namespace() == target.namespace
+        })
         .cloned()
         .collect();
     let stale_sessions: Vec<SessionInfo> = sessions
         .iter()
-        .filter(|session| session.is_stale(now))
+        .filter(|session| {
+            session.is_stale(now) && session.effective_namespace() == target.namespace
+        })
         .cloned()
         .collect();
-    let (default_session_id, ambiguous_default) = default_session_target(&live_sessions);
-    let (target_kind, target_value, selected_session) = match target {
+    let (target_kind, target_value, selected_session) = match &target.selector {
         SessionTarget::Default => {
-            let selected = default_session_id.as_deref().and_then(|id| {
-                live_sessions
-                    .iter()
-                    .find(|session| session.session_id == id)
-            });
-            ("default", None, selected)
+            let selected = live_sessions
+                .iter()
+                .find(|session| session.effective_session_name() == DEFAULT_SESSION_NAME);
+            ("default", Some(DEFAULT_SESSION_NAME.to_string()), selected)
         }
         SessionTarget::Id(id) => (
             "sessionId",
@@ -4131,54 +4188,94 @@ fn session_info_value_from_parts(
         SessionTarget::Name(name) => {
             validate_profile_name(name)?;
             (
-                "namedProfile",
+                "sessionName",
                 Some(name.clone()),
-                session_for_profile_name(&live_sessions, profiles, name),
+                live_sessions
+                    .iter()
+                    .find(|session| session.effective_session_name() == name),
             )
         }
     };
 
-    let profile_name = match target {
-        SessionTarget::Name(name) => Some(name.clone()),
-        SessionTarget::Default => selected_session
-            .and_then(|session| session.profile_name.clone())
-            .or_else(|| Some(DEFAULT_PROFILE_NAME.to_string())),
-        SessionTarget::Id(_) => selected_session.and_then(|session| session.profile_name.clone()),
-    };
+    let profile_name = target
+        .profile
+        .clone()
+        .or_else(|| selected_session.and_then(|session| session.profile_name.clone()));
     let profile = profile_name
         .as_deref()
         .and_then(|name| profiles.iter().find(|profile| profile.name == name));
-    let profile_path = profile_name.as_deref().map(|name| {
-        profile
-            .map(|profile| profile.path.clone())
-            .unwrap_or_else(|| managed_profile_dir_from_data_dir(data_root, name))
-    });
+    let profile_path = selected_session
+        .and_then(|session| session.profile_path.clone())
+        .or_else(|| profile.map(|profile| profile.path.clone()))
+        .or_else(|| {
+            target.profile.as_ref().and_then(|value| {
+                let path = PathBuf::from(value);
+                (path.is_absolute() || value.contains('/') || value.contains('\\')).then_some(path)
+            })
+        });
     let profile_exists = profile
         .map(|profile| profile.exists)
         .or_else(|| profile_path.as_ref().map(|path| path.exists()));
-    let launcher_live_without_bridge = profile
-        .map(|profile| profile.launcher_live && profile.session_id.is_none())
-        .unwrap_or(false);
     let selected_session_id = selected_session.map(|session| session.session_id.clone());
     let selected_stale = selected_session.map(|session| session.is_stale(now));
     let selected_live = selected_stale.map(|stale| !stale).unwrap_or(false);
-    let restore_status = restore_status(
-        target,
-        restore.requested,
-        ambiguous_default,
-        selected_session.is_some(),
-        selected_stale.unwrap_or(false),
-        selected_live,
-        profile_name.as_deref(),
-        profile_exists.unwrap_or(false),
-        launcher_live_without_bridge,
-    );
-    let next_actions = session_info_next_actions(
-        target,
-        restore_status,
-        profile_name.as_deref(),
-        selected_session_id.as_deref(),
-    );
+    let restore_key = target.restore_key().map(ToString::to_string);
+    let restore_path = restore_key.as_ref().map(|key| {
+        data_root
+            .join("restore-sessions")
+            .join(&target.namespace)
+            .join(format!("{key}.json"))
+    });
+    let restore_exists = restore_path.as_ref().is_some_and(|path| path.exists());
+    let legacy_profile = if target.profile.is_none() {
+        profiles
+            .iter()
+            .find(|profile| profile.name == target.session_name())
+    } else {
+        None
+    };
+    let restore_status = if selected_stale.unwrap_or(false) {
+        "sessionStale"
+    } else if selected_live {
+        "liveSessionActive"
+    } else if target.restore.requested && restore_exists {
+        "restoreStatePresent"
+    } else if target.restore.requested {
+        "restoreStateMissing"
+    } else if legacy_profile.is_some() {
+        "legacyProfilePreserved"
+    } else {
+        "noLiveSession"
+    };
+    let mut next_actions = if selected_stale.unwrap_or(false) {
+        vec![format!(
+            "pire-browser --namespace {} session cleanup",
+            shell_word(&target.namespace)
+        )]
+    } else if selected_live {
+        vec![format!(
+            "pire-browser --namespace {} --session {} snapshot -i",
+            shell_word(&target.namespace),
+            shell_word(target.session_name())
+        )]
+    } else if matches!(target.selector, SessionTarget::Id(_)) {
+        vec![format!(
+            "pire-browser --namespace {} session list --json",
+            shell_word(&target.namespace)
+        )]
+    } else {
+        vec![format!(
+            "pire-browser --namespace {} --session {} open <url>",
+            shell_word(&target.namespace),
+            shell_word(target.session_name())
+        )]
+    };
+    if let Some(legacy) = legacy_profile {
+        next_actions.push(format!(
+            "pire-browser --profile {} open <url>",
+            shell_word(&legacy.path.display().to_string())
+        ));
+    }
 
     Ok(json!({
         "target": {
@@ -4187,184 +4284,41 @@ fn session_info_value_from_parts(
             "sessionId": selected_session_id,
             "live": selected_live,
             "stale": selected_stale,
-            "ambiguousDefault": ambiguous_default,
+            "namespace": target.namespace,
+            "sessionName": target.session_name(),
             "profileName": profile_name,
             "profilePath": profile_path,
             "profileExists": profile_exists
         },
         "restore": {
-            "requested": restore.requested,
-            "name": restore.name.clone(),
-            "effectiveName": if restore.requested { profile_name.clone() } else { None },
-            "save": restore.save.clone(),
-            "checkText": restore.check_text.clone(),
-            "checkTextSupported": false,
-            "mechanism": "managed-firefox-profile",
+            "requested": target.restore.requested,
+            "name": target.restore.name.clone(),
+            "effectiveName": restore_key,
+            "path": restore_path,
+            "exists": restore_exists,
+            "save": target.restore.save.clone(),
+            "checkUrl": target.restore.check_url.clone(),
+            "checkText": target.restore.check_text.clone(),
+            "checkFn": target.restore.check_fn.clone(),
+            "mechanism": "compact-auth-state",
             "status": restore_status,
-            "note": restore_note(restore, restore_status)
+            "note": if target.legacy_session_name {
+                format!("--session-name is deprecated; use --session {} --restore {}. Restore state contains cookies and origin-keyed localStorage; Firefox profile data remains ephemeral.", target.session_name(), target.restore_key().unwrap_or(target.session_name()))
+            } else {
+                "Restore state contains cookies and origin-keyed localStorage; Firefox profile data remains ephemeral.".to_string()
+            }
         },
         "selectedSession": selected_session,
         "managedProfile": profile,
+        "legacyProfile": legacy_profile,
         "counts": {
             "liveSessions": live_sessions.len(),
             "staleSessions": stale_sessions.len(),
             "profiles": profiles.len()
         },
-        "defaultSessionId": default_session_id,
-        "ambiguousDefault": ambiguous_default,
         "dataDir": data_root,
         "nextActions": next_actions
     }))
-}
-
-fn session_for_profile_name<'a>(
-    sessions: &'a [SessionInfo],
-    profiles: &'a [ManagedProfileInfo],
-    name: &str,
-) -> Option<&'a SessionInfo> {
-    sessions
-        .iter()
-        .find(|session| session.profile_name.as_deref() == Some(name))
-        .or_else(|| {
-            profiles
-                .iter()
-                .find(|profile| profile.name == name)
-                .and_then(|profile| profile.session_id.as_deref())
-                .and_then(|session_id| {
-                    sessions
-                        .iter()
-                        .find(|session| session.session_id == session_id)
-                })
-        })
-}
-
-fn restore_status(
-    target: &SessionTarget,
-    restore_requested: bool,
-    ambiguous_default: bool,
-    has_selected_session: bool,
-    selected_stale: bool,
-    selected_live: bool,
-    profile_name: Option<&str>,
-    profile_exists: bool,
-    launcher_live_without_bridge: bool,
-) -> &'static str {
-    if selected_stale {
-        return "sessionStale";
-    }
-    if selected_live && profile_name.is_some() {
-        return "profileActive";
-    }
-    if selected_live {
-        return "liveSessionActive";
-    }
-    if matches!(target, SessionTarget::Default) && ambiguous_default {
-        return "ambiguousDefault";
-    }
-    if matches!(target, SessionTarget::Default) && !restore_requested && !has_selected_session {
-        return "noLiveSession";
-    }
-    if launcher_live_without_bridge {
-        return "profileLaunchingNoBridge";
-    }
-    if profile_name.is_some() && profile_exists {
-        return "profilePresent";
-    }
-    if profile_name.is_some() {
-        return "profileMissing";
-    }
-    if matches!(target, SessionTarget::Id(_)) && !has_selected_session {
-        return "sessionMissing";
-    }
-    "noLiveSession"
-}
-
-fn restore_note(restore: &RestoreCliOptions, status: &str) -> String {
-    let base = match status {
-        "profileActive" => "Restore target is active through a managed Firefox profile.",
-        "liveSessionActive" => {
-            "A live session is active, but it is not tied to a named managed profile."
-        }
-        "profilePresent" => {
-            "Managed Firefox profile exists and can be reused by opening with --restore."
-        }
-        "profileLaunchingNoBridge" => {
-            "Firefox or web-ext appears to be running for this profile, but no pire-browser extension session is connected yet."
-        }
-        "profileMissing" => {
-            "Managed Firefox profile does not exist yet; opening with --restore will create it."
-        }
-        "sessionStale" => {
-            "The selected session file is stale; run session cleanup before relying on it."
-        }
-        "sessionMissing" => "The requested live session id is not present.",
-        "ambiguousDefault" => {
-            "More than one live session is available; use an explicit --session target."
-        }
-        _ => "No live session is selected yet.",
-    };
-    if restore.check_text.is_some() {
-        format!(
-            "{base} --restore-check-text is accepted for recipe compatibility, but pire-browser does not verify it during restore."
-        )
-    } else if restore.requested {
-        format!("{base} --restore maps to named managed Firefox profile reuse in pire-browser.")
-    } else {
-        base.to_string()
-    }
-}
-
-fn session_info_next_actions(
-    target: &SessionTarget,
-    status: &str,
-    profile_name: Option<&str>,
-    session_id: Option<&str>,
-) -> Vec<String> {
-    match status {
-        "profileActive" => profile_name
-            .map(|name| {
-                vec![format!(
-                    "pire-browser --session {} --restore snapshot -i",
-                    shell_word(name)
-                )]
-            })
-            .unwrap_or_default(),
-        "liveSessionActive" => session_id
-            .map(|id| {
-                vec![format!(
-                    "pire-browser --session {} snapshot -i",
-                    shell_word(id)
-                )]
-            })
-            .unwrap_or_default(),
-        "profilePresent" | "profileMissing" => profile_name
-            .map(|name| {
-                vec![format!(
-                    "pire-browser --session {} --restore open <url>",
-                    shell_word(name)
-                )]
-            })
-            .unwrap_or_default(),
-        "profileLaunchingNoBridge" => profile_name
-            .map(|name| {
-                vec![
-                    format!(
-                        "pire-browser --session {} --restore snapshot -i",
-                        shell_word(name)
-                    ),
-                    "pire-browser doctor --json".to_string(),
-                ]
-            })
-            .unwrap_or_else(|| vec!["pire-browser doctor --json".to_string()]),
-        "sessionStale" => vec!["pire-browser session cleanup".to_string()],
-        "sessionMissing" | "ambiguousDefault" => {
-            vec!["pire-browser session list --json".to_string()]
-        }
-        _ if matches!(target, SessionTarget::Default) => {
-            vec!["pire-browser open <url>".to_string()]
-        }
-        _ => Vec::new(),
-    }
 }
 
 fn session_info_text(value: &Value) -> String {
@@ -4430,10 +4384,32 @@ fn handle_profiles_list(json_output: bool) -> Result<()> {
     let profiles = list_managed_profiles()?;
     let browser_profiles = discover_firefox_profiles()?;
     if json_output {
+        let legacy_profiles = profiles
+            .iter()
+            .map(|profile| {
+                let mut value = serde_json::to_value(profile)?;
+                if let Some(object) = value.as_object_mut() {
+                    object.insert("legacyPersistent".to_string(), json!(true));
+                    object.insert(
+                        "persistentCommand".to_string(),
+                        json!(format!(
+                            "pire-browser --profile {} open <url>",
+                            shell_word(&profile.path.display().to_string())
+                        )),
+                    );
+                }
+                Ok(value)
+            })
+            .collect::<Result<Vec<_>>>()?;
         println!(
             "{}",
             format_cli_result(
-                &json!({ "profiles": profiles, "importableFirefoxProfiles": browser_profiles }),
+                &json!({
+                    "profiles": legacy_profiles,
+                    "legacyProfiles": legacy_profiles,
+                    "importableFirefoxProfiles": browser_profiles,
+                    "migration": "0.2.x managed profiles are preserved but are no longer reused by --session. Use each persistentCommand to opt into the exact durable path."
+                }),
                 true
             )?
         );
@@ -4467,14 +4443,129 @@ fn handle_profiles_import(
     Ok(())
 }
 
+fn handle_profiles_usage(name: Option<String>, all: bool, json_output: bool) -> Result<()> {
+    let usage = if all {
+        all_managed_profile_usage()?
+    } else {
+        vec![managed_profile_usage(name.as_deref().context(
+            "profiles usage requires a profile name or --all",
+        )?)?]
+    };
+    let totals = json!({
+        "profiles": usage.len(),
+        "profileBytes": usage.iter().map(|entry| entry.profile_bytes).sum::<u64>(),
+        "regenerableCacheBytes": usage.iter().map(|entry| entry.regenerable_cache_bytes).sum::<u64>(),
+        "associatedDownloadBytes": usage.iter().map(|entry| entry.associated_download_bytes).sum::<u64>(),
+    });
+    let text = format!(
+        "{} legacy persistent profile(s): {} profile byte(s), {} regenerable cache byte(s), {} associated download byte(s).",
+        usage.len(),
+        totals["profileBytes"].as_u64().unwrap_or(0),
+        totals["regenerableCacheBytes"].as_u64().unwrap_or(0),
+        totals["associatedDownloadBytes"].as_u64().unwrap_or(0),
+    );
+    let value = json!({ "text": text, "profiles": usage, "totals": totals });
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
+fn handle_profiles_clean(
+    name: Option<String>,
+    all: bool,
+    dry_run: bool,
+    yes: bool,
+    json_output: bool,
+) -> Result<()> {
+    if dry_run == yes {
+        bail!("invalid_args: profiles clean requires exactly one of --dry-run or --yes");
+    }
+    let names = if all {
+        all_managed_profile_usage()?
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect::<Vec<_>>()
+    } else {
+        vec![name.context("profiles clean requires a profile name or --all")?]
+    };
+    for name in &names {
+        if managed_profile_usage(name)?.active {
+            bail!("profile_in_use: managed profile `{name}` must be stopped before cache cleaning");
+        }
+    }
+    let mut results = Vec::new();
+    for name in &names {
+        results.push(clean_managed_profile_cache(name, dry_run)?);
+    }
+    let removable = results
+        .iter()
+        .map(|result| result.removable_bytes)
+        .sum::<u64>();
+    let removed = results
+        .iter()
+        .map(|result| result.removed_bytes)
+        .sum::<u64>();
+    let text = if dry_run {
+        format!(
+            "Dry run: {} byte(s) of regenerable cache can be removed from {} profile(s).",
+            removable,
+            results.len()
+        )
+    } else {
+        format!(
+            "Removed {} byte(s) of regenerable cache from {} profile(s).",
+            removed,
+            results.len()
+        )
+    };
+    println!(
+        "{}",
+        format_cli_result(
+            &json!({
+                "text": text,
+                "dryRun": dry_run,
+                "removableBytes": removable,
+                "removedBytes": removed,
+                "profiles": results,
+            }),
+            json_output,
+        )?
+    );
+    Ok(())
+}
+
+fn handle_profiles_delete(name: &str, yes: bool, json_output: bool) -> Result<()> {
+    if !yes {
+        bail!("invalid_args: profiles delete requires --yes");
+    }
+    let result = delete_managed_profile(name)?;
+    let text = format!(
+        "Deleted legacy managed profile `{}` ({} byte(s)). Associated downloads were {}.",
+        result.name,
+        result.removed_profile_bytes,
+        if result.downloads_preserved {
+            "preserved"
+        } else {
+            "not present"
+        }
+    );
+    println!(
+        "{}",
+        format_cli_result(&json!({ "text": text, "profile": result }), json_output)?
+    );
+    Ok(())
+}
+
 fn profiles_text(
     profiles: &[ManagedProfileInfo],
     browser_profiles: &[DiscoveredFirefoxProfileInfo],
 ) -> String {
     let mut lines = if profiles.is_empty() {
-        vec!["No managed Firefox profiles found.".to_string()]
+        vec!["No preserved legacy Firefox profiles found.".to_string()]
     } else {
-        vec![format!("{} managed Firefox profile(s):", profiles.len())]
+        vec![format!(
+            "{} preserved legacy persistent Firefox profile(s):",
+            profiles.len()
+        )]
     };
     for profile in profiles {
         let live = if let Some(session_id) = &profile.session_id {
@@ -4490,11 +4581,15 @@ fn profiles_text(
             .map(|url| format!(" lastUrl={url}"))
             .unwrap_or_default();
         lines.push(format!(
-            "- {}{}{} path={}",
+            "- {} [legacy persistent]{}{} path={}",
             profile.name,
             live,
             last_url,
             profile.path.display()
+        ));
+        lines.push(format!(
+            "  Use: pire-browser --profile {} open <url>",
+            shell_word(&profile.path.display().to_string())
         ));
     }
     if !browser_profiles.is_empty() {
@@ -6203,6 +6298,193 @@ fn launch_firefox_with_lazy_setup(options: LaunchOptions) -> Result<LaunchResult
     launch_firefox(options)
 }
 
+fn configure_restore_for_session(
+    target: &BrowserTarget,
+    session: &SessionInfo,
+) -> Result<Option<Value>> {
+    let Some(key) = target.restore_key() else {
+        return Ok(None);
+    };
+    let save_policy = target.restore.save.as_deref().unwrap_or("auto");
+    if !matches!(save_policy, "auto" | "always" | "never") {
+        bail!("invalid_args: --restore-save must be auto, always, or never");
+    }
+    let interval_ms = restore_autosave_interval_ms_from_env()?;
+    let path = automatic_restore_state_path(&target.namespace, key)?;
+    let request = RpcRequest {
+        id: Uuid::new_v4().to_string(),
+        method: "host_configure_restore".to_string(),
+        params: json!({
+            "path": path,
+            "restoreKey": key,
+            "savePolicy": save_policy,
+            "intervalMs": interval_ms,
+            "checkUrl": target.restore.check_url,
+            "checkText": target.restore.check_text,
+            "checkFn": target.restore.check_fn,
+        }),
+    };
+    let line = serde_json::to_string(&request)?;
+    let response = send_pipe_request(&session.pipe_name, &line)
+        .context("failed to configure automatic restore on the native host")?;
+    let response: RpcResponse = serde_json::from_str(&response)
+        .context("native host returned invalid automatic restore configuration response")?;
+    if !response.ok {
+        let error = response
+            .error
+            .map(|error| format!("{}: {}", error.code, error.message))
+            .unwrap_or_else(|| "unknown restore configuration error".to_string());
+        bail!("restore_configuration_failed: {error}");
+    }
+    Ok(response.result)
+}
+
+fn validate_restore_after_navigation(
+    target: &BrowserTarget,
+    session: &SessionInfo,
+    args: &[String],
+) -> Option<Value> {
+    if !target.restore.requested
+        || (target.restore.check_url.is_none()
+            && target.restore.check_text.is_none()
+            && target.restore.check_fn.is_none())
+        || !matches!(
+            args.first().map(String::as_str),
+            Some("open" | "goto" | "navigate")
+        )
+    {
+        return None;
+    }
+    let request = RpcRequest {
+        id: Uuid::new_v4().to_string(),
+        method: "host_validate_restore".to_string(),
+        params: json!({}),
+    };
+    let result = (|| -> Result<Value> {
+        let line = serde_json::to_string(&request)?;
+        let response = send_pipe_request(&session.pipe_name, &line)
+            .context("failed to request restore validation from the native host")?;
+        let response: RpcResponse = serde_json::from_str(&response)
+            .context("native host returned invalid restore validation response")?;
+        if !response.ok {
+            let error = response
+                .error
+                .map(|error| format!("{}: {}", error.code, error.message))
+                .unwrap_or_else(|| "unknown restore validation error".to_string());
+            bail!("{error}");
+        }
+        Ok(response
+            .result
+            .unwrap_or_else(|| json!({ "checked": false })))
+    })();
+    Some(result.unwrap_or_else(|err| {
+        json!({
+            "checked": false,
+            "passed": false,
+            "warning": format!("Restore validation could not be completed; the browser remains usable: {err:#}"),
+        })
+    }))
+}
+
+fn restore_autosave_interval_ms_from_env() -> Result<u64> {
+    for name in [
+        "PIRE_BROWSER_AUTOSAVE_INTERVAL_MS",
+        "AGENT_BROWSER_AUTOSAVE_INTERVAL_MS",
+    ] {
+        if let Ok(value) = std::env::var(name) {
+            let value = value.trim();
+            if value.is_empty() {
+                continue;
+            }
+            return value
+                .parse::<u64>()
+                .with_context(|| format!("invalid_args: {name} must be a non-negative integer"));
+        }
+    }
+    Ok(30_000)
+}
+
+fn append_restore_diagnostic(response: &mut RpcResponse, restore: Option<&Value>) {
+    let Some(restore) = restore else {
+        return;
+    };
+    let warning = restore.get("warning").and_then(Value::as_str);
+    let result = response
+        .result
+        .get_or_insert_with(|| json!({ "text": "ok" }));
+    if let Some(object) = result.as_object_mut() {
+        object.insert("restore".to_string(), restore.clone());
+        if let Some(warning) = warning {
+            let warnings = object
+                .entry("warnings".to_string())
+                .or_insert_with(|| json!([]));
+            if let Some(warnings) = warnings.as_array_mut() {
+                warnings.push(json!({
+                    "code": "RESTORE_IMPORT_FAILED",
+                    "feature": "restore",
+                    "message": warning,
+                }));
+            }
+        }
+    }
+}
+
+fn append_restore_validation_diagnostic(response: &mut RpcResponse, validation: Option<&Value>) {
+    let Some(validation) = validation else {
+        return;
+    };
+    let result = response
+        .result
+        .get_or_insert_with(|| json!({ "text": "ok" }));
+    let Some(object) = result.as_object_mut() else {
+        return;
+    };
+    let restore = object
+        .entry("restore".to_string())
+        .or_insert_with(|| json!({}));
+    if let Some(restore) = restore.as_object_mut() {
+        restore.insert("validation".to_string(), validation.clone());
+    }
+    if let Some(warning) = validation.get("warning").and_then(Value::as_str) {
+        let warnings = object
+            .entry("warnings".to_string())
+            .or_insert_with(|| json!([]));
+        if let Some(warnings) = warnings.as_array_mut() {
+            warnings.push(json!({
+                "code": "RESTORE_VALIDATION_FAILED",
+                "feature": "restore",
+                "message": warning,
+            }));
+        }
+    }
+}
+
+fn append_legacy_session_name_diagnostic(response: &mut RpcResponse, target: &BrowserTarget) {
+    if !target.legacy_session_name {
+        return;
+    }
+    let result = response
+        .result
+        .get_or_insert_with(|| json!({ "text": "ok" }));
+    let Some(object) = result.as_object_mut() else {
+        return;
+    };
+    let warnings = object
+        .entry("warnings".to_string())
+        .or_insert_with(|| json!([]));
+    if let Some(warnings) = warnings.as_array_mut() {
+        warnings.push(json!({
+            "code": "SESSION_NAME_DEPRECATED",
+            "feature": "session lifecycle",
+            "message": format!(
+                "--session-name is deprecated; use --session {} --restore {} instead.",
+                target.session_name(),
+                target.restore_key().unwrap_or(target.session_name())
+            ),
+        }));
+    }
+}
+
 fn maybe_run_lazy_setup_for_browser_command(firefox_path: Option<String>) -> Result<()> {
     let report = collect_install_status()?;
     if should_run_lazy_setup(
@@ -6290,7 +6572,7 @@ fn exit_with_anyhow_error_with_warning_values(
 }
 
 fn handle_state_save(
-    target: SessionTarget,
+    target: BrowserTarget,
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
     policies: PolicyArgsBundle,
@@ -6324,23 +6606,24 @@ fn handle_state_save(
         ],
         ConfirmationGate {
             confirmation_decision: &confirmation_decision,
-            target: pending_target_from_session_target(&target),
+            target: pending_target_from_session_target(&target.selector),
             domain_decision: &domain_decision,
             action_decision: &action_decision,
             json_output,
             ignored_global_flags: &ignored_global_flags,
-            metadata: None,
+            metadata: confirmation_metadata_for_browser_target(&target, None),
         },
     )?;
-    let request = build_command_request_with_domain_policy(
-        vec!["state".to_string(), "export".to_string()],
-        &domain_decision,
-    )?;
-    let (response, session_id) = match send_state_save_request(&target, &request) {
+    let request = RpcRequest {
+        id: Uuid::new_v4().to_string(),
+        method: "lifecycle_export".to_string(),
+        params: json!({}),
+    };
+    let (response, _session_id) = match send_state_save_request(&target, &request) {
         Ok(result) => result,
         Err(err) => {
             exit_with_anyhow_error_with_domain_policy(
-                err,
+                err.into(),
                 json_output,
                 &ignored_global_flags,
                 &domain_decision.warnings,
@@ -6354,23 +6637,16 @@ fn handle_state_save(
         &ignored_global_flags,
         &domain_decision.warnings,
     )?;
-    let profile_name = match profile_name_for_state_source(&target, &session_id) {
-        Ok(profile_name) => profile_name,
-        Err(err) => {
-            exit_with_anyhow_error_with_domain_policy(
-                err,
-                json_output,
-                &ignored_global_flags,
-                &domain_decision.warnings,
-            )?;
-            unreachable!();
-        }
-    };
-    let state = match state_from_extension_export(export, session_id, profile_name) {
+    let state: AutomaticRestoreState = match serde_json::from_value(
+        export
+            .get("state")
+            .cloned()
+            .context("state export omitted browser state")?,
+    ) {
         Ok(state) => state,
         Err(err) => {
             exit_with_anyhow_error_with_domain_policy(
-                err,
+                err.into(),
                 json_output,
                 &ignored_global_flags,
                 &domain_decision.warnings,
@@ -6378,7 +6654,7 @@ fn handle_state_save(
             unreachable!();
         }
     };
-    let write = match write_state_file(&path, &state) {
+    let write = match write_automatic_restore_state(&path, &state) {
         Ok(write) => write,
         Err(err) => {
             exit_with_anyhow_error_with_domain_policy(
@@ -6390,7 +6666,15 @@ fn handle_state_save(
             unreachable!();
         }
     };
-    let mut value = state_save_value(&state, &path, write.bytes, &write.encryption);
+    let mut value = json!({
+        "text": format!("Saved browser state to {} ({} cookie(s), {} origin(s)).", path.display(), state.cookies.len(), state.origins.len()),
+        "path": path,
+        "schemaVersion": state.schema_version,
+        "kind": state.kind,
+        "counts": state.counts(),
+        "bytes": write.bytes,
+        "encryption": state_encryption_value(&write.encryption),
+    });
     append_state_save_path_warning(&mut value, &path);
     append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
     append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
@@ -6399,7 +6683,7 @@ fn handle_state_save(
 }
 
 fn handle_state_load(
-    target: SessionTarget,
+    target: BrowserTarget,
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
     policies: PolicyArgsBundle,
@@ -6419,6 +6703,19 @@ fn handle_state_load(
         resolve_action_policy_or_exit(&policies.action_policy, json_output, &ignored_global_flags)?;
     let combined_policy_warnings =
         warning_values(&policy_decision.warnings, &domain_decision.warnings)?;
+    if path.exists() && is_automatic_restore_state_file(&path)? {
+        return handle_multi_origin_state_load(
+            target,
+            json_output,
+            ignored_global_flags,
+            path,
+            policy_decision,
+            domain_decision,
+            action_decision,
+            combined_policy_warnings,
+            &policies.confirmation_policy,
+        );
+    }
     let read = match read_state_file_with_metadata(&path) {
         Ok(read) => read,
         Err(err) => {
@@ -6456,27 +6753,6 @@ fn handle_state_load(
         )?;
         unreachable!();
     }
-    let confirmation_decision = resolve_confirmation_policy_or_exit(
-        &policies.confirmation_policy,
-        json_output,
-        &ignored_global_flags,
-    )?;
-    require_confirmation_or_exit(
-        &[
-            "state".to_string(),
-            "load".to_string(),
-            path.display().to_string(),
-        ],
-        ConfirmationGate {
-            confirmation_decision: &confirmation_decision,
-            target: pending_target_from_session_target(&target),
-            domain_decision: &domain_decision,
-            action_decision: &action_decision,
-            json_output,
-            ignored_global_flags: &ignored_global_flags,
-            metadata: None,
-        },
-    )?;
     let tool_version_mismatch = if policy_decision.require_inspected {
         if let Err(err) = sweep_expired_state_receipts(now_ms()) {
             exit_with_anyhow_error_with_warning_values(
@@ -6502,6 +6778,27 @@ fn handle_state_load(
     } else {
         None
     };
+    let confirmation_decision = resolve_confirmation_policy_or_exit(
+        &policies.confirmation_policy,
+        json_output,
+        &ignored_global_flags,
+    )?;
+    require_confirmation_or_exit(
+        &[
+            "state".to_string(),
+            "load".to_string(),
+            path.display().to_string(),
+        ],
+        ConfirmationGate {
+            confirmation_decision: &confirmation_decision,
+            target: pending_target_from_session_target(&target.selector),
+            domain_decision: &domain_decision,
+            action_decision: &action_decision,
+            json_output,
+            ignored_global_flags: &ignored_global_flags,
+            metadata: confirmation_metadata_for_browser_target(&target, None),
+        },
+    )?;
     let state = read.state.clone();
     let payload = serde_json::to_string(&state)?;
     let request = build_command_request_with_domain_policy(
@@ -6545,8 +6842,160 @@ fn handle_state_load(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+fn handle_multi_origin_state_load(
+    target: BrowserTarget,
+    json_output: bool,
+    ignored_global_flags: Vec<GlobalFlagWarning>,
+    path: PathBuf,
+    policy_decision: StateLoadPolicyDecision,
+    domain_decision: DomainPolicyDecision,
+    action_decision: ActionPolicyDecision,
+    combined_policy_warnings: Vec<Value>,
+    confirmation_args: &ConfirmationPolicyArgs,
+) -> Result<()> {
+    let read = match read_automatic_restore_state(&path) {
+        Ok(read) => read,
+        Err(err) => {
+            exit_with_anyhow_error_with_warning_values(
+                err,
+                json_output,
+                &ignored_global_flags,
+                &combined_policy_warnings,
+            )?;
+            unreachable!();
+        }
+    };
+    for origin in read.state.origins.keys() {
+        if let Err(err) = ensure_url_allowed(&domain_decision, origin) {
+            exit_with_anyhow_error_with_warning_values(
+                err,
+                json_output,
+                &ignored_global_flags,
+                &combined_policy_warnings,
+            )?;
+            unreachable!();
+        }
+    }
+    let public_args = vec![
+        "state".to_string(),
+        "load".to_string(),
+        path.display().to_string(),
+    ];
+    if let Err(err) = ensure_action_allowed(&action_decision, &public_args) {
+        exit_with_anyhow_error_with_warning_values(
+            err,
+            json_output,
+            &ignored_global_flags,
+            &combined_policy_warnings,
+        )?;
+        unreachable!();
+    }
+    let tool_version_mismatch = if policy_decision.require_inspected {
+        let subject = state_inspection_subject(
+            &path,
+            read.state.schema_version,
+            read.state.kind.clone(),
+            "<multiple>",
+            "",
+        )?;
+        match validate_state_inspection_receipt_for_subject(&subject, now_ms(), CLI_VERSION) {
+            Ok(validation) => validation.tool_version_mismatch,
+            Err(err) => {
+                exit_with_anyhow_error_with_warning_values(
+                    err,
+                    json_output,
+                    &ignored_global_flags,
+                    &combined_policy_warnings,
+                )?;
+                unreachable!();
+            }
+        }
+    } else {
+        None
+    };
+    let confirmation_decision =
+        resolve_confirmation_policy_or_exit(confirmation_args, json_output, &ignored_global_flags)?;
+    require_confirmation_or_exit(
+        &public_args,
+        ConfirmationGate {
+            confirmation_decision: &confirmation_decision,
+            target: pending_target_from_session_target(&target.selector),
+            domain_decision: &domain_decision,
+            action_decision: &action_decision,
+            json_output,
+            ignored_global_flags: &ignored_global_flags,
+            metadata: confirmation_metadata_for_browser_target(&target, None),
+        },
+    )?;
+
+    let session = if let Some(session) = live_session_for_browser_target(&target)? {
+        session
+    } else {
+        if matches!(target.selector, SessionTarget::Id(_)) {
+            bail!("session_not_found: state load cannot launch a UUID-targeted session");
+        }
+        let result = launch_firefox_with_lazy_setup(LaunchOptions {
+            session_name: target.session_name().to_string(),
+            namespace: target.namespace.clone(),
+            profile: target.profile.clone(),
+            url: None,
+            firefox_path: None,
+            download_dir: None,
+            headless: false,
+            extra_args: Vec::new(),
+            user_agent: None,
+        })?;
+        let _ = configure_restore_for_session(&target, &result.session)?;
+        result.session
+    };
+    let request = RpcRequest {
+        id: Uuid::new_v4().to_string(),
+        method: "lifecycle_configure".to_string(),
+        params: json!({ "state": read.state.clone() }),
+    };
+    let (response, _) = send_to_session(Some(&session.session_id), &request)?;
+    let import = response_result_or_exit_with_warning_values(
+        response,
+        json_output,
+        &ignored_global_flags,
+        &combined_policy_warnings,
+    )?;
+    let clear_guard = RpcRequest {
+        id: Uuid::new_v4().to_string(),
+        method: "host_clear_restore_guard".to_string(),
+        params: json!({}),
+    };
+    let _ = send_to_session(Some(&session.session_id), &clear_guard);
+    let mut value = json!({
+        "text": format!("Loaded browser state from {}. Cookies are restored now; origin storage applies on first visit.", path.display()),
+        "path": path,
+        "schemaVersion": read.state.schema_version,
+        "kind": read.state.kind,
+        "counts": read.state.counts(),
+        "encryption": state_encryption_value(&read.encryption),
+        "import": import,
+    });
+    append_state_policy_diagnostic(&mut value, &policy_decision)?;
+    append_state_policy_warnings(&mut value, &policy_decision.warnings, !json_output)?;
+    append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
+    if let Some(receipt_version) = tool_version_mismatch {
+        append_warning_value(
+            &mut value,
+            json!({
+                "code": "STATE_INSPECTION_TOOL_VERSION_CHANGED",
+                "feature": "state load",
+                "message": format!("State inspection receipt was recorded by pire-browser {receipt_version}; continuing because the state file identity still matches."),
+            }),
+        );
+    }
+    append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
+    println!("{}", format_cli_result(&value, json_output)?);
+    Ok(())
+}
+
 fn handle_state_shortcut(
-    target: SessionTarget,
+    target: BrowserTarget,
     json: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
     policies: PolicyArgsBundle,
@@ -6619,12 +7068,12 @@ fn handle_state_shortcut(
         &args,
         ConfirmationGate {
             confirmation_decision: &confirmation_decision,
-            target: pending_target_from_session_target(&target),
+            target: pending_target_from_session_target(&target.selector),
             domain_decision: &domain_decision,
             action_decision: &action_decision,
             json_output: json,
             ignored_global_flags: &ignored_global_flags,
-            metadata: None,
+            metadata: confirmation_metadata_for_browser_target(&target, None),
         },
     ) {
         Ok(interactively_approved) => interactively_approved,
@@ -6654,79 +7103,18 @@ fn handle_state_shortcut(
     let mut request = request;
     attach_color_scheme(&mut request, color_scheme)?;
     attach_proxy_config(&mut request, proxy_config)?;
-    let dispatch_result = match &target {
-        SessionTarget::Id(session_id) => send_to_session(Some(session_id), &request),
-        SessionTarget::Name(profile_name) => send_to_named_session(
-            profile_name,
-            &args,
-            &request,
-            &domain_decision,
-            None,
-            None,
-            launch_headless,
-            launch_extra_args,
-            user_agent_override,
-            None,
-        ),
-        SessionTarget::Default => match send_to_session(None, &request) {
-            Ok(result) => Ok(result),
-            Err(err) if should_auto_launch_remote(None, &args, &err) => {
-                cleanup_stale_sessions(now_ms())?;
-                if let Some(url) = launch_url_for_remote_args(&args) {
-                    if let Err(err) = ensure_url_allowed(&domain_decision, &url) {
-                        exit_with_anyhow_error_with_domain_policy(
-                            err,
-                            json,
-                            &ignored_global_flags,
-                            &domain_decision.warnings,
-                        )?;
-                        unreachable!();
-                    }
-                }
-                let _result = match launch_firefox_with_lazy_setup(LaunchOptions {
-                    profile: "Default".to_string(),
-                    url: launch_url_for_remote_args(&args),
-                    firefox_path: None,
-                    download_dir: None,
-                    headless: launch_headless,
-                    extra_args: launch_extra_args.to_vec(),
-                    user_agent: user_agent_override.map(ToString::to_string),
-                }) {
-                    Ok(result) => result,
-                    Err(err) => {
-                        exit_with_anyhow_error_with_domain_policy(
-                            err,
-                            json,
-                            &ignored_global_flags,
-                            &domain_decision.warnings,
-                        )?;
-                        unreachable!();
-                    }
-                };
-                match send_to_session(None, &request) {
-                    Ok(result) => Ok(result),
-                    Err(err) => {
-                        exit_with_anyhow_error_with_domain_policy(
-                            err,
-                            json,
-                            &ignored_global_flags,
-                            &domain_decision.warnings,
-                        )?;
-                        unreachable!();
-                    }
-                }
-            }
-            Err(err) => {
-                exit_with_anyhow_error_with_domain_policy(
-                    err,
-                    json,
-                    &ignored_global_flags,
-                    &domain_decision.warnings,
-                )?;
-                unreachable!();
-            }
-        },
-    };
+    let dispatch_result = send_to_browser_session_or_launch(
+        &target,
+        &args,
+        &request,
+        &domain_decision,
+        None,
+        None,
+        launch_headless,
+        launch_extra_args,
+        user_agent_override,
+        None,
+    );
     let (response, _response_session_id) = match dispatch_result {
         Ok(result) => result,
         Err(err) => {
@@ -6785,7 +7173,7 @@ fn handle_state_shortcut(
 }
 
 fn execute_state_load_shortcut(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
     domain_decision: &DomainPolicyDecision,
@@ -6847,12 +7235,12 @@ fn execute_state_load_shortcut(
         ],
         ConfirmationGate {
             confirmation_decision,
-            target: pending_target_from_session_target(target),
+            target: pending_target_from_session_target(&target.selector),
             domain_decision,
             action_decision,
             json_output,
             ignored_global_flags,
-            metadata: None,
+            metadata: confirmation_metadata_for_browser_target(target, None),
         },
     )?;
     let tool_version_mismatch = if policy_decision.require_inspected {
@@ -6928,6 +7316,55 @@ fn handle_state_inspect(
     path: PathBuf,
     record: bool,
 ) -> Result<()> {
+    let is_restore = match is_automatic_restore_state_file(&path) {
+        Ok(is_restore) => is_restore,
+        Err(err) => {
+            exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+            unreachable!();
+        }
+    };
+    if is_restore {
+        let read = match read_automatic_restore_state(&path) {
+            Ok(read) => read,
+            Err(err) => {
+                exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+                unreachable!();
+            }
+        };
+        let mut value = automatic_restore_inspect_value(
+            &read.state,
+            &path,
+            read.bytes,
+            &read.encryption,
+            !json_output,
+        );
+        if record {
+            if let Err(err) = sweep_expired_state_receipts(now_ms()) {
+                exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+                unreachable!();
+            }
+            let subject = state_inspection_subject(
+                &path,
+                read.state.schema_version,
+                read.state.kind.clone(),
+                "<multiple>",
+                "",
+            )?;
+            let (receipt, receipt_path) =
+                match write_state_inspection_receipt_for_subject(&subject, now_ms(), CLI_VERSION) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        exit_with_anyhow_error(err, json_output, &ignored_global_flags)?;
+                        unreachable!();
+                    }
+                };
+            append_state_receipt_info(&mut value, &receipt, &receipt_path);
+        }
+        append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
+        println!("{}", format_cli_result(&value, json_output)?);
+        return Ok(());
+    }
+
     if !record {
         let summary = match read_state_file_summary(&path) {
             Ok(summary) => summary,
@@ -6977,7 +7414,7 @@ fn handle_state_inspect(
 }
 
 fn handle_download(
-    target: SessionTarget,
+    target: BrowserTarget,
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
     policies: PolicyArgsBundle,
@@ -7021,7 +7458,7 @@ fn handle_download(
 }
 
 fn handle_wait_download(
-    target: SessionTarget,
+    target: BrowserTarget,
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
     policies: PolicyArgsBundle,
@@ -7059,7 +7496,7 @@ fn handle_wait_download(
 }
 
 fn execute_download_command(
-    target: SessionTarget,
+    target: BrowserTarget,
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
     policies: PolicyArgsBundle,
@@ -7092,12 +7529,12 @@ fn execute_download_command(
         &plan.public_args,
         ConfirmationGate {
             confirmation_decision: &confirmation_decision,
-            target: pending_target_from_session_target(&target),
+            target: pending_target_from_session_target(&target.selector),
             domain_decision: &domain_decision,
             action_decision: &action_decision,
             json_output,
             ignored_global_flags: &ignored_global_flags,
-            metadata: None,
+            metadata: confirmation_metadata_for_browser_target(&target, None),
         },
     ) {
         Ok(interactively_approved) => interactively_approved,
@@ -7132,7 +7569,7 @@ fn execute_download_command(
 }
 
 fn run_download_dispatch(
-    target: SessionTarget,
+    target: BrowserTarget,
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
     domain_decision: &DomainPolicyDecision,
@@ -7201,7 +7638,7 @@ fn run_download_dispatch(
 }
 
 fn handle_upload(
-    target: SessionTarget,
+    target: BrowserTarget,
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
     policies: PolicyArgsBundle,
@@ -7222,7 +7659,7 @@ fn handle_upload(
 }
 
 fn execute_upload_command(
-    target: SessionTarget,
+    target: BrowserTarget,
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
     policies: PolicyArgsBundle,
@@ -7277,12 +7714,12 @@ fn execute_upload_command(
         &plan.public_args,
         ConfirmationGate {
             confirmation_decision: &confirmation_decision,
-            target: pending_target_from_session_target(&target),
+            target: pending_target_from_session_target(&target.selector),
             domain_decision: &domain_decision,
             action_decision: &action_decision,
             json_output,
             ignored_global_flags: &ignored_global_flags,
-            metadata,
+            metadata: confirmation_metadata_for_browser_target(&target, metadata),
         },
     ) {
         Ok(interactively_approved) => interactively_approved,
@@ -7404,7 +7841,7 @@ fn preflight_download_destination(destination: Option<&Path>) -> Result<()> {
 }
 
 fn send_download_request(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     args: &[String],
     request: &RpcRequest,
     domain_decision: &DomainPolicyDecision,
@@ -7414,38 +7851,18 @@ fn send_download_request(
     launch_extra_args: &[String],
     user_agent_override: Option<&str>,
 ) -> Result<(RpcResponse, String)> {
-    match target {
-        SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
-        SessionTarget::Name(profile_name) => send_to_named_session(
-            profile_name,
-            args,
-            request,
-            domain_decision,
-            firefox_path_override,
-            download_path_override,
-            launch_headless,
-            launch_extra_args,
-            user_agent_override,
-            None,
-        ),
-        SessionTarget::Default => match send_to_session(None, request) {
-            Ok(result) => Ok(result),
-            Err(err) if should_auto_launch_remote(None, args, &err) => {
-                cleanup_stale_sessions(now_ms())?;
-                let result = launch_firefox_with_lazy_setup(LaunchOptions {
-                    profile: "Default".to_string(),
-                    url: launch_url_for_remote_args(args),
-                    firefox_path: firefox_path_override.map(ToString::to_string),
-                    download_dir: download_path_override.map(Path::to_path_buf),
-                    headless: launch_headless,
-                    extra_args: launch_extra_args.to_vec(),
-                    user_agent: user_agent_override.map(ToString::to_string),
-                })?;
-                send_to_session(Some(&result.session.session_id), request)
-            }
-            Err(err) => Err(err),
-        },
-    }
+    send_to_browser_session_or_launch(
+        target,
+        args,
+        request,
+        domain_decision,
+        firefox_path_override,
+        download_path_override,
+        launch_headless,
+        launch_extra_args,
+        user_agent_override,
+        None,
+    )
 }
 
 fn destination_display_arg(destination: &Option<PathBuf>) -> Result<String> {
@@ -7520,7 +7937,7 @@ fn execute_confirmed_record(record: PendingConfirmation, json_output: bool) -> R
     if let Some(url) = navigation_url_for_remote_args(&record.args) {
         ensure_url_allowed(&domain_decision, &url)?;
     }
-    let target = session_target_from_pending(&record.target);
+    let target = browser_target_from_confirmation(&record)?;
     match record.args.first().map(String::as_str) {
         Some("launch") => execute_confirmed_launch(&record, &domain_decision, &action_decision),
         Some("diff")
@@ -7608,7 +8025,7 @@ fn execute_confirmed_record(record: PendingConfirmation, json_output: bool) -> R
 
 fn execute_confirmed_diff(
     record: PendingConfirmation,
-    target: SessionTarget,
+    target: BrowserTarget,
     domain_decision: DomainPolicyDecision,
     action_decision: ActionPolicyDecision,
     confirmation_decision: ConfirmationPolicyDecision,
@@ -7677,7 +8094,7 @@ fn execute_confirmed_launch(
     let user_agent_override = user_agent_override_from_args_and_env(&config_result.args);
     let confirmation_decision =
         confirmation_decision_from_context(record.confirmation_policy.as_ref());
-    let mut profile = "Default".to_string();
+    let mut target = browser_target_from_confirmation(record)?;
     let mut url = None;
     let mut firefox_path = None;
     let mut i = 1;
@@ -7685,11 +8102,31 @@ fn execute_confirmed_launch(
         match record.args[i].as_str() {
             "--profile" => {
                 i += 1;
-                profile = record
+                target.profile = Some(
+                    record
+                        .args
+                        .get(i)
+                        .cloned()
+                        .context("invalid_args: --profile requires a value")?,
+                );
+            }
+            "--session" => {
+                i += 1;
+                target.selector = SessionTarget::Name(
+                    record
+                        .args
+                        .get(i)
+                        .cloned()
+                        .context("invalid_args: --session requires a value")?,
+                );
+            }
+            "--namespace" => {
+                i += 1;
+                target.namespace = record
                     .args
                     .get(i)
                     .cloned()
-                    .context("invalid_args: --profile requires a value")?;
+                    .context("invalid_args: --namespace requires a value")?;
             }
             "--url" => {
                 i += 1;
@@ -7710,6 +8147,41 @@ fn execute_confirmed_launch(
                         .cloned()
                         .context("invalid_args: --firefox-path requires a value")?,
                 );
+            }
+            "--restore" => {
+                target.restore.requested = true;
+                if record
+                    .args
+                    .get(i + 1)
+                    .is_some_and(|value| !value.starts_with('-'))
+                {
+                    i += 1;
+                    target.restore.name = record.args.get(i).cloned();
+                }
+            }
+            "--restore-save" => {
+                i += 1;
+                target.restore.save = Some(
+                    record
+                        .args
+                        .get(i)
+                        .cloned()
+                        .context("invalid_args: --restore-save requires a value")?,
+                );
+            }
+            "--restore-check-url" | "--restore-check-text" | "--restore-check-fn" => {
+                let flag = record.args[i].clone();
+                i += 1;
+                let value = record
+                    .args
+                    .get(i)
+                    .cloned()
+                    .with_context(|| format!("invalid_args: {flag} requires a value"))?;
+                match flag.as_str() {
+                    "--restore-check-url" => target.restore.check_url = Some(value),
+                    "--restore-check-text" => target.restore.check_text = Some(value),
+                    _ => target.restore.check_fn = Some(value),
+                }
             }
             other => bail!("unsupported launch option in confirmation record: {other}"),
         }
@@ -7733,7 +8205,9 @@ fn execute_confirmed_launch(
     };
     let mut options = apply_launch_mutators(
         LaunchOptions {
-            profile,
+            session_name: target.session_name().to_string(),
+            namespace: target.namespace.clone(),
+            profile: target.profile.clone(),
             url,
             firefox_path,
             download_dir: None,
@@ -7743,22 +8217,45 @@ fn execute_confirmed_launch(
         },
         Some(&launch_runtime),
     )?;
-    let post_launch_url = if has_launch_plugin_init_scripts(Some(&launch_runtime)) {
-        options.url.take()
-    } else {
-        None
-    };
+    let post_launch_url =
+        if target.restore.requested || has_launch_plugin_init_scripts(Some(&launch_runtime)) {
+            options.url.take()
+        } else {
+            None
+        };
     let result = launch_firefox_with_lazy_setup(options)?;
+    let restore_diagnostic = configure_restore_for_session(&target, &result.session)?;
     apply_launch_plugin_init_scripts_after_launch(
         &result.session.session_id,
         post_launch_url.as_deref(),
         &launch_plugin_init_scripts.borrow(),
     )?;
+    let restore_validation = post_launch_url.as_ref().and_then(|url| {
+        validate_restore_after_navigation(
+            &target,
+            &result.session,
+            &["open".to_string(), url.clone()],
+        )
+    });
     let mut text = launch_result_text(&result);
     if let Some(url) = post_launch_url {
         text.push_str(&format!(
             "\nOpened {url} with launch.mutate init script(s)."
         ));
+    }
+    if let Some(warning) = restore_diagnostic
+        .as_ref()
+        .and_then(|value| value.get("warning"))
+        .and_then(Value::as_str)
+    {
+        text.push_str(&format!("\nWarning [RESTORE_IMPORT_FAILED]: {warning}"));
+    }
+    if let Some(warning) = restore_validation
+        .as_ref()
+        .and_then(|value| value.get("warning"))
+        .and_then(Value::as_str)
+    {
+        text.push_str(&format!("\nWarning [RESTORE_VALIDATION_FAILED]: {warning}"));
     }
     for warning in launch_plugin_warnings.borrow().iter() {
         let code = warning
@@ -7774,7 +8271,7 @@ fn execute_confirmed_launch(
 
 fn execute_confirmed_remote(
     record: PendingConfirmation,
-    target: SessionTarget,
+    target: BrowserTarget,
     domain_decision: DomainPolicyDecision,
     action_decision: ActionPolicyDecision,
     json_output: bool,
@@ -7806,59 +8303,18 @@ fn execute_confirmed_remote(
         record.action_policy.clone(),
         request_context_with_approval(&record),
     )?;
-    let dispatch_result = match target {
-        SessionTarget::Id(session_id) => send_to_session(Some(&session_id), &request),
-        SessionTarget::Name(profile_name) => send_to_named_session(
-            &profile_name,
-            &record.args,
-            &request,
-            &domain_decision,
-            None,
-            None,
-            false,
-            &launch_extra_args,
-            user_agent_override.as_deref(),
-            Some(&launch_runtime),
-        ),
-        SessionTarget::Default => match send_to_session(None, &request) {
-            Ok(result) => Ok(result),
-            Err(err) if should_auto_launch_remote(None, &record.args, &err) => {
-                cleanup_stale_sessions(now_ms())?;
-                let options = apply_launch_mutators(
-                    LaunchOptions {
-                        profile: "Default".to_string(),
-                        url: launch_url_for_remote_args(&record.args),
-                        firefox_path: None,
-                        download_dir: None,
-                        headless: false,
-                        extra_args: launch_extra_args.clone(),
-                        user_agent: user_agent_override.clone(),
-                    },
-                    Some(&launch_runtime),
-                )?;
-                let mut options = options;
-                options.url =
-                    launch_url_for_remote_args_after_mutators(&record.args, Some(&launch_runtime));
-                let launch_result = launch_firefox_with_lazy_setup(options)?;
-                if should_register_launch_plugin_init_scripts_after_launch(
-                    &record.args,
-                    Some(&launch_runtime),
-                ) {
-                    register_launch_plugin_init_scripts_for_session(
-                        &launch_result.session.session_id,
-                        launch_runtime.init_scripts.borrow().as_slice(),
-                    )?;
-                }
-                let request = request_with_launch_plugin_init_scripts(
-                    &request,
-                    &record.args,
-                    Some(&launch_runtime),
-                )?;
-                send_to_session(None, &request)
-            }
-            Err(err) => Err(err),
-        },
-    };
+    let dispatch_result = send_to_browser_session_or_launch(
+        &target,
+        &record.args,
+        &request,
+        &domain_decision,
+        None,
+        None,
+        false,
+        &launch_extra_args,
+        user_agent_override.as_deref(),
+        Some(&launch_runtime),
+    );
     let (response, response_session_id) = dispatch_result?;
     let result = response_result_or_exit_with_domain_policy(
         response,
@@ -7881,7 +8337,7 @@ fn execute_confirmed_remote(
 
 fn execute_confirmed_auth_login(
     record: PendingConfirmation,
-    target: SessionTarget,
+    target: BrowserTarget,
     domain_decision: DomainPolicyDecision,
     action_decision: ActionPolicyDecision,
     confirmation_decision: ConfirmationPolicyDecision,
@@ -7944,7 +8400,7 @@ fn execute_confirmed_plugin_run(record: PendingConfirmation, json_output: bool) 
 
 fn execute_confirmed_download(
     record: PendingConfirmation,
-    target: SessionTarget,
+    target: BrowserTarget,
     domain_decision: DomainPolicyDecision,
     action_decision: ActionPolicyDecision,
     json_output: bool,
@@ -7983,7 +8439,7 @@ fn execute_confirmed_download(
 
 fn execute_confirmed_upload(
     record: PendingConfirmation,
-    target: SessionTarget,
+    target: BrowserTarget,
     domain_decision: DomainPolicyDecision,
     action_decision: ActionPolicyDecision,
     json_output: bool,
@@ -8136,27 +8592,40 @@ fn parse_wait_download_public_args(args: &[String]) -> Result<(Option<PathBuf>, 
 }
 
 fn execute_confirmed_state_save(
-    target: SessionTarget,
+    target: BrowserTarget,
     json_output: bool,
     domain_decision: DomainPolicyDecision,
     _action_decision: ActionPolicyDecision,
     path: PathBuf,
 ) -> Result<()> {
-    let request = build_command_request_with_domain_policy(
-        vec!["state".to_string(), "export".to_string()],
-        &domain_decision,
-    )?;
-    let (response, session_id) = send_state_save_request(&target, &request)?;
+    let request = RpcRequest {
+        id: Uuid::new_v4().to_string(),
+        method: "lifecycle_export".to_string(),
+        params: json!({}),
+    };
+    let (response, _) = send_state_save_request(&target, &request)?;
     let export = response_result_or_exit_with_domain_policy(
         response,
         json_output,
         &[],
         &domain_decision.warnings,
     )?;
-    let profile_name = profile_name_for_state_source(&target, &session_id)?;
-    let state = state_from_extension_export(export, session_id, profile_name)?;
-    let write = write_state_file(&path, &state)?;
-    let mut value = state_save_value(&state, &path, write.bytes, &write.encryption);
+    let state: AutomaticRestoreState = serde_json::from_value(
+        export
+            .get("state")
+            .cloned()
+            .context("state export omitted browser state")?,
+    )?;
+    let write = write_automatic_restore_state(&path, &state)?;
+    let mut value = json!({
+        "text": format!("Saved browser state to {} ({} cookie(s), {} origin(s)).", path.display(), state.cookies.len(), state.origins.len()),
+        "path": path,
+        "schemaVersion": state.schema_version,
+        "kind": state.kind,
+        "counts": state.counts(),
+        "bytes": write.bytes,
+        "encryption": state_encryption_value(&write.encryption),
+    });
     append_state_save_path_warning(&mut value, &path);
     append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
     println!("{}", format_cli_result(&value, json_output)?);
@@ -8164,12 +8633,67 @@ fn execute_confirmed_state_save(
 }
 
 fn execute_confirmed_state_load(
-    target: SessionTarget,
+    target: BrowserTarget,
     json_output: bool,
     domain_decision: DomainPolicyDecision,
     _action_decision: ActionPolicyDecision,
     path: PathBuf,
 ) -> Result<()> {
+    if path.exists() && is_automatic_restore_state_file(&path)? {
+        let read = read_automatic_restore_state(&path)?;
+        for origin in read.state.origins.keys() {
+            ensure_url_allowed(&domain_decision, origin)?;
+        }
+        let session = if let Some(session) = live_session_for_browser_target(&target)? {
+            session
+        } else {
+            if matches!(target.selector, SessionTarget::Id(_)) {
+                bail!("session_not_found: state load cannot launch a UUID-targeted session");
+            }
+            launch_firefox_with_lazy_setup(LaunchOptions {
+                session_name: target.session_name().to_string(),
+                namespace: target.namespace.clone(),
+                profile: target.profile.clone(),
+                url: None,
+                firefox_path: None,
+                download_dir: None,
+                headless: false,
+                extra_args: Vec::new(),
+                user_agent: None,
+            })?
+            .session
+        };
+        let request = RpcRequest {
+            id: Uuid::new_v4().to_string(),
+            method: "lifecycle_configure".to_string(),
+            params: json!({ "state": read.state.clone() }),
+        };
+        let (response, _) = send_to_session(Some(&session.session_id), &request)?;
+        let import = response_result_or_exit_with_domain_policy(
+            response,
+            json_output,
+            &[],
+            &domain_decision.warnings,
+        )?;
+        let clear_guard = RpcRequest {
+            id: Uuid::new_v4().to_string(),
+            method: "host_clear_restore_guard".to_string(),
+            params: json!({}),
+        };
+        let _ = send_to_session(Some(&session.session_id), &clear_guard);
+        let mut value = json!({
+            "text": format!("Loaded browser state from {}. Cookies are restored now; origin storage applies on first visit.", path.display()),
+            "path": path,
+            "schemaVersion": read.state.schema_version,
+            "kind": read.state.kind,
+            "counts": read.state.counts(),
+            "encryption": state_encryption_value(&read.encryption),
+            "import": import,
+        });
+        append_domain_policy_warnings(&mut value, &domain_decision.warnings, !json_output)?;
+        println!("{}", format_cli_result(&value, json_output)?);
+        return Ok(());
+    }
     let read = read_state_file_with_metadata(&path)?;
     ensure_url_allowed(&domain_decision, &read.state.source.origin)?;
     let state = read.state.clone();
@@ -8196,19 +8720,50 @@ fn handle_state_show(
     ignored_global_flags: Vec<GlobalFlagWarning>,
     path: PathBuf,
 ) -> Result<()> {
-    let path = resolve_state_reference_path(&path)?;
-    handle_state_inspect(json_output, ignored_global_flags, path, false)
+    match resolve_managed_state_reference(&path)? {
+        ManagedStateReference::Project(path) => {
+            handle_state_inspect(json_output, ignored_global_flags, path, false)
+        }
+        ManagedStateReference::Restore {
+            namespace,
+            key,
+            path,
+        } => {
+            let read = read_automatic_restore_state(&path)?;
+            let mut value = json!({
+                "text": format!("Automatic restore state {namespace}/{key} (values hidden)."),
+                "scope": "restore",
+                "namespace": namespace,
+                "key": key,
+                "path": path,
+                "schemaVersion": read.state.schema_version,
+                "kind": read.state.kind,
+                "createdAt": read.state.created_at,
+                "updatedAt": read.state.updated_at,
+                "counts": read.state.counts(),
+                "bytes": read.bytes,
+                "encryption": state_encryption_value(&read.encryption),
+                "valuesShown": false,
+            });
+            append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
+            println!("{}", format_cli_result(&value, json_output)?);
+            Ok(())
+        }
+    }
 }
 
 fn handle_state_list(
     json_output: bool,
     ignored_global_flags: Vec<GlobalFlagWarning>,
 ) -> Result<()> {
-    let states = list_project_state_files()?;
+    let states = list_all_managed_state_files()?;
     let mut value = json!({
         "text": state_list_text(&states),
         "states": states,
-        "directory": state_store_dir().display().to_string(),
+        "directories": {
+            "project": state_store_dir().display().to_string(),
+            "restore": pire_browser_core::restore_state::restore_states_root()?.display().to_string(),
+        },
     });
     append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
     println!("{}", format_cli_result(&value, json_output)?);
@@ -8221,8 +8776,9 @@ fn handle_state_rename(
     old: &str,
     new: &str,
 ) -> Result<()> {
-    let old_path = resolve_state_reference_path(Path::new(old))?;
-    let new_path = resolve_state_destination_path(new)?;
+    let old_reference = resolve_managed_state_reference(Path::new(old))?;
+    let old_path = old_reference.path().to_path_buf();
+    let new_path = destination_for_managed_state(&old_reference, new)?;
     if !old_path.exists() {
         exit_with_anyhow_error(
             anyhow::anyhow!(
@@ -8274,23 +8830,19 @@ fn handle_state_clear(
     name: Option<String>,
     all: bool,
 ) -> Result<()> {
-    let states = list_project_state_files()?;
-    let selected: Vec<_> = if all {
-        states
+    let selected: Vec<PathBuf> = if all {
+        list_all_managed_state_files()?
+            .into_iter()
+            .filter_map(|state| state.get("path").and_then(Value::as_str).map(PathBuf::from))
+            .collect()
     } else {
         let name = name.context("invalid_args: state clear requires <name> or --all")?;
-        states
-            .into_iter()
-            .filter(|state| state_matches_clear_name(state, &name))
-            .collect()
+        vec![resolve_managed_state_reference(Path::new(&name))?
+            .path()
+            .to_path_buf()]
     };
     let mut removed = Vec::new();
-    for state in selected {
-        let path = state
-            .get("path")
-            .and_then(Value::as_str)
-            .map(PathBuf::from)
-            .context("state list entry omitted path")?;
+    for path in selected {
         fs::remove_file(&path)
             .with_context(|| format!("failed to remove state file {}", path.display()))?;
         removed.push(path.display().to_string());
@@ -8298,7 +8850,7 @@ fn handle_state_clear(
     let mut value = json!({
         "text": format!("Removed {} state file(s).", removed.len()),
         "removed": removed,
-        "directory": state_store_dir().display().to_string(),
+        "projectDirectory": state_store_dir().display().to_string(),
     });
     append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
     println!("{}", format_cli_result(&value, json_output)?);
@@ -8327,11 +8879,19 @@ fn handle_state_clean(
             .with_context(|| format!("failed to remove state file {}", path.display()))?;
         removed.push(path.display().to_string());
     }
+    for state in list_automatic_restore_states()? {
+        if state.updated_at > cutoff_ms {
+            continue;
+        }
+        fs::remove_file(&state.path)
+            .with_context(|| format!("failed to remove restore state {}", state.path.display()))?;
+        removed.push(state.path.display().to_string());
+    }
     let mut value = json!({
         "text": format!("Removed {} state file(s) older than {} day(s).", removed.len(), older_than_days),
         "removed": removed,
         "olderThanDays": older_than_days,
-        "directory": state_store_dir().display().to_string(),
+        "projectDirectory": state_store_dir().display().to_string(),
     });
     append_ignored_global_flag_warnings(&mut value, &ignored_global_flags);
     println!("{}", format_cli_result(&value, json_output)?);
@@ -8339,88 +8899,60 @@ fn handle_state_clean(
 }
 
 fn send_state_save_request(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     request: &RpcRequest,
 ) -> Result<(RpcResponse, String)> {
-    match target {
-        SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
-        SessionTarget::Name(profile_name) => {
-            validate_profile_name(profile_name)?;
-            cleanup_stale_sessions(now_ms())?;
-            let Some(session) = live_session_for_profile_name(profile_name)? else {
-                bail!(
-                    "session_not_found: state save requires a live pire-browser session for profile name `{profile_name}`. Run `pire-browser --session-name {profile_name} open <url>` first."
-                );
-            };
-            send_to_session(Some(&session.session_id), request)
-        }
-        SessionTarget::Default => send_to_session(None, request),
-    }
+    send_to_browser_target(target, request)
 }
 
 fn send_state_load_request(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     state: &ActiveOriginStateFile,
     request: &RpcRequest,
 ) -> Result<(RpcResponse, String)> {
-    match target {
+    match &target.selector {
         SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
-        SessionTarget::Name(profile_name) => {
-            validate_profile_name(profile_name)?;
+        SessionTarget::Name(_) | SessionTarget::Default => {
             cleanup_stale_sessions(now_ms())?;
-            if let Some(session) = live_session_for_profile_name(profile_name)? {
+            if let Some(session) = live_session_for_browser_target(target)? {
                 return send_to_session(Some(&session.session_id), request);
             }
             let session_id = launch_state_target(
-                profile_name,
+                target,
                 &display_url_without_query_or_fragment(&state.source.url),
             )?;
             send_to_session(Some(&session_id), request)
         }
-        SessionTarget::Default => match send_to_session(None, request) {
-            Ok(result) => Ok(result),
-            Err(err) if is_auto_launchable_session_error(&err) => {
-                cleanup_stale_sessions(now_ms())?;
-                let session_id = launch_state_target(
-                    "Default",
-                    &display_url_without_query_or_fragment(&state.source.url),
-                )?;
-                send_to_session(Some(&session_id), request)
-            }
-            Err(err) => Err(err),
-        },
     }
 }
 
-fn select_live_upload_session(target: &SessionTarget) -> Result<(String, Option<String>)> {
+fn select_live_upload_session(target: &BrowserTarget) -> Result<(String, Option<String>)> {
     cleanup_stale_sessions(now_ms())?;
-    let session = match target {
-        SessionTarget::Id(session_id) => select_session(Some(session_id))?,
-        SessionTarget::Name(profile_name) => {
-            validate_profile_name(profile_name)?;
-            live_session_for_profile_name(profile_name)?.with_context(|| {
-                format!(
-                    "session_not_found: upload requires a live pire-browser session for profile name `{profile_name}`. Run `pire-browser --session-name {profile_name} open <url>` first."
-                )
-            })?
-        }
-        SessionTarget::Default => select_session(None)?,
-    };
+    let session = live_session_for_browser_target(target)?.with_context(|| {
+        format!(
+            "session_not_found: upload requires a live pire-browser session named `{}` in namespace `{}`",
+            target.session_name(),
+            target.namespace
+        )
+    })?;
     let active_url = session.active_page.and_then(|active| active.url);
     Ok((session.session_id, active_url))
 }
 
-fn launch_state_target(profile: &str, url: &str) -> Result<String> {
+fn launch_state_target(target: &BrowserTarget, url: &str) -> Result<String> {
     let result = launch_firefox_with_lazy_setup(LaunchOptions {
-        profile: profile.to_string(),
-        url: Some(url.to_string()),
+        session_name: target.session_name().to_string(),
+        namespace: target.namespace.clone(),
+        profile: target.profile.clone(),
+        url: (!target.restore.requested).then(|| url.to_string()),
         firefox_path: None,
         download_dir: None,
         headless: false,
         extra_args: Vec::new(),
         user_agent: None,
     })?;
-    let session_id = result.session.session_id;
+    let session_id = result.session.session_id.clone();
+    let _ = configure_restore_for_session(target, &result.session)?;
     let open_request = build_command_request(vec!["open".to_string(), url.to_string()]);
     let (open_response, _) = send_to_session(Some(&session_id), &open_request)?;
     if !open_response.ok {
@@ -8499,21 +9031,6 @@ fn response_result_or_exit_with_warning_values(
         std::process::exit(exit_code_for_error(&error.code));
     }
     Ok(response.result.unwrap_or_else(|| json!({ "text": "ok" })))
-}
-
-fn profile_name_for_state_source(
-    target: &SessionTarget,
-    session_id: &str,
-) -> Result<Option<String>> {
-    if let SessionTarget::Name(profile_name) = target {
-        return Ok(Some(profile_name.clone()));
-    }
-    let mut sessions = list_sessions()?;
-    annotate_session_profile_names(&mut sessions)?;
-    Ok(sessions
-        .into_iter()
-        .find(|session| session.session_id == session_id)
-        .and_then(|session| session.profile_name))
 }
 
 fn resolve_domain_policy_or_exit(
@@ -8934,7 +9451,7 @@ fn handle_auth_vault_delete(args: &[String]) -> Result<Value> {
 
 #[allow(clippy::too_many_arguments)]
 fn handle_auth_login_command(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     args: &[String],
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
@@ -9017,7 +9534,7 @@ fn handle_auth_login_command(
 
 #[allow(clippy::too_many_arguments)]
 fn dispatch_auth_profile_login(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     original_args: &[String],
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
@@ -9555,7 +10072,7 @@ fn credential_string(credential: &Map<String, Value>, field: &str) -> Result<Str
 
 #[allow(clippy::too_many_arguments)]
 fn maybe_require_credential_provider_confirmation(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     args: &[String],
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
@@ -9577,16 +10094,19 @@ fn maybe_require_credential_provider_confirmation(
         args,
         ConfirmationGate {
             confirmation_decision,
-            target: pending_target_from_session_target(target),
+            target: pending_target_from_session_target(&target.selector),
             domain_decision,
             action_decision,
             json_output,
             ignored_global_flags,
-            metadata: Some(json!({
-                "plugin": provider.name.clone(),
-                "capability": "credential.read",
-                "itemRef": item_ref,
-            })),
+            metadata: confirmation_metadata_for_browser_target(
+                target,
+                Some(json!({
+                    "plugin": provider.name.clone(),
+                    "capability": "credential.read",
+                    "itemRef": item_ref,
+                })),
+            ),
         },
     )
 }
@@ -10149,6 +10669,17 @@ fn apply_launch_plugin_init_scripts_after_launch(
     scripts: &[LaunchPluginInitScript],
 ) -> Result<()> {
     if scripts.is_empty() {
+        if let Some(url) = post_launch_url {
+            let request = build_command_request(vec!["open".to_string(), url.to_string()]);
+            let (response, _) = send_to_session(Some(session_id), &request)?;
+            if !response.ok {
+                let error = response
+                    .error
+                    .map(|err| format!("{}: {}", err.code, err.message))
+                    .unwrap_or_else(|| "unknown open failure".to_string());
+                bail!("browser_launch_failed: failed to open launch URL: {error}");
+            }
+        }
         return Ok(());
     }
     if let Some(url) = post_launch_url {
@@ -10465,7 +10996,7 @@ fn normalize_diff_url_wait_until(value: &str) -> Result<String> {
 }
 
 fn handle_diff_screenshot(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     options: &DiffScreenshotOptions,
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
@@ -10510,7 +11041,7 @@ fn handle_diff_screenshot(
 }
 
 fn handle_diff_url(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     options: &DiffUrlOptions,
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
@@ -10650,7 +11181,7 @@ fn handle_diff_url(
 }
 
 fn capture_diff_screenshot_current(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     full_page: bool,
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
@@ -10715,7 +11246,7 @@ fn capture_diff_screenshot_current(
 }
 
 fn handle_pdf_capture(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     options: &PdfOptions,
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
@@ -10882,7 +11413,7 @@ fn rgba_to_white_rgb(image: &RgbaImage) -> Vec<u8> {
 }
 
 fn capture_diff_url_baseline(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     url: &str,
     options: &DiffUrlOptions,
     screenshot_path: Option<&Path>,
@@ -10960,7 +11491,7 @@ fn capture_diff_url_baseline(
 }
 
 fn capture_diff_url_current(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     url: &str,
     options: &DiffUrlOptions,
     baseline_path: &Path,
@@ -11035,7 +11566,7 @@ fn capture_diff_url_current(
 }
 
 fn execute_diff_url_open_and_wait(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     url: &str,
     options: &DiffUrlOptions,
     json_output: bool,
@@ -11093,7 +11624,7 @@ fn execute_diff_url_open_and_wait(
 }
 
 fn capture_diff_url_screenshot(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     path: &Path,
     full_page: bool,
     json_output: bool,
@@ -11133,7 +11664,7 @@ fn capture_diff_url_screenshot(
 }
 
 fn execute_remote_value_with_policies(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     args: Vec<String>,
     json_output: bool,
     ignored_global_flags: &[GlobalFlagWarning],
@@ -11609,6 +12140,90 @@ fn session_target_from_pending(target: &PendingConfirmationTarget) -> SessionTar
     }
 }
 
+fn browser_target_from_session_target(selector: SessionTarget) -> BrowserTarget {
+    BrowserTarget::from(selector)
+}
+
+fn confirmation_metadata_for_browser_target(
+    target: &BrowserTarget,
+    existing: Option<Value>,
+) -> Option<Value> {
+    let mut metadata = match existing {
+        Some(Value::Object(object)) => Value::Object(object),
+        Some(value) => json!({ "details": value }),
+        None => json!({}),
+    };
+    metadata["browserTarget"] = json!({
+        "namespace": target.namespace,
+        "profile": target.profile,
+        "legacySessionName": target.legacy_session_name,
+        "restore": {
+            "requested": target.restore.requested,
+            "name": target.restore.name,
+            "save": target.restore.save,
+            "checkUrl": target.restore.check_url,
+            "checkText": target.restore.check_text,
+            "checkFn": target.restore.check_fn,
+        },
+    });
+    Some(metadata)
+}
+
+fn browser_target_from_confirmation(record: &PendingConfirmation) -> Result<BrowserTarget> {
+    let mut target =
+        browser_target_from_session_target(session_target_from_pending(&record.target));
+    let Some(value) = record
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("browserTarget"))
+    else {
+        return Ok(target);
+    };
+    let object = value
+        .as_object()
+        .context("invalid_args: pending confirmation browserTarget metadata is malformed")?;
+    if let Some(namespace) = object.get("namespace").and_then(Value::as_str) {
+        target.namespace = namespace.to_string();
+    }
+    target.profile = object
+        .get("profile")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    target.legacy_session_name = object
+        .get("legacySessionName")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if let Some(restore) = object.get("restore").and_then(Value::as_object) {
+        target.restore = RestoreCliOptions {
+            requested: restore
+                .get("requested")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            name: restore
+                .get("name")
+                .and_then(Value::as_str)
+                .map(ToString::to_string),
+            save: restore
+                .get("save")
+                .and_then(Value::as_str)
+                .map(ToString::to_string),
+            check_url: restore
+                .get("checkUrl")
+                .and_then(Value::as_str)
+                .map(ToString::to_string),
+            check_text: restore
+                .get("checkText")
+                .and_then(Value::as_str)
+                .map(ToString::to_string),
+            check_fn: restore
+                .get("checkFn")
+                .and_then(Value::as_str)
+                .map(ToString::to_string),
+        };
+    }
+    Ok(target)
+}
+
 fn launch_args_for_action_policy(url: &Option<String>) -> Vec<String> {
     let mut args = vec!["launch".to_string()];
     if let Some(url) = url {
@@ -11619,15 +12234,41 @@ fn launch_args_for_action_policy(url: &Option<String>) -> Vec<String> {
 }
 
 fn launch_args_for_confirmation(
-    profile: &str,
+    target: &BrowserTarget,
     url: &Option<String>,
     firefox_path: &Option<String>,
 ) -> Vec<String> {
     let mut args = vec![
         "launch".to_string(),
-        "--profile".to_string(),
-        profile.to_string(),
+        "--session".to_string(),
+        target.session_name().to_string(),
+        "--namespace".to_string(),
+        target.namespace.clone(),
     ];
+    if let Some(profile) = &target.profile {
+        args.push("--profile".to_string());
+        args.push(profile.clone());
+    }
+    if target.restore.requested {
+        args.push("--restore".to_string());
+        if let Some(name) = &target.restore.name {
+            args.push(name.clone());
+        }
+    }
+    if let Some(save) = &target.restore.save {
+        args.push("--restore-save".to_string());
+        args.push(save.clone());
+    }
+    for (flag, value) in [
+        ("--restore-check-url", target.restore.check_url.as_ref()),
+        ("--restore-check-text", target.restore.check_text.as_ref()),
+        ("--restore-check-fn", target.restore.check_fn.as_ref()),
+    ] {
+        if let Some(value) = value {
+            args.push(flag.to_string());
+            args.push(value.clone());
+        }
+    }
     if let Some(url) = url {
         args.push("--url".to_string());
         args.push(url.clone());
@@ -11639,6 +12280,7 @@ fn launch_args_for_confirmation(
     args
 }
 
+#[cfg(test)]
 fn state_save_value(
     state: &ActiveOriginStateFile,
     path: &Path,
@@ -11799,6 +12441,48 @@ fn state_summary_inspect_value(
     value
 }
 
+fn automatic_restore_inspect_value(
+    state: &AutomaticRestoreState,
+    path: &Path,
+    bytes: u64,
+    encryption: &StateFileEncryptionInfo,
+    include_text: bool,
+) -> Value {
+    let counts = state.counts();
+    let mut value = json!({
+        "path": path.display().to_string(),
+        "schemaVersion": state.schema_version,
+        "kind": state.kind,
+        "createdAt": state.created_at,
+        "updatedAt": state.updated_at,
+        "counts": counts,
+        "bytes": bytes,
+        "encryption": state_encryption_value(encryption),
+        "valuesShown": false,
+    });
+    if include_text {
+        let encryption_label = if encryption.encrypted {
+            encryption.algorithm.as_deref().unwrap_or("encrypted")
+        } else {
+            "plaintext"
+        };
+        value["text"] = json!(format!(
+            "State file: {}\nSchema: {} {}\nEncryption: {}\nCreated: {}\nUpdated: {}\nSize: {} bytes\nCounts: {} cookie(s), {} origin(s), {} localStorage key(s)\nValues: not shown by metadata-only inspect",
+            path.display(),
+            state.schema_version,
+            state.kind,
+            encryption_label,
+            state.created_at,
+            state.updated_at,
+            bytes,
+            counts.cookies,
+            counts.origins,
+            counts.local_storage_keys,
+        ));
+    }
+    value
+}
+
 fn state_encryption_value(encryption: &StateFileEncryptionInfo) -> Value {
     let mut value = json!({
         "encrypted": encryption.encrypted,
@@ -11917,6 +12601,114 @@ fn state_store_dir() -> PathBuf {
     PathBuf::from(".pire-state")
 }
 
+#[derive(Debug, Clone)]
+enum ManagedStateReference {
+    Project(PathBuf),
+    Restore {
+        namespace: String,
+        key: String,
+        path: PathBuf,
+    },
+}
+
+impl ManagedStateReference {
+    fn path(&self) -> &Path {
+        match self {
+            Self::Project(path) | Self::Restore { path, .. } => path,
+        }
+    }
+}
+
+fn resolve_managed_state_reference(value: &Path) -> Result<ManagedStateReference> {
+    let raw = value
+        .to_str()
+        .context("invalid_args: state reference must be valid UTF-8")?;
+    if let Some(reference) = raw.strip_prefix("restore:") {
+        let (namespace, key) = reference
+            .split_once('/')
+            .context("invalid_args: restore state references use restore:<namespace>/<key>")?;
+        let path = automatic_restore_state_path(namespace, key)?;
+        return Ok(ManagedStateReference::Restore {
+            namespace: namespace.to_string(),
+            key: key.to_string(),
+            path,
+        });
+    }
+    if let Some(name) = raw.strip_prefix("project:") {
+        return Ok(ManagedStateReference::Project(
+            resolve_state_destination_path(name)?,
+        ));
+    }
+    if value.exists() || !is_bare_state_name(value) {
+        if value.exists() && read_automatic_restore_state(value).is_ok() {
+            if let Some(summary) = list_automatic_restore_states()?
+                .into_iter()
+                .find(|summary| summary.path == value)
+            {
+                return Ok(ManagedStateReference::Restore {
+                    namespace: summary.namespace,
+                    key: summary.key,
+                    path: summary.path,
+                });
+            }
+        }
+        return Ok(ManagedStateReference::Project(value.to_path_buf()));
+    }
+
+    validate_state_management_name(raw)?;
+    let project_path = resolve_state_reference_path(value)?;
+    let mut matches = Vec::new();
+    if project_path.exists() {
+        matches.push(ManagedStateReference::Project(project_path.clone()));
+    }
+    let bare_key = Path::new(raw)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or(raw);
+    for summary in list_automatic_restore_states()?
+        .into_iter()
+        .filter(|summary| summary.key == bare_key)
+    {
+        matches.push(ManagedStateReference::Restore {
+            namespace: summary.namespace,
+            key: summary.key,
+            path: summary.path,
+        });
+    }
+    match matches.len() {
+        0 => Ok(ManagedStateReference::Project(project_path)),
+        1 => Ok(matches.remove(0)),
+        _ => bail!(
+            "ambiguous_state: `{raw}` matches more than one project/restore state; use project:{raw} or restore:<namespace>/{bare_key}"
+        ),
+    }
+}
+
+fn destination_for_managed_state(source: &ManagedStateReference, value: &str) -> Result<PathBuf> {
+    match source {
+        ManagedStateReference::Project(_) => {
+            if value.starts_with("restore:") {
+                bail!("invalid_args: state rename cannot move a project state into automatic restore storage");
+            }
+            resolve_state_destination_path(value.strip_prefix("project:").unwrap_or(value))
+        }
+        ManagedStateReference::Restore { namespace, .. } => {
+            if value.starts_with("project:") {
+                bail!("invalid_args: state rename cannot move automatic restore state into project storage");
+            }
+            if let Some(reference) = value.strip_prefix("restore:") {
+                let (new_namespace, key) = reference.split_once('/').context(
+                    "invalid_args: restore state references use restore:<namespace>/<key>",
+                )?;
+                automatic_restore_state_path(new_namespace, key)
+            } else {
+                let key = value.strip_suffix(".json").unwrap_or(value);
+                automatic_restore_state_path(namespace, key)
+            }
+        }
+    }
+}
+
 fn resolve_state_reference_path(path: &Path) -> Result<PathBuf> {
     if path.exists() || !is_bare_state_name(path) {
         return Ok(path.to_path_buf());
@@ -11974,6 +12766,39 @@ fn list_project_state_files() -> Result<Vec<Value>> {
         if path.extension().and_then(|value| value.to_str()) != Some("json") {
             continue;
         }
+        if matches!(is_automatic_restore_state_file(&path), Ok(true)) {
+            let Ok(read) = read_automatic_restore_state(&path) else {
+                continue;
+            };
+            let name = path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+                .to_string();
+            let modified_at = fs::metadata(&path)
+                .ok()
+                .and_then(|metadata| metadata.modified().ok())
+                .and_then(system_time_ms);
+            let mut entry = json!({
+                "name": name,
+                "id": format!("project:{}", path.file_stem().and_then(|value| value.to_str()).unwrap_or("")),
+                "scope": "project",
+                "fileName": path.file_name().and_then(|value| value.to_str()).unwrap_or(""),
+                "path": path,
+                "schemaVersion": read.state.schema_version,
+                "kind": read.state.kind,
+                "createdAt": read.state.created_at,
+                "updatedAt": read.state.updated_at,
+                "counts": read.state.counts(),
+                "bytes": read.bytes,
+                "encryption": state_encryption_value(&read.encryption),
+            });
+            if let Some(modified_at) = modified_at {
+                entry["modifiedAt"] = json!(modified_at);
+            }
+            states.push(entry);
+            continue;
+        }
         let Ok(summary) = read_state_file_summary(&path) else {
             continue;
         };
@@ -11983,6 +12808,48 @@ fn list_project_state_files() -> Result<Vec<Value>> {
         let left_created = left.get("createdAt").and_then(Value::as_u64).unwrap_or(0);
         let right_created = right.get("createdAt").and_then(Value::as_u64).unwrap_or(0);
         right_created.cmp(&left_created)
+    });
+    Ok(states)
+}
+
+fn list_all_managed_state_files() -> Result<Vec<Value>> {
+    let mut states = list_project_state_files()?;
+    for summary in list_automatic_restore_states()? {
+        states.push(json!({
+            "name": summary.key,
+            "id": format!("restore:{}/{}", summary.namespace, summary.key),
+            "scope": "restore",
+            "namespace": summary.namespace,
+            "fileName": summary.path.file_name().and_then(|value| value.to_str()).unwrap_or(""),
+            "path": summary.path,
+            "schemaVersion": pire_browser_core::restore_state::RESTORE_STATE_SCHEMA_VERSION,
+            "kind": pire_browser_core::restore_state::RESTORE_STATE_KIND,
+            "createdAt": summary.created_at,
+            "updatedAt": summary.updated_at,
+            "counts": summary.counts,
+            "bytes": summary.bytes,
+            "encryption": state_encryption_value(&summary.encryption),
+        }));
+    }
+    for state in &mut states {
+        if state.get("scope").is_none() {
+            state["scope"] = json!("project");
+            let name = state.get("name").and_then(Value::as_str).unwrap_or("");
+            state["id"] = json!(format!("project:{name}"));
+        }
+    }
+    states.sort_by(|left, right| {
+        let left_updated = left
+            .get("updatedAt")
+            .or_else(|| left.get("createdAt"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let right_updated = right
+            .get("updatedAt")
+            .or_else(|| right.get("createdAt"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        right_updated.cmp(&left_updated)
     });
     Ok(states)
 }
@@ -12070,17 +12937,6 @@ fn state_list_text(states: &[Value]) -> String {
         ));
     }
     lines.join("\n")
-}
-
-fn state_matches_clear_name(state: &Value, name: &str) -> bool {
-    let file_name_matches = state.get("name").and_then(Value::as_str) == Some(name)
-        || state.get("fileName").and_then(Value::as_str) == Some(name);
-    let profile_name_matches = state
-        .get("source")
-        .and_then(|source| source.get("profileName"))
-        .and_then(Value::as_str)
-        == Some(name);
-    file_name_matches || profile_name_matches
 }
 
 fn append_state_save_path_warning(result: &mut Value, path: &Path) {
@@ -12466,8 +13322,8 @@ fn send_to_session(
     Ok((serde_json::from_str(&response)?, session.session_id))
 }
 
-fn send_to_named_session(
-    profile_name: &str,
+fn send_to_browser_session_or_launch(
+    target: &BrowserTarget,
     args: &[String],
     request: &RpcRequest,
     domain_policy: &DomainPolicyDecision,
@@ -12478,21 +13334,42 @@ fn send_to_named_session(
     user_agent_override: Option<&str>,
     launch_plugin_runtime: Option<&LaunchPluginRuntime<'_>>,
 ) -> Result<(RpcResponse, String)> {
-    validate_profile_name(profile_name)?;
     cleanup_stale_sessions(now_ms())?;
-    if let Some(session) = live_session_for_profile_name(profile_name)? {
-        let session_id = session.session_id;
-        return send_to_session(Some(&session_id), request);
+    if let Some(session) = live_session_for_browser_target(target)? {
+        let session_id = session.session_id.clone();
+        let restore_diagnostic =
+            if target.restore.requested && session.restore_key.as_deref() != target.restore_key() {
+                configure_restore_for_session(target, &session)?
+            } else {
+                None
+            };
+        let (mut response, session_id) = send_to_session(Some(&session_id), request)?;
+        append_restore_diagnostic(&mut response, restore_diagnostic.as_ref());
+        let restore_validation = response
+            .ok
+            .then(|| validate_restore_after_navigation(target, &session, args))
+            .flatten();
+        append_restore_validation_diagnostic(&mut response, restore_validation.as_ref());
+        append_legacy_session_name_diagnostic(&mut response, target);
+        return Ok((response, session_id));
     }
 
+    if matches!(target.selector, SessionTarget::Id(_)) {
+        bail!("session_not_found: no live pire-browser session matched the requested UUID");
+    }
     if is_controlled_close_command(args) {
         bail!(
-            "session_not_found: no live pire-browser session found for profile name `{profile_name}`. `--session-name {profile_name} close` does not launch Firefox; run `pire-browser session list` to inspect live sessions."
+            "session_not_found: no live pire-browser session named `{}` in namespace `{}`. `close` does not launch Firefox; run `pire-browser session list` to inspect live sessions.",
+            target.session_name(),
+            target.namespace
         );
     }
     if !can_auto_launch_for_remote_args(args) {
         bail!(
-            "session_not_found: no live pire-browser session found for profile name `{profile_name}`. Run `pire-browser --session-name {profile_name} open <url>` to launch it or `pire-browser session list` to inspect live sessions."
+            "session_not_found: no live pire-browser session named `{}` in namespace `{}`. Run `pire-browser --session {} open <url>` to launch it or `pire-browser session list` to inspect live sessions.",
+            target.session_name(),
+            target.namespace,
+            target.session_name()
         );
     }
 
@@ -12501,7 +13378,9 @@ fn send_to_named_session(
     }
     let options = apply_launch_mutators(
         LaunchOptions {
-            profile: profile_name.to_string(),
+            session_name: target.session_name().to_string(),
+            namespace: target.namespace.clone(),
+            profile: target.profile.clone(),
             url: launch_url_for_remote_args(args),
             firefox_path: firefox_path_override.map(ToString::to_string),
             download_dir: download_path_override.map(Path::to_path_buf),
@@ -12513,8 +13392,12 @@ fn send_to_named_session(
     )?;
     let mut options = options;
     options.url = launch_url_for_remote_args_after_mutators(args, launch_plugin_runtime);
+    if target.restore.requested {
+        options.url = None;
+    }
     let mut launch_result = launch_firefox_with_lazy_setup(options)?;
     let session_id = launch_result.session.session_id.clone();
+    let restore_diagnostic = configure_restore_for_session(target, &launch_result.session)?;
     let request = request_with_launch_plugin_init_scripts(request, args, launch_plugin_runtime)?;
     if should_register_launch_plugin_init_scripts_after_launch(args, launch_plugin_runtime) {
         if let Some(runtime) = launch_plugin_runtime {
@@ -12524,17 +13407,27 @@ fn send_to_named_session(
             )?;
         }
     }
-    if !has_launch_plugin_init_scripts(launch_plugin_runtime) {
+    if !target.restore.requested && !has_launch_plugin_init_scripts(launch_plugin_runtime) {
         launch_result = wait_for_auto_launched_open_page(launch_result, args)?;
-        if let Some(response) = auto_launched_open_response(args, &launch_result) {
-            return Ok(response);
+        if let Some((mut response, session_id)) = auto_launched_open_response(args, &launch_result)
+        {
+            append_restore_diagnostic(&mut response, restore_diagnostic.as_ref());
+            return Ok((response, session_id));
         }
     }
-    send_to_session(Some(&session_id), &request)
+    let (mut response, session_id) = send_to_session(Some(&session_id), &request)?;
+    append_restore_diagnostic(&mut response, restore_diagnostic.as_ref());
+    let restore_validation = response
+        .ok
+        .then(|| validate_restore_after_navigation(target, &launch_result.session, args))
+        .flatten();
+    append_restore_validation_diagnostic(&mut response, restore_validation.as_ref());
+    append_legacy_session_name_diagnostic(&mut response, target);
+    Ok((response, session_id))
 }
 
 fn dispatch_remote_request_or_exit(
-    target: &SessionTarget,
+    target: &BrowserTarget,
     args: &[String],
     request: &RpcRequest,
     domain_decision: &DomainPolicyDecision,
@@ -12547,130 +13440,18 @@ fn dispatch_remote_request_or_exit(
     user_agent_override: Option<&str>,
     launch_plugin_runtime: Option<&LaunchPluginRuntime<'_>>,
 ) -> Result<(RpcResponse, String)> {
-    let dispatch_result = match target {
-        SessionTarget::Id(session_id) => send_to_session(Some(session_id), request),
-        SessionTarget::Name(profile_name) => send_to_named_session(
-            profile_name,
-            args,
-            request,
-            domain_decision,
-            firefox_path_override,
-            download_path_override,
-            launch_headless,
-            launch_extra_args,
-            user_agent_override,
-            launch_plugin_runtime,
-        ),
-        SessionTarget::Default => match send_to_session(None, request) {
-            Ok(result) => Ok(result),
-            Err(err) if should_auto_launch_remote(None, args, &err) => {
-                cleanup_stale_sessions(now_ms())?;
-                if let Some(url) = launch_url_for_remote_args(args) {
-                    if let Err(err) = ensure_url_allowed(domain_decision, &url) {
-                        exit_with_anyhow_error_with_domain_policy(
-                            err,
-                            json,
-                            ignored_global_flags,
-                            &domain_decision.warnings,
-                        )?;
-                        unreachable!();
-                    }
-                }
-                let options = match apply_launch_mutators(
-                    LaunchOptions {
-                        profile: "Default".to_string(),
-                        url: launch_url_for_remote_args(args),
-                        firefox_path: firefox_path_override.map(ToString::to_string),
-                        download_dir: download_path_override.map(Path::to_path_buf),
-                        headless: launch_headless,
-                        extra_args: launch_extra_args.to_vec(),
-                        user_agent: user_agent_override.map(ToString::to_string),
-                    },
-                    launch_plugin_runtime,
-                ) {
-                    Ok(options) => options,
-                    Err(err) => {
-                        exit_with_anyhow_error_with_domain_policy(
-                            err,
-                            json,
-                            ignored_global_flags,
-                            &domain_decision.warnings,
-                        )?;
-                        unreachable!();
-                    }
-                };
-                let mut options = options;
-                options.url =
-                    launch_url_for_remote_args_after_mutators(args, launch_plugin_runtime);
-                let launch_result = match launch_firefox_with_lazy_setup(options) {
-                    Ok(result) => result,
-                    Err(err) => {
-                        exit_with_anyhow_error_with_domain_policy(
-                            err,
-                            json,
-                            ignored_global_flags,
-                            &domain_decision.warnings,
-                        )?;
-                        unreachable!();
-                    }
-                };
-                if should_register_launch_plugin_init_scripts_after_launch(
-                    args,
-                    launch_plugin_runtime,
-                ) {
-                    if let Some(runtime) = launch_plugin_runtime {
-                        register_launch_plugin_init_scripts_for_session(
-                            &launch_result.session.session_id,
-                            runtime.init_scripts.borrow().as_slice(),
-                        )?;
-                    }
-                }
-                let request =
-                    request_with_launch_plugin_init_scripts(request, args, launch_plugin_runtime)?;
-                if !has_launch_plugin_init_scripts(launch_plugin_runtime) {
-                    let launch_result = wait_for_auto_launched_open_page(launch_result, args)?;
-                    if let Some(response) = auto_launched_open_response(args, &launch_result) {
-                        Ok(response)
-                    } else {
-                        match send_to_session(None, &request) {
-                            Ok(result) => Ok(result),
-                            Err(err) => {
-                                exit_with_anyhow_error_with_domain_policy(
-                                    err,
-                                    json,
-                                    ignored_global_flags,
-                                    &domain_decision.warnings,
-                                )?;
-                                unreachable!();
-                            }
-                        }
-                    }
-                } else {
-                    match send_to_session(None, &request) {
-                        Ok(result) => Ok(result),
-                        Err(err) => {
-                            exit_with_anyhow_error_with_domain_policy(
-                                err,
-                                json,
-                                ignored_global_flags,
-                                &domain_decision.warnings,
-                            )?;
-                            unreachable!();
-                        }
-                    }
-                }
-            }
-            Err(err) => {
-                exit_with_anyhow_error_with_domain_policy(
-                    err,
-                    json,
-                    ignored_global_flags,
-                    &domain_decision.warnings,
-                )?;
-                unreachable!();
-            }
-        },
-    };
+    let dispatch_result = send_to_browser_session_or_launch(
+        target,
+        args,
+        request,
+        domain_decision,
+        firefox_path_override,
+        download_path_override,
+        launch_headless,
+        launch_extra_args,
+        user_agent_override,
+        launch_plugin_runtime,
+    );
     match dispatch_result {
         Ok(result) => Ok(result),
         Err(err) => {
@@ -13092,12 +13873,14 @@ fn first_positional_arg(args: &[String], value_flags: &[&str]) -> Option<String>
     None
 }
 
+#[cfg(test)]
 fn should_auto_launch_remote(session: Option<&str>, args: &[String], err: &anyhow::Error) -> bool {
     session.is_none()
         && can_auto_launch_for_remote_args(args)
         && is_auto_launchable_session_error(err)
 }
 
+#[cfg(test)]
 fn is_auto_launchable_session_error(err: &anyhow::Error) -> bool {
     let details = format!("{err:#}");
     details.contains("extension_disconnected: no live Firefox extension session found")
@@ -13143,6 +13926,8 @@ mod tests {
     fn test_session() -> SessionInfo {
         SessionInfo {
             session_id: "session-1".to_string(),
+            session_name: Some("default".to_string()),
+            namespace: Some(DEFAULT_NAMESPACE.to_string()),
             profile_name: Some("packed-mcp-web-ext".to_string()),
             profile_id: "profile-1".to_string(),
             pipe_name: "pipe-1".to_string(),
@@ -13152,6 +13937,7 @@ mod tests {
             last_heartbeat_at: 2,
             last_focused_at: 3,
             active_page: None,
+            ..SessionInfo::default()
         }
     }
 
@@ -13190,8 +13976,9 @@ mod tests {
             ],
         );
 
-        assert!(text.contains("1 managed Firefox profile"));
-        assert!(text.contains("Work live session=session-1"));
+        assert!(text.contains("1 preserved legacy persistent Firefox profile"));
+        assert!(text.contains("Work [legacy persistent] live session=session-1"));
+        assert!(text.contains("Use: pire-browser --profile"));
         assert!(text.contains("2 importable Firefox profile"));
         assert!(text.contains("default-release default"));
         assert!(text.contains("profiles import <name-or-path> --name <managed-name>"));
@@ -13201,40 +13988,42 @@ mod tests {
     fn session_info_reports_active_named_restore_target() {
         let now = 10;
         let mut session = test_session();
-        session.profile_name = Some("work".to_string());
+        session.session_name = Some("work".to_string());
+        session.restore_key = Some("work".to_string());
         session.last_heartbeat_at = now;
-        let profiles = vec![test_profile("work", Some("session-1"), true)];
-        let restore = RestoreCliOptions {
-            requested: true,
-            name: None,
-            save: Some("auto".to_string()),
-            check_text: None,
+        let target = BrowserTarget {
+            selector: SessionTarget::Name("work".to_string()),
+            restore: RestoreCliOptions {
+                requested: true,
+                save: Some("auto".to_string()),
+                ..RestoreCliOptions::default()
+            },
+            ..BrowserTarget::default()
         };
         let value = session_info_value_from_parts(
-            &SessionTarget::Name("work".to_string()),
-            &restore,
+            &target,
             Path::new("/tmp/pire-browser"),
             &[session],
-            &profiles,
+            &[],
             now,
         )
         .unwrap();
-        assert_eq!(value["target"]["kind"], "namedProfile");
+        assert_eq!(value["target"]["kind"], "sessionName");
         assert_eq!(value["target"]["live"], true);
-        assert_eq!(value["restore"]["status"], "profileActive");
+        assert_eq!(value["restore"]["status"], "liveSessionActive");
         assert_eq!(value["restore"]["save"], "auto");
         assert_eq!(value["restore"]["effectiveName"], "work");
         assert_eq!(value["counts"]["liveSessions"], 1);
         assert!(value.get("profiles").is_none());
         assert_eq!(
             value["nextActions"][0],
-            "pire-browser --session work --restore snapshot -i"
+            "pire-browser --namespace default --session work snapshot -i"
         );
-        assert!(session_info_text(&value).contains("Status: profileActive"));
+        assert!(session_info_text(&value).contains("Status: liveSessionActive"));
     }
 
     #[test]
-    fn session_info_reports_missing_profile_with_open_next_action() {
+    fn session_info_reports_missing_restore_state_with_open_next_action() {
         let root = std::env::temp_dir().join(format!(
             "pire-browser-session-info-missing-{}",
             std::process::id()
@@ -13242,32 +14031,27 @@ mod tests {
         if root.exists() {
             fs::remove_dir_all(&root).unwrap();
         }
-        let restore = RestoreCliOptions {
-            requested: true,
-            name: Some("work".to_string()),
-            save: None,
-            check_text: Some("Dashboard".to_string()),
+        let target = BrowserTarget {
+            selector: SessionTarget::Name("work".to_string()),
+            restore: RestoreCliOptions {
+                requested: true,
+                name: Some("auth".to_string()),
+                check_text: Some("Dashboard".to_string()),
+                ..RestoreCliOptions::default()
+            },
+            ..BrowserTarget::default()
         };
-        let value = session_info_value_from_parts(
-            &SessionTarget::Name("work".to_string()),
-            &restore,
-            &root,
-            &[],
-            &[],
-            10,
-        )
-        .unwrap();
-        assert_eq!(value["target"]["profileExists"], false);
-        assert_eq!(value["restore"]["status"], "profileMissing");
-        assert_eq!(value["restore"]["effectiveName"], "work");
-        assert_eq!(value["restore"]["checkTextSupported"], false);
+        let value = session_info_value_from_parts(&target, &root, &[], &[], 10).unwrap();
+        assert!(value["target"]["profileExists"].is_null());
+        assert_eq!(value["restore"]["status"], "restoreStateMissing");
+        assert_eq!(value["restore"]["effectiveName"], "auth");
         assert!(value["restore"]["note"]
             .as_str()
             .unwrap()
-            .contains("--restore-check-text is accepted"));
+            .contains("cookies and origin-keyed localStorage"));
         assert_eq!(
             value["nextActions"][0],
-            "pire-browser --session work --restore open <url>"
+            "pire-browser --namespace default --session work open <url>"
         );
     }
 
@@ -13280,18 +14064,14 @@ mod tests {
         if root.exists() {
             fs::remove_dir_all(&root).unwrap();
         }
-        let value = session_info_value_from_parts(
-            &SessionTarget::Default,
-            &RestoreCliOptions::default(),
-            &root,
-            &[],
-            &[],
-            10,
-        )
-        .unwrap();
+        let value =
+            session_info_value_from_parts(&BrowserTarget::default(), &root, &[], &[], 10).unwrap();
         assert_eq!(value["target"]["kind"], "default");
         assert_eq!(value["restore"]["status"], "noLiveSession");
-        assert_eq!(value["nextActions"][0], "pire-browser open <url>");
+        assert_eq!(
+            value["nextActions"][0],
+            "pire-browser --namespace default --session default open <url>"
+        );
     }
 
     #[test]
@@ -13300,8 +14080,7 @@ mod tests {
         session.profile_name = Some("work".to_string());
         session.last_heartbeat_at = 1;
         let value = session_info_value_from_parts(
-            &SessionTarget::Id("session-1".to_string()),
-            &RestoreCliOptions::default(),
+            &BrowserTarget::from(SessionTarget::Id("session-1".to_string())),
             Path::new("/tmp/pire-browser"),
             &[session],
             &[],
@@ -13311,38 +14090,32 @@ mod tests {
         assert_eq!(value["restore"]["status"], "sessionStale");
         assert_eq!(value["counts"]["liveSessions"], 0);
         assert_eq!(value["counts"]["staleSessions"], 1);
-        assert_eq!(value["nextActions"][0], "pire-browser session cleanup");
+        assert_eq!(
+            value["nextActions"][0],
+            "pire-browser --namespace default session cleanup"
+        );
     }
 
     #[test]
-    fn session_info_reports_launcher_without_bridge() {
-        let mut profile = test_profile("work", None, true);
-        profile.launcher_live = true;
-        profile.launcher_pid = Some(456);
+    fn session_info_reports_preserved_legacy_profile() {
+        let profile = test_profile("work", None, true);
         let value = session_info_value_from_parts(
-            &SessionTarget::Name("work".to_string()),
-            &RestoreCliOptions {
-                requested: true,
-                name: None,
-                save: None,
-                check_text: None,
-            },
+            &BrowserTarget::from(SessionTarget::Name("work".to_string())),
             Path::new("/tmp/pire-browser"),
             &[],
             &[profile],
             10,
         )
         .unwrap();
-        assert_eq!(value["restore"]["status"], "profileLaunchingNoBridge");
+        assert_eq!(value["restore"]["status"], "legacyProfilePreserved");
         assert!(value["restore"]["note"]
             .as_str()
             .unwrap()
-            .contains("no pire-browser extension session is connected"));
-        assert_eq!(
-            value["nextActions"][0],
-            "pire-browser --session work --restore snapshot -i"
-        );
-        assert_eq!(value["nextActions"][1], "pire-browser doctor --json");
+            .contains("Firefox profile data remains ephemeral"));
+        assert!(value["nextActions"][1]
+            .as_str()
+            .unwrap()
+            .contains("--profile"));
     }
 
     #[test]
@@ -13829,6 +14602,10 @@ mod tests {
     fn firefox_path_override_parses_global_executable_flag() {
         assert_eq!(
             firefox_path_override_from_args(&s(&[
+                "--namespace",
+                "qa",
+                "--session",
+                "firefox-test",
                 "--executable-path",
                 "C:/Firefox/firefox.exe",
                 "open",
@@ -13846,6 +14623,10 @@ mod tests {
     fn download_path_override_parses_global_download_path_flag() {
         assert_eq!(
             download_path_override_from_args(&s(&[
+                "--namespace",
+                "qa",
+                "--session",
+                "download-test",
                 "--download-path",
                 "downloads",
                 "open",
@@ -13863,6 +14644,8 @@ mod tests {
     fn launch_extra_args_parse_global_flag_and_split_commas_or_lines() {
         assert_eq!(
             launch_extra_args_from_args(&s(&[
+                "--session",
+                "args-test",
                 "--args",
                 "-private-window, --disable-features=Example\n--foo=bar",
                 "open",
@@ -13884,6 +14667,10 @@ mod tests {
     fn user_agent_override_parses_global_flag() {
         assert_eq!(
             user_agent_override_from_args(&s(&[
+                "--restore",
+                "auth-key",
+                "--session",
+                "agent-test",
                 "--user-agent",
                 "pire-test/1.0",
                 "open",
@@ -15325,7 +16112,9 @@ mod tests {
     #[test]
     fn launch_mutate_request_and_response_apply_supported_fields() {
         let options = LaunchOptions {
-            profile: "Work".to_string(),
+            session_name: "default".to_string(),
+            namespace: DEFAULT_NAMESPACE.to_string(),
+            profile: Some("Work".to_string()),
             url: Some("https://example.com".to_string()),
             firefox_path: None,
             download_dir: None,
@@ -15844,6 +16633,7 @@ mod tests {
                     window_id: 1,
                     updated_at: 4,
                 }),
+                ..SessionInfo::default()
             },
             profile_name: "Default".to_string(),
             profile_path: PathBuf::from("profile"),
@@ -15852,6 +16642,7 @@ mod tests {
             headless: false,
             extra_args: Vec::new(),
             user_agent: None,
+            ..LaunchResult::default()
         }
     }
 

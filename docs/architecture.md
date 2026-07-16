@@ -8,7 +8,7 @@
 
 Firefox owns the native host lifecycle once the extension is running. The extension starts `pire-browser-host` through Native Messaging, and the CLI talks to that host through current-user IPC.
 
-For the default session, browser-control commands may use the managed Firefox launcher when no live extension session exists. In that cold-start path, release builds prefer a packaged signed XPI and launch Firefox directly; local development falls back to `web-ext` when no XPI is present. The CLI waits for the extension to connect back through Native Messaging, then dispatches the original command over IPC. Explicit `--session <id>` commands remain strict and never auto-launch. `--session-name <name>` maps to a managed Firefox profile name: browser commands reuse a matching live session or launch that named profile, while `--session-name <name> close` targets an existing named live session only.
+For the default session, browser-control commands may use the managed Firefox launcher when no live extension session exists. The default launcher remains `web-ext`; an explicitly selected XPI mode launches Firefox directly with a packaged extension. The CLI waits for the extension to connect back through Native Messaging, then dispatches the original command over IPC. Ordinary and named live sessions run from owned temporary profile roots. `--restore [key]` persists compact cookies and origin-keyed `localStorage`, a named `--profile` source is copied into a temporary snapshot, and an explicit `--profile <path>` deliberately uses durable Firefox profile data. Explicit UUID session targets remain strict and never auto-launch. `--session-name <name>` is retained only as a deprecated alias for `--session <name> --restore <name>`.
 
 ## IPC
 
@@ -21,7 +21,7 @@ For the default session, browser-control commands may use the managed Firefox la
 
 Firefox is the source of truth. The extension tracks tab/window/navigation events and emits heartbeats through Native Messaging. Session files expire when heartbeats stop.
 
-If the user closes a tab, commands that target that tab return `tab_closed`. If Firefox exits or the extension disconnects, the session file is removed or becomes stale and the CLI reports `extension_disconnected`.
+If the user closes a tab, commands that target that tab return `tab_closed`. If Firefox exits or the extension disconnects, the session file is removed or becomes stale and the CLI reports `extension_disconnected`. Marked temporary profile roots are removed after a normal close; lock-blocked or abrupt-exit roots are recovered by the detached cleanup worker or a later owned-root sweep.
 
 The CLI should target browser "pages", not raw Firefox tabs or windows. The background script owns the Firefox-specific routing between `browser.tabs` and `browser.windows`, including popups and new windows, so later session/state work can present a stable page id even when Firefox represents the surface as a tab in a different window.
 

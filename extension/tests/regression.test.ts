@@ -4,12 +4,6 @@ import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
 
-type ClosePlanner = (
-  liveTabs: { id?: number; windowId?: number }[],
-  controlledTabIds: Set<number>,
-  fallbackTabId?: number
-) => { windowIds: number[]; tabIds: number[] };
-
 type DomainPolicyErrorForUrl = (
   input: string,
   policy: { enabled: boolean; patterns: string[] }
@@ -51,22 +45,6 @@ function repoFile(path: string) {
 
 function backgroundSource() {
   return extensionFile("src/background.ts");
-}
-
-function loadClosePlanner(): ClosePlanner {
-  const body = backgroundSource();
-  const start = body.indexOf("function planControlledClose(");
-  const end = body.indexOf("\nfunction tabsInWindows", start);
-  expect(start).toBeGreaterThanOrEqual(0);
-  expect(end).toBeGreaterThan(start);
-  const source = body.slice(start, end);
-  const js = transpileModule(`${source}\nthis.__planControlledClose = planControlledClose;`, {
-    compilerOptions: { module: ModuleKind.ES2020, target: ScriptTarget.ES2020 },
-  }).outputText;
-  const sandbox: { __planControlledClose?: ClosePlanner } = {};
-  runInNewContext(js, sandbox);
-  if (!sandbox.__planControlledClose) throw new Error("planControlledClose did not load");
-  return sandbox.__planControlledClose;
 }
 
 function loadDomainPolicyErrorForUrl(): DomainPolicyErrorForUrl {
@@ -648,17 +626,13 @@ describe("pire-browser command foundations", () => {
     expect(body).toContain("if (!nativeReconnectEnabled) return;");
   });
 
-  it("plans close by controlled ownership without sweeping unrelated windows", () => {
+  it("closes every window in the dedicated session after disconnecting native messaging", () => {
     const body = background();
-    expect(body).toContain("function planControlledClose(");
-    expect(body).toContain("if (windowTabs.every((tab) => controlledTabIds.has(tab.id)))");
-    expect(body).toContain("windowIds.push(windowId)");
-    expect(body).toContain("tabIds.push(...controlledTabs.map((tab) => tab.id))");
-    expect(body).toContain('if (windowIds.length === 0 && tabIds.length === 0 && typeof fallbackTabId === "number")');
-    expect(body).toContain("if (plan.windowIds.length > 0)");
+    expect(body).toContain("const windows = await browser.windows.getAll({ populate: true });");
     expect(body).toContain("disconnectNativeForControlledClose();");
+    expect(body).toContain("for (const window of windows)");
     expect(body).toContain("browser.windows.remove(windowId)");
-    expect(body).toContain("browser.tabs.remove(plan.tabIds)");
+    expect(body).toContain("markWindowClosed(windowId)");
   });
 
   it("suppresses native reconnect before whole-window teardown", () => {
@@ -669,33 +643,6 @@ describe("pire-browser command foundations", () => {
     expect(body.indexOf("disconnectNativeForControlledClose();")).toBeLessThan(
       body.indexOf("await browser.windows.remove(windowId);")
     );
-  });
-
-  it("closes a fully controlled window by window id", () => {
-    const plan = loadClosePlanner()(
-      [
-        { id: 1, windowId: 10 },
-        { id: 2, windowId: 10 },
-      ],
-      new Set([1, 2])
-    );
-    expect(plan).toEqual({ windowIds: [10], tabIds: [] });
-  });
-
-  it("closes only controlled tabs in a mixed window", () => {
-    const plan = loadClosePlanner()(
-      [
-        { id: 1, windowId: 10 },
-        { id: 2, windowId: 10 },
-      ],
-      new Set([1])
-    );
-    expect(plan).toEqual({ windowIds: [], tabIds: [1] });
-  });
-
-  it("falls back to the active tab when no controlled tab exists", () => {
-    const plan = loadClosePlanner()([{ id: 1, windowId: 10 }], new Set(), 1);
-    expect(plan).toEqual({ windowIds: [], tabIds: [1] });
   });
 
   it("settles wait observers and timers through a single cleanup path", () => {
@@ -1007,6 +954,22 @@ describe("pire-browser command foundations", () => {
     expect(body).toContain("displayUrlWithoutQueryOrFragment(state.source.url)");
     expect(body).toContain("restoreCookie");
     expect(body).toContain("browser.tabs.reload(tab.tabId)");
+  });
+
+  it("supports compact multi-origin lifecycle restore without persisting full profiles", () => {
+    const backgroundBody = background();
+    const contentBody = content();
+    expect(backgroundBody).toContain('request.method === "lifecycle_configure"');
+    expect(backgroundBody).toContain('request.method === "lifecycle_export"');
+    expect(backgroundBody).toContain("pendingLifecycleOrigins");
+    expect(backgroundBody).toContain("browser.cookies.getAll({})");
+    expect(backgroundBody).toContain("applyPendingLifecycleOrigin(tabId");
+    expect(backgroundBody).toContain("browser.tabs.reload(tabId)");
+    expect(backgroundBody).toContain('kind: "restore-session-state"');
+    expect(backgroundBody).toContain("const origins = Object.fromEntries");
+    expect(contentBody).toContain('window.addEventListener("pagehide"');
+    expect(contentBody).toContain('type: "lifecycle_pagehide_state"');
+    expect(contentBody).toContain("localStorage: local");
   });
 
   it("checks active-page domain policy before content actions", () => {

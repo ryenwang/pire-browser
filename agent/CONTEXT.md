@@ -84,14 +84,22 @@ pire-browser --session "$SESSION" --restore snapshot
 ```
 
 When the user wants existing Firefox login state, run `pire-browser profiles`,
-ask them to close Firefox if needed, then copy the discovered profile into the
-same managed name with `profiles import Default --name "$SESSION"` or an
-explicit discovered name/path. Import never mutates or continuously syncs the
-original profile. Skip import on later runs and reuse the managed session.
+ask them to close Firefox if needed, then use a discovered or imported source
+as a one-time snapshot bootstrap:
 
-Treat saved state, cookies, auth data, and reports as secret-bearing. State files
-are plaintext unless the user configured `PIRE_BROWSER_ENCRYPTION_KEY` or
-`AGENT_BROWSER_ENCRYPTION_KEY`; never print either key.
+```bash
+pire-browser --profile Default --session "$SESSION" --restore open <url>
+```
+
+Later runs can omit `--profile Default`; compact restore keeps cookies and
+origin-keyed `localStorage`. Use a dedicated `--profile <path>` only when the
+workflow requires durable IndexedDB, service workers, passwords, history, or
+cache. Ordinary and named sessions use temporary profiles and downloads.
+
+Treat saved state, cookies, auth data, and reports as secret-bearing. Automatic
+restore and manual state files are plaintext unless the user configured
+`PIRE_BROWSER_ENCRYPTION_KEY` or `AGENT_BROWSER_ENCRYPTION_KEY`; never print
+either key.
 
 ## QA Evidence
 

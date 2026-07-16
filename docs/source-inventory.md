@@ -1,6 +1,6 @@
 # Source Inventory
 
-Last reviewed: 2026-07-12
+Last reviewed: 2026-07-15
 
 This inventory records which public source sets are authoritative for `pire-browser`, which artifacts are generated or runtime-only, and where public ambiguity lives. It is intentionally not a file-by-file listing.
 
@@ -9,7 +9,7 @@ This inventory records which public source sets are authoritative for `pire-brow
 | Source set | Role | Notes |
 | --- | --- | --- |
 | `cli/Cargo.toml`, `cli/Cargo.lock` | Rust workspace | Workspace root for the CLI, core library, and Native Messaging host. Run Rust commands from `cli/`, for example `cd cli && cargo test -q`. |
-| `cli/pire-browser-core/` | Core Rust implementation | CLI parsing, launch/session lifecycle, managed Firefox profile import, IPC, setup/status, encrypted auth vault, state, policy guardrails, Firefox integration, and shared protocol behavior. |
+| `cli/pire-browser-core/` | Core Rust implementation | CLI parsing, marked temporary-profile lifecycle, compact restore state, Firefox source snapshots and explicit durable profiles, legacy profile recovery, IPC, setup/status, encrypted auth vault, policy guardrails, Firefox integration, and shared protocol behavior. `restore_state.rs` owns automatic multi-origin restore schema/encryption/expiry; legacy manual state compatibility remains in `state_file.rs`. |
 | `cli/pire-browser-cli/` | User-facing executable | CLI entrypoint, command/error presentation over the core crate, and the stdio MCP server. |
 | `cli/pire-browser-host/` | Native Messaging host | Firefox extension bridge to the Rust core and per-user CLI IPC. |
 | `extension/src/` | Firefox WebExtension source | Browser-side command handling, DOM inspection/actions, dialogs, refs, frames, and screenshot capture. |
@@ -26,8 +26,8 @@ This inventory records which public source sets are authoritative for `pire-brow
 | `docs/src/feature-status.mjs` | Public docs reality map | Curated site-facing feature status derived from README, skill content, CLI/help surface, and extension behavior. |
 | `docs/compatibility-summary.md` | Public compatibility summary | Coarse product-facing status table. Do not use it for detailed planning or implementation priority. |
 | `tests` fixture tree | Test fixtures | Local HTML/session fixtures and shared policy contract fixtures. |
-| `scripts/` | Maintainer automation | Install, package, npx no-global-install package smoke, Pi fresh-install/runtime-discovery smoke, packed-package CLI/browser/MCP browser/file-transfer/network/state-auth smoke, state/session/policy/download/upload lifecycle, trusted npm publishing helpers, release validation, and repository-only tests for packaged install helpers. |
-| `.github/workflows/` | Public CI/release automation | Pages deployment, platform package builds with native context-budget enforcement, optional manual agent workflow evals, trusted npm publish gated by reusable packed browser plus MCP stdio/browser/file-transfer/network/state-auth smoke, post-publish Pi install/runtime-discovery smoke, and manual packed-release smoke checks. |
+| `scripts/` | Maintainer automation | Install, package, npx no-global-install package smoke, Pi fresh-install/runtime-discovery smoke, packed-package CLI/browser/MCP and session-lifecycle smoke, state/policy/download/upload checks, trusted npm publishing helpers, release validation, and repository-only tests for packaged install helpers. |
+| `.github/workflows/` | Public CI/release automation | Pages deployment, platform package builds with native context-budget enforcement, optional manual agent workflow evals, trusted npm publish gated by reusable packed browser/MCP/lifecycle smoke, post-publish Pi install/runtime-discovery smoke, and manual packed-release smoke checks across Windows x64, macOS ARM64, and Linux x64. |
 | `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`, `.gitattributes` | Public entry points | Product scope, usage, release notes, package scripts, license terms, npm package shape including the default `web-ext` runtime dependency and optional Pi core peers, and repository line-ending/binary policy. |
 
 ## Generated Or Runtime Artifacts
@@ -44,14 +44,14 @@ This inventory records which public source sets are authoritative for `pire-brow
 | `bin/<platform>-<arch>/` | Generated platform binaries | Local/CI build output copied from `cli/target/...` by platform packaging scripts; ignored and regenerated. |
 | Public root npm package contents | Curated distribution surface | `package.json#files` should include the JS launcher, Pi extension runtime, extension assets, `agent/`, `skills/`, `skill-data/`, root `pire-browser.schema.json`, legacy `agent-browser.schema.json`, required postinstall scripts, `LICENSE`, and `README.md`; it should exclude `docs/`, repository test fixtures, `site/`, `cli/`, and native binary directories. |
 | Public platform npm package contents | Curated native distribution surface | Each optional package should include only its native binary pair, README, LICENSE, and package metadata. |
-| `.pire-state/`, OS app-data `pire-browser/` directories | Local runtime state | Sessions, profiles, profile-import metadata, encrypted auth vault/key files, cookies, confirmations, downloads, uploads, policies, bounded redacted activity logs, dashboard state/log files, and update cache are not portable source. |
+| `.pire-state/`, OS app-data `pire-browser/`, and marked OS-temp `pire-browser/` roots | Local runtime state | Project state files, compact restore files, live-session metadata, preserved legacy/imported profile sources, encrypted auth vault/key files, confirmations, uploads, policies, logs, and update cache are not portable source. Ordinary profiles and default downloads are marker-owned temporary artifacts; explicit profile and download paths are durable user state. |
 | Root logs, screenshots, profiler bundles, recording bundles, and CSV captures | Runtime/background artifacts | Manual-session outputs, `profiler stop` JSON bundles, `record stop` screenshot-sequence evidence directories, and local diagnostics are not authoritative implementation source. |
 
 ## Conflicts Or Ambiguities
 
 - `extension/dist/` can diverge from `extension/src/`; prefer `extension/src/` for implementation review and rebuild dist intentionally.
 - Launch defaults to the package-local `web-ext` helper even when `extension/pire-browser.xpi` exists; source checkouts without installed npm dependencies fall back to `npx --yes web-ext`. Direct Firefox/XPI launch is opt-in through `PIRE_BROWSER_EXTENSION_MODE=xpi`.
-- Runtime session artifacts under `target/`, `.pire-state/`, and OS app-data directories may be useful evidence for a session but are not product source.
+- Runtime session artifacts under `target/`, `.pire-state/`, OS app-data, and marked OS temporary roots may be useful evidence for a session but are not product source. Never classify a path as cleanup-owned without its valid lifecycle marker.
 - Installed package guidance under `agent/` is authoritative for public installs; repository docs under `docs/` are product-facing development context.
 - The public Pages site under `site/` is generated from `docs/src/` and `docs/public/`; regenerate instead of editing generated pages by hand.
 

@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
 use crossbeam_channel::{bounded, Sender};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -18,7 +19,12 @@ use crate::native::{read_native_message, write_native_message};
 use crate::protocol::{
     NativeInbound, NativeOutbound, RpcError, RpcRequest, RpcResponse, EXTENSION_ID,
 };
-use crate::session::{now_ms, remove_session, write_session_atomic, ActivePageInfo, SessionInfo};
+use crate::restore_state::{
+    read_automatic_restore_state, write_automatic_restore_state, AutomaticRestoreState,
+};
+use crate::session::{
+    now_ms, remove_session, write_session_atomic, ActivePageInfo, SessionInfo, SessionProfileKind,
+};
 use crate::transfer::{ResultTransferMeta, ScreenshotTransferMeta, TransferStore};
 
 const OUTBOUND_UPLOAD_CHUNK_BASE64_BYTES: usize = 512 * 1024;
@@ -54,10 +60,37 @@ struct NativeBridge {
     session: SharedSession,
     transfers: Mutex<TransferStore>,
     outbound_uploads: Mutex<OutboundUploadStore>,
+    command_gate: Mutex<()>,
+    restore_lifecycle: Mutex<Option<RestoreLifecycleConfig>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum RestoreSavePolicy {
+    Auto,
+    Always,
+    Never,
+}
+
+#[derive(Debug, Clone)]
+struct RestoreLifecycleConfig {
+    path: PathBuf,
+    save_policy: RestoreSavePolicy,
+    interval_ms: u64,
+    next_save_at: u64,
+    auto_save_allowed: bool,
+    check_url: Option<String>,
+    check_text: Option<String>,
+    check_fn: Option<String>,
 }
 
 impl NativeBridge {
     fn send_request(&self, request: RpcRequest) -> RpcResponse {
+        let _guard = self.command_gate.lock().unwrap();
+        self.send_request_unlocked(request)
+    }
+
+    fn send_request_unlocked(&self, request: RpcRequest) -> RpcResponse {
         let (tx, rx) = bounded::<RpcResponse>(1);
         let screenshot_base_dir = request
             .params
@@ -573,7 +606,13 @@ pub fn run_native_host() -> Result<()> {
     let now = now_ms();
     let session = SessionInfo {
         session_id: session_id.clone(),
+        session_name: None,
+        namespace: None,
         profile_name: None,
+        profile_kind: None,
+        profile_path: None,
+        ephemeral_root: None,
+        restore_key: None,
         profile_id: "pending".into(),
         pipe_name: pipe_name.clone(),
         extension_id: EXTENSION_ID.into(),
@@ -592,6 +631,8 @@ pub fn run_native_host() -> Result<()> {
         session: shared_session.clone(),
         transfers: Mutex::new(TransferStore::default()),
         outbound_uploads: Mutex::new(OutboundUploadStore::default()),
+        command_gate: Mutex::new(()),
+        restore_lifecycle: Mutex::new(None),
     });
 
     {
@@ -616,6 +657,11 @@ pub fn run_native_host() -> Result<()> {
             });
         });
     }
+    {
+        let bridge = bridge.clone();
+        let stop = stop.clone();
+        thread::spawn(move || run_restore_autosave_loop(bridge, stop));
+    }
 
     let mut stdin = stdin();
     loop {
@@ -634,7 +680,11 @@ pub fn run_native_host() -> Result<()> {
 
     stop.store(true, Ordering::SeqCst);
     bridge.transfers.lock().unwrap().clear();
+    let final_session = shared_session.snapshot();
     let _ = remove_session(&session_id);
+    if let Some(ephemeral_root) = final_session.ephemeral_root {
+        let _ = crate::launch::spawn_ephemeral_cleanup_worker(&ephemeral_root);
+    }
     Ok(())
 }
 
@@ -664,10 +714,42 @@ fn handle_pipe_line_inner(bridge: &NativeBridge, line: &str) -> String {
         Ok(request) => {
             let session = bridge.session.snapshot();
             log_host(&pipe_request_log(&request, &session));
-            if request.method == "host_status" {
-                RpcResponse::ok(request.id, json!(bridge.session.snapshot()))
-            } else {
-                bridge.send_request(request)
+            match request.method.as_str() {
+                "host_status" => RpcResponse::ok(request.id, json!(bridge.session.snapshot())),
+                "host_configure_lifecycle" => configure_host_lifecycle(bridge, request),
+                "host_configure_restore" => configure_host_restore(bridge, request),
+                "host_validate_restore" => validate_host_restore(bridge, request),
+                "host_clear_restore_guard" => {
+                    if let Some(config) = bridge.restore_lifecycle.lock().unwrap().as_mut() {
+                        config.auto_save_allowed = true;
+                    }
+                    RpcResponse::ok(request.id, json!({ "cleared": true }))
+                }
+                _ => {
+                    let command_args = request
+                        .params
+                        .get("args")
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default();
+                    let is_close = command_args
+                        .first()
+                        .and_then(Value::as_str)
+                        .is_some_and(|command| matches!(command, "close" | "quit" | "exit"));
+                    let is_state_import = command_args.first().and_then(Value::as_str)
+                        == Some("state")
+                        && command_args.get(1).and_then(Value::as_str) == Some("import");
+                    if is_close {
+                        let _ = save_restore_state(bridge, true);
+                    }
+                    let response = bridge.send_request(request);
+                    if is_state_import && response.ok {
+                        if let Some(config) = bridge.restore_lifecycle.lock().unwrap().as_mut() {
+                            config.auto_save_allowed = true;
+                        }
+                    }
+                    response
+                }
             }
         }
         Err(err) => RpcResponse::err(
@@ -685,6 +767,347 @@ fn handle_pipe_line_inner(bridge: &NativeBridge, line: &str) -> String {
         })
         .to_string()
     })
+}
+
+fn configure_host_lifecycle(bridge: &NativeBridge, request: RpcRequest) -> RpcResponse {
+    let result = (|| -> Result<SessionInfo> {
+        let session_name = required_string_param(&request.params, "sessionName")?;
+        let namespace = required_string_param(&request.params, "namespace")?;
+        let profile_name = required_string_param(&request.params, "profileName")?;
+        let profile_kind: SessionProfileKind = serde_json::from_value(
+            request
+                .params
+                .get("profileKind")
+                .cloned()
+                .context("host lifecycle configuration omitted profileKind")?,
+        )
+        .context("host lifecycle configuration has invalid profileKind")?;
+        let profile_path = PathBuf::from(required_string_param(&request.params, "profilePath")?);
+        let ephemeral_root =
+            PathBuf::from(required_string_param(&request.params, "ephemeralRoot")?);
+        bridge.session.update(|session| {
+            session.session_name = Some(session_name);
+            session.namespace = Some(namespace);
+            session.profile_name = Some(profile_name);
+            session.profile_kind = Some(profile_kind);
+            session.profile_path = Some(profile_path);
+            session.ephemeral_root = Some(ephemeral_root);
+        })?;
+        Ok(bridge.session.snapshot())
+    })();
+    match result {
+        Ok(session) => RpcResponse::ok(request.id, json!(session)),
+        Err(err) => RpcResponse::err(
+            request.id,
+            "invalid_lifecycle_config",
+            format!("failed to configure host lifecycle: {err:#}"),
+        ),
+    }
+}
+
+fn configure_host_restore(bridge: &NativeBridge, request: RpcRequest) -> RpcResponse {
+    let result = (|| -> Result<Value> {
+        let path = PathBuf::from(required_string_param(&request.params, "path")?);
+        let restore_key = required_string_param(&request.params, "restoreKey")?;
+        if !path.is_absolute() {
+            anyhow::bail!("restore state path must be absolute");
+        }
+        let save_policy: RestoreSavePolicy = serde_json::from_value(
+            request
+                .params
+                .get("savePolicy")
+                .cloned()
+                .unwrap_or_else(|| json!("auto")),
+        )
+        .context("restore save policy must be auto, always, or never")?;
+        let interval_ms = request
+            .params
+            .get("intervalMs")
+            .and_then(Value::as_u64)
+            .unwrap_or(30_000);
+        let check_url = optional_string_param(&request.params, "checkUrl");
+        let check_text = optional_string_param(&request.params, "checkText");
+        let check_fn = optional_string_param(&request.params, "checkFn");
+
+        let mut warning = None;
+        let mut auto_save_allowed = true;
+        let mut imported = false;
+        let state = if path.exists() {
+            match read_automatic_restore_state(&path) {
+                Ok(read) => {
+                    imported = true;
+                    Some(read.state)
+                }
+                Err(err) => {
+                    auto_save_allowed = false;
+                    warning = Some(format!(
+                        "Restore state could not be imported; the browser remains usable and auto-save is disabled to preserve the existing file: {err:#}"
+                    ));
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let extension_request = RpcRequest {
+            id: Uuid::new_v4().to_string(),
+            method: "lifecycle_configure".to_string(),
+            params: json!({
+                "state": state,
+                "checkUrl": check_url,
+                "checkText": check_text,
+                "checkFn": check_fn,
+            }),
+        };
+        let extension_response = bridge.send_request(extension_request);
+        if !extension_response.ok {
+            auto_save_allowed = false;
+            let message = extension_response
+                .error
+                .map(|error| format!("{}: {}", error.code, error.message))
+                .unwrap_or_else(|| "unknown extension restore error".to_string());
+            warning = Some(format!(
+                "Restore initialization failed; the browser remains usable and auto-save is disabled: {message}"
+            ));
+        }
+
+        *bridge.restore_lifecycle.lock().unwrap() = Some(RestoreLifecycleConfig {
+            path: path.clone(),
+            save_policy,
+            interval_ms,
+            next_save_at: now_ms().saturating_add(interval_ms),
+            auto_save_allowed,
+            check_url,
+            check_text,
+            check_fn,
+        });
+        bridge.session.update(|session| {
+            session.restore_key = Some(restore_key.clone());
+        })?;
+        Ok(json!({
+            "configured": true,
+            "path": path,
+            "imported": imported,
+            "savePolicy": save_policy,
+            "intervalMs": interval_ms,
+            "autoSaveEnabled": save_policy != RestoreSavePolicy::Never && auto_save_allowed,
+            "warning": warning,
+        }))
+    })();
+    match result {
+        Ok(value) => RpcResponse::ok(request.id, value),
+        Err(err) => RpcResponse::err(
+            request.id,
+            "invalid_restore_config",
+            format!("failed to configure restore lifecycle: {err:#}"),
+        ),
+    }
+}
+
+fn optional_string_param(params: &Value, name: &str) -> Option<String> {
+    params
+        .get(name)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn validate_host_restore(bridge: &NativeBridge, request: RpcRequest) -> RpcResponse {
+    let result = (|| -> Result<Value> {
+        let config = bridge.restore_lifecycle.lock().unwrap().clone();
+        let Some(config) = config else {
+            return Ok(json!({ "checked": false, "reason": "restore_not_configured" }));
+        };
+        if config.check_url.is_none() && config.check_text.is_none() && config.check_fn.is_none() {
+            return Ok(json!({ "checked": false, "reason": "no_validation_checks" }));
+        }
+        let extension_request = RpcRequest {
+            id: Uuid::new_v4().to_string(),
+            method: "lifecycle_export".to_string(),
+            params: json!({
+                "checkUrl": config.check_url,
+                "checkText": config.check_text,
+                "checkFn": config.check_fn,
+            }),
+        };
+        let response = bridge.send_request(extension_request);
+        if !response.ok {
+            let message = response
+                .error
+                .map(|error| format!("{}: {}", error.code, error.message))
+                .unwrap_or_else(|| "unknown restore validation error".to_string());
+            if restore_validation_guards_auto_save(config.save_policy) {
+                if let Some(config) = bridge.restore_lifecycle.lock().unwrap().as_mut() {
+                    config.auto_save_allowed = false;
+                }
+            }
+            return Ok(json!({
+                "checked": true,
+                "passed": false,
+                "warning": format!("Restore validation could not run; the browser remains usable and auto-save is disabled: {message}"),
+            }));
+        }
+        let result = response
+            .result
+            .context("restore validation omitted result")?;
+        let validation = result
+            .get("validation")
+            .cloned()
+            .unwrap_or_else(|| json!({ "passed": true, "checks": [] }));
+        let passed = validation
+            .get("passed")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        if !passed && restore_validation_guards_auto_save(config.save_policy) {
+            if let Some(config) = bridge.restore_lifecycle.lock().unwrap().as_mut() {
+                config.auto_save_allowed = false;
+            }
+        }
+        Ok(json!({
+            "checked": true,
+            "passed": passed,
+            "validation": validation,
+            "warning": (!passed).then_some("Restore validation failed; the browser remains usable, but automatic saving is disabled so the prior state is preserved."),
+        }))
+    })();
+    match result {
+        Ok(value) => RpcResponse::ok(request.id, value),
+        Err(err) => RpcResponse::err(
+            request.id,
+            "restore_validation_failed",
+            format!("failed to validate restore lifecycle: {err:#}"),
+        ),
+    }
+}
+
+fn run_restore_autosave_loop(bridge: Arc<NativeBridge>, stop: Arc<AtomicBool>) {
+    while !stop.load(Ordering::SeqCst) {
+        thread::sleep(Duration::from_millis(250));
+        let due = bridge
+            .restore_lifecycle
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|config| restore_autosave_is_due(config, now_ms()));
+        if !due {
+            continue;
+        }
+        let Ok(_guard) = bridge.command_gate.try_lock() else {
+            continue;
+        };
+        let _ = save_restore_state_unlocked(&bridge, false);
+    }
+}
+
+fn save_restore_state(bridge: &NativeBridge, force: bool) -> Result<Value> {
+    let _guard = bridge.command_gate.lock().unwrap();
+    save_restore_state_unlocked(bridge, force)
+}
+
+fn save_restore_state_unlocked(bridge: &NativeBridge, force: bool) -> Result<Value> {
+    let config = {
+        let mut lifecycle = bridge.restore_lifecycle.lock().unwrap();
+        let Some(config) = lifecycle.as_mut() else {
+            return Ok(json!({ "saved": false, "reason": "restore_not_configured" }));
+        };
+        let now = now_ms();
+        if let Some(reason) = restore_save_skip_reason(config, force, now) {
+            return Ok(json!({ "saved": false, "reason": reason }));
+        }
+        config.next_save_at = now.saturating_add(config.interval_ms);
+        config.clone()
+    };
+
+    let request = RpcRequest {
+        id: Uuid::new_v4().to_string(),
+        method: "lifecycle_export".to_string(),
+        params: json!({
+            "checkUrl": config.check_url,
+            "checkText": config.check_text,
+            "checkFn": config.check_fn,
+        }),
+    };
+    let response = bridge.send_request_unlocked(request);
+    if !response.ok {
+        let message = response
+            .error
+            .map(|error| format!("{}: {}", error.code, error.message))
+            .unwrap_or_else(|| "unknown extension export error".to_string());
+        anyhow::bail!("automatic restore export failed: {message}");
+    }
+    let result = response
+        .result
+        .context("automatic restore export omitted result")?;
+    let validation_passed = result
+        .get("validation")
+        .and_then(|value| value.get("passed"))
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    if !validation_passed && restore_validation_guards_auto_save(config.save_policy) {
+        if let Some(config) = bridge.restore_lifecycle.lock().unwrap().as_mut() {
+            config.auto_save_allowed = false;
+        }
+        return Ok(json!({
+            "saved": false,
+            "reason": "restore_validation_failed",
+            "validation": result.get("validation"),
+        }));
+    }
+    let state: AutomaticRestoreState = serde_json::from_value(
+        result
+            .get("state")
+            .cloned()
+            .context("automatic restore export omitted state")?,
+    )
+    .context("automatic restore export returned invalid state")?;
+    let write = write_automatic_restore_state(&config.path, &state)?;
+    Ok(json!({
+        "saved": true,
+        "path": config.path,
+        "bytes": write.bytes,
+        "encryption": {
+            "encrypted": write.encryption.encrypted,
+            "algorithm": write.encryption.algorithm,
+        },
+        "validation": result.get("validation"),
+    }))
+}
+
+fn restore_autosave_is_due(config: &RestoreLifecycleConfig, now: u64) -> bool {
+    config.interval_ms > 0
+        && config.save_policy != RestoreSavePolicy::Never
+        && now >= config.next_save_at
+}
+
+fn restore_save_skip_reason(
+    config: &RestoreLifecycleConfig,
+    force: bool,
+    now: u64,
+) -> Option<&'static str> {
+    if config.save_policy == RestoreSavePolicy::Never {
+        return Some("save_policy_never");
+    }
+    if restore_validation_guards_auto_save(config.save_policy) && !config.auto_save_allowed {
+        return Some("auto_save_guarded");
+    }
+    if !force && (config.interval_ms == 0 || now < config.next_save_at) {
+        return Some("not_due");
+    }
+    None
+}
+
+fn restore_validation_guards_auto_save(policy: RestoreSavePolicy) -> bool {
+    policy == RestoreSavePolicy::Auto
+}
+
+fn required_string_param(params: &Value, name: &str) -> Result<String> {
+    params
+        .get(name)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .with_context(|| format!("host lifecycle configuration omitted {name}"))
 }
 
 fn log_host(message: &str) {
@@ -757,6 +1180,63 @@ mod tests {
 
     use super::*;
 
+    fn restore_config(policy: RestoreSavePolicy) -> RestoreLifecycleConfig {
+        RestoreLifecycleConfig {
+            path: PathBuf::from("restore.json"),
+            save_policy: policy,
+            interval_ms: 30_000,
+            next_save_at: 40_000,
+            auto_save_allowed: true,
+            check_url: None,
+            check_text: None,
+            check_fn: None,
+        }
+    }
+
+    #[test]
+    fn restore_save_policies_protect_good_state_after_validation_failure() {
+        let mut auto = restore_config(RestoreSavePolicy::Auto);
+        auto.auto_save_allowed = false;
+        assert_eq!(
+            restore_save_skip_reason(&auto, true, 50_000),
+            Some("auto_save_guarded")
+        );
+
+        let mut always = restore_config(RestoreSavePolicy::Always);
+        always.auto_save_allowed = false;
+        assert_eq!(restore_save_skip_reason(&always, true, 50_000), None);
+
+        let never = restore_config(RestoreSavePolicy::Never);
+        assert_eq!(
+            restore_save_skip_reason(&never, true, 50_000),
+            Some("save_policy_never")
+        );
+        assert!(restore_validation_guards_auto_save(RestoreSavePolicy::Auto));
+        assert!(!restore_validation_guards_auto_save(
+            RestoreSavePolicy::Always
+        ));
+    }
+
+    #[test]
+    fn autosave_due_logic_honors_interval_zero_and_command_time() {
+        let mut config = restore_config(RestoreSavePolicy::Auto);
+        assert!(!restore_autosave_is_due(&config, 39_999));
+        assert!(restore_autosave_is_due(&config, 40_000));
+        assert_eq!(
+            restore_save_skip_reason(&config, false, 39_999),
+            Some("not_due")
+        );
+        assert_eq!(restore_save_skip_reason(&config, false, 40_000), None);
+
+        config.interval_ms = 0;
+        assert!(!restore_autosave_is_due(&config, u64::MAX));
+        assert_eq!(
+            restore_save_skip_reason(&config, false, u64::MAX),
+            Some("not_due")
+        );
+        assert_eq!(restore_save_skip_reason(&config, true, u64::MAX), None);
+    }
+
     #[test]
     fn host_debug_log_messages_include_request_ids() {
         let id = "rpc-123";
@@ -783,6 +1263,7 @@ mod tests {
             last_heartbeat_at: 1,
             last_focused_at: 1,
             active_page: None,
+            ..SessionInfo::default()
         };
         let request_log = pipe_request_log(&request, &session);
         assert!(request_log.contains("rpc-456"));
@@ -810,6 +1291,7 @@ mod tests {
             last_heartbeat_at: 1,
             last_focused_at: 1,
             active_page: None,
+            ..SessionInfo::default()
         };
 
         apply_session_event(

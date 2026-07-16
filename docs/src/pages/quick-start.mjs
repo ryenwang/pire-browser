@@ -47,16 +47,19 @@ pire-browser snapshot`),
   code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
 pire-browser --session "$SESSION" --restore open http://localhost:3000
 pire-browser --session "$SESSION" --restore snapshot`),
-  p("Use one worktree-scoped session with <code>--restore</code> for a local app QA loop so cookies, tabs, and managed Firefox profile state stay isolated to that project. In pire-browser, named Firefox profiles provide the persistence store."),
+  p("Use one worktree-scoped session with <code>--restore</code> for a local app QA loop. The browser profile remains temporary; cookies and origin-keyed localStorage are saved separately and restored on the next run."),
   h2("Logged-in app QA", "logged-in-app-qa"),
   code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
 pire-browser profiles
-pire-browser profiles import Default --name "$SESSION"
-pire-browser --session "$SESSION" --restore open http://localhost:3000/app
+pire-browser --profile Default --session "$SESSION" --restore open http://localhost:3000/app
 pire-browser --session "$SESSION" --restore session info --json
 pire-browser --session "$SESSION" --restore snapshot
-pire-browser --session "$SESSION" --restore screenshot`),
-  p("When an app needs existing Firefox login state, list importable local Firefox profiles first, then copy the discovered default or named profile into the same managed profile used by the project session. Run the import once after closing desktop Firefox if the source profile is in use. Later QA runs should skip import and reuse <code>--session \"$SESSION\" --restore</code>."),
+pire-browser --session "$SESSION" --restore screenshot
+pire-browser --session "$SESSION" close
+
+# Later runs use the compact restore state without copying the source again:
+pire-browser --session "$SESSION" --restore open http://localhost:3000/app`),
+  p("When an app needs existing Firefox login state, list discovered profiles and use the profile name as a temporary snapshot source on the first run. Close desktop Firefox first if the source is locked. Later runs can use compact restore without recopying the source. Use an explicit <code>--profile &lt;path&gt;</code> instead when IndexedDB, service workers, history, or full Firefox state must persist."),
   h2("Common commands", "common-commands"),
   code(`pire-browser open                         # Launch/reuse Firefox without navigating
 pire-browser open https://example.com

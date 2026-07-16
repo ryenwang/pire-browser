@@ -78,7 +78,65 @@ pub struct RestoreCliOptions {
     pub requested: bool,
     pub name: Option<String>,
     pub save: Option<String>,
+    pub check_url: Option<String>,
     pub check_text: Option<String>,
+    pub check_fn: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrowserTarget {
+    pub selector: SessionTarget,
+    pub namespace: String,
+    pub profile: Option<String>,
+    pub restore: RestoreCliOptions,
+    pub legacy_session_name: bool,
+}
+
+impl BrowserTarget {
+    pub fn session_name(&self) -> &str {
+        match &self.selector {
+            SessionTarget::Name(name) => name,
+            _ => crate::session::DEFAULT_SESSION_NAME,
+        }
+    }
+
+    pub fn restore_key(&self) -> Option<&str> {
+        if !self.restore.requested {
+            return None;
+        }
+        Some(
+            self.restore
+                .name
+                .as_deref()
+                .unwrap_or_else(|| self.session_name()),
+        )
+    }
+}
+
+impl Default for BrowserTarget {
+    fn default() -> Self {
+        Self::from(SessionTarget::Default)
+    }
+}
+
+impl From<SessionTarget> for BrowserTarget {
+    fn from(selector: SessionTarget) -> Self {
+        Self {
+            selector,
+            namespace: crate::session::DEFAULT_NAMESPACE.to_string(),
+            profile: None,
+            restore: RestoreCliOptions::default(),
+            legacy_session_name: false,
+        }
+    }
+}
+
+impl std::ops::Deref for BrowserTarget {
+    type Target = SessionTarget;
+
+    fn deref(&self) -> &Self::Target {
+        &self.selector
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,7 +192,7 @@ pub enum LocalCommand {
         with_deps: bool,
     },
     Launch {
-        profile: String,
+        target: BrowserTarget,
         url: Option<String>,
         firefox_path: Option<String>,
         domain_policy: DomainPolicyArgs,
@@ -167,7 +225,7 @@ pub enum LocalCommand {
         options: ReadCommandOptions,
     },
     ReadActiveUrl {
-        target: SessionTarget,
+        target: BrowserTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
         domain_policy: DomainPolicyArgs,
@@ -183,6 +241,23 @@ pub enum LocalCommand {
         source: String,
         name: String,
         overwrite: bool,
+    },
+    ProfilesUsage {
+        json: bool,
+        name: Option<String>,
+        all: bool,
+    },
+    ProfilesClean {
+        json: bool,
+        name: Option<String>,
+        all: bool,
+        dry_run: bool,
+        yes: bool,
+    },
+    ProfilesDelete {
+        json: bool,
+        name: String,
+        yes: bool,
     },
     SkillsList {
         json: bool,
@@ -248,10 +323,10 @@ pub enum LocalCommand {
     },
     SessionList {
         json: bool,
+        namespace: String,
     },
     SessionInfo {
-        target: SessionTarget,
-        restore: RestoreCliOptions,
+        target: BrowserTarget,
         json: bool,
     },
     SessionId {
@@ -260,21 +335,24 @@ pub enum LocalCommand {
     SessionAttach {
         session: String,
         json: bool,
+        namespace: String,
     },
     SessionCleanup {
         json: bool,
+        namespace: String,
     },
     CloseAll {
         json: bool,
+        namespace: String,
         ignored_global_flags: Vec<GlobalFlagWarning>,
     },
     CloseOne {
-        target: SessionTarget,
+        target: BrowserTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
     },
     StateSave {
-        target: SessionTarget,
+        target: BrowserTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
         domain_policy: DomainPolicyArgs,
@@ -283,7 +361,7 @@ pub enum LocalCommand {
         path: String,
     },
     StateLoad {
-        target: SessionTarget,
+        target: BrowserTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
         domain_policy: DomainPolicyArgs,
@@ -325,7 +403,7 @@ pub enum LocalCommand {
         older_than_days: u64,
     },
     StateShortcut {
-        target: SessionTarget,
+        target: BrowserTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
         domain_policy: DomainPolicyArgs,
@@ -335,7 +413,7 @@ pub enum LocalCommand {
         args: Vec<String>,
     },
     Download {
-        target: SessionTarget,
+        target: BrowserTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
         domain_policy: DomainPolicyArgs,
@@ -346,7 +424,7 @@ pub enum LocalCommand {
         timeout_ms: u64,
     },
     WaitDownload {
-        target: SessionTarget,
+        target: BrowserTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
         domain_policy: DomainPolicyArgs,
@@ -356,7 +434,7 @@ pub enum LocalCommand {
         timeout_ms: u64,
     },
     Upload {
-        target: SessionTarget,
+        target: BrowserTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
         domain_policy: DomainPolicyArgs,
@@ -374,7 +452,7 @@ pub enum LocalCommand {
         json: bool,
     },
     Remote {
-        target: SessionTarget,
+        target: BrowserTarget,
         json: bool,
         ignored_global_flags: Vec<GlobalFlagWarning>,
         domain_policy: DomainPolicyArgs,
@@ -402,9 +480,12 @@ const GLOBAL_VALUE_FLAGS: &[&str] = &[
     "--session",
     "--session-name",
     "--profile",
+    "--namespace",
     "--state",
     "--restore-save",
+    "--restore-check-url",
     "--restore-check-text",
+    "--restore-check-fn",
     "--color-scheme",
     "--max-output",
     "--allowed-domains",
@@ -438,6 +519,43 @@ const GLOBAL_BOOL_FLAGS: &[&str] = &[
     "--quiet",
     "--verbose",
 ];
+
+pub fn global_value_from_args(raw: &[String], requested: &str) -> Option<String> {
+    let mut index = 0;
+    while index < raw.len() {
+        let flag = raw[index].as_str();
+        if flag == requested {
+            return raw.get(index + 1).cloned();
+        }
+        if flag == "--restore" {
+            index += 1;
+            if raw
+                .get(index)
+                .is_some_and(|value| is_optional_restore_key(value))
+            {
+                index += 1;
+            }
+            continue;
+        }
+        if GLOBAL_VALUE_FLAGS.contains(&flag) {
+            index += 2;
+            continue;
+        }
+        if GLOBAL_BOOL_FLAGS.contains(&flag) {
+            index += 1;
+            if raw
+                .get(index)
+                .and_then(|value| parse_bool_literal(value))
+                .is_some()
+            {
+                index += 1;
+            }
+            continue;
+        }
+        break;
+    }
+    None
+}
 
 const GLOBAL_OPTIONAL_VALUE_FLAGS: &[&str] = &["--restore"];
 
@@ -500,7 +618,9 @@ pub fn apply_config_defaults_with_options(
 
     let mut args = config_args_from_map(&merged, raw);
     push_session_env_defaults(&mut args, raw);
+    push_namespace_env_default(&mut args, raw);
     push_restore_env_defaults(&mut args, raw);
+    push_restore_save_env_default(&mut args, raw);
     push_state_env_defaults(&mut args, raw);
     args.extend_from_slice(raw);
     push_init_script_env_defaults(&mut args);
@@ -528,23 +648,57 @@ fn push_session_env_defaults_from_values(
     profile_env: Option<String>,
     session_env: Option<String>,
 ) {
-    if raw_has_any_flag(raw, &["--session", "--session-name", "--profile"])
-        || raw_has_any_flag(args, &["--session", "--session-name", "--profile"])
+    let has_session = raw_has_any_flag(raw, &["--session", "--session-name"])
+        || raw_has_any_flag(args, &["--session", "--session-name"]);
+    let has_legacy_session_name =
+        raw_has_any_flag(raw, &["--session-name"]) || raw_has_any_flag(args, &["--session-name"]);
+    let has_restore =
+        raw_has_any_flag(raw, &["--restore"]) || raw_has_any_flag(args, &["--restore"]);
+    let has_profile =
+        raw_has_any_flag(raw, &["--profile"]) || raw_has_any_flag(args, &["--profile"]);
+
+    if !has_session {
+        if let Some(value) = session_name_env.clone() {
+            args.push("--session-name".to_string());
+            args.push(value);
+        } else if let Some(value) = session_env {
+            args.push("--session".to_string());
+            args.push(value);
+        }
+    } else if !has_restore && !has_legacy_session_name {
+        if let Some(value) = session_name_env {
+            args.push("--restore".to_string());
+            args.push(value);
+        }
+    }
+
+    if !has_profile {
+        if let Some(value) = profile_env {
+            args.push("--profile".to_string());
+            args.push(value);
+        }
+    }
+}
+
+fn push_namespace_env_default(args: &mut Vec<String>, raw: &[String]) {
+    if raw_has_any_flag(raw, &["--namespace"]) || raw_has_any_flag(args, &["--namespace"]) {
+        return;
+    }
+    if let Some(value) = env_var_nonempty_alias("PIRE_BROWSER_NAMESPACE", "AGENT_BROWSER_NAMESPACE")
     {
-        return;
-    }
-    if let Some(value) = session_name_env {
-        args.push("--session-name".to_string());
+        args.push("--namespace".to_string());
         args.push(value);
+    }
+}
+
+fn push_restore_save_env_default(args: &mut Vec<String>, raw: &[String]) {
+    if raw_has_any_flag(raw, &["--restore-save"]) || raw_has_any_flag(args, &["--restore-save"]) {
         return;
     }
-    if let Some(value) = profile_env {
-        args.push("--profile".to_string());
-        args.push(value);
-        return;
-    }
-    if let Some(value) = session_env {
-        args.push("--session".to_string());
+    if let Some(value) =
+        env_var_nonempty_alias("PIRE_BROWSER_RESTORE_SAVE", "AGENT_BROWSER_RESTORE_SAVE")
+    {
+        args.push("--restore-save".to_string());
         args.push(value);
     }
 }
@@ -926,6 +1080,14 @@ fn config_args_from_map(config: &Map<String, Value>, raw: &[String]) -> Vec<Stri
         "--session",
         &["--session", "--session-name"],
     );
+    push_value_config(
+        &mut args,
+        config,
+        raw,
+        "namespace",
+        "--namespace",
+        &["--namespace"],
+    );
     push_restore_config(&mut args, config, raw);
     push_value_config(
         &mut args,
@@ -934,6 +1096,30 @@ fn config_args_from_map(config: &Map<String, Value>, raw: &[String]) -> Vec<Stri
         "restoreSave",
         "--restore-save",
         &["--restore-save"],
+    );
+    push_value_config(
+        &mut args,
+        config,
+        raw,
+        "restoreCheckUrl",
+        "--restore-check-url",
+        &["--restore-check-url"],
+    );
+    push_value_config(
+        &mut args,
+        config,
+        raw,
+        "restoreCheckText",
+        "--restore-check-text",
+        &["--restore-check-text"],
+    );
+    push_value_config(
+        &mut args,
+        config,
+        raw,
+        "restoreCheckFn",
+        "--restore-check-fn",
+        &["--restore-check-fn"],
     );
     push_value_config(&mut args, config, raw, "state", "--state", &["--state"]);
     if !command_allows_state_default(raw) {
@@ -1123,18 +1309,7 @@ fn remove_flag_and_value(args: &mut Vec<String>, flag: &str) {
 }
 
 fn push_profile_config(args: &mut Vec<String>, config: &Map<String, Value>, raw: &[String]) {
-    if raw_has_any_flag(raw, &["--profile", "--session", "--session-name"]) {
-        return;
-    }
-    if config
-        .get("sessionName")
-        .and_then(config_value_to_string)
-        .is_some()
-        || config
-            .get("session")
-            .and_then(config_value_to_string)
-            .is_some()
-    {
+    if raw_has_any_flag(raw, &["--profile"]) {
         return;
     }
     let Some(value) = config.get("profile").and_then(config_value_to_string) else {
@@ -1402,10 +1577,15 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
     let mut args = raw.to_vec();
     let mut session_id = None;
     let mut session_name = None;
+    let mut profile = None;
+    let mut namespace = crate::session::DEFAULT_NAMESPACE.to_string();
+    let mut legacy_session_name = false;
     let mut restore_requested = false;
     let mut restore_name = None;
     let mut restore_save = None;
+    let mut restore_check_url = None;
     let mut restore_check_text = None;
+    let mut restore_check_fn = None;
     let mut state_path = None;
     let mut json_output = false;
     let mut ignored_global_flags = Vec::new();
@@ -1419,10 +1599,8 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             if let Some(value) = args.first().filter(|value| is_optional_restore_key(value)) {
                 let value = value.clone();
                 args.remove(0);
-                restore_name = Some(value.clone());
-                if session_id.is_none() && session_name.is_none() {
-                    set_session_name(&session_id, &mut session_name, value)?;
-                }
+                validate_lifecycle_key("restore key", &value)?;
+                restore_name = Some(value);
             }
             continue;
         }
@@ -1434,8 +1612,22 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             args.remove(0);
             match flag.as_str() {
                 "--session" => set_session_id_or_name(&mut session_id, &mut session_name, value)?,
-                "--session-name" => set_session_name(&session_id, &mut session_name, value)?,
-                "--profile" => set_profile_name(&session_id, &mut session_name, value)?,
+                "--session-name" => {
+                    validate_lifecycle_key("session name", &value)?;
+                    if session_id.is_none() && session_name.is_none() {
+                        set_session_name(&session_id, &mut session_name, value.clone())?;
+                    } else if session_name.as_deref() != Some(value.as_str()) {
+                        bail!("invalid_args: --session-name must match an explicit --session name");
+                    }
+                    restore_requested = true;
+                    restore_name = Some(value);
+                    legacy_session_name = true;
+                }
+                "--profile" => set_profile_value(&mut profile, value)?,
+                "--namespace" => {
+                    validate_lifecycle_key("namespace", &value)?;
+                    namespace = value;
+                }
                 "--state" => set_global_state_path(&mut state_path, value)?,
                 "--allowed-domains" => set_allowed_domains(&mut domain_policy, value)?,
                 "--action-policy" => set_action_policy(&mut action_policy, value)?,
@@ -1446,9 +1638,17 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                     validate_restore_save(&value)?;
                     restore_save = Some(value);
                 }
+                "--restore-check-url" => {
+                    validate_non_empty_flag_value(&flag, &value)?;
+                    restore_check_url = Some(value);
+                }
                 "--restore-check-text" => {
                     validate_non_empty_flag_value(&flag, &value)?;
                     restore_check_text = Some(value);
+                }
+                "--restore-check-fn" => {
+                    validate_non_empty_flag_value(&flag, &value)?;
+                    restore_check_fn = Some(value);
                 }
                 _ => {}
             }
@@ -1519,7 +1719,15 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                     bail!("{first} requires a value");
                 };
                 args.remove(0);
-                set_session_name(&session_id, &mut session_name, value)?;
+                validate_lifecycle_key("session name", &value)?;
+                if session_id.is_none() && session_name.is_none() {
+                    set_session_name(&session_id, &mut session_name, value.clone())?;
+                } else if session_name.as_deref() != Some(value.as_str()) {
+                    bail!("invalid_args: --session-name must match an explicit --session name");
+                }
+                restore_requested = true;
+                restore_name = Some(value);
+                legacy_session_name = true;
             }
             "--json" => {
                 args.remove(0);
@@ -1529,7 +1737,28 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         }
     }
 
-    let session_target = session_target_from_flags(session_id, session_name);
+    if let Some(name) = session_name.as_deref() {
+        validate_lifecycle_key("session name", name)?;
+    }
+    if session_id.is_some() && (restore_requested || profile.is_some()) {
+        bail!(
+            "invalid_args: UUID session targets are live-session-only and cannot be combined with --restore or --profile"
+        );
+    }
+    let session_target = BrowserTarget {
+        selector: session_target_from_flags(session_id, session_name),
+        namespace,
+        profile,
+        restore: RestoreCliOptions {
+            requested: restore_requested,
+            name: restore_name,
+            save: restore_save,
+            check_url: restore_check_url,
+            check_text: restore_check_text,
+            check_fn: restore_check_fn,
+        },
+        legacy_session_name,
+    };
     let Some(command) = args.first().cloned() else {
         return Ok(LocalCommand::Help { topic: None });
     };
@@ -1899,7 +2128,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
 
     if command == "launch" {
         args.remove(0);
-        let mut profile = "Default".to_string();
+        let mut launch_target = session_target.clone();
         let mut url = None;
         let mut firefox_path = None;
         let mut i = 0;
@@ -1910,7 +2139,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                     let Some(value) = args.get(i).cloned() else {
                         bail!("--profile requires a value");
                     };
-                    profile = value;
+                    set_profile_value(&mut launch_target.profile, value)?;
                 }
                 "--url" => {
                     i += 1;
@@ -1940,8 +2169,11 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             }
             i += 1;
         }
+        if matches!(launch_target.selector, SessionTarget::Id(_)) {
+            bail!("invalid_args: launch cannot target a strict live session id");
+        }
         return Ok(LocalCommand::Launch {
-            profile: profile_name_from_profile_value(&profile)?,
+            target: launch_target,
             url,
             firefox_path,
             domain_policy,
@@ -2171,16 +2403,13 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         let subcommand = args.first().map(String::as_str);
         if subcommand.is_none() {
             if command == "sessions" {
-                return Ok(LocalCommand::SessionList { json: json_output });
+                return Ok(LocalCommand::SessionList {
+                    json: json_output,
+                    namespace: session_target.namespace.clone(),
+                });
             }
             return Ok(LocalCommand::SessionInfo {
                 target: session_target,
-                restore: RestoreCliOptions {
-                    requested: restore_requested,
-                    name: restore_name,
-                    save: restore_save,
-                    check_text: restore_check_text,
-                },
                 json: json_output,
             });
         }
@@ -2194,7 +2423,10 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 if let Some(extra) = args.first() {
                     bail!("unsupported session list option: {extra}");
                 }
-                return Ok(LocalCommand::SessionList { json: json_output });
+                return Ok(LocalCommand::SessionList {
+                    json: json_output,
+                    namespace: session_target.namespace.clone(),
+                });
             }
             "info" => {
                 args.remove(0);
@@ -2204,12 +2436,6 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 }
                 return Ok(LocalCommand::SessionInfo {
                     target: session_target,
-                    restore: RestoreCliOptions {
-                        requested: restore_requested,
-                        name: restore_name,
-                        save: restore_save,
-                        check_text: restore_check_text,
-                    },
                     json: json_output,
                 });
             }
@@ -2262,6 +2488,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 return Ok(LocalCommand::SessionAttach {
                     session,
                     json: json_output,
+                    namespace: session_target.namespace.clone(),
                 });
             }
             "cleanup" => {
@@ -2270,7 +2497,10 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
                 if let Some(extra) = args.first() {
                     bail!("unsupported session cleanup option: {extra}");
                 }
-                return Ok(LocalCommand::SessionCleanup { json: json_output });
+                return Ok(LocalCommand::SessionCleanup {
+                    json: json_output,
+                    namespace: session_target.namespace.clone(),
+                });
             }
             other if other.starts_with('-') => bail!("unsupported session option: {other}"),
             other => bail!("unsupported session command: {other}; try `pire-browser session list`"),
@@ -2336,6 +2566,99 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
             });
         }
 
+        if subcommand == Some("usage") {
+            args.remove(0);
+            remove_json_flags(&mut args, &mut json_output);
+            let mut name = None;
+            let mut all = args.is_empty();
+            while let Some(arg) = args.first().cloned() {
+                args.remove(0);
+                match arg.as_str() {
+                    "--json" => json_output = true,
+                    "--all" if name.is_none() => all = true,
+                    other if other.starts_with('-') => {
+                        bail!("unsupported profiles usage option: {other}")
+                    }
+                    other if !all && name.is_none() => name = Some(other.to_string()),
+                    other => bail!("profiles usage accepts one name or --all, not `{other}`"),
+                }
+            }
+            if all && name.is_some() {
+                bail!("profiles usage accepts either one name or --all");
+            }
+            return Ok(LocalCommand::ProfilesUsage {
+                json: json_output,
+                name,
+                all,
+            });
+        }
+
+        if subcommand == Some("clean") {
+            args.remove(0);
+            remove_json_flags(&mut args, &mut json_output);
+            let mut name = None;
+            let mut all = false;
+            let mut dry_run = false;
+            let mut yes = false;
+            while let Some(arg) = args.first().cloned() {
+                args.remove(0);
+                match arg.as_str() {
+                    "--json" => json_output = true,
+                    "--all" if name.is_none() => all = true,
+                    "--dry-run" => dry_run = true,
+                    "--yes" => yes = true,
+                    other if other.starts_with('-') => {
+                        bail!("unsupported profiles clean option: {other}")
+                    }
+                    other if !all && name.is_none() => name = Some(other.to_string()),
+                    other => bail!("profiles clean accepts one name or --all, not `{other}`"),
+                }
+            }
+            if all == name.is_some() {
+                bail!("profiles clean requires exactly one profile name or --all");
+            }
+            if dry_run == yes {
+                bail!("profiles clean requires exactly one of --dry-run or --yes");
+            }
+            return Ok(LocalCommand::ProfilesClean {
+                json: json_output,
+                name,
+                all,
+                dry_run,
+                yes,
+            });
+        }
+
+        if subcommand == Some("delete") {
+            args.remove(0);
+            remove_json_flags(&mut args, &mut json_output);
+            let mut name = None;
+            let mut yes = false;
+            while let Some(arg) = args.first().cloned() {
+                args.remove(0);
+                match arg.as_str() {
+                    "--json" => json_output = true,
+                    "--yes" => yes = true,
+                    other if other.starts_with('-') => {
+                        bail!("unsupported profiles delete option: {other}")
+                    }
+                    other if name.is_none() => name = Some(other.to_string()),
+                    other => bail!("profiles delete accepts one name, not `{other}`"),
+                }
+            }
+            let Some(name) = name else {
+                bail!("profiles delete requires a managed profile name");
+            };
+            if !yes {
+                bail!("profiles delete requires --yes");
+            }
+            return Ok(LocalCommand::ProfilesDelete {
+                json: json_output,
+                name,
+                yes,
+            });
+        }
+
         let extra = args
             .first()
             .cloned()
@@ -2343,7 +2666,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         bail!("unsupported profiles command: {extra}; try `pire-browser profiles list`");
     }
 
-    if command == "status" && matches!(session_target, SessionTarget::Default) {
+    if command == "status" && matches!(session_target.selector, SessionTarget::Default) {
         args.remove(0);
         while let Some(arg) = args.first() {
             match arg.as_str() {
@@ -2659,6 +2982,7 @@ pub fn parse_cli_args(raw: &[String]) -> Result<LocalCommand> {
         }
         return Ok(LocalCommand::CloseAll {
             json: json_output,
+            namespace: session_target.namespace.clone(),
             ignored_global_flags,
         });
     }
@@ -2752,15 +3076,25 @@ fn set_session_name(
     Ok(())
 }
 
-fn set_profile_name(
-    session_id: &Option<String>,
-    session_name: &mut Option<String>,
-    value: String,
-) -> Result<()> {
-    if session_id.is_some() {
-        bail!("cannot use --profile with a strict --session <id> target");
+fn set_profile_value(profile: &mut Option<String>, value: String) -> Result<()> {
+    if profile.is_some() {
+        bail!("--profile was provided more than once");
     }
-    *session_name = Some(profile_name_from_profile_value(&value)?);
+    if value.trim().is_empty() {
+        bail!("invalid_args: --profile requires a non-empty value");
+    }
+    *profile = Some(value);
+    Ok(())
+}
+
+pub fn validate_lifecycle_key(label: &str, value: &str) -> Result<()> {
+    if value.is_empty()
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        bail!("invalid_args: {label} must contain only letters, numbers, hyphens, and underscores");
+    }
     Ok(())
 }
 
@@ -2787,66 +3121,6 @@ fn validate_non_empty_flag_value(flag: &str, value: &str) -> Result<()> {
         bail!("invalid_args: {flag} requires a non-empty value");
     }
     Ok(())
-}
-
-fn profile_name_from_profile_value(value: &str) -> Result<String> {
-    let value = value.trim();
-    if value.is_empty() {
-        bail!("invalid_args: --profile requires a non-empty value");
-    }
-    let candidate = if profile_value_is_path_like(value) {
-        let base = value
-            .trim_end_matches(['/', '\\'])
-            .rsplit(['/', '\\'])
-            .next()
-            .unwrap_or(value);
-        let sanitized = sanitize_profile_component(base);
-        let hash = short_stable_hash(value);
-        format!("{sanitized}-{hash}")
-    } else {
-        value.to_string()
-    };
-    validate_managed_profile_name(&candidate)?;
-    Ok(candidate)
-}
-
-fn profile_value_is_path_like(value: &str) -> bool {
-    value.starts_with("~/")
-        || value.starts_with("~\\")
-        || value.starts_with("./")
-        || value.starts_with(".\\")
-        || value.starts_with("../")
-        || value.starts_with("..\\")
-        || value.starts_with('/')
-        || value.starts_with('\\')
-        || value.contains('/')
-        || value.contains('\\')
-        || value
-            .as_bytes()
-            .get(1)
-            .copied()
-            .map(|byte| byte == b':')
-            .unwrap_or(false)
-}
-
-fn sanitize_profile_component(value: &str) -> String {
-    let mut sanitized = value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, ' ' | '_' | '-' | '.') {
-                ch
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim()
-        .trim_matches('-')
-        .to_string();
-    if sanitized.is_empty() || sanitized == "." || sanitized == ".." {
-        sanitized = "profile".to_string();
-    }
-    sanitized
 }
 
 fn short_stable_hash(value: &str) -> String {
@@ -3445,7 +3719,7 @@ Common commands:
   download '@e4' out.txt          Click a target and save a download
   wait --download out.txt         Wait for a recent/new download and save it
   --download-path ./downloads open <url>
-                                  Use a default Firefox download directory
+                                  Use a durable Firefox download directory
   upload '#file' ./fixture.txt    Assign bounded files to an input or dropzone
   auth login app                  Open a saved login form and submit it
   auth login app --credential-provider vault --item "My App"
@@ -3460,8 +3734,8 @@ Common commands:
   skills [list]                   List installed agent skills
   skills cat core                 Print the version-matched core agent skill
   skills get core                 Agent-browser-style alias for skills cat core
-  state save .pire-state/app.json Save active-origin cookies and web storage
-  state list [--json]             List .pire-state files
+  state save .pire-state/app.json Save cookies and origin-keyed localStorage
+  state list [--json]             List project and automatic restore states
   state inspect .pire-state/app.json
   state inspect --record .pire-state/app.json
   --action-policy ./policy.json snapshot
@@ -3471,14 +3745,20 @@ Common commands:
   --allowed-domains "example.com" open <url>
   --content-boundaries snapshot   Mark page-sourced output boundaries
   --max-output 50000 get text body Cap emitted browser command text
-  --session work open <url>       Reuse or launch a named Firefox profile
+  --session work open <url>       Launch an isolated ephemeral session
   --session work --restore open <url>
-                                  Agent-browser-style persistent session recipe
-  --session-name work open <url>  Explicit named Firefox profile spelling
-  --profile Work open <url>       Managed Firefox profile alias
-  profiles [--json]               List managed and importable Firefox profiles
+                                  Persist compact auth state across restarts
+  --session-name work open <url>  Deprecated session + restore alias
+  --profile Work open <url>       Run from a temporary profile snapshot
+  --profile ./firefox-data open <url>
+                                  Use a deliberately persistent profile path
+  --namespace qa --session work open <url>
+                                  Isolate live sessions, temp roots, and restores
+  profiles [--json]               List legacy and discoverable Firefox profiles
   profiles import Default --name Work
-                                  Copy a discovered Firefox profile into managed state
+                                  Preserve a profile as a legacy managed source
+  profiles usage --all            Measure legacy profile and cache storage
+  profiles clean --all --dry-run  Preview cache-only legacy cleanup
   session                         Inspect current/default session target
   session list                    List live Firefox sessions
   session id --scope worktree --prefix my-app
@@ -3567,17 +3847,19 @@ warning and continue; explicit --config, PIRE_BROWSER_CONFIG, or
 AGENT_BROWSER_CONFIG paths must exist and contain a JSON object.
 
 Supported camelCase defaults include json, profile, sessionName, session,
-restore, restoreSave, state, autoConnect, allowedDomains, noAllowedDomains, actionPolicy,
+namespace, restore, restoreSave, restoreCheckUrl, restoreCheckText,
+restoreCheckFn, state, autoConnect, allowedDomains, noAllowedDomains, actionPolicy,
 confirmActions, confirmInteractive, noAutoDialog, hideScrollbars,
 allowFileAccess, headed, headless, colorScheme, proxy, proxyBypass, args, userAgent, downloadPath,
 maxOutput, contentBoundaries, engine, provider, model, and plugins. `plugins` configures
 credential-provider and command/custom integrations; `plugin add` can write
 entries, but configured plugins do not synthesize CLI flags. CLI flags override
 config defaults. Unknown keys are ignored. `restore: true` or `--restore`
-is an agent-browser-compatible persistence assertion; with a named session,
-the managed Firefox profile already preserves browser state. `restore: "work"`
-acts like `--restore work` when no explicit session/profile target is present.
-`restoreSave: "auto"` is accepted for compatibility. `headless: true`, `--headless`,
+auto-loads and saves compact cookie and origin-keyed localStorage state. With no
+explicit restore key, the current session name is used. `restore: "work"` acts
+like `--restore work`. `restoreSave` accepts `auto`, `always`, or `never`;
+`auto` protects a known-good state after failed import or validation.
+`headless: true`, `--headless`,
 PIRE_BROWSER_HEADLESS=1, and AGENT_BROWSER_HEADLESS=1 make newly launched
 managed Firefox sessions run headlessly; existing live sessions keep their
 current mode. `--no-auto-dialog`, AGENT_BROWSER_NO_AUTO_DIALOG=1, and
@@ -3602,10 +3884,10 @@ Usage:
   pire-browser goto <url>
   pire-browser navigate <url>
 
-Opens or reuses the default managed Firefox session. With no URL, `open`
-launches Firefox without navigating, matching agent-browser pre-navigation
-setup recipes. With a URL, it opens a page in the default session,
-auto-launching managed Firefox when needed.
+Opens or reuses the selected live Firefox session. A new ordinary session uses
+a fresh profile under the OS temporary directory. With no URL, `open` launches Firefox without navigating.
+With a URL, it opens a page and auto-launches
+Firefox when needed.
 `--new` and `--new-tab` open a new tab in the current managed Firefox window;
 for a separate Firefox window, run `pire-browser window new` first, then open
 the URL.
@@ -3624,10 +3906,14 @@ hosts. Proxy credentials may be supplied in the URL or with
 PIRE_BROWSER_PROXY_USERNAME/PIRE_BROWSER_PROXY_PASSWORD; credentials are not
 echoed in command output. Prefer `--proxy ... open <url>` over `launch --url`
 when the first navigation must use the proxy.
-Use `--profile <name-or-path>`, `--session <name>`, or `--session-name <name>`
-before the command to reuse or launch a named managed Firefox profile. Path-like
-`--profile` values are mapped to stable managed Firefox profile names instead
-of using the path as a raw browser profile directory. Use `--allowed-domains "example.com,*.example.com"` or
+`--session <name>` selects an isolated live session; it does not make the
+Firefox profile durable. Add `--restore [key]` to persist cookies and
+origin-keyed localStorage. `--profile <name>` copies a discovered or legacy
+Firefox profile into a temporary snapshot and never mutates the source.
+`--profile <path>` deliberately uses that directory as durable Firefox state.
+`--session-name <name>` is deprecated and means `--session <name> --restore
+<name>`. Without `--download-path`, downloads live inside the temporary session
+root and are deleted with it. Use `--allowed-domains "example.com,*.example.com"` or
 PIRE_BROWSER_ALLOWED_DOMAINS for a cooperative wrong-site guardrail.
 `--init-script <path>` may be repeated and registers Firefox document-start
 scripts for that navigation in the managed Firefox session.
@@ -4328,10 +4614,12 @@ Usage:
   pire-browser wait --download [path] [--timeout <ms>]
 
 Clicks a ref/selector to trigger a Firefox download, or waits for a recent/new
-download. The default timeout is 60000ms. Files are staged under the local
-pire-browser data directory before being finalized to the requested path.
+download. The default timeout is 60000ms. Explicit command outputs are staged
+before being finalized to the requested path.
 Use global `--download-path <dir>` or `PIRE_BROWSER_DOWNLOAD_PATH=<dir>` to set
-the Firefox download directory for newly launched managed sessions. Relative
+an intentionally durable Firefox download directory. Without it, a new
+session downloads inside its marked temporary root and cleanup removes those
+files with the session. Relative
 download paths resolve from the CLI current working directory. With no explicit
 wait/download output path, `wait --download` reports the completed Firefox file.
 Unknown MIME/helper-app dialogs can still stall until timeout on Firefox.
@@ -4440,16 +4728,20 @@ Usage:
   pire-browser state load ./.pire-state/example.com-review.json
   pire-browser state load --require-inspected ./.pire-state/example.com-review.json
   pire-browser state load --no-require-inspected ./.pire-state/example.com-review.json
-  pire-browser --session-name work state save ./.pire-state/example.com-work.json
-  pire-browser --session-name work state load ./.pire-state/example.com-work.json
+  pire-browser --session work state save ./.pire-state/example.com-work.json
+  pire-browser --session work state load ./.pire-state/example.com-work.json
   pire-browser --auto-connect state save ./.pire-state/example.com-work.json
   pire-browser --state ./.pire-state/example.com-work.json open https://example.com/dashboard
 
-Saves, loads, lists, renames, clears, or inspects active-origin state for the
-targeted Firefox page: cookies, localStorage, and sessionStorage. State files
+Saves, loads, lists, renames, clears, or inspects state for the targeted
+Firefox session. Current files contain all profile cookies and origin-keyed
+localStorage. Legacy active-origin files containing sessionStorage remain
+readable. State files
 contain secrets and should not be committed or shared. `state show`,
 `state inspect`, and `state list` are metadata-only; they do not print cookie or
-storage values. Management commands operate on `.pire-state` for bare names.
+storage values. `state list` includes project files and automatic restore
+states. Use `project:<name>` or `restore:<namespace>/<key>` for management
+operations; ambiguous bare names are rejected.
 By default, `state save` writes plaintext files for compatibility. Set
 PIRE_BROWSER_ENCRYPTION_KEY, or the agent-browser-compatible
 AGENT_BROWSER_ENCRYPTION_KEY, to a 64-character hex AES-256 key to write and
@@ -4462,15 +4754,15 @@ Set PIRE_BROWSER_REQUIRE_INSPECTED_STATE=1 to make normal `state load` require
 that receipt; use `--no-require-inspected` only as an explicit cooperative
 operator override.
 `--session <uuid>` is strict live-id targeting. `--session <name> state load`
-or `--session-name <name> state load` can launch that managed profile at the
-saved display URL when no live named session exists. `--auto-connect state save`
-saves from the selected live managed Firefox session. `--state <path> <command>`
-preloads saved active-origin state before the requested browser command. Active
+can launch an ephemeral session at the saved display URL when no matching live
+session exists. `--auto-connect state save` saves from the selected live
+session. `--state <path> <command>` preloads saved state before the requested
+browser command. Active
 domain allowlists also check the saved state origin.
-For agent-browser-style project QA persistence, prefer
-`--session <name> --restore <command>` with a name from `session id`; the named
-Firefox profile preserves full browser state. Use state files when you need a
-portable active-origin cookie/storage artifact.
+For project QA persistence, prefer `--session <name> --restore <command>` with
+a name from `session id`. Compact restore intentionally excludes IndexedDB,
+service workers, saved passwords, history, and cache. Use an explicit
+`--profile <path>` when those must persist.
 "##;
 
 const ACTION_POLICY_HELP: &str = r##"
@@ -4517,7 +4809,7 @@ Usage:
   pire-browser --session-name <name> close
 
 `session` is an agent-browser-compatible alias for `session info`: it reports
-the current/default target, live session, managed Firefox profile, restore
+the current/default target, live session, Firefox profile source, restore
 interpretation, and next actions without launching Firefox. `session list`
 lists all live Firefox extension sessions. This command also prints the
 `--session <id>` prefix for a chosen session, derives a stable
@@ -4529,20 +4821,18 @@ QA loops.
 `cwd` uses the current directory; `global` returns the sanitized prefix without
 a path hash.
 
-`--session <uuid>` is strict live-id targeting. `--session <name>` reuses a
-managed named Firefox profile; `--session-name <name>` is the explicit
-named-profile spelling.
-`--restore` is accepted for agent-browser-style persistent-session recipes.
-With a named session, persistence is the managed Firefox profile itself, so
-cookies, tabs, IndexedDB, service workers, saved passwords, and other Firefox
-profile data survive browser restarts. `--restore <name>` may be used as a
-short spelling for `--session <name> --restore` when no session/profile target
-is already present. `--restore-save auto|always|never` is accepted for
-compatibility; named Firefox profiles persist automatically.
-`--profile <name-or-path>` is an alias for a reusable managed
-Firefox profile. Path-like profile values are converted to stable managed names.
-Close targets an existing named session only. Profile names may contain letters,
-numbers, internal spaces, `_`, `-`, and `.`.
+`--session <uuid>` is strict live-id targeting. `--session <name>` selects an
+isolated live session with an ephemeral Firefox profile. `--restore [key]`
+auto-loads and saves cookies plus origin-keyed localStorage; the key defaults to
+the session name. `--session-name <name>` is a deprecated alias for `--session
+<name> --restore <name>`. Session, restore, and namespace keys accept only
+letters, numbers, `_`, and `-`.
+
+`--profile <name>` copies a discovered or legacy Firefox profile into a
+temporary snapshot. `--profile <path>` uses that path as deliberately durable
+Firefox state, including IndexedDB, service workers, history, and cache. These
+profile choices may be combined with `--session` and `--restore`. Close targets
+the live session and removes only marked pire-browser temporary data.
 "##;
 
 const PROFILES_HELP: &str = r##"
@@ -4550,20 +4840,30 @@ Usage:
   pire-browser profiles [--json]
   pire-browser profiles list [--json]
   pire-browser profiles import <firefox-profile-name-or-dir> --name <managed-name> [--overwrite] [--json]
+  pire-browser profiles usage [<name>|--all] [--json]
+  pire-browser profiles clean <name>|--all --dry-run|--yes [--json]
+  pire-browser profiles delete <name> --yes [--json]
 
-Lists managed Firefox profiles known to pire-browser and discovered local
-Mozilla Firefox profiles that can be imported. Managed entries include the
-default profile path, launch metadata, and any live session id. Discovered
-Firefox entries come from Mozilla `profiles.ini` files and are copied only when
-you run `profiles import`. Path-like `--profile` values are mapped to stable
-managed names rather than used as raw browser profile paths.
+Lists preserved 0.2.x managed profiles and discovered local Mozilla Firefox
+profiles. Existing `firefox-profiles/*` directories remain durable and are
+never reused or deleted automatically. Pass their exact path to `--profile` to
+keep using them persistently, or pass a profile name to run from a temporary
+snapshot. Discovered Firefox entries come from Mozilla `profiles.ini` files.
 
 `profiles import` copies an existing Firefox profile directory, or a discovered
 Firefox profile name such as `default-release` or `Default`, into a managed
 pire-browser profile. It never mutates the source profile and future changes in
 the source do not sync. Close Firefox before importing so lock files and
 partially-written profile data are not copied. Pass `--overwrite` to replace an
-existing stopped managed profile.
+existing stopped legacy profile.
+
+`profiles usage` reports total bytes, regenerable cache bytes, and associated
+legacy download bytes. `profiles clean` removes only the documented cache
+allowlist and refuses active profiles; `--dry-run` previews and `--yes`
+executes. It preserves storage, cookies, IndexedDB, extensions, and downloads.
+`profiles delete` requires `--yes` and removes only a stopped pire-browser
+managed legacy profile plus its metadata. It never deletes a discovered
+Firefox source or an arbitrary profile path.
 "##;
 
 const SCREENSHOT_HELP: &str = r##"
@@ -4645,10 +4945,11 @@ Usage:
   pire-browser exit [--json]
   pire-browser close --all [--json]
 
-Closes the targeted managed Firefox session and removes its live session record.
-Use `--session <id>`, `--session <name>`, `--session-name <name>`, or
-`--profile <name>` to close a specific reusable profile. `quit` and `exit` are
-aliases. `close --all` closes every live pire-browser managed session.
+Closes the targeted live Firefox session, saves eligible restore state, and
+removes marked temporary session data after Firefox releases its locks. Use
+`--session <id>`, `--session <name>`, `--session-name <name>`, or `--profile
+<name-or-path>` to select the live session. `quit` and `exit` are aliases.
+`close --all` closes every live pire-browser session in the selected namespace.
 "##;
 
 const INSTALL_HELP: &str = r##"
@@ -4708,16 +5009,16 @@ Usage:
 
 Lower-level launcher diagnostic. Prefer `pire-browser open` or
 `pire-browser open <url>` for normal launch/navigation workflows.
-Starts the managed Firefox profile and waits for the extension to connect.
+Starts Firefox and waits for the extension to connect.
 `--headless` starts Firefox headlessly when creating a new managed session;
 the default is visible/headed Firefox through web-ext.
 Global `--args <list>` passes comma- or newline-separated Firefox arguments,
 and global `--user-agent <value>` writes a Firefox User-Agent override when a
 new managed session is launched. Existing live sessions keep their current
 launch context.
-For reusable named command workflows, use `--profile <name-or-path> <command>`,
-`--session <name> <command>`, or `--session-name <name> <command>`.
-`launch --profile <name-or-path>` only starts or reuses the profile.
+For isolated command workflows, use `--session <name> <command>`. Add
+`--restore` for compact auth persistence. `--profile <name>` launches from a
+temporary snapshot; `--profile <path>` uses a durable Firefox directory.
 "##;
 
 const DASHBOARD_HELP: &str = r##"
@@ -4888,6 +5189,7 @@ pub fn format_cli_result(value: &Value, json_output: bool) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::DEFAULT_NAMESPACE;
 
     fn s(values: &[&str]) -> Vec<String> {
         values.iter().map(|v| v.to_string()).collect()
@@ -4903,6 +5205,44 @@ mod tests {
 
     fn default_confirmation_policy() -> ConfirmationPolicyArgs {
         ConfirmationPolicyArgs::default()
+    }
+
+    fn profile_target(profile: &str) -> BrowserTarget {
+        BrowserTarget {
+            profile: Some(profile.to_string()),
+            ..BrowserTarget::default()
+        }
+    }
+
+    fn restore_target(
+        selector: SessionTarget,
+        name: Option<&str>,
+        save: Option<&str>,
+        check_text: Option<&str>,
+    ) -> BrowserTarget {
+        BrowserTarget {
+            selector,
+            restore: RestoreCliOptions {
+                requested: true,
+                name: name.map(str::to_string),
+                save: save.map(str::to_string),
+                check_text: check_text.map(str::to_string),
+                ..RestoreCliOptions::default()
+            },
+            ..BrowserTarget::default()
+        }
+    }
+
+    fn legacy_session_name_target(name: &str) -> BrowserTarget {
+        BrowserTarget {
+            legacy_session_name: true,
+            ..restore_target(
+                SessionTarget::Name(name.to_string()),
+                Some(name),
+                None,
+                None,
+            )
+        }
     }
 
     fn config_options(project_config: Option<PathBuf>) -> ConfigApplyOptions {
@@ -4981,7 +5321,10 @@ mod tests {
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("review".to_string()),
+                target: BrowserTarget {
+                    profile: Some("ignored-profile".to_string()),
+                    ..legacy_session_name_target("review")
+                },
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: DomainPolicyArgs {
@@ -5025,7 +5368,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5037,7 +5380,7 @@ mod tests {
     }
 
     #[test]
-    fn applies_profile_config_default_as_named_target() {
+    fn applies_profile_config_default_as_profile_source() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("pire-browser.json");
         fs::write(&config, r#"{ "profile": "Work" }"#).unwrap();
@@ -5050,7 +5393,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("Work".to_string()),
+                target: profile_target("Work"),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5062,7 +5405,7 @@ mod tests {
     }
 
     #[test]
-    fn applies_restore_config_default_as_named_target() {
+    fn applies_restore_config_default_as_restore_key() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("agent-browser.json");
         fs::write(&config, r#"{ "restore": "Work", "restoreSave": "auto" }"#).unwrap();
@@ -5079,7 +5422,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("Work".to_string()),
+                target: restore_target(SessionTarget::Default, Some("Work"), Some("auto"), None),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5100,7 +5443,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("work".to_string()),
+                target: restore_target(SessionTarget::Name("work".to_string()), None, None, None),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5122,7 +5465,12 @@ mod tests {
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("explicit".to_string()),
+                target: restore_target(
+                    SessionTarget::Name("explicit".to_string()),
+                    None,
+                    None,
+                    None
+                ),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5231,7 +5579,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&s(&["read", "--filter", "auth"])).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5257,7 +5605,7 @@ mod tests {
             ]))
             .unwrap(),
             LocalCommand::ReadActiveUrl {
-                target: SessionTarget::Name("Docs".to_string()),
+                target: legacy_session_name_target("Docs"),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5280,7 +5628,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&s(&["read", "--require-md", "--timeout", "3000"])).unwrap(),
             LocalCommand::ReadActiveUrl {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5303,7 +5651,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&s(&["read", "--timeout", "3000", "--filter", "auth"])).unwrap(),
             LocalCommand::ReadActiveUrl {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5338,7 +5686,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("Legacy".to_string()),
+                target: profile_target("Legacy"),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5378,7 +5726,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("from-cli".to_string()),
+                target: legacy_session_name_target("from-cli"),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: DomainPolicyArgs {
@@ -5496,7 +5844,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5517,7 +5865,7 @@ mod tests {
         assert_eq!(
             headed_false,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5531,7 +5879,7 @@ mod tests {
         assert_eq!(
             headed_true,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5663,7 +6011,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Name("agent1".to_string()),
+                target: BrowserTarget::from(SessionTarget::Name("agent1".to_string())),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5683,7 +6031,9 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Id("4d4884fc-af4f-498c-a3f1-16f7bc91a738".to_string()),
+                target: BrowserTarget::from(SessionTarget::Id(
+                    "4d4884fc-af4f-498c-a3f1-16f7bc91a738".to_string()
+                )),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5708,7 +6058,12 @@ mod tests {
             ]))
             .unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("work".to_string()),
+                target: restore_target(
+                    SessionTarget::Name("work".to_string()),
+                    None,
+                    Some("auto"),
+                    None,
+                ),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5721,7 +6076,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&s(&["--restore", "work", "open", "https://example.com"])).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("work".to_string()),
+                target: restore_target(SessionTarget::Default, Some("work"), None, None),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5743,7 +6098,12 @@ mod tests {
             ]))
             .unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("work".to_string()),
+                target: restore_target(
+                    SessionTarget::Name("work".to_string()),
+                    None,
+                    None,
+                    Some("Dashboard"),
+                ),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5763,6 +6123,70 @@ mod tests {
     }
 
     #[test]
+    fn keeps_session_restore_namespace_and_profile_as_independent_dimensions() {
+        let parsed = parse_cli_args(&s(&[
+            "--namespace",
+            "qa_1",
+            "--session",
+            "work-1",
+            "--profile",
+            "C:/browser-data",
+            "--restore",
+            "auth-1",
+            "--restore-save",
+            "always",
+            "--restore-check-url",
+            "/dashboard",
+            "--restore-check-text",
+            "Dashboard",
+            "--restore-check-fn",
+            "document.body.dataset.ready === 'true'",
+            "open",
+            "https://example.com",
+        ]))
+        .unwrap();
+
+        let LocalCommand::Remote { target, .. } = parsed else {
+            panic!("expected remote command");
+        };
+        assert_eq!(target.selector, SessionTarget::Name("work-1".to_string()));
+        assert_eq!(target.namespace, "qa_1");
+        assert_eq!(target.profile.as_deref(), Some("C:/browser-data"));
+        assert_eq!(target.restore_key(), Some("auth-1"));
+        assert_eq!(target.restore.save.as_deref(), Some("always"));
+        assert_eq!(target.restore.check_url.as_deref(), Some("/dashboard"));
+        assert_eq!(target.restore.check_text.as_deref(), Some("Dashboard"));
+        assert_eq!(
+            target.restore.check_fn.as_deref(),
+            Some("document.body.dataset.ready === 'true'")
+        );
+    }
+
+    #[test]
+    fn lifecycle_keys_reject_ambiguous_or_traversing_values() {
+        for args in [
+            s(&["--session", "work space", "open"]),
+            s(&["--namespace", "../other", "open"]),
+            s(&["--restore", "foo/bar", "open"]),
+            s(&[
+                "--session",
+                "4d4884fc-af4f-498c-a3f1-16f7bc91a738",
+                "--restore",
+                "open",
+            ]),
+            s(&[
+                "--session",
+                "4d4884fc-af4f-498c-a3f1-16f7bc91a738",
+                "--profile",
+                "Work",
+                "open",
+            ]),
+        ] {
+            assert!(parse_cli_args(&args).is_err(), "{args:?}");
+        }
+    }
+
+    #[test]
     fn applies_pire_browser_session_env_defaults() {
         let mut args = Vec::new();
         push_session_env_defaults_from_values(
@@ -5776,7 +6200,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&[args, s(&["open", "https://example.com"])].concat()).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("agent1".to_string()),
+                target: BrowserTarget::from(SessionTarget::Name("agent1".to_string())),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5794,7 +6218,7 @@ mod tests {
             Some("profile".to_string()),
             Some("agent1".to_string()),
         );
-        assert_eq!(args, s(&["--session-name", "work"]));
+        assert_eq!(args, s(&["--session-name", "work", "--profile", "profile"]));
 
         let mut args = Vec::new();
         push_session_env_defaults_from_values(
@@ -5804,11 +6228,15 @@ mod tests {
             Some("Work".to_string()),
             Some("agent1".to_string()),
         );
-        assert_eq!(args, s(&["--profile", "Work"]));
+        assert_eq!(args, s(&["--session", "agent1", "--profile", "Work"]));
         assert_eq!(
             parse_cli_args(&[args, s(&["open", "https://example.com"])].concat()).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("Work".to_string()),
+                target: BrowserTarget {
+                    selector: SessionTarget::Name("agent1".to_string()),
+                    profile: Some("Work".to_string()),
+                    ..BrowserTarget::default()
+                },
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5826,7 +6254,10 @@ mod tests {
             Some("profile".to_string()),
             Some("agent1".to_string()),
         );
-        assert_eq!(args, s(&["--session-name", "config"]));
+        assert_eq!(
+            args,
+            s(&["--session-name", "config", "--profile", "profile"])
+        );
 
         let mut args = s(&["--profile", "cli-profile"]);
         push_session_env_defaults_from_values(
@@ -5836,7 +6267,10 @@ mod tests {
             Some("profile".to_string()),
             Some("agent1".to_string()),
         );
-        assert_eq!(args, s(&["--profile", "cli-profile"]));
+        assert_eq!(
+            args,
+            s(&["--profile", "cli-profile", "--session-name", "work"])
+        );
     }
 
     #[test]
@@ -5851,7 +6285,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&[args, s(&["open", "https://example.com"])].concat()).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Name("work".to_string()),
+                target: restore_target(SessionTarget::Default, Some("work"), None, None),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -5993,13 +6427,16 @@ mod tests {
     }
 
     #[test]
-    fn parses_profile_flag_as_named_target() {
+    fn parses_profile_flag_independently_from_session_target() {
         let parsed =
             parse_cli_args(&s(&["--profile", "Work", "open", "https://example.com"])).unwrap();
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Name("Work".to_string()),
+                target: BrowserTarget {
+                    profile: Some("Work".to_string()),
+                    ..BrowserTarget::default()
+                },
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6017,13 +6454,10 @@ mod tests {
         ]))
         .unwrap();
         match parsed {
-            LocalCommand::Remote { target, .. } => match target {
-                SessionTarget::Name(name) => {
-                    assert!(name.starts_with(".myapp-profile-"));
-                    assert!(name.len() > ".myapp-profile-".len());
-                }
-                other => panic!("expected named profile target, got {other:?}"),
-            },
+            LocalCommand::Remote { target, .. } => {
+                assert_eq!(target.selector, SessionTarget::Default);
+                assert_eq!(target.profile.as_deref(), Some("~/.myapp-profile"));
+            }
             other => panic!("expected remote command, got {other:?}"),
         }
 
@@ -6036,7 +6470,7 @@ mod tests {
             "https://example.com",
         ]))
         .unwrap_err();
-        assert!(err.to_string().contains("cannot use --profile"));
+        assert!(err.to_string().contains("UUID session targets"));
     }
 
     #[test]
@@ -6045,7 +6479,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6062,7 +6496,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6089,7 +6523,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Name("lemonade".to_string()),
+                target: legacy_session_name_target("lemonade"),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6115,7 +6549,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6141,7 +6575,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6168,7 +6602,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6193,7 +6627,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6208,7 +6642,7 @@ mod tests {
         assert_eq!(
             parsed_false,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6232,7 +6666,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6247,7 +6681,7 @@ mod tests {
         assert_eq!(
             parsed_zero,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6264,7 +6698,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6287,7 +6721,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6317,7 +6751,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6340,7 +6774,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6366,7 +6800,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&expanded.args).unwrap(),
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6400,7 +6834,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: DomainPolicyArgs {
@@ -6417,7 +6851,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: DomainPolicyArgs {
@@ -6451,7 +6885,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6490,7 +6924,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Remote {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6544,7 +6978,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::WaitDownload {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6571,7 +7005,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Download {
-                target: SessionTarget::Name("work".to_string()),
+                target: legacy_session_name_target("work"),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6598,7 +7032,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::WaitDownload {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6634,7 +7068,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Upload {
-                target: SessionTarget::Name("abc".to_string()),
+                target: BrowserTarget::from(SessionTarget::Name("abc".to_string())),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -6758,33 +7192,36 @@ mod tests {
     fn parses_session_lifecycle_commands() {
         assert_eq!(
             parse_cli_args(&s(&["session", "list", "--json"])).unwrap(),
-            LocalCommand::SessionList { json: true }
+            LocalCommand::SessionList {
+                json: true,
+                namespace: DEFAULT_NAMESPACE.to_string(),
+            }
         );
         assert_eq!(
             parse_cli_args(&s(&["sessions", "--json"])).unwrap(),
-            LocalCommand::SessionList { json: true }
+            LocalCommand::SessionList {
+                json: true,
+                namespace: DEFAULT_NAMESPACE.to_string(),
+            }
         );
         assert_eq!(
             parse_cli_args(&s(&["session", "--json"])).unwrap(),
             LocalCommand::SessionInfo {
-                target: SessionTarget::Default,
-                restore: RestoreCliOptions::default(),
+                target: BrowserTarget::default(),
                 json: true
             }
         );
         assert_eq!(
             parse_cli_args(&s(&["session"])).unwrap(),
             LocalCommand::SessionInfo {
-                target: SessionTarget::Default,
-                restore: RestoreCliOptions::default(),
+                target: BrowserTarget::default(),
                 json: false
             }
         );
         assert_eq!(
             parse_cli_args(&s(&["session", "info", "--json"])).unwrap(),
             LocalCommand::SessionInfo {
-                target: SessionTarget::Default,
-                restore: RestoreCliOptions::default(),
+                target: BrowserTarget::default(),
                 json: true
             }
         );
@@ -6801,12 +7238,14 @@ mod tests {
             ]))
             .unwrap(),
             LocalCommand::SessionInfo {
-                target: SessionTarget::Name("work".to_string()),
-                restore: RestoreCliOptions {
-                    requested: true,
-                    name: None,
-                    save: Some("auto".to_string()),
-                    check_text: None,
+                target: BrowserTarget {
+                    selector: SessionTarget::Name("work".to_string()),
+                    restore: RestoreCliOptions {
+                        requested: true,
+                        save: Some("auto".to_string()),
+                        ..RestoreCliOptions::default()
+                    },
+                    ..BrowserTarget::default()
                 },
                 json: true
             }
@@ -6814,12 +7253,13 @@ mod tests {
         assert_eq!(
             parse_cli_args(&s(&["--restore", "work", "session", "info"])).unwrap(),
             LocalCommand::SessionInfo {
-                target: SessionTarget::Name("work".to_string()),
-                restore: RestoreCliOptions {
-                    requested: true,
-                    name: Some("work".to_string()),
-                    save: None,
-                    check_text: None,
+                target: BrowserTarget {
+                    restore: RestoreCliOptions {
+                        requested: true,
+                        name: Some("work".to_string()),
+                        ..RestoreCliOptions::default()
+                    },
+                    ..BrowserTarget::default()
                 },
                 json: false
             }
@@ -6828,7 +7268,8 @@ mod tests {
             parse_cli_args(&s(&["session", "attach", "abc", "--json"])).unwrap(),
             LocalCommand::SessionAttach {
                 session: "abc".to_string(),
-                json: true
+                json: true,
+                namespace: DEFAULT_NAMESPACE.to_string(),
             }
         );
         assert_eq!(
@@ -6856,7 +7297,10 @@ mod tests {
         );
         assert_eq!(
             parse_cli_args(&s(&["session", "cleanup"])).unwrap(),
-            LocalCommand::SessionCleanup { json: false }
+            LocalCommand::SessionCleanup {
+                json: false,
+                namespace: DEFAULT_NAMESPACE.to_string(),
+            }
         );
         assert!(parse_cli_args(&s(&["session", "id", "--scope", "branch"])).is_err());
         assert!(parse_cli_args(&s(&["session", "rename", "abc"])).is_err());
@@ -6924,6 +7368,7 @@ mod tests {
             parse_cli_args(&s(&["close", "--all", "--json"])).unwrap(),
             LocalCommand::CloseAll {
                 json: true,
+                namespace: DEFAULT_NAMESPACE.to_string(),
                 ignored_global_flags: vec![]
             }
         );
@@ -6931,6 +7376,7 @@ mod tests {
             parse_cli_args(&s(&["quit", "--all"])).unwrap(),
             LocalCommand::CloseAll {
                 json: false,
+                namespace: DEFAULT_NAMESPACE.to_string(),
                 ignored_global_flags: vec![]
             }
         );
@@ -6938,6 +7384,7 @@ mod tests {
             parse_cli_args(&s(&["exit", "--json", "--all"])).unwrap(),
             LocalCommand::CloseAll {
                 json: true,
+                namespace: DEFAULT_NAMESPACE.to_string(),
                 ignored_global_flags: vec![]
             }
         );
@@ -6950,7 +7397,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&s(&["close", "--json"])).unwrap(),
             LocalCommand::CloseOne {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![]
             }
@@ -6958,7 +7405,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&s(&["--session", "work", "quit"])).unwrap(),
             LocalCommand::CloseOne {
-                target: SessionTarget::Name("work".to_string()),
+                target: BrowserTarget::from(SessionTarget::Name("work".to_string())),
                 json: false,
                 ignored_global_flags: vec![]
             }
@@ -6966,7 +7413,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&s(&["--session-name", "work", "exit", "--json"])).unwrap(),
             LocalCommand::CloseOne {
-                target: SessionTarget::Name("work".to_string()),
+                target: legacy_session_name_target("work"),
                 json: true,
                 ignored_global_flags: vec![]
             }
@@ -7010,6 +7457,42 @@ mod tests {
         );
         assert!(parse_cli_args(&s(&["profiles", "import", "--name", "Work"])).is_err());
         assert!(parse_cli_args(&s(&["profiles", "import", "profile-dir"])).is_err());
+        assert_eq!(
+            parse_cli_args(&s(&["profiles", "usage", "Work", "--json"])).unwrap(),
+            LocalCommand::ProfilesUsage {
+                json: true,
+                name: Some("Work".to_string()),
+                all: false,
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["profiles", "usage", "--all"])).unwrap(),
+            LocalCommand::ProfilesUsage {
+                json: false,
+                name: None,
+                all: true,
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["profiles", "clean", "Work", "--dry-run"])).unwrap(),
+            LocalCommand::ProfilesClean {
+                json: false,
+                name: Some("Work".to_string()),
+                all: false,
+                dry_run: true,
+                yes: false,
+            }
+        );
+        assert_eq!(
+            parse_cli_args(&s(&["profiles", "delete", "Work", "--yes", "--json"])).unwrap(),
+            LocalCommand::ProfilesDelete {
+                json: true,
+                name: "Work".to_string(),
+                yes: true,
+            }
+        );
+        assert!(parse_cli_args(&s(&["profiles", "clean", "Work"])).is_err());
+        assert!(parse_cli_args(&s(&["profiles", "delete", "Work"])).is_err());
         assert!(parse_cli_args(&s(&["profiles", "show"])).is_err());
     }
 
@@ -7407,7 +7890,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&s(&["state", "save", "state.json", "--json"])).unwrap(),
             LocalCommand::StateSave {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -7428,7 +7911,7 @@ mod tests {
             ]))
             .unwrap(),
             LocalCommand::StateLoad {
-                target: SessionTarget::Name("work".to_string()),
+                target: legacy_session_name_target("work"),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -7441,7 +7924,7 @@ mod tests {
         assert_eq!(
             parse_cli_args(&s(&["--session", "abc", "state", "load", "state.json"])).unwrap(),
             LocalCommand::StateLoad {
-                target: SessionTarget::Name("abc".to_string()),
+                target: BrowserTarget::from(SessionTarget::Name("abc".to_string())),
                 json: false,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -7461,7 +7944,7 @@ mod tests {
             ]))
             .unwrap(),
             LocalCommand::StateLoad {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -7481,7 +7964,7 @@ mod tests {
             ]))
             .unwrap(),
             LocalCommand::StateLoad {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -7617,7 +8100,7 @@ mod tests {
             ]))
             .unwrap(),
             LocalCommand::StateShortcut {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -7638,7 +8121,7 @@ mod tests {
             ]))
             .unwrap(),
             LocalCommand::StateSave {
-                target: SessionTarget::Default,
+                target: BrowserTarget::default(),
                 json: true,
                 ignored_global_flags: vec![],
                 domain_policy: default_domain_policy(),
@@ -7764,6 +8247,8 @@ mod tests {
         assert!(text.contains("--profile Work open <url>"));
         assert!(text.contains("profiles [--json]"));
         assert!(text.contains("profiles import Default --name Work"));
+        assert!(text.contains("profiles usage --all"));
+        assert!(text.contains("profiles clean --all --dry-run"));
         assert!(text.contains("set viewport"));
         assert!(text.contains("mouse move"));
         assert!(text.contains("mouse down [left]"));
@@ -8239,15 +8724,39 @@ mod tests {
         assert!(help_text(Some("session"))
             .unwrap()
             .contains("--restore <name>"));
+        assert!(help_text(Some("session"))
+            .unwrap()
+            .contains("isolated live session with an ephemeral Firefox profile"));
+        assert!(help_text(Some("session"))
+            .unwrap()
+            .contains("cookies plus origin-keyed localStorage"));
+        assert!(help_text(Some("session"))
+            .unwrap()
+            .contains("deprecated alias"));
+        assert!(help_text(Some("open"))
+            .unwrap()
+            .contains("Without `--download-path`, downloads live inside the temporary session"));
+        assert!(help_text(Some("state"))
+            .unwrap()
+            .contains("Legacy active-origin files"));
+        assert!(help_text(Some("state"))
+            .unwrap()
+            .contains("restore:<namespace>/<key>"));
         assert!(help_text(None)
             .unwrap()
             .contains("session id --scope worktree"));
         assert!(help_text(Some("profiles"))
             .unwrap()
-            .contains("managed Firefox profiles"));
+            .contains("preserved 0.2.x managed profiles"));
         assert!(help_text(Some("profiles"))
             .unwrap()
             .contains("profiles import <firefox-profile-name-or-dir>"));
+        assert!(help_text(Some("profiles"))
+            .unwrap()
+            .contains("profiles usage"));
+        assert!(help_text(Some("profiles"))
+            .unwrap()
+            .contains("profiles delete"));
         assert!(help_text(Some("action-policy"))
             .unwrap()
             .contains("PIRE_BROWSER_ACTION_POLICY"));
@@ -8260,7 +8769,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Launch {
-                profile: "Default".to_string(),
+                target: BrowserTarget::default(),
                 url: None,
                 firefox_path: None,
                 domain_policy: default_domain_policy(),
@@ -8285,7 +8794,10 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Launch {
-                profile: "Default".to_string(),
+                target: BrowserTarget {
+                    profile: Some("Default".to_string()),
+                    ..BrowserTarget::default()
+                },
                 url: Some("https://discord.com/login".to_string()),
                 firefox_path: Some("C:/Firefox/firefox.exe".to_string()),
                 domain_policy: default_domain_policy(),
@@ -8298,7 +8810,7 @@ mod tests {
         assert_eq!(
             parsed,
             LocalCommand::Launch {
-                profile: "Default".to_string(),
+                target: BrowserTarget::default(),
                 url: None,
                 firefox_path: None,
                 domain_policy: default_domain_policy(),
@@ -8309,8 +8821,8 @@ mod tests {
 
         let parsed = parse_cli_args(&s(&["launch", "--profile", "~/.myapp-profile"])).unwrap();
         match parsed {
-            LocalCommand::Launch { profile, .. } => {
-                assert!(profile.starts_with(".myapp-profile-"));
+            LocalCommand::Launch { target, .. } => {
+                assert_eq!(target.profile.as_deref(), Some("~/.myapp-profile"));
             }
             other => panic!("expected launch command, got {other:?}"),
         }

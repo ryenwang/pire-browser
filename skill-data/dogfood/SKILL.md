@@ -45,22 +45,22 @@ For CI-style dogfood runs, add `--headless` before the command or set
 `PIRE_BROWSER_HEADLESS=1`. Headless only affects newly launched managed Firefox
 sessions; existing sessions keep their current mode.
 
-If the app needs login state, ask the user whether to use an existing Firefox
-profile, a managed profile, or a saved state file. Useful setup commands:
+If the app needs login state, ask whether compact restore is enough or the app
+requires a full persistent Firefox profile. Useful setup commands:
 
 ```bash
-pire-browser profiles list
+pire-browser profiles
 SESSION="$(pire-browser session id --scope worktree --prefix dogfood)"
-pire-browser profiles import Default --name "$SESSION"
-pire-browser --session "$SESSION" --restore open https://app.example.com
+pire-browser --profile Default --session "$SESSION" --restore open https://app.example.com
 pire-browser --session "$SESSION" --restore session info --json
 pire-browser --state ./.pire-state/app.json open https://app.example.com
 ```
 
-Prefer the profile import path when the user is already logged in with desktop
-Firefox. Run `profiles` before asking for paths; `Default` selects the
-discovered default Firefox profile when present. Run the import once, then reuse
-the stable `--session "$SESSION" --restore` command for the rest of the QA pass.
+Run `profiles` before asking for paths; `Default` selects the discovered default
+Firefox source when present. A named source is copied into a temporary snapshot
+for the first run. Later runs can omit `--profile Default` and use compact
+restore. Use a dedicated `--profile <path>` only when IndexedDB, service
+workers, history, cache, or other full-profile state must persist.
 
 ## Exploration Loop
 

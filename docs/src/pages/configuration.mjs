@@ -11,13 +11,15 @@ pire-browser --config ./ci-config.json open https://example.com
 PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
   p("Defaults are loaded from <code>~/.pire-browser/config.json</code>, <code>./pire-browser.json</code>, <code>PIRE_BROWSER_CONFIG</code>, and explicit <code>--config</code>, in that order. CLI flags override config defaults. Missing auto-discovered files are ignored; malformed auto-discovered files warn and continue. Explicit config paths must exist and contain a JSON object. Agent-browser-compatible aliases <code>~/.agent-browser/config.json</code>, <code>./agent-browser.json</code>, and <code>AGENT_BROWSER_CONFIG</code> are accepted for existing installs."),
   h2("Supported defaults", "supported-defaults"),
-  p("Supported camelCase defaults include <code>json</code>, <code>profile</code>, <code>sessionName</code>, <code>session</code>, <code>restore</code>, <code>restoreSave</code>, <code>state</code>, <code>autoConnect</code>, <code>allowedDomains</code>, <code>noAllowedDomains</code>, <code>actionPolicy</code>, <code>confirmActions</code>, <code>confirmInteractive</code>, <code>noAutoDialog</code>, <code>hideScrollbars</code>, <code>allowFileAccess</code>, <code>headed</code>, <code>headless</code>, <code>colorScheme</code>, <code>proxy</code>, <code>proxyBypass</code>, <code>args</code>, <code>userAgent</code>, <code>downloadPath</code>, <code>maxOutput</code>, <code>contentBoundaries</code>, <code>engine</code>, <code>provider</code>, <code>model</code>, and <code>plugins</code>. Unknown keys are ignored so newer config files do not fail older installs."),
+  p("Supported camelCase defaults include <code>json</code>, <code>profile</code>, <code>sessionName</code>, <code>session</code>, <code>namespace</code>, <code>restore</code>, <code>restoreSave</code>, <code>restoreCheckUrl</code>, <code>restoreCheckText</code>, <code>restoreCheckFn</code>, <code>state</code>, <code>autoConnect</code>, <code>allowedDomains</code>, <code>noAllowedDomains</code>, <code>actionPolicy</code>, <code>confirmActions</code>, <code>confirmInteractive</code>, <code>noAutoDialog</code>, <code>hideScrollbars</code>, <code>allowFileAccess</code>, <code>headed</code>, <code>headless</code>, <code>colorScheme</code>, <code>proxy</code>, <code>proxyBypass</code>, <code>args</code>, <code>userAgent</code>, <code>downloadPath</code>, <code>maxOutput</code>, <code>contentBoundaries</code>, <code>engine</code>, <code>provider</code>, <code>model</code>, and <code>plugins</code>. Unknown keys are ignored so newer config files do not fail older installs."),
   code(`{
   "$schema": "./node_modules/pire-browser/pire-browser.schema.json",
   "json": true,
-  "profile": "Work",
+  "session": "work",
+  "namespace": "qa",
   "restore": true,
   "restoreSave": "auto",
+  "restoreCheckUrl": "/dashboard",
   "headless": true,
   "noAutoDialog": false,
   "hideScrollbars": true,
@@ -42,14 +44,14 @@ PIRE_BROWSER_CONFIG=./ci-config.json pire-browser open https://example.com`),
     }
   ]
 }`, "json"),
-  p("The packaged schema lives at <code>pire-browser.schema.json</code> in the repo and <code>./node_modules/pire-browser/pire-browser.schema.json</code> in an installed package. <code>restore: true</code> is an agent-browser-compatible persistence assertion for named managed Firefox profiles; <code>restore: \"work\"</code> acts like <code>--restore work</code> when no session/profile target is present, and <code>restoreSave: \"auto\"</code> is accepted for config portability. <code>headless: true</code>, <code>args</code>, and <code>userAgent</code> apply when a command launches a new managed Firefox session; existing live sessions keep their current launch context. <code>noAutoDialog: true</code> disables page-shimmed dialog auto-handling for command requests. <code>hideScrollbars: false</code> preserves native scrollbars in screenshot evidence; the default hides them for stable captures. <code>plugins</code> entries configure agent-browser-compatible credential providers and command/custom plugins; use <code>pire-browser plugin add &lt;package-or-repo&gt;</code> to create or update entries without hand-editing JSON. Configured plugins do not synthesize CLI flags."),
+  p("The packaged schema lives at <code>pire-browser.schema.json</code> in the repo and <code>./node_modules/pire-browser/pire-browser.schema.json</code> in an installed package. <code>restore: true</code> auto-loads and saves cookies plus origin-keyed localStorage using the selected session name; <code>restore: \"work\"</code> supplies an explicit key. <code>restoreSave: \"auto\"</code> protects a good state after failed import or validation. A profile name creates a temporary source snapshot, while a profile path is deliberately durable. <code>headless</code>, <code>args</code>, and <code>userAgent</code> apply only when launching a new session. <code>plugins</code> entries configure agent-browser-compatible credential providers and command/custom plugins."),
   h2("Common flags", "common-flags"),
   code(`pire-browser --config ./ci-config.json open https://example.com
 pire-browser --profile Work open https://example.com
 pire-browser --session work open https://example.com
 pire-browser --session work --restore open https://example.com
 pire-browser --restore work open https://example.com
-pire-browser --session-name work open https://example.com
+pire-browser --session work --restore open https://example.com
 pire-browser --auto-connect state save ./.pire-state/current.json
 pire-browser --allowed-domains "example.com,*.example.com" snapshot -i
 pire-browser --proxy http://proxy.example:8080 open https://example.com
@@ -87,15 +89,22 @@ pire-browser set offline off`),
     ["<code>PIRE_BROWSER_ENCRYPTION_KEY</code>", "64-character hex AES-256 key for encrypted state files."],
     ["<code>AGENT_BROWSER_ENCRYPTION_KEY</code>", "Agent-browser-compatible alias for encrypted state files and auth vault storage."],
     ["<code>PIRE_BROWSER_CONFIG</code>", "Explicit JSON defaults path, equivalent to <code>--config</code>."],
-    ["<code>PIRE_BROWSER_PROFILE</code>", "Default managed Firefox profile name or path-like profile value."],
-    ["<code>PIRE_BROWSER_SESSION</code>", "Default strict session id or named-session alias."],
-    ["<code>PIRE_BROWSER_SESSION_NAME</code>", "Default explicit named Firefox profile/session name."],
-    ["<code>PIRE_BROWSER_RESTORE</code>", "Agent-browser-compatible persistent-session assertion; a non-boolean value acts like <code>--restore &lt;name&gt;</code>."],
+    ["<code>PIRE_BROWSER_PROFILE</code>", "Firefox snapshot source name or deliberately persistent profile path."],
+    ["<code>PIRE_BROWSER_SESSION</code>", "Default live session UUID or isolated session name."],
+    ["<code>PIRE_BROWSER_NAMESPACE</code>", "Namespace for live sessions, temporary roots, and automatic restore directories."],
+    ["<code>PIRE_BROWSER_SESSION_NAME</code>", "Deprecated session-plus-restore key alias."],
+    ["<code>PIRE_BROWSER_RESTORE</code>", "Automatic cookie/localStorage restore assertion or explicit restore key."],
+    ["<code>PIRE_BROWSER_RESTORE_SAVE</code>", "Automatic restore save policy: <code>auto</code>, <code>always</code>, or <code>never</code>."],
+    ["<code>PIRE_BROWSER_RESTORE_CHECK_URL</code> / <code>_TEXT</code> / <code>_FN</code>", "Post-navigation restore validation checks."],
+    ["<code>PIRE_BROWSER_AUTOSAVE_INTERVAL_MS</code>", "Minimum automatic restore save interval; <code>0</code> means close-only."],
+    ["<code>PIRE_BROWSER_STATE_EXPIRE_DAYS</code>", "Automatic restore expiration age; default 30, <code>0</code> disables expiry."],
     ["<code>AGENT_BROWSER_PROFILE</code>", "Agent-browser-compatible alias for <code>PIRE_BROWSER_PROFILE</code>."],
     ["<code>AGENT_BROWSER_SESSION</code>", "Agent-browser-compatible alias for <code>PIRE_BROWSER_SESSION</code>."],
+    ["<code>AGENT_BROWSER_NAMESPACE</code>", "Agent-browser-compatible alias for <code>PIRE_BROWSER_NAMESPACE</code>."],
     ["<code>AGENT_BROWSER_SESSION_NAME</code>", "Agent-browser-compatible alias for <code>PIRE_BROWSER_SESSION_NAME</code>."],
     ["<code>AGENT_BROWSER_RESTORE</code>", "Agent-browser-compatible alias for <code>PIRE_BROWSER_RESTORE</code>."],
-    ["<code>PIRE_BROWSER_STATE</code>", "Default active-origin state file to preload before browser-control commands."],
+    ["<code>AGENT_BROWSER_RESTORE_SAVE</code> / <code>RESTORE_CHECK_*</code> / <code>AUTOSAVE_INTERVAL_MS</code> / <code>STATE_EXPIRE_DAYS</code>", "Agent-browser-compatible restore lifecycle aliases."],
+    ["<code>PIRE_BROWSER_STATE</code>", "Manual browser state file to preload before browser-control commands."],
     ["<code>AGENT_BROWSER_STATE</code>", "Agent-browser-compatible alias for <code>PIRE_BROWSER_STATE</code>."],
     ["<code>PIRE_BROWSER_INIT_SCRIPTS</code>", "OS path-list of document-start scripts to add to <code>open/goto/navigate &lt;url&gt;</code> when no explicit <code>--init-script</code> is present."],
     ["<code>AGENT_BROWSER_INIT_SCRIPTS</code>", "Agent-browser-compatible alias for <code>PIRE_BROWSER_INIT_SCRIPTS</code>."],
@@ -110,8 +119,8 @@ pire-browser set offline off`),
     ["<code>AGENT_BROWSER_NO_AUTO_DIALOG</code>", "Agent-browser-compatible alias for disabling page-shimmed dialog auto-handling."],
     ["<code>PIRE_BROWSER_HIDE_SCROLLBARS</code>", "Hide native scrollbars during screenshots by default; set <code>0</code> or <code>false</code> to preserve them."],
     ["<code>AGENT_BROWSER_HIDE_SCROLLBARS</code>", "Agent-browser-compatible alias for screenshot scrollbar hiding."],
-    ["<code>PIRE_BROWSER_DOWNLOAD_PATH</code>", "Default Firefox download directory for newly launched managed sessions."],
-    ["<code>AGENT_BROWSER_DOWNLOAD_PATH</code>", "Agent-browser-compatible alias for the default Firefox download directory."],
+    ["<code>PIRE_BROWSER_DOWNLOAD_PATH</code>", "Explicit durable Firefox download directory; the default is temporary."],
+    ["<code>AGENT_BROWSER_DOWNLOAD_PATH</code>", "Agent-browser-compatible alias for the durable download directory."],
     ["<code>PIRE_BROWSER_PROXY_USERNAME</code>", "Proxy authentication username."],
     ["<code>PIRE_BROWSER_PROXY_PASSWORD</code>", "Proxy authentication password."],
     ["<code>AGENT_BROWSER_PROXY*</code>", "Agent-browser-compatible proxy aliases."],

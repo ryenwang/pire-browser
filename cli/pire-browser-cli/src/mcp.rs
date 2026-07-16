@@ -2320,24 +2320,44 @@ fn target_args(object: &Map<String, Value>) -> std::result::Result<Vec<String>, 
     let session = optional_string(object, "session")?;
     let session_name = optional_string(object, "sessionName")?;
     let profile = optional_string(object, "profile")?;
-    let count = [&session, &session_name, &profile]
-        .iter()
-        .filter(|value| value.is_some())
-        .count();
-    if count > 1 {
-        return Err("use only one of session, sessionName, or profile".to_string());
+    let restore = optional_string(object, "restore")?;
+    if session.is_some() && session_name.is_some() {
+        return Err("use only one of session or deprecated sessionName".to_string());
+    }
+    if session_name.is_some() && restore.is_some() {
+        return Err(
+            "deprecated sessionName already selects restore state; do not also set restore"
+                .to_string(),
+        );
     }
     let mut args = Vec::new();
+    push_optional_flag_value(&mut args, object, "namespace", "--namespace")?;
     if let Some(session) = session {
         args.push("--session".to_string());
         args.push(session);
     } else if let Some(session_name) = session_name {
-        args.push("--session-name".to_string());
+        args.push("--session".to_string());
+        args.push(session_name.clone());
+        args.push("--restore".to_string());
         args.push(session_name);
-    } else if let Some(profile) = profile {
+    }
+    if let Some(restore) = restore {
+        args.push("--restore".to_string());
+        args.push(restore);
+    }
+    if let Some(profile) = profile {
         args.push("--profile".to_string());
         args.push(profile);
     }
+    push_optional_flag_value(&mut args, object, "restoreSave", "--restore-save")?;
+    push_optional_flag_value(&mut args, object, "restoreCheckUrl", "--restore-check-url")?;
+    push_optional_flag_value(
+        &mut args,
+        object,
+        "restoreCheckText",
+        "--restore-check-text",
+    )?;
+    push_optional_flag_value(&mut args, object, "restoreCheckFn", "--restore-check-fn")?;
     if let Some(state_path) = optional_string(object, "statePath")? {
         args.push("--state".to_string());
         args.push(state_path);
@@ -2427,6 +2447,12 @@ fn reject_launch_unsupported_fields(
     for key in [
         "session",
         "sessionName",
+        "namespace",
+        "restore",
+        "restoreSave",
+        "restoreCheckUrl",
+        "restoreCheckText",
+        "restoreCheckFn",
         "statePath",
         "allowFileAccess",
         "contentBoundaries",
@@ -4601,7 +4627,9 @@ fn launch_tool_schema() -> Value {
         vec![
             (
                 "profile",
-                string_prop("Managed Firefox profile to launch. Defaults to Default."),
+                string_prop(
+                    "Firefox profile source name to snapshot, or explicit durable profile path. Omit for a fresh temporary profile.",
+                ),
             ),
             ("url", string_prop("Optional URL to open at launch.")),
             (
@@ -4696,15 +4724,43 @@ fn common_properties() -> Map<String, Value> {
     let mut map = Map::new();
     map.insert(
         "session".to_string(),
-        string_prop("Existing live session id or named session/profile to target."),
+        string_prop("Existing live session UUID or ephemeral named live session to target."),
     );
     map.insert(
         "sessionName".to_string(),
-        string_prop("Explicit named managed Firefox profile to reuse or launch."),
+        string_prop("Deprecated alias for session plus compact restore state with the same key."),
+    );
+    map.insert(
+        "namespace".to_string(),
+        string_prop("Namespace for live sessions, temporary roots, and automatic restore state."),
+    );
+    map.insert(
+        "restore".to_string(),
+        string_prop("Compact restore-state key for cookies and origin-keyed localStorage."),
     );
     map.insert(
         "profile".to_string(),
-        string_prop("Managed Firefox profile name or path."),
+        string_prop("Firefox profile source name to snapshot, or explicit durable profile path."),
+    );
+    map.insert(
+        "restoreSave".to_string(),
+        string_prop("Automatic restore save policy: auto, always, or never."),
+    );
+    map.insert(
+        "restoreCheckUrl".to_string(),
+        string_prop("URL pattern that must match before automatic restore saving remains enabled."),
+    );
+    map.insert(
+        "restoreCheckText".to_string(),
+        string_prop(
+            "Page text that must be present before automatic restore saving remains enabled.",
+        ),
+    );
+    map.insert(
+        "restoreCheckFn".to_string(),
+        string_prop(
+            "Page predicate that must pass before automatic restore saving remains enabled.",
+        ),
     );
     map.insert(
         "contentBoundaries".to_string(),
@@ -5006,6 +5062,18 @@ mod tests {
             open["inputSchema"]["properties"]["enableReactDevtools"]["type"],
             "boolean"
         );
+        assert_eq!(
+            open["inputSchema"]["properties"]["namespace"]["type"],
+            "string"
+        );
+        assert_eq!(
+            open["inputSchema"]["properties"]["restore"]["type"],
+            "string"
+        );
+        assert!(open["inputSchema"]["properties"]["profile"]["description"]
+            .as_str()
+            .unwrap()
+            .contains("durable profile path"));
         let snapshot = tools
             .iter()
             .find(|tool| tool["name"] == "pire_browser_snapshot")
@@ -5806,7 +5874,9 @@ mod tests {
             args,
             vec![
                 "--json",
-                "--session-name",
+                "--session",
+                "qa",
+                "--restore",
                 "qa",
                 "--allowed-domains",
                 "example.com,*.example.com",
@@ -5818,6 +5888,54 @@ mod tests {
                 "get url"
             ]
         );
+
+        let args = tool_command_args(
+            "pire_browser_open",
+            &json!({
+                "namespace": "qa",
+                "session": "checkout",
+                "restore": "login",
+                "profile": "Work",
+                "restoreSave": "auto",
+                "restoreCheckUrl": "*/account",
+                "restoreCheckText": "Signed in",
+                "restoreCheckFn": "() => Boolean(document.body)",
+                "url": "https://example.com/account"
+            }),
+            McpToolsProfile::Core,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--json",
+                "--namespace",
+                "qa",
+                "--session",
+                "checkout",
+                "--restore",
+                "login",
+                "--profile",
+                "Work",
+                "--restore-save",
+                "auto",
+                "--restore-check-url",
+                "*/account",
+                "--restore-check-text",
+                "Signed in",
+                "--restore-check-fn",
+                "() => Boolean(document.body)",
+                "open",
+                "https://example.com/account"
+            ]
+        );
+        assert!(tool_command_args(
+            "pire_browser_open",
+            &json!({ "session": "one", "sessionName": "two", "url": "https://example.com" }),
+            McpToolsProfile::Core,
+        )
+        .unwrap_err()
+        .contains("only one of session or deprecated sessionName"));
 
         let args = tool_command_args(
             "pire_browser_screenshot",
@@ -5933,7 +6051,9 @@ mod tests {
             args,
             vec![
                 "--json",
-                "--session-name",
+                "--session",
+                "qa",
+                "--restore",
                 "qa",
                 "--state",
                 ".pire-state/app.json",
@@ -6109,7 +6229,9 @@ mod tests {
             args,
             vec![
                 "--json",
-                "--session-name",
+                "--session",
+                "review",
+                "--restore",
                 "review",
                 "snapshot",
                 "-i",
@@ -7321,7 +7443,9 @@ mod tests {
             args,
             vec![
                 "--json",
-                "--session-name",
+                "--session",
+                "work",
+                "--restore",
                 "work",
                 "state",
                 "save",
@@ -7766,11 +7890,11 @@ mod tests {
 
         let error = tool_command_args(
             "pire_browser_status",
-            &json!({ "session": "a", "profile": "b" }),
+            &json!({ "sessionName": "a", "restore": "b" }),
             McpToolsProfile::Core,
         )
         .unwrap_err();
-        assert!(error.contains("use only one"));
+        assert!(error.contains("already selects restore state"));
 
         let error = tool_command_args(
             "pire_browser_get",

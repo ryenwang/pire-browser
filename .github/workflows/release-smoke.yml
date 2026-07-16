@@ -125,6 +125,8 @@ jobs:
           $smokeArgs = @("--build-platform", "--tuple", "${{ matrix.tuple }}")
           if ("${{ inputs.run_browser_smoke }}" -ne "true") {
             $smokeArgs += "--no-browser"
+          } else {
+            $smokeArgs += @("--lifecycle-stress-count", "100")
           }
           if ("${{ inputs.run_signed_xpi }}" -eq "true") {
             $smokeArgs += "--signed-xpi"
@@ -143,6 +145,8 @@ jobs:
           smoke_args=(--build-platform --tuple "${{ matrix.tuple }}")
           if [ "${{ inputs.run_browser_smoke }}" != "true" ]; then
             smoke_args+=(--no-browser)
+          else
+            smoke_args+=(--lifecycle-stress-count 100)
           fi
           if [ -n "${PIRE_BROWSER_FIREFOX_PATH:-}" ]; then
             smoke_args+=(--firefox-path "$PIRE_BROWSER_FIREFOX_PATH")
@@ -158,6 +162,8 @@ jobs:
           smoke_args=(--build-platform --tuple "${{ matrix.tuple }}")
           if [ "${{ inputs.run_browser_smoke }}" != "true" ]; then
             smoke_args+=(--no-browser)
+          else
+            smoke_args+=(--lifecycle-stress-count 100)
           fi
           if [ -n "${PIRE_BROWSER_FIREFOX_PATH:-}" ]; then
             smoke_args+=(--firefox-path "$PIRE_BROWSER_FIREFOX_PATH")

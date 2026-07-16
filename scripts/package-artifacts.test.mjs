@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { PLATFORM_PACKAGES, packageDirectoryName, resolveNativeBinary, rootDir } from "./platform.mjs";
 import { assertReleaseVersionsAligned, cargoWorkspaceVersion } from "./build-platform.mjs";
 import { normalizeRepositoryUrl } from "./verify-npm-artifacts.mjs";
+import { npmDistTagForVersion, publishCommand } from "./publish-npm-artifacts.mjs";
 import {
   expectedPackageSource,
   expectedVersionFromSource,
@@ -17,11 +18,15 @@ import {
 import {
   installCommandArgs,
   installedWebExtBin,
+  lifecycleStorageFootprint,
+  parseSmokePackedPackageArgs,
   packedMcpBrowserSmokeInput,
   packedMcpFilesSmokeInput,
   packedMcpNetworkSmokeInput,
   packedMcpSmokeInput,
   packedMcpStateSmokeInput,
+  sanitizedSmokeEnv,
+  samePath,
   validatePackedMcpBrowserSmokeOutput,
   validatePackedMcpFilesSmokeOutput,
   validatePackedMcpNetworkSmokeOutput,
@@ -42,11 +47,58 @@ function readJson(path) {
 }
 
 describe("npm artifact metadata", () => {
+  it("normalizes Windows extended-length paths in packed lifecycle assertions", () => {
+    expect(samePath("\\\\?\\C:\\Temp\\profile", "C:\\Temp\\profile", "win32")).toBe(true);
+    expect(samePath("\\\\?\\UNC\\server\\share\\profile", "\\\\server\\share\\profile", "win32")).toBe(true);
+  });
+
+  it("isolates packed lifecycle smoke temp data and validates stress counts", () => {
+    const parsed = parseSmokePackedPackageArgs(["--tuple", "win32-x64", "--lifecycle-stress-count", "100"]);
+    expect(parsed.lifecycleStressCount).toBe(100);
+    expect(() => parseSmokePackedPackageArgs(["--tuple", "win32-x64", "--lifecycle-stress-count", "-1"])).toThrow(
+      /integer from 0 to 1000/
+    );
+    const env = sanitizedSmokeEnv({}, { tempRoot: "C:\\smoke-temp" }, "win32");
+    expect(env.TEMP).toBe("C:\\smoke-temp");
+    expect(env.TMP).toBe("C:\\smoke-temp");
+    expect(env.TMPDIR).toBe("C:\\smoke-temp");
+
+    const root = mkdtempSync(join(tmpdir(), "pire-lifecycle-footprint-"));
+    try {
+      const dataRoot = join(root, "data");
+      const tempRoot = join(root, "temp");
+      mkdirSync(join(dataRoot, "firefox-profiles", "legacy"), { recursive: true });
+      mkdirSync(join(tempRoot, "pire-browser", "qa", "sessions", "one"), { recursive: true });
+      writeFileSync(join(dataRoot, "firefox-profiles", "legacy", "cookies.sqlite"), "durable");
+      writeFileSync(join(tempRoot, "pire-browser", "qa", "sessions", "one", "marker.json"), "temp");
+      expect(lifecycleStorageFootprint({ dataRoot, tempRoot, namespace: "qa" })).toEqual({
+        temporary: { files: 1, bytes: 4 },
+        appDataProfiles: { files: 1, bytes: 7 },
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("keeps npm sidecars and Rust workspace metadata on the release version", () => {
     const rootPackage = readJson(join(root, "package.json"));
     const cargoManifest = readFileSync(join(root, "cli", "Cargo.toml"), "utf8");
     expect(cargoWorkspaceVersion(cargoManifest)).toBe(rootPackage.version);
     expect(assertReleaseVersionsAligned(root)).toBe(rootPackage.version);
+  });
+
+  it("publishes prereleases under their npm prerelease tag", () => {
+    expect(npmDistTagForVersion("0.3.0-beta.1")).toBe("beta");
+    expect(npmDistTagForVersion("0.3.0-rc.2")).toBe("rc");
+    expect(npmDistTagForVersion("0.3.0")).toBeNull();
+    expect(publishCommand("package.tgz", { scoped: true, tag: "beta" })).toEqual([
+      "publish",
+      "package.tgz",
+      "--access",
+      "public",
+      "--tag",
+      "beta",
+    ]);
   });
 
   it("normalizes npm repository URL variants for provenance checks", () => {
@@ -345,7 +397,7 @@ describe("npm artifact metadata", () => {
 
   it("validates packed-package MCP browser smoke input and output", () => {
     const input = packedMcpBrowserSmokeInput({
-      profile: "packed-mcp-test",
+      session: "packed-mcp-test",
       url: "http://127.0.0.1:4321/form.html",
       screenshot: join(tmpdir(), "pire-browser-mcp-smoke.png"),
       executablePath: "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
@@ -366,7 +418,7 @@ describe("npm artifact metadata", () => {
     ]) {
       expect(input).toContain(`"name":"${tool}"`);
     }
-    expect(input).toContain('"profile":"packed-mcp-test"');
+    expect(input).toContain('"session":"packed-mcp-test"');
     expect(input).toContain('"executablePath"');
     expect(input).toContain('"selector":"#email","text":"mcp-smoke@example.com"');
     expect(input).toContain('"selector":"[data-testid=\'submit-button\']"');
@@ -428,7 +480,7 @@ describe("npm artifact metadata", () => {
     );
     try {
       const input = packedMcpNetworkSmokeInput({
-        profile: "packed-mcp-network-test",
+        session: "packed-mcp-network-test",
         url: "http://127.0.0.1:4321/network.html",
         harPath,
         executablePath: "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
@@ -447,7 +499,7 @@ describe("npm artifact metadata", () => {
       ]) {
         expect(input).toContain(`"name":"${tool}"`);
       }
-      expect(input).toContain('"profile":"packed-mcp-network-test"');
+      expect(input).toContain('"session":"packed-mcp-network-test"');
 
       const record = {
         requestId: "req_123",
@@ -520,7 +572,7 @@ describe("npm artifact metadata", () => {
     writeFileSync(waitDownloadPath, "packed MCP download fixture\n");
     try {
       const input = packedMcpFilesSmokeInput({
-        profile: "packed-mcp-files-test",
+        session: "packed-mcp-files-test",
         url: "http://127.0.0.1:4321/files.html",
         uploadPath,
         downloadPath,
@@ -540,7 +592,7 @@ describe("npm artifact metadata", () => {
       ]) {
         expect(input).toContain(`"name":"${tool}"`);
       }
-      expect(input).toContain('"profile":"packed-mcp-files-test"');
+      expect(input).toContain('"session":"packed-mcp-files-test"');
       expect(input).toContain('"downloadPath"');
       expect(input).toContain(uploadPath.replace(/\\/g, "\\\\"));
 
@@ -589,7 +641,7 @@ describe("npm artifact metadata", () => {
     writeFileSync(statePath, JSON.stringify({ kind: "active-origin-state" }));
     try {
       const input = packedMcpStateSmokeInput({
-        profile: "packed-mcp-state-test",
+        session: "packed-mcp-state-test",
         url: "http://127.0.0.1:4321/state.html?value=mcp-state-smoke",
         clearUrl: "http://127.0.0.1:4321/state.html?clear=1",
         restoreUrl: "http://127.0.0.1:4321/state.html",
@@ -614,7 +666,7 @@ describe("npm artifact metadata", () => {
       ]) {
         expect(input).toContain(`"name":"${tool}"`);
       }
-      expect(input).toContain('"profile":"packed-mcp-state-test"');
+      expect(input).toContain('"session":"packed-mcp-state-test"');
       expect(input).toContain('"noRequireInspected":true');
       expect(input).toContain('"url":"http://127.0.0.1:4321/form.html"');
 
@@ -634,9 +686,7 @@ describe("npm artifact metadata", () => {
         ok(3, "waited"),
         ok(4, "saved", {
           path: statePath,
-          cookies: 1,
-          localStorageKeys: 1,
-          sessionStorageKeys: 1,
+          counts: { cookies: 1, origins: 1, localStorageKeys: 1 },
         }),
         ok(5, "opened clear"),
         ok(6, "waited empty"),
@@ -646,24 +696,22 @@ describe("npm artifact metadata", () => {
         ok(10, "opened neutral state page"),
         ok(11, "loaded", {
           path: statePath,
-          cookiesSet: 1,
-          localStorageKeys: 1,
-          sessionStorageKeys: 1,
-          reloaded: true,
+          counts: { cookies: 1, origins: 1, localStorageKeys: 1 },
+          import: { cookiesSet: 1, pendingOrigins: 1 },
         }),
         ok(12, "waited restored"),
         ok(13, "mcp-state-smoke"),
-        ok(14, "mcp-state-smoke"),
+        ok(14, "EMPTY"),
         ok(15, "mcp-state-smoke"),
         ok(16, "mcp-state-smoke"),
-        ok(17, "mcp-state-smoke"),
+        ok(17, "null"),
         ok(18, "pireStateCookie=mcp-state-smoke"),
         ok(19, "state summary", {
           path: statePath,
           counts: {
             cookies: 1,
+            origins: 1,
             localStorageKeys: 1,
-            sessionStorageKeys: 1,
           },
         }),
         ok(20, "Saved auth profile packed-mcp-auth", { profile: { name: "packed-mcp-auth" } }),
@@ -682,7 +730,7 @@ describe("npm artifact metadata", () => {
         serverVersion: "0.2.20",
         cookies: 1,
         localStorageKeys: 1,
-        sessionStorageKeys: 1,
+        origins: 1,
         closeWarning: "close failed for the targeted session",
       });
       expect(() => validatePackedMcpStateSmokeOutput(stdout.replaceAll('"text":"mcp-state-smoke"', '"text":"wrong"'), { statePath })).toThrow(/restored/);
@@ -732,7 +780,12 @@ describe("npm artifact metadata", () => {
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*run_signed_xpi:[\s\S]*default: false/);
     expect(releaseSmokeWorkflow).toContain("*mcp*.stdout.log");
     expect(releaseSmokeWorkflow).toContain("*mcp*.stderr.log");
+    expect(releaseSmokeWorkflow).toContain('--lifecycle-stress-count", "100"');
+    expect(releaseSmokeWorkflow).toContain("--lifecycle-stress-count 100");
     const packedSmokeScript = readFileSync(join(root, "scripts", "smoke-packed-package.mjs"), "utf8");
+    expect(packedSmokeScript).toContain("runSessionLifecycleSmoke");
+    expect(packedSmokeScript).toContain("originsVerified: 2");
+    expect(packedSmokeScript).toContain("doctorRemovedMarkedOrphan: true");
     expect(packedSmokeScript).toContain("runPackedMcpSmoke");
     expect(packedSmokeScript).toContain("runMcpBrowserSmoke");
     expect(packedSmokeScript).toContain("runMcpFilesSmoke");

@@ -130,7 +130,7 @@ pire-browser wait --download --timeout 60000`),
   code(`pire-browser --download-path ./downloads open <url>
 pire-browser download <sel> <path> [--timeout <ms>]
 pire-browser wait --download [path] [--timeout <ms>]`),
-  p("Downloads are staged under local app data before being finalized to the requested path. Use <code>--download-path &lt;dir&gt;</code>, <code>PIRE_BROWSER_DOWNLOAD_PATH</code>, or <code>AGENT_BROWSER_DOWNLOAD_PATH</code> to set the Firefox download directory for newly launched managed sessions. With no explicit output path, <code>wait --download</code> reports the completed Firefox file path. Unknown MIME/helper-app dialogs can still time out in Firefox."),
+  p("Without <code>--download-path</code>, Firefox downloads live in the temporary session root and are removed after close. Use <code>--download-path &lt;dir&gt;</code>, <code>PIRE_BROWSER_DOWNLOAD_PATH</code>, or <code>AGENT_BROWSER_DOWNLOAD_PATH</code> for durable files. With no explicit output path, <code>wait --download</code> reports the completed Firefox file path."),
 
   h2("Mouse", "mouse"),
   statusNote("mouseAndDrag"),
@@ -360,9 +360,9 @@ PIRE_BROWSER_ENCRYPTION_KEY=<64-hex-key> pire-browser state save ./.pire-state/a
 AGENT_BROWSER_ENCRYPTION_KEY=<64-hex-key> pire-browser state load ./.pire-state/app-work.json
 pire-browser --auto-connect state save ./.pire-state/app-work.json
 pire-browser --state ./.pire-state/app-work.json open https://example.com/dashboard
-pire-browser --session-name work state save ./.pire-state/app-work.json
-pire-browser --session-name review state load --require-inspected ./.pire-state/app-work.json`),
-  p("State files contain active-origin cookies, localStorage, and sessionStorage. They are plaintext by default for compatibility. Set <code>PIRE_BROWSER_ENCRYPTION_KEY</code> or the agent-browser-compatible <code>AGENT_BROWSER_ENCRYPTION_KEY</code> to a 64-character hex AES-256 key to write/load AES-256-GCM encrypted state files. <code>state list</code>, <code>state show</code>, and <code>state inspect</code> are metadata-only and do not print cookie or storage values. State files do not include saved passwords, full browser profiles, service workers, IndexedDB, or cross-origin SSO state."),
+pire-browser --session work state save ./.pire-state/app-work.json
+pire-browser --session review state load --require-inspected ./.pire-state/app-work.json`),
+  p("Current state files contain all profile cookies plus origin-keyed localStorage; legacy active-origin files with sessionStorage remain readable. Files are plaintext by default. Set <code>PIRE_BROWSER_ENCRYPTION_KEY</code> or <code>AGENT_BROWSER_ENCRYPTION_KEY</code> to a 64-character hex AES-256 key for encryption. <code>state list</code>, <code>state show</code>, and <code>state inspect</code> are metadata-only. State files exclude saved passwords, service workers, IndexedDB, history, cache, and tabs."),
 
   h2("Sessions", "sessions"),
   statusNote("namedSessions"),
@@ -380,12 +380,12 @@ pire-browser session attach <session-id>
 pire-browser session cleanup
 pire-browser --session <uuid> snapshot -i
 pire-browser --session work open https://example.com
-pire-browser --session-name work open https://example.com
+pire-browser --namespace qa --session work open https://example.com
 pire-browser --profile Work open https://example.com
 PIRE_BROWSER_PROFILE=Work pire-browser snapshot -i
-pire-browser --session-name work close`),
+pire-browser --session work close`),
 
-  h2("Managed Firefox profiles", "managed-firefox-profiles"),
+  h2("Firefox profile sources", "managed-firefox-profiles"),
   statusNote("managedProfiles"),
   code(`pire-browser profiles
 pire-browser profiles --json
@@ -396,9 +396,9 @@ pire-browser profiles import /path/to/firefox-profile --name Work --overwrite
 pire-browser launch --profile Default
 pire-browser --profile Work open https://example.com
 pire-browser --profile ~/.myapp-profile open https://example.com
-# Import copies a Firefox profile into managed pire-browser state.
+# A name is copied to a temporary snapshot; a path is deliberately durable.
 # Chrome profile import/reuse is not part of the Firefox backend.`),
-  p("<code>profiles</code> lists managed <code>pire-browser</code> profiles plus importable local Mozilla Firefox profiles discovered from <code>profiles.ini</code>. <code>profiles import &lt;discovered-name-or-path&gt; --name &lt;managed-name&gt;</code> copies an existing Firefox profile into a managed profile. <code>Default</code> selects the discovered default Firefox profile when one is present. Import never mutates the source profile and future source changes do not sync; close Firefox before importing so lock files and partially-written data are not copied."),
+  p("<code>--profile &lt;name&gt;</code> copies a discovered or preserved Firefox source into a temporary snapshot and never mutates it. <code>--profile &lt;path&gt;</code> uses that exact path as durable browser data. Existing 0.2.x managed profiles remain available as legacy persistent sources. Use <code>profiles usage</code>, <code>profiles clean</code>, and <code>profiles delete</code> for explicit recovery and cache cleanup."),
 
   h2("Dashboard", "dashboard"),
   statusNote("dashboard"),
@@ -453,9 +453,7 @@ pire-browser goto https://example.com
 pire-browser navigate https://example.com`),
 
   h2("Pre-navigation setup", "pre-navigation-setup"),
-  code(`pire-browser --session-name review open
-pire-browser --session-name review state load ./.pire-state/app.json
-pire-browser --session-name review navigate https://app.example.com/dashboard`),
+  code(`pire-browser --session review --state ./.pire-state/app.json open https://app.example.com/dashboard`),
 
   h2("React / Web Vitals", "react-web-vitals"),
   code(`pire-browser open --enable react-devtools https://app.example.com
@@ -483,12 +481,16 @@ pire-browser setcontent '<main><h1>Hello</h1></main>'`),
   p("<code>setcontent &lt;html&gt;</code> replaces the active page document HTML for a fixture or repro and is gated as an eval action. Run <code>snapshot -i</code> afterward before acting on refs. It is Firefox WebExtension document replacement, not CDP <code>Page.setDocumentContent</code>."),
 
   h2("Global options", "global-options"),
-  code(`--config <path>                 # Load an explicit pire-browser config file
+  code(`--config <path>               # Load an explicit pire-browser config file
 --session <uuid>              # Target an existing live session id
---session <name>              # Reuse or launch a named managed Firefox profile
---session-name <name>         # Explicit named Firefox profile spelling
---profile <name-or-path>      # Managed Firefox profile alias
---state <path>                # Preload active-origin state before a browser command
+--session <name>              # Select an isolated ephemeral live session
+--namespace <name>            # Namespace sessions, temp roots, and restore state
+--session-name <name>         # Deprecated session-plus-restore alias
+--profile <name>              # Copy a Firefox profile into a temporary snapshot
+--profile <path>              # Use a deliberately persistent profile path
+--restore [key]               # Auto-load/save cookies and origin localStorage
+--restore-save <mode>         # auto, always, or never
+--state <path>                # Preload a manual state file
 --auto-connect                # Select a live managed session when saving state
 --allowed-domains <list>      # Cooperative domain allowlist
 --action-policy <path>        # Action policy JSON

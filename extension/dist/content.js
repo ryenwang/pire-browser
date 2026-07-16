@@ -12,6 +12,28 @@
     let mouseY = Math.round(window.innerHeight / 2);
     injectDialogShim();
     void syncDialogAutoHandling();
+    window.addEventListener("pagehide", () => {
+        try {
+            if (!/^https?:$/.test(window.location.protocol))
+                return;
+            const local = {};
+            for (let index = 0; index < window.localStorage.length; index += 1) {
+                const key = window.localStorage.key(index);
+                if (key != null)
+                    local[key] = window.localStorage.getItem(key) ?? "";
+            }
+            void browser.runtime
+                .sendMessage({
+                type: "lifecycle_pagehide_state",
+                origin: window.location.origin,
+                localStorage: local,
+            })
+                .catch(() => undefined);
+        }
+        catch {
+            // Storage can be denied for opaque or privacy-restricted documents.
+        }
+    });
     window.addEventListener("message", (event) => {
         if (event.source !== window)
             return;

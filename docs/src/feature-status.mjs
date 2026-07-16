@@ -8,7 +8,7 @@ export const statusLabels = {
 export const featureStatuses = {
   coreCommands: {
     status: "available",
-    summary: "Navigation, agent-friendly URL/active-tab reads, snapshots, refs, DOM actions including hover/focus/select/check/scroll/drag, waits, screenshots, eval with inline/base64/stdin input, downloads with configurable default directories, uploads, clipboard text, agent-browser-style tab list/switch/close forms, Firefox window list/new/switch/close workflows, frames, sessions, plaintext or opt-in encrypted state files, install diagnostics with nextActions, agent-browser-style install --with-deps dependency handling, and guardrails are part of the current public package.",
+    summary: "Navigation, agent-friendly URL/active-tab reads, snapshots, refs, DOM actions including hover/focus/select/check/scroll/drag, waits, screenshots, eval with inline/base64/stdin input, temporary-by-default downloads with explicit durable directories, uploads, clipboard text, tab/window workflows, frames, ephemeral sessions, compact restore state, plaintext or opt-in encrypted state files, install diagnostics with nextActions, install --with-deps dependency handling, and guardrails are part of the current public package.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/cli.rs"],
   },
   settings: {
@@ -38,17 +38,17 @@ export const featureStatuses = {
   },
   managedProfiles: {
     status: "best_effort",
-    summary: "`profiles`, `profiles import <discovered-name-or-firefox-profile-dir> --name <managed-name>`, `--profile <name-or-path>`, and `PIRE_BROWSER_PROFILE` provide managed Firefox profile support. `profiles` lists managed profiles plus importable local Mozilla Firefox profiles discovered from `profiles.ini`; import copies existing Firefox profile data into managed pire-browser state. Chrome profile import/reuse remains outside the Firefox backend.",
+    summary: "`--profile <name>` copies a discovered or preserved Firefox profile into an immutable temporary snapshot; `--profile <path>` deliberately uses a durable path. Existing 0.2.x managed profiles are preserved as legacy persistent sources, with `profiles usage/clean/delete` for explicit recovery. Chrome profile import/reuse remains outside the Firefox backend.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/cli.rs"],
   },
   namedSessions: {
     status: "best_effort",
-    summary: "`--session <uuid>` targets a strict live session id, while `--session <name>`, `--session-name <name>`, and agent-browser-compatible `--restore` recipes reuse or launch managed Firefox profiles. Bare `session --json` and `session info --json` inspect session/profile/restore state without launching Firefox.",
+    summary: "Ordinary and named sessions use temporary Firefox profiles. `--session <name>` selects the live identity, `--restore [key]` persists all cookies plus origin-keyed localStorage, `--namespace` isolates sessions/temp roots/restore directories, and `--session-name` remains a deprecated session-plus-restore alias. UUIDs target live sessions only.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/cli.rs"],
   },
   activeOriginState: {
     status: "best_effort",
-    summary: "`state save/load/list/show/rename/clear/clean/inspect`, global `--state`, and `--auto-connect state save` cover active-origin cookies and Web Storage with plaintext default files or opt-in AES-256-GCM encryption, not full browser profiles or auth vaults.",
+    summary: "Current state and automatic restore files cover all profile cookies plus origin-keyed localStorage with plaintext compatibility defaults or opt-in AES-256-GCM encryption. Legacy active-origin state remains readable; IndexedDB, service workers, passwords, history, cache, and tabs require an explicit durable profile path.",
     sources: ["README.md", "skill-data/core/SKILL.md", "cli/pire-browser-core/src/cli.rs"],
   },
   screenshots: {

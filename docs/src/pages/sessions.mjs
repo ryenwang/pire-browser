@@ -1,70 +1,80 @@
-import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, table, unavailable } from "../blocks.mjs";
+import { code, h2, note, p, page, statusNote, table } from "../blocks.mjs";
 
 const sessionsBlocks = [
   h2("Overview", "overview"),
   statusNote("namedSessions"),
   statusNote("managedProfiles"),
-  p("Sessions are live Firefox extension connections. Named sessions map to managed Firefox profiles so agents can keep projects isolated."),
-  h2("Session targeting", "session-targeting"),
-  code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
-pire-browser --session "$SESSION" --restore open https://app.example.com
-pire-browser --session "$SESSION" --restore session info --json
-pire-browser --session "$SESSION" --restore snapshot -i
+  p("Session identity, compact restore state, and Firefox profile source are independent. Ordinary sessions use temporary profiles. Add <code>--restore</code> for cookie/localStorage continuity, or use an explicit profile path for full browser-state durability."),
 
-pire-browser session --json
+  h2("Ephemeral sessions", "ephemeral-sessions"),
+  code(`pire-browser open https://example.com
+pire-browser --session work open https://example.com
+pire-browser --session work snapshot -i
+pire-browser --session work close
+
 pire-browser session list
 pire-browser session info --json
-pire-browser session id --scope worktree --prefix my-app
-pire-browser session id --scope worktree --prefix my-app --json
-pire-browser session list --json
-pire-browser session attach <session-id>
-pire-browser session cleanup
-pire-browser --session <uuid> snapshot -i
-pire-browser --session work open https://example.com
-pire-browser --session-name work open https://example.com
-AGENT_BROWSER_SESSION=work pire-browser snapshot -i
-pire-browser --session-name work snapshot -i
-pire-browser --session-name work close`),
-  p("For app QA, derive one stable worktree-scoped session name and pass it with <code>--session</code> and <code>--restore</code> on every command. This mirrors agent-browser's persistent-session recipe, but the persistence mechanism is the named managed Firefox profile. The name is deterministic for the current Git worktree and prefix, so separate projects do not collide. <code>session id --scope cwd</code> scopes to the current directory, and <code>--scope global</code> returns the sanitized prefix without a path hash."),
-  p("Use <code>pire-browser session</code> or <code>pire-browser session --json</code> for the agent-browser-compatible current/default session diagnostic. Use <code>pire-browser --session &lt;name&gt; --restore session info --json</code> to inspect a selected live session, managed Firefox profile, restore status, and next actions without launching or mutating Firefox. Use <code>session list</code> when you need the full live-session inventory."),
-  p("<code>--session &lt;uuid&gt;</code> targets a strict live session id from <code>session list</code>. <code>--session &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION=&lt;name&gt;</code>, <code>AGENT_BROWSER_SESSION=&lt;name&gt;</code>, <code>--session-name &lt;name&gt;</code>, <code>PIRE_BROWSER_SESSION_NAME=&lt;name&gt;</code>, and <code>AGENT_BROWSER_SESSION_NAME=&lt;name&gt;</code> are named-profile aliases that may reuse or launch managed Firefox. <code>--restore &lt;name&gt;</code> is a short spelling for <code>--session &lt;name&gt; --restore</code> when no session/profile target is already present. <code>--restore-save auto|always|never</code> is accepted for agent-browser recipe compatibility; named Firefox profiles persist automatically."),
-  h2("Managed profiles", "managed-profiles"),
-  code(`pire-browser profiles
-pire-browser profiles --json
-pire-browser profiles import default-release --name Work
-pire-browser profiles import Default --name Work
-pire-browser profiles import /path/to/firefox-profile --name Work
-pire-browser profiles import /path/to/firefox-profile --name Work --overwrite
-pire-browser --profile Work open https://example.com
-PIRE_BROWSER_PROFILE=Work pire-browser snapshot -i
-AGENT_BROWSER_PROFILE=Work pire-browser snapshot -i
-pire-browser --profile ~/.myapp-profile open https://example.com`),
-  p("<code>--profile &lt;name-or-path&gt;</code> reuses or launches a managed Firefox profile. Path-like values are mapped to stable managed Firefox profile names under the <code>pire-browser</code> data directory; they are not raw browser profile directories."),
-  p("<code>profiles</code> lists managed <code>pire-browser</code> profiles plus importable local Mozilla Firefox profiles discovered from <code>profiles.ini</code>. <code>profiles import &lt;discovered-name-or-path&gt; --name &lt;managed-name&gt;</code> copies an existing Firefox profile into a managed profile for login continuity. <code>Default</code> selects the discovered default Firefox profile when one is present. It never mutates the source profile and future source changes do not sync. Close Firefox before importing so lock files and partially-written data are not copied; use <code>--overwrite</code> only after closing the managed profile being replaced."),
-  h2("Logged-in QA starter", "logged-in-qa-starter"),
+pire-browser --session <uuid> snapshot -i`),
+  p("<code>open</code> selects the <code>default</code> session. <code>--session &lt;name&gt;</code> selects an isolated live browser but does not make its Firefox profile durable. New profiles and default downloads live under the OS temporary directory and are removed after close. UUID targets refer only to an existing live session."),
+
+  h2("Compact restore", "compact-restore"),
   code(`SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
-pire-browser profiles
-pire-browser profiles import Default --name "$SESSION"
 pire-browser --session "$SESSION" --restore open https://app.example.com
-pire-browser --session "$SESSION" --restore session info --json
-pire-browser --session "$SESSION" --restore snapshot
-pire-browser --session "$SESSION" --restore screenshot`),
-  p("This is the shortest recurring QA path when the user already has Firefox login state. Import the discovered <code>Default</code> or a named importable profile into the same managed profile name as the stable project session. On later runs, skip import and reuse the session command so cookies, tabs, IndexedDB, service workers, and saved Firefox login state stay isolated to that project."),
-  h2("State persistence", "state-persistence"),
-  code(`pire-browser --session-name work state save ./.pire-state/app-work.json
-pire-browser --auto-connect state save ./.pire-state/app-work.json
-PIRE_BROWSER_ENCRYPTION_KEY=<64-hex-key> pire-browser --session-name work state save ./.pire-state/app-work.json
-AGENT_BROWSER_ENCRYPTION_KEY=<64-hex-key> pire-browser --session-name review state load ./.pire-state/app-work.json
-pire-browser --session-name work --restore open https://app.example.com/dashboard
-pire-browser --state ./.pire-state/app-work.json open https://app.example.com/dashboard
-AGENT_BROWSER_STATE=./.pire-state/app-work.json pire-browser open https://app.example.com/dashboard
-pire-browser --session-name review state load --require-inspected ./.pire-state/app-work.json`),
-  p("Use <code>--session &lt;name&gt; --restore</code> for normal agent-browser-style QA continuity. State files are plaintext by default for compatibility and contain only active-origin cookies and Web Storage. Set <code>PIRE_BROWSER_ENCRYPTION_KEY</code> or <code>AGENT_BROWSER_ENCRYPTION_KEY</code> to a 64-character hex AES-256 key to save and load encrypted active-origin state files. <code>PIRE_BROWSER_STATE</code> and the agent-browser-compatible <code>AGENT_BROWSER_STATE</code> preload active-origin state before browser-control commands when no explicit <code>--state</code> is present."),
+pire-browser --session "$SESSION" --restore snapshot -i
+pire-browser --session "$SESSION" close
+
+pire-browser --namespace qa --session worker --restore auth open https://app.example.com`),
+  p("<code>--restore [key]</code> auto-loads and saves all profile cookies plus origin-keyed <code>localStorage</code>. The key defaults to the session name. State is saved every 30 seconds while commands are idle and on explicit close. Set <code>PIRE_BROWSER_AUTOSAVE_INTERVAL_MS=0</code> for close-only saving; <code>AGENT_BROWSER_AUTOSAVE_INTERVAL_MS</code> is an alias."),
+  code(`pire-browser --session work --restore \
+  --restore-save auto \
+  --restore-check-url /dashboard \
+  --restore-check-text Dashboard \
+  open https://app.example.com/dashboard`),
+  p("The default <code>auto</code> policy will not overwrite a known-good state after failed import or validation. <code>always</code> and <code>never</code> are explicit alternatives. Restore state expires after 30 days unless <code>PIRE_BROWSER_STATE_EXPIRE_DAYS</code> or its <code>AGENT_BROWSER_*</code> alias changes the interval. A value of <code>0</code> disables expiry."),
+  note("Compact restore intentionally excludes IndexedDB, service workers, saved passwords, history, cache, and tabs. State files contain session tokens and are plaintext by default. Set PIRE_BROWSER_ENCRYPTION_KEY or AGENT_BROWSER_ENCRYPTION_KEY to a 64-character hex AES-256 key when encryption at rest is required.", "warn"),
+
+  h2("Profile snapshots and durable paths", "profile-sources"),
+  code(`pire-browser profiles
+pire-browser --profile Default open https://example.com
+pire-browser --profile Work --session review --restore open https://example.com
+
+pire-browser --profile ./firefox-data open https://example.com
+PIRE_BROWSER_PROFILE=./firefox-data pire-browser snapshot -i`),
+  p("A profile name resolves a discovered or preserved Firefox source, copies it without volatile caches, and runs from a temporary snapshot. The source is never modified. A path is different: <code>--profile &lt;path&gt;</code> uses that directory directly as deliberately persistent browser data, including IndexedDB, service workers, history, and cache."),
+
+  h2("Preserved 0.2.x profiles", "legacy-profiles"),
+  code(`pire-browser profiles
+pire-browser profiles usage --all
+pire-browser profiles clean Work --dry-run
+pire-browser profiles clean Work --yes
+pire-browser profiles delete Work --yes`),
+  p("Existing <code>firefox-profiles/*</code> directories are labeled legacy persistent profiles. They are never reused or deleted automatically. <code>profiles</code> prints each exact path and a durable <code>--profile &lt;path&gt;</code> command. Cache cleaning preserves storage, cookies, IndexedDB, extensions, and associated downloads. Delete works only for a stopped pire-browser-managed legacy profile."),
+
+  h2("Manual state files", "manual-state-files"),
+  code(`pire-browser state save ./.pire-state/app.json
+pire-browser state load ./.pire-state/app.json
+pire-browser state list
+pire-browser state show restore:default/work
+pire-browser state clean --older-than 30`),
+  p("Current manual state files use the same multi-origin cookie/localStorage model as automatic restore. Legacy active-origin 0.2.x files remain readable. Automatic restore entries appear in <code>state list</code>; use <code>project:&lt;name&gt;</code> or <code>restore:&lt;namespace&gt;/&lt;key&gt;</code> for management operations."),
+
+  h2("0.2.x migration", "migration"),
+  table(
+    ["0.2.x", "0.3.0", "What to do"],
+    [
+      ["<code>open</code> reused durable managed data", "Fresh temporary profile", "Add <code>--restore</code> or an explicit profile path"],
+      ["Named session implied profile persistence", "Name selects only a live session", "Use <code>--session &lt;name&gt; --restore</code>"],
+      ["<code>--session-name</code> selected a managed profile", "Deprecated session + restore alias", "Prefer <code>--session &lt;name&gt; --restore</code>"],
+      ["Named profile was reused directly", "Named profile is copied to a temporary snapshot", "Use the exact legacy path when direct persistence is intentional"],
+      ["Path-like profile was mapped to a managed name", "Path is used directly", "Choose a dedicated durable directory"],
+      ["Default downloads accumulated in app data", "Default downloads are temporary", "Pass <code>--download-path</code> for durable files"],
+    ],
+  ),
 ];
 
 export default page({
   path: "/sessions/",
   title: "Sessions",
-  description: "Live sessions and named Firefox profiles.",
+  description: "Ephemeral Firefox sessions, compact restore state, and explicit profile durability.",
   blocks: sessionsBlocks,
 });

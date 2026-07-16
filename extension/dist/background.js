@@ -58,6 +58,10 @@
     let offlineModeEnabled = false;
     let nextRuntimeInitScriptNumber = 1;
     let nextNetworkRouteNumber = 1;
+    const lifecycleOriginState = new Map();
+    const pendingLifecycleOrigins = new Map();
+    const appliedLifecycleOriginsByTab = new Set();
+    let lifecycleCreatedAt = Date.now();
     const DEVICE_PROFILES = [
         {
             name: "iPhone 14",
@@ -118,6 +122,7 @@
     registerAuthListener();
     registerNetworkRouteListener();
     registerNetworkActivityListeners();
+    registerRestoreLifecycleListeners();
     function connectNative() {
         if (!nativeReconnectEnabled)
             return;
@@ -220,6 +225,18 @@
     }
     async function executeRequest(request) {
         try {
+            if (request.method === "lifecycle_configure") {
+                const result = await configureRestoreLifecycle(request.params ?? {});
+                if ("error" in result)
+                    return { type: "response", id: request.id, ok: false, error: result.error };
+                return { type: "response", id: request.id, ok: true, result };
+            }
+            if (request.method === "lifecycle_export") {
+                const result = await exportRestoreLifecycle(request.params ?? {});
+                if ("error" in result)
+                    return { type: "response", id: request.id, ok: false, error: result.error };
+                return { type: "response", id: request.id, ok: true, result };
+            }
             if (request.method !== "command") {
                 return errorResponse(request.id, "unsupported_method", `Unsupported method: ${request.method}`);
             }
@@ -249,14 +266,209 @@
         }
     }
     function registerRuntimeMessageListener() {
-        browser.runtime.onMessage.addListener((message) => {
+        browser.runtime.onMessage.addListener((message, sender) => {
             if (!message || typeof message.type !== "string")
                 return undefined;
             if (message.type === "runtime_settings") {
                 return Promise.resolve({ autoDialog: autoDialogEnabled });
             }
+            if (message.type === "lifecycle_pagehide_state") {
+                rememberLifecyclePageState(message, sender);
+                return Promise.resolve({ stored: true });
+            }
             return undefined;
         });
+    }
+    function registerRestoreLifecycleListeners() {
+        browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+            if (changeInfo.status !== "complete" && typeof changeInfo.url !== "string")
+                return;
+            void applyPendingLifecycleOrigin(tabId, tab?.url ?? changeInfo.url).catch((error) => {
+                console.warn("[pire-browser] failed to apply pending restore origin", error);
+            });
+        });
+        browser.tabs.onRemoved.addListener((tabId) => {
+            for (const key of Array.from(appliedLifecycleOriginsByTab)) {
+                if (key.startsWith(`${tabId}:`))
+                    appliedLifecycleOriginsByTab.delete(key);
+            }
+        });
+    }
+    async function configureRestoreLifecycle(params) {
+        lifecycleOriginState.clear();
+        pendingLifecycleOrigins.clear();
+        appliedLifecycleOriginsByTab.clear();
+        const rawState = params.state;
+        if (rawState == null) {
+            lifecycleCreatedAt = Date.now();
+            return { configured: true, imported: false, cookiesSet: 0, originsPending: 0, warnings: [] };
+        }
+        const parsed = parseAutomaticRestoreState(rawState);
+        if ("error" in parsed)
+            return parsed;
+        const state = parsed.state;
+        lifecycleCreatedAt = state.createdAt;
+        for (const [origin, storage] of Object.entries(state.origins ?? {})) {
+            const normalized = { localStorage: { ...(storage?.localStorage ?? {}) } };
+            lifecycleOriginState.set(origin, normalized);
+            pendingLifecycleOrigins.set(origin, normalized);
+        }
+        let cookiesSet = 0;
+        let cookiesSkipped = 0;
+        for (const cookie of state.cookies ?? []) {
+            try {
+                if (await restoreCookie(cookieUrl(cookie), cookie))
+                    cookiesSet += 1;
+                else
+                    cookiesSkipped += 1;
+            }
+            catch {
+                cookiesSkipped += 1;
+            }
+        }
+        const tabs = await browser.tabs.query({}).catch(() => []);
+        await Promise.all(tabs
+            .filter((tab) => typeof tab.id === "number")
+            .map((tab) => applyPendingLifecycleOrigin(tab.id, tab.url).catch(() => undefined)));
+        const warnings = cookiesSkipped
+            ? [bestEffortWarning("restore", `Skipped ${cookiesSkipped} cookie(s) whose metadata Firefox would not restore.`)]
+            : [];
+        return {
+            configured: true,
+            imported: true,
+            cookiesSet,
+            cookiesSkipped,
+            originsPending: pendingLifecycleOrigins.size,
+            warnings,
+        };
+    }
+    function parseAutomaticRestoreState(rawState) {
+        if (!rawState ||
+            rawState.schemaVersion !== 2 ||
+            rawState.tool !== "pire-browser" ||
+            rawState.kind !== "restore-session-state" ||
+            typeof rawState.createdAt !== "number" ||
+            typeof rawState.origins !== "object") {
+            return {
+                error: {
+                    code: "InvalidArgumentError",
+                    message: "restore requires a pire-browser restore-session-state schemaVersion 2 payload",
+                },
+            };
+        }
+        for (const origin of Object.keys(rawState.origins)) {
+            if (!/^https?:\/\//.test(origin)) {
+                return { error: { code: "InvalidArgumentError", message: `restore state contains an invalid origin: ${origin}` } };
+            }
+        }
+        return { state: rawState };
+    }
+    async function applyPendingLifecycleOrigin(tabId, rawUrl) {
+        let origin;
+        try {
+            const url = new URL(rawUrl ?? "");
+            if (url.protocol !== "http:" && url.protocol !== "https:")
+                return;
+            origin = url.origin;
+        }
+        catch {
+            return;
+        }
+        const storage = pendingLifecycleOrigins.get(origin);
+        if (!storage)
+            return;
+        const appliedKey = `${tabId}:${origin}`;
+        if (appliedLifecycleOriginsByTab.has(appliedKey))
+            return;
+        const response = await importStateStorage(tabId, storage.localStorage, {});
+        if ("error" in response)
+            throw new Error(String(response.error?.message ?? "failed to restore localStorage"));
+        lifecycleOriginState.set(origin, { localStorage: { ...storage.localStorage } });
+        pendingLifecycleOrigins.delete(origin);
+        appliedLifecycleOriginsByTab.add(appliedKey);
+        await browser.tabs.reload(tabId);
+    }
+    function rememberLifecyclePageState(message, sender) {
+        if (!message || typeof message.origin !== "string" || !/^https?:\/\//.test(message.origin))
+            return;
+        try {
+            const senderOrigin = new URL(sender?.url ?? "").origin;
+            if (senderOrigin !== message.origin)
+                return;
+        }
+        catch {
+            return;
+        }
+        const localStorage = isStringRecord(message.localStorage) ? message.localStorage : {};
+        lifecycleOriginState.set(message.origin, { localStorage: { ...localStorage } });
+    }
+    function isStringRecord(value) {
+        return !!value && typeof value === "object" && !Array.isArray(value) && Object.values(value).every((item) => typeof item === "string");
+    }
+    async function exportRestoreLifecycle(params) {
+        const tabs = await browser.tabs.query({}).catch(() => []);
+        for (const tab of tabs) {
+            if (typeof tab.id !== "number")
+                continue;
+            let origin;
+            try {
+                const url = new URL(tab.url ?? "");
+                if (url.protocol !== "http:" && url.protocol !== "https:")
+                    continue;
+                origin = url.origin;
+            }
+            catch {
+                continue;
+            }
+            const storage = await stateStorageForTab(tab.id);
+            if (!("error" in storage)) {
+                lifecycleOriginState.set(origin, { localStorage: { ...(storage.localStorage ?? {}) } });
+            }
+        }
+        const cookies = await browser.cookies.getAll({});
+        const origins = Object.fromEntries(Array.from(lifecycleOriginState.entries()).map(([origin, storage]) => [origin, { localStorage: { ...storage.localStorage } }]));
+        const validation = await validateRestoreLifecycle(params);
+        const now = Date.now();
+        const state = {
+            schemaVersion: 2,
+            tool: "pire-browser",
+            kind: "restore-session-state",
+            createdAt: lifecycleCreatedAt || now,
+            updatedAt: now,
+            cookies,
+            origins,
+        };
+        return { state, validation };
+    }
+    async function validateRestoreLifecycle(params) {
+        const checks = [];
+        const tab = await activeTab().catch(() => undefined);
+        if (typeof params.checkUrl === "string" && params.checkUrl) {
+            const passed = typeof tab?.url === "string" && tab.url.includes(params.checkUrl);
+            checks.push({ kind: "url", passed, ...(passed ? {} : { message: `Active URL did not include ${params.checkUrl}` }) });
+        }
+        if (typeof params.checkText === "string" && params.checkText) {
+            let passed = false;
+            if (typeof tab?.id === "number") {
+                const code = `document.body ? document.body.innerText.includes(${JSON.stringify(params.checkText)}) : false`;
+                const result = await browser.tabs.executeScript(tab.id, { code }).catch(() => []);
+                passed = result?.[0] === true;
+            }
+            checks.push({ kind: "text", passed, ...(passed ? {} : { message: "Expected restore-check text was not found" }) });
+        }
+        if (typeof params.checkFn === "string" && params.checkFn) {
+            let passed = false;
+            if (typeof tab?.id === "number") {
+                const code = `(() => { const candidate = (${params.checkFn}); return typeof candidate === "function" ? Boolean(candidate()) : Boolean(candidate); })()`;
+                const result = await browser.tabs.executeScript(tab.id, { code }).catch(() => []);
+                passed = result?.[0] === true;
+            }
+            checks.push({ kind: "function", passed, ...(passed ? {} : { message: "Restore-check function returned false or threw" }) });
+        }
+        return {
+            passed: checks.every((check) => check.passed),
+            checks,
+        };
     }
     async function applyRuntimeSettingsFromParams(params) {
         if (params.autoDialog === false) {
@@ -6143,7 +6355,7 @@
             return {
                 error: {
                     code: "InvalidArgumentError",
-                    message: `state load origin mismatch: active page is ${context.origin} but state file is for ${state.source.origin}; open ${displayUrl} first or load into a non-live --session-name profile`,
+                    message: `state load origin mismatch: active page is ${context.origin} but state file is for ${state.source.origin}; open ${displayUrl} first or load it while launching a new named session`,
                 },
             };
         }
@@ -6889,55 +7101,15 @@
         }, CLOSE_TEARDOWN_DELAY_MS);
     }
     async function closeControlledSurfaces() {
-        await reconcileTabs();
-        const liveTabs = await browser.tabs.query({});
-        const controlledTabIds = new Set(Array.from(tabsByBrowserId.values())
-            .filter((tab) => tab.controlled && !tab.closed)
-            .map((tab) => tab.tabId));
-        const active = await activeTab();
-        const fallbackTabId = typeof active?.id === "number" ? active.id : undefined;
-        const plan = planControlledClose(liveTabs, controlledTabIds, fallbackTabId);
-        if (plan.windowIds.length > 0) {
-            disconnectNativeForControlledClose();
-        }
-        for (const windowId of plan.windowIds) {
+        const windows = await browser.windows.getAll({ populate: true });
+        disconnectNativeForControlledClose();
+        for (const window of windows) {
+            const windowId = window.id;
+            if (typeof windowId !== "number")
+                continue;
             await browser.windows.remove(windowId);
+            markWindowClosed(windowId);
         }
-        if (plan.tabIds.length > 0) {
-            await browser.tabs.remove(plan.tabIds);
-        }
-        for (const tabId of [...plan.tabIds, ...tabsInWindows(liveTabs, plan.windowIds)]) {
-            const record = tabsByBrowserId.get(tabId);
-            if (record)
-                record.closed = true;
-        }
-    }
-    function planControlledClose(liveTabs, controlledTabIds, fallbackTabId) {
-        const tabsByWindow = new Map();
-        for (const tab of liveTabs) {
-            if (typeof tab.id !== "number" || typeof tab.windowId !== "number")
-                continue;
-            const tabs = tabsByWindow.get(tab.windowId) ?? [];
-            tabs.push(tab);
-            tabsByWindow.set(tab.windowId, tabs);
-        }
-        const windowIds = [];
-        const tabIds = [];
-        for (const [windowId, windowTabs] of tabsByWindow) {
-            const controlledTabs = windowTabs.filter((tab) => controlledTabIds.has(tab.id));
-            if (controlledTabs.length === 0)
-                continue;
-            if (windowTabs.every((tab) => controlledTabIds.has(tab.id))) {
-                windowIds.push(windowId);
-            }
-            else {
-                tabIds.push(...controlledTabs.map((tab) => tab.id));
-            }
-        }
-        if (windowIds.length === 0 && tabIds.length === 0 && typeof fallbackTabId === "number") {
-            tabIds.push(fallbackTabId);
-        }
-        return { windowIds, tabIds };
     }
     function disconnectNativeForControlledClose() {
         nativeReconnectEnabled = false;
@@ -6947,12 +7119,6 @@
         catch {
             // The browser may already be tearing down the native messaging port.
         }
-    }
-    function tabsInWindows(liveTabs, windowIds) {
-        const windowIdSet = new Set(windowIds);
-        return liveTabs
-            .filter((tab) => typeof tab.id === "number" && typeof tab.windowId === "number" && windowIdSet.has(tab.windowId))
-            .map((tab) => tab.id);
     }
     function rememberWindow(window) {
         if (typeof window.id !== "number") {

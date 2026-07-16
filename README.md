@@ -661,15 +661,16 @@ pire-browser pushstate <url>
 
 ### Pre-navigation Setup
 
-Some flows need state or init scripts before first navigation. Launch a managed session, stage state, then navigate:
+Some flows need state or init scripts before first navigation. Preload a state
+file on the same command that performs the first navigation:
 
 ```bash
-pire-browser --session-name review open
-pire-browser --session-name review state load ./.pire-state/app.json
-pire-browser --session-name review navigate https://app.example.com/dashboard
+pire-browser --session review --state ./.pire-state/app.json open https://app.example.com/dashboard
 ```
 
-`pire-browser open` with no URL launches or reuses a managed Firefox session without navigating, matching agent-browser's pre-navigation setup loop. Use lower-level `launch` only for diagnostics.
+`pire-browser open` with no URL launches the selected session without
+navigating, matching agent-browser's pre-navigation setup loop. Use lower-level
+`launch` only for diagnostics.
 
 ### React / Web Vitals
 
@@ -731,7 +732,18 @@ pire-browser doctor --offline --quick
 pire-browser doctor --json
 ```
 
-`status` and plain `doctor` are observational. `doctor --json` and `install-status --json` include `nextActions` with concrete repair commands when setup needs attention and exit nonzero when `data.ok` is `false`; missing or mismatched Native Messaging points to the public `pire-browser install` setup verb. If the optional native platform package is missing, top-level help, command help for launcher-served setup/diagnostic commands, `install`, `setup`, and those JSON diagnostics are still served by the JavaScript launcher and point to the `--include=optional` reinstall. Use `doctor --fix` only when you explicitly want the agent-browser-style repair path: it reruns native host setup and then verifies status before reporting success. `install --with-deps`, `setup --with-deps`, and `doctor --fix --with-deps` accept agent-browser-style dependency setup recipes; on Windows/macOS they can try the supported Firefox installer when Firefox is missing, while Linux reports non-Snap/non-Flatpak Firefox guidance. Browser commands that need auto-launch can run lazy setup when native host registration is missing or mismatched.
+`status` and plain `doctor` are observational. `doctor` reports marked orphan
+session count and bytes. `doctor --fix` runs an unthrottled safe orphan sweep,
+cleans expired restore state, reruns native host setup, and verifies status; it
+never removes explicit profile paths or preserved 0.2.x profiles.
+`doctor --json` and `install-status --json` include concrete `nextActions` and
+exit nonzero when `data.ok` is `false`. Missing or mismatched Native Messaging
+points to `pire-browser install`. If an optional native package is missing,
+launcher-served help and diagnostics show the `--include=optional` repair.
+`install --with-deps`, `setup --with-deps`, and `doctor --fix --with-deps` can
+try the supported Firefox installer on Windows/macOS; Linux reports
+non-Snap/non-Flatpak guidance. Browser commands can run lazy setup when native
+host registration is missing or mismatched.
 
 ### Skills
 
@@ -811,8 +823,8 @@ such as `pire_browser_network_wait_for_request` and
 `pire_browser_network_wait_for_response` plus request diagnostics, routes, and
 HAR. Use `state` for typed clipboard tools, configured plugin discovery through
 `pire_browser_plugin_list` / `pire_browser_plugin_show`, and
-`pire_browser_profiles_import` when the user wants existing Firefox login state
-copied into a managed profile. Use plugin discovery before calling
+`pire_browser_profiles_import` when the user wants an existing Firefox profile
+preserved as a named snapshot source. Use plugin discovery before calling
 `pire_browser_auth_login` with `credentialProvider`, `item`, and `url`. Use `debug` for lower-level launch,
 install/repair, upgrade, batch, doctor/activity diagnostics,
 console/errors/dialogs/highlight/trace/profiler/record/stream/vitals, and
@@ -831,25 +843,30 @@ The server defaults to MCP protocol `2025-11-25` and accepts older supported cli
 ### Quick summary
 
 - Use `--headers` for header-authenticated origins.
-- Use managed Firefox profiles for normal browser login state.
+- Use `--restore` for compact cookies/localStorage continuity.
+- Use an explicit `--profile <path>` only when full Firefox profile durability is needed.
 - Use `auth save --password-stdin` when saving a selector-driven auth helper to avoid shell history.
 - Use `auth login --credential-provider <name>` when credentials live in an external vault plugin.
-- Use `state save` and `state load` for active-origin cookies and Web Storage.
+- Use `state save` and `state load` for portable cookie and localStorage state.
 - Auth profiles are stored in a local AES-256-GCM encrypted auth vault.
 - Set `PIRE_BROWSER_ENCRYPTION_KEY` or `AGENT_BROWSER_ENCRYPTION_KEY` to a 64-character hex key when saved state files should be encrypted.
 - Do not commit `.pire-state/` files.
 
 ### Manual browser login
 
-The simplest login flow is to use a persistent managed Firefox profile:
+The simplest full-state login flow is to use a dedicated persistent Firefox
+profile path:
 
 ```bash
-pire-browser --profile github open https://github.com/login
+pire-browser --profile ./firefox-github open https://github.com/login
 # Sign in manually in Firefox.
-pire-browser --profile github snapshot -i
+pire-browser --profile ./firefox-github snapshot -i
 ```
 
-Firefox stores cookies, sessions, and saved passwords inside its managed profile. `pire-browser` stores launcher metadata, session files, confirmations, receipts, and download staging under the OS app-data directory, but it does not inspect cookies, saved passwords, session tokens, or one-time codes for diagnostics.
+Firefox stores cookies, sessions, and saved passwords inside that directory.
+`pire-browser` does not inspect saved passwords, session tokens, or one-time
+codes for diagnostics. Treat a persistent profile path as secret-bearing local
+data and do not commit it.
 
 ### Header authentication
 
@@ -978,110 +995,135 @@ aliases). `NO_PROXY`, `PIRE_BROWSER_PROXY_BYPASS`, and
 `AGENT_BROWSER_PROXY_BYPASS` map to Firefox proxy passthrough hosts. Proxy
 credentials stay in extension memory and are not echoed in command output.
 
-## Sessions
+## Sessions And State
+
+Ordinary sessions are temporary. `pire-browser open` selects the `default`
+session and creates a fresh Firefox profile under the OS temporary directory.
+A named session isolates a live browser, but does not make its profile durable:
+
+```bash
+pire-browser open https://example.com
+pire-browser --session work open https://example.com
+pire-browser --session work snapshot -i
+pire-browser --session work close
+```
+
+Use `session list` for live sessions and `--session <uuid>` only when targeting
+an exact live session. Session, restore, and namespace keys accept letters,
+numbers, `_`, and `-`.
+
+### Compact restore
+
+Add `--restore` when cookies and origin-keyed `localStorage` should survive a
+restart. The key defaults to the session name, or can be supplied explicitly:
 
 ```bash
 SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
 pire-browser --session "$SESSION" --restore open https://app.example.com
-pire-browser --session "$SESSION" --restore session info --json
 pire-browser --session "$SESSION" --restore snapshot -i
+pire-browser --session "$SESSION" close
 
-pire-browser session --json
-pire-browser session list
-pire-browser session info --json
-pire-browser session id --scope worktree --prefix my-app
-pire-browser session id --scope worktree --prefix my-app --json
-pire-browser session list --json
-pire-browser session attach <session-id>
-pire-browser session cleanup
-pire-browser --session <uuid> snapshot -i
-pire-browser --session work open https://example.com
-pire-browser --session-name work open https://example.com
-pire-browser --session-name work close
+pire-browser --namespace qa --session worker --restore auth open https://app.example.com
 ```
 
-For app QA, derive one stable worktree-scoped session name and pass it with
-`--session` and `--restore` on every command. This mirrors agent-browser's
-persistent-session recipe, but the persistence mechanism is the managed Firefox
-profile for that named session. Cookies, tabs, IndexedDB, service workers, saved
-passwords, and other Firefox profile data survive browser restarts. The name is
-deterministic for the current Git worktree and prefix, so separate projects do
-not collide. `session id --scope cwd` scopes to the current directory, and
-`--scope global` returns the sanitized prefix without a path hash.
-Use `pire-browser session` or `pire-browser session --json` for the
-agent-browser-compatible current/default session diagnostic. Use
-`pire-browser --session <name> --restore session info --json` when an agent needs
-to inspect a selected live session, managed Firefox profile, restore
-interpretation, and suggested next actions without launching or mutating Firefox.
-Use `session list` when you need the full live-session inventory.
-
-`--session <uuid>` targets a strict live session id from `session list`. `--session <name>`, `PIRE_BROWSER_SESSION=<name>`, `AGENT_BROWSER_SESSION=<name>`, `--session-name <name>`, `PIRE_BROWSER_SESSION_NAME=<name>`, and `AGENT_BROWSER_SESSION_NAME=<name>` are named-profile aliases that may reuse or launch managed Firefox. `--restore <name>` may be used as a short spelling for `--session <name> --restore` when no session/profile target is already present. `--restore-save auto|always|never` is accepted for agent-browser recipe compatibility; named Firefox profiles persist automatically.
-
-## Logged-In App QA Starter
-
-When an app needs existing Firefox login state, use one stable managed profile
-for the project instead of asking for obscure Firefox profile paths:
+Restore state is saved every 30 seconds while idle and on explicit close. Set
+`PIRE_BROWSER_AUTOSAVE_INTERVAL_MS=0` to save only on close. The equivalent
+`AGENT_BROWSER_*` aliases are accepted. `--restore-save auto` is the default and
+preserves a known-good state after a failed import or validation; `always` and
+`never` are explicit alternatives. Validation can check the first navigation:
 
 ```bash
-SESSION="$(pire-browser session id --scope worktree --prefix my-app)"
-pire-browser profiles
-pire-browser profiles import Default --name "$SESSION"
-pire-browser --session "$SESSION" --restore open http://localhost:3000/app
-pire-browser --session "$SESSION" --restore session info --json
-pire-browser --session "$SESSION" --restore snapshot
-pire-browser --session "$SESSION" --restore screenshot
+pire-browser --session work --restore \
+  --restore-check-url /dashboard \
+  --restore-check-text Dashboard \
+  open https://app.example.com/dashboard
 ```
 
-Run the import once, after closing desktop Firefox if the source profile is in
-use. On later QA runs, skip import and reuse
-`--session "$SESSION" --restore`; that managed profile keeps cookies, tabs,
-IndexedDB, service workers, and saved Firefox login state.
+Automatic restore files live under the pire-browser data directory in
+`restore-sessions/<namespace>/<key>.json` and expire after 30 days by default.
+Set `PIRE_BROWSER_STATE_EXPIRE_DAYS=0` to disable expiry. Compact restore does
+not contain IndexedDB, service workers, saved passwords, browser history,
+cache, or tabs.
 
-## Firefox Profile Reuse
+`--session-name <name>` is deprecated. It remains an alias for
+`--session <name> --restore <name>` during migration.
+
+### Firefox profile sources
+
+Use a profile name to copy a discovered or preserved Firefox profile into a
+temporary snapshot. The source is never modified, and the snapshot is deleted
+after the session closes:
 
 ```bash
 pire-browser profiles
-pire-browser profiles --json
-pire-browser profiles import default-release --name Work
-pire-browser profiles import Default --name Work
-pire-browser profiles import "C:\Users\me\AppData\Roaming\Mozilla\Firefox\Profiles\abc.default-release" --name Work
-pire-browser profiles import ~/Library/Application\ Support/Firefox/Profiles/abc.default-release --name Work
 pire-browser --profile Default open https://example.com
-pire-browser --profile Work open https://example.com
-pire-browser --profile ~/.myapp-profile open https://example.com
+pire-browser --profile Work --session review --restore open https://example.com
 ```
 
-`--profile <name-or-path>` reuses or launches a managed Firefox profile. Path-like values are mapped to stable managed Firefox profile names under the `pire-browser` data directory. They are not raw browser profile directories.
-Use `profiles` to list managed `pire-browser` profiles plus importable local Mozilla Firefox profiles discovered from `profiles.ini`. Use `profiles import <discovered-name-or-path> --name <managed-name>` when you already have a Firefox profile with login state you want to reuse. `Default` selects the discovered default Firefox profile when one is present. Import copies the source into a managed profile and never mutates the original; close Firefox before importing so lock files and partially-written data are not copied. Future changes in the original Firefox profile do not sync automatically. Use `--overwrite` only after closing the managed `pire-browser` profile you want to replace.
-
-## Persistent Profiles
-
-Default managed profile locations:
-
-```text
-Windows: %LOCALAPPDATA%\pire-browser\firefox-profiles\Default
-macOS:   ~/Library/Application Support/pire-browser/firefox-profiles/Default
-Linux:   $XDG_DATA_HOME/pire-browser/firefox-profiles/Default
-         or ~/.local/share/pire-browser/firefox-profiles/Default
-```
-
-Deleting a managed profile folder clears that saved browser state.
-
-## Session Persistence
+Use a path when full browser state must remain durable. This is an intentional
+read-write profile containing IndexedDB, service workers, history, cache, and
+other Firefox data:
 
 ```bash
-pire-browser --session-name work --restore open https://app.example.com/dashboard
-pire-browser --restore work open https://app.example.com/dashboard
-pire-browser --session-name work open https://app.example.com/dashboard
-pire-browser --session-name work state save ./.pire-state/app-work.json
-pire-browser --auto-connect state save ./.pire-state/app-work.json
-pire-browser --state ./.pire-state/app-work.json open https://app.example.com/dashboard
-AGENT_BROWSER_STATE=./.pire-state/app-work.json pire-browser open https://app.example.com/dashboard
-pire-browser --session-name review state load --require-inspected ./.pire-state/app-work.json
+pire-browser --profile ./firefox-data open https://example.com
+pire-browser --profile ~/.myapp-firefox open https://example.com
 ```
 
-Use `--session <name> --restore` for normal agent-browser-style project QA continuity. It reuses the named managed Firefox profile and does not require a separate state file. State files contain active-origin cookies, `localStorage`, and `sessionStorage`. By default they are plaintext for compatibility. Set `PIRE_BROWSER_ENCRYPTION_KEY`, or the agent-browser-compatible `AGENT_BROWSER_ENCRYPTION_KEY`, to a 64-character hex AES-256 key before `state save` to write encrypted AES-256-GCM files and before `state load` to decrypt them. `state list`, `state show`, and non-recording `state inspect` remain metadata-only and do not print cookie or storage values. State files do not include saved passwords, full browser profiles, service workers, IndexedDB, or cross-origin SSO state. Use managed profiles or `profiles import` when IndexedDB, service workers, cross-origin SSO state, or full Firefox login continuity matters.
-`PIRE_BROWSER_STATE` and the agent-browser-compatible `AGENT_BROWSER_STATE` preload active-origin state before browser-control commands when no explicit `--state` is present.
+Do not point this at a desktop Firefox profile that is open in another process.
+For a read-only login bootstrap, use its discovered profile name instead.
+
+### Existing 0.2.x profiles
+
+Profiles already stored under `firefox-profiles/` are preserved as legacy
+persistent profiles. Version 0.3 does not reuse or delete them automatically.
+`pire-browser profiles` prints each exact path and the command for opting back
+into it. Storage recovery commands are explicit:
+
+```bash
+pire-browser profiles usage --all
+pire-browser profiles clean Work --dry-run
+pire-browser profiles clean Work --yes
+pire-browser profiles delete Work --yes
+```
+
+`profiles clean` removes only regenerable caches. It preserves cookies,
+`storage`, IndexedDB, extensions, and associated downloads. `profiles delete`
+works only for stopped pire-browser-managed legacy profiles and never removes a
+discovered Firefox source or arbitrary profile path.
+
+### Manual state files
+
+Current manual state files contain all profile cookies and origin-keyed
+`localStorage`. Legacy 0.2.x active-origin files remain readable.
+
+```bash
+pire-browser state save ./.pire-state/app.json
+pire-browser state load ./.pire-state/app.json
+pire-browser state list
+pire-browser state show restore:default/work
+pire-browser state clean --older-than 30
+```
+
+Automatic restore states appear in `state list`. Use `project:<name>` or
+`restore:<namespace>/<key>` for rename, clear, and show operations; ambiguous
+bare names are rejected. `PIRE_BROWSER_STATE` and `AGENT_BROWSER_STATE` preload
+an explicit state file before a browser command.
+
+State files contain session tokens and are plaintext by default for
+compatibility. Keep `.pire-state/` out of source control. Set
+`PIRE_BROWSER_ENCRYPTION_KEY` or `AGENT_BROWSER_ENCRYPTION_KEY` to a
+64-character hex AES-256 key to encrypt new manual and automatic state files.
+
+### Migrating from 0.2.x
+
+| 0.2.x behavior | 0.3.0 behavior | Migration |
+|---|---|---|
+| `open` reused a durable managed profile | Ordinary sessions use fresh temporary profiles | Add `--restore` for compact auth continuity or `--profile <path>` for full durability |
+| `--session <name>` implied profile persistence | A name identifies only the live session | Use `--session <name> --restore` |
+| `--session-name <name>` selected a managed profile | Deprecated alias for session plus restore | Prefer `--session <name> --restore` |
+| `--profile <name>` reused managed data directly | A name creates a temporary read-only snapshot | Use the exact legacy path printed by `profiles` when direct persistence is intentional |
+| Path-like `--profile` values were mapped to managed names | `--profile <path>` uses that path directly | Choose a dedicated directory and treat it as durable browser data |
+| Default downloads accumulated under app data | Downloads default to the temporary session root | Pass `--download-path <dir>` when files must survive close |
 
 ## Security
 
@@ -1142,12 +1184,17 @@ Screenshots hide native scrollbars by default for agent-browser-style stable evi
 ```bash
 --config <path>                 # Use a custom config file
 --session <uuid>                # Target an existing live session id
---session <name>                # Reuse or launch a named managed Firefox profile
---session-name <name>           # Explicit named Firefox profile spelling
---profile <name-or-path>        # Managed Firefox profile alias
---restore [name]                # Agent-browser-compatible profile persistence assertion
---restore-save <mode>           # Accepted compatibility mode: auto, always, or never
---state <path>                  # Load active-origin state before a browser command
+--session <name>                # Select an isolated ephemeral live session
+--namespace <name>              # Namespace sessions, temp roots, and restore state
+--session-name <name>           # Deprecated alias: --session <name> --restore <name>
+--profile <name>                # Copy a Firefox profile into a temporary snapshot
+--profile <path>                # Use a deliberately durable Firefox profile path
+--restore [key]                 # Auto-load/save cookies and origin localStorage
+--restore-save <mode>           # Save policy: auto, always, or never
+--restore-check-url <pattern>   # Validate restored navigation URL
+--restore-check-text <text>     # Validate restored page text
+--restore-check-fn <expression> # Validate restored page expression
+--state <path>                  # Load a manual browser state file
 --auto-connect                  # Select a live managed session when saving state
 --headers <json>                # HTTP headers scoped to URL's origin
 --proxy <url>                   # Firefox proxy URL for browser bridge commands
@@ -1205,13 +1252,14 @@ treated as one instruction. `AI_GATEWAY_MODEL` overrides the default
 `anthropic/claude-sonnet-4.6`, and `AI_GATEWAY_URL` overrides the default
 `https://ai-gateway.vercel.sh`. Chat child commands inherit important global
 policy/session flags such as `--allowed-domains`, `--confirm-actions`,
-`--action-policy`, `--profile`, and `--session-name`. The chat loop refuses to
+`--action-policy`, `--namespace`, `--session`, `--restore`, and `--profile`.
+The deprecated `--session-name` alias is inherited too. The chat loop refuses to
 run `confirm`, `deny`, `chat`, `mcp`, `dashboard`, or `stream` automatically.
 
 ## Observability Dashboard
 
 Start a localhost dashboard when you want a quick view of install
-health, live sessions, managed profiles, a live viewport preview,
+health, live sessions, preserved legacy profiles, a live viewport preview,
 optional AI Gateway chat, recent redacted command activity, and current
 capability notes:
 
@@ -1319,7 +1367,12 @@ pire-browser wait --download ./downloads/report.txt --timeout 60000
 pire-browser wait --download --timeout 60000
 ```
 
-Use `--download-path <dir>`, `PIRE_BROWSER_DOWNLOAD_PATH`, or `AGENT_BROWSER_DOWNLOAD_PATH` to set the Firefox download directory for newly launched managed sessions. Relative download paths resolve from the command's current working directory. With no explicit output path, `wait --download` reports the completed Firefox file path.
+Without `--download-path`, Firefox downloads live in the temporary session root
+and are removed when the session closes. Use `--download-path <dir>`,
+`PIRE_BROWSER_DOWNLOAD_PATH`, or `AGENT_BROWSER_DOWNLOAD_PATH` when downloads
+must remain durable. Relative paths resolve from the command's current working
+directory. With no explicit output path, `wait --download` reports the
+completed Firefox file path.
 
 Other waits use the current Firefox-backed command behavior for the requested wait type.
 
@@ -1499,7 +1552,9 @@ WebM video or Chrome DevTools screencast output.
 2. **Native Messaging host** - Connects the CLI to Firefox through current-user IPC.
 3. **Firefox WebExtension** - Inspects the page, performs DOM actions, captures screenshots, and reports session state.
 
-Managed Firefox sessions start on demand and can be reused by session id, session name, or profile name.
+Firefox sessions start on demand. A live session can be selected by UUID or name;
+profile names select temporary source snapshots, while only explicit profile paths
+reuse durable Firefox data.
 
 ## Platforms
 
@@ -1620,6 +1675,14 @@ deterministic installed-skill and MCP footprint report under `target/evals/`.
 The manual `Agent Workflow Evals` GitHub Actions workflow runs optional live
 Codex or Claude command-proposal cases; it is informative rather than a release
 gate because model output can vary.
+
+For the 0.3 lifecycle release, run `Platform Packages`, then run `Release Smoke`
+with `target=all` and browser smoke enabled. The packed gate installs only the
+generated tarballs and verifies ephemeral cleanup, two-origin compact restore,
+named-source immutability, explicit profile/download retention, orphan recovery,
+and 100 open/close cycles on Windows x64, macOS ARM64, and Linux x64. Publish
+`0.3.0-beta.1` first under npm's `beta` dist-tag; promote `0.3.0` only after all
+three jobs pass.
 
 ## License
 

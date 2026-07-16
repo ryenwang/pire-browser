@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -8,23 +9,32 @@ use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::download::{
-    download_user_js_prefs, ensure_download_dir, ensure_profile_download_dir, sweep_old_downloads,
-};
+use crate::download::{download_user_js_prefs, ensure_download_dir, sweep_old_downloads};
 use crate::firefox::{discover_firefox, firefox_discovery_error_message};
-use crate::protocol::EXTENSION_ID;
+use crate::ipc::send_pipe_request;
+use crate::protocol::{RpcRequest, RpcResponse, EXTENSION_ID};
 use crate::redaction::redact_text;
 use crate::session::{
     cleanup_stale_sessions, data_dir, ensure_runtime_dirs, list_sessions, now_ms, SessionInfo,
+    SessionProfileKind,
 };
+use crate::setup::sibling_host_path;
 
 pub const DEFAULT_PROFILE_NAME: &str = "Default";
 const PROFILE_PROCESS_SCAN_TIMEOUT: Duration = Duration::from_secs(3);
+const EPHEMERAL_MARKER_FILE: &str = ".pire-browser-session.json";
+const EPHEMERAL_MARKER_SCHEMA_VERSION: u32 = 1;
+const EPHEMERAL_ORPHAN_GRACE_MS: u64 = 60 * 60 * 1000;
+const EPHEMERAL_SWEEP_INTERVAL_MS: u64 = 24 * 60 * 60 * 1000;
+const SESSION_CLOSE_GRACE: Duration = Duration::from_millis(750);
 
 #[derive(Debug, Clone)]
 pub struct LaunchOptions {
-    pub profile: String,
+    pub session_name: String,
+    pub namespace: String,
+    pub profile: Option<String>,
     pub url: Option<String>,
     pub firefox_path: Option<String>,
     pub download_dir: Option<PathBuf>,
@@ -33,17 +43,53 @@ pub struct LaunchOptions {
     pub user_agent: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LaunchResult {
     pub reused: bool,
     pub session: SessionInfo,
     pub profile_name: String,
+    pub profile_kind: SessionProfileKind,
     pub profile_path: PathBuf,
+    pub ephemeral_root: PathBuf,
     pub launcher_pid: u32,
     pub log_path: PathBuf,
     pub headless: bool,
     pub extra_args: Vec<String>,
     pub user_agent: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct EphemeralSessionMarker {
+    schema_version: u32,
+    nonce: String,
+    namespace: String,
+    session_name: String,
+    created_at: u64,
+    profile_kind: SessionProfileKind,
+    profile_path: PathBuf,
+    profile_owned: bool,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedLaunchProfile {
+    name: String,
+    kind: SessionProfileKind,
+    path: PathBuf,
+    ephemeral_root: PathBuf,
+}
+
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct EphemeralProfileReport {
+    pub root: PathBuf,
+    pub inspected: usize,
+    pub orphaned: usize,
+    pub active: usize,
+    pub removed: usize,
+    pub bytes: u64,
+    pub errors: Vec<String>,
+    pub throttled: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -98,6 +144,39 @@ pub struct ProfileImportWarning {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedProfileUsage {
+    pub name: String,
+    pub profile_path: PathBuf,
+    pub profile_bytes: u64,
+    pub regenerable_cache_bytes: u64,
+    pub associated_download_path: PathBuf,
+    pub associated_download_bytes: u64,
+    pub active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedProfileCleanResult {
+    pub name: String,
+    pub profile_path: PathBuf,
+    pub dry_run: bool,
+    pub removable_bytes: u64,
+    pub removed_bytes: u64,
+    pub entries: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedProfileDeleteResult {
+    pub name: String,
+    pub profile_path: PathBuf,
+    pub metadata_path: PathBuf,
+    pub removed_profile_bytes: u64,
+    pub downloads_preserved: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ProfileImportMetadata {
@@ -127,11 +206,19 @@ struct WebExtInvocation {
     description: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LauncherMetadata {
+    #[serde(default)]
+    pub namespace: String,
+    #[serde(default)]
+    pub session_name: String,
     pub profile_name: String,
+    #[serde(default)]
+    pub profile_kind: SessionProfileKind,
     pub profile_path: PathBuf,
+    #[serde(default)]
+    pub ephemeral_root: Option<PathBuf>,
     pub firefox_path: PathBuf,
     pub extension_source: PathBuf,
     pub launcher_pid: u32,
@@ -145,40 +232,34 @@ pub struct LauncherMetadata {
 
 pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
     ensure_runtime_dirs()?;
-    validate_profile_name(&options.profile)?;
+    validate_runtime_key("session name", &options.session_name)?;
+    validate_runtime_key("namespace", &options.namespace)?;
     ensure_firefox_startup_policies_best_effort();
     let extension_launch_mode = extension_launch_mode_from_env()?;
     let allow_unsigned_xpi = allow_unsigned_xpi_from_env();
 
     let root = data_dir()?;
-    let profile_path = managed_profile_dir_from_data_dir(&root, &options.profile);
-    let metadata_dir = profile_metadata_dir_from_data_dir(&root, &options.profile);
-    let launcher_path = launcher_metadata_path_from_data_dir(&root, &options.profile);
+    let _ = sweep_ephemeral_profiles(false, now_ms());
+    let metadata_dir =
+        runtime_metadata_dir_from_data_dir(&root, &options.namespace, &options.session_name);
+    let launcher_path = metadata_dir.join("launcher.json");
     let log_path = metadata_dir.join("web-ext.log");
 
-    fs::create_dir_all(&profile_path)
-        .with_context(|| format!("failed to create {}", profile_path.display()))?;
     fs::create_dir_all(&metadata_dir)
         .with_context(|| format!("failed to create {}", metadata_dir.display()))?;
-    let download_dir = if let Some(path) = &options.download_dir {
-        ensure_download_dir(path)?
-    } else {
-        ensure_profile_download_dir(&root, &options.profile)?
-    };
-    let _ = sweep_old_downloads(now_ms());
-    write_profile_startup_prefs(
-        &profile_path,
-        &download_dir,
-        extension_launch_mode,
-        allow_unsigned_xpi,
-        options.user_agent.as_deref(),
-    )?;
-    restrict_current_user_dir_best_effort(&profile_path);
     restrict_current_user_dir_best_effort(&metadata_dir);
 
     cleanup_stale_sessions(now_ms())?;
     if let Some(mut metadata) = read_launcher_metadata(&launcher_path)? {
         if let Some(session) = live_session_for_metadata(&metadata)? {
+            if !launch_request_matches_metadata(&options, &metadata) {
+                bail!(
+                    "session_launch_mismatch: session `{}` is already running with profile {} ({:?}); close it before changing profile mode",
+                    options.session_name,
+                    metadata.profile_name,
+                    metadata.profile_kind
+                );
+            }
             if metadata.session_id.as_deref() != Some(session.session_id.as_str()) {
                 metadata.session_id = Some(session.session_id.clone());
                 metadata.profile_id = Some(session.profile_id.clone());
@@ -187,8 +268,10 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
             return Ok(LaunchResult {
                 reused: true,
                 session,
-                profile_name: options.profile,
-                profile_path,
+                profile_name: metadata.profile_name.clone(),
+                profile_kind: metadata.profile_kind,
+                profile_path: metadata.profile_path.clone(),
+                ephemeral_root: metadata.ephemeral_root.clone().unwrap_or_default(),
                 launcher_pid: metadata.launcher_pid,
                 log_path,
                 headless: metadata.headless,
@@ -199,24 +282,50 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
 
         if process_is_alive(metadata.launcher_pid) {
             let _ = terminate_process_best_effort(metadata.launcher_pid);
-            let _ = terminate_profile_processes_best_effort(&profile_path);
+            let _ = terminate_profile_processes_best_effort(&metadata.profile_path);
             thread::sleep(Duration::from_millis(250));
-        } else if profile_processes_are_alive(&profile_path) {
-            let _ = terminate_profile_processes_best_effort(&profile_path);
+        } else if profile_processes_are_alive(&metadata.profile_path) {
+            let _ = terminate_profile_processes_best_effort(&metadata.profile_path);
             thread::sleep(Duration::from_millis(500));
         }
 
-        if process_is_alive(metadata.launcher_pid) || profile_processes_are_alive(&profile_path) {
+        if process_is_alive(metadata.launcher_pid)
+            || profile_processes_are_alive(&metadata.profile_path)
+        {
             bail!(
-                "profile {} appears to be running under launcher PID {} or an orphaned Firefox/web-ext process, but no live pire-browser session was found; close that Firefox/web-ext instance or check {}",
-                options.profile,
+                "session {} appears to be running under launcher PID {} or an orphaned Firefox/web-ext process, but no live pire-browser session was found; close that Firefox/web-ext instance or check {}",
+                options.session_name,
                 metadata.launcher_pid,
                 log_path.display()
             );
         }
 
+        if let Some(ephemeral_root) = &metadata.ephemeral_root {
+            cleanup_ephemeral_best_effort(ephemeral_root);
+        }
         let _ = fs::remove_file(&launcher_path);
     }
+
+    let resolved = resolve_launch_profile(&root, &options)?;
+    let profile_path = resolved.path.clone();
+    let download_dir = if let Some(path) = &options.download_dir {
+        ensure_download_dir(path)?
+    } else {
+        let path = resolved.ephemeral_root.join("downloads");
+        fs::create_dir_all(&path)
+            .with_context(|| format!("failed to create {}", path.display()))?;
+        path
+    };
+    let _ = sweep_old_downloads(now_ms());
+    write_profile_startup_prefs(
+        &profile_path,
+        &download_dir,
+        extension_launch_mode,
+        allow_unsigned_xpi,
+        options.user_agent.as_deref(),
+    )?;
+    restrict_current_user_dir_best_effort(&resolved.ephemeral_root);
+    restrict_current_user_dir_best_effort(&profile_path);
 
     let baseline: HashSet<String> = list_sessions()?
         .into_iter()
@@ -290,31 +399,41 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
     let launcher_name = extension_launch.launcher_name();
 
     configure_launcher_process(&mut command);
-    let mut child = command.spawn().with_context(|| {
-        if matches!(&extension_launch, ExtensionLaunch::WebExt(_)) {
-            format!(
-                "failed to start web-ext with {}; make sure the packaged web-ext dependency is installed or Node.js/npm are available",
-                web_ext_launcher_description
-                    .as_deref()
-                    .unwrap_or("web-ext")
-            )
-        } else {
-            format!(
-                "failed to start Firefox directly with {}; check Firefox path and signed XPI setup",
-                firefox_path.display()
-            )
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            cleanup_ephemeral_best_effort(&resolved.ephemeral_root);
+            return Err(error).with_context(|| {
+                if matches!(&extension_launch, ExtensionLaunch::WebExt(_)) {
+                    format!(
+                        "failed to start web-ext with {}; make sure the packaged web-ext dependency is installed or Node.js/npm are available",
+                        web_ext_launcher_description
+                            .as_deref()
+                            .unwrap_or("web-ext")
+                    )
+                } else {
+                    format!(
+                        "failed to start Firefox directly with {}; check Firefox path and signed XPI setup",
+                        firefox_path.display()
+                    )
+                }
+            });
         }
-    })?;
+    };
     let launcher_pid = child.id();
 
     let mut metadata = LauncherMetadata {
-        profile_name: options.profile.clone(),
+        namespace: options.namespace.clone(),
+        session_name: options.session_name.clone(),
+        profile_name: resolved.name.clone(),
+        profile_kind: resolved.kind,
         profile_path: profile_path.clone(),
+        ephemeral_root: Some(resolved.ephemeral_root.clone()),
         firefox_path,
         extension_source,
         launcher_pid,
         started_at: now_ms(),
-        last_launch_url: options.url,
+        last_launch_url: options.url.clone(),
         session_id: None,
         profile_id: None,
         headless: options.headless,
@@ -324,6 +443,7 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
     let deadline = Instant::now() + launch_wait_timeout(extension_launch_mode);
     while Instant::now() < deadline {
         if let Some(status) = child.try_wait()? {
+            cleanup_ephemeral_best_effort(&resolved.ephemeral_root);
             bail!(
                 "{}",
                 launch_connect_failure_message(
@@ -343,16 +463,25 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
             .collect();
         sessions.sort_by_key(|session| std::cmp::Reverse(session.last_focused_at));
 
-        if let Some(mut session) = sessions.into_iter().next() {
-            session.profile_name = Some(options.profile.clone());
+        if let Some(session) = sessions.into_iter().next() {
+            let session = configure_host_lifecycle(
+                &session,
+                &options,
+                &resolved.name,
+                resolved.kind,
+                &profile_path,
+                &resolved.ephemeral_root,
+            )?;
             metadata.session_id = Some(session.session_id.clone());
             metadata.profile_id = Some(session.profile_id.clone());
             write_launcher_metadata_atomic(&launcher_path, &metadata)?;
             return Ok(LaunchResult {
                 reused: false,
                 session,
-                profile_name: options.profile,
+                profile_name: resolved.name,
+                profile_kind: resolved.kind,
                 profile_path,
+                ephemeral_root: resolved.ephemeral_root,
                 launcher_pid,
                 log_path,
                 headless: options.headless,
@@ -364,6 +493,9 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
         thread::sleep(Duration::from_millis(500));
     }
 
+    let _ = terminate_process_best_effort(launcher_pid);
+    let _ = terminate_profile_processes_best_effort(&profile_path);
+    cleanup_ephemeral_best_effort(&resolved.ephemeral_root);
     bail!(
         "{}",
         launch_connect_failure_message(
@@ -372,6 +504,646 @@ pub fn launch_firefox(options: LaunchOptions) -> Result<LaunchResult> {
             &log_path
         )
     )
+}
+
+fn configure_host_lifecycle(
+    session: &SessionInfo,
+    options: &LaunchOptions,
+    profile_name: &str,
+    profile_kind: SessionProfileKind,
+    profile_path: &Path,
+    ephemeral_root: &Path,
+) -> Result<SessionInfo> {
+    let request = RpcRequest {
+        id: Uuid::new_v4().to_string(),
+        method: "host_configure_lifecycle".to_string(),
+        params: serde_json::json!({
+            "sessionName": options.session_name,
+            "namespace": options.namespace,
+            "profileName": profile_name,
+            "profileKind": profile_kind,
+            "profilePath": profile_path,
+            "ephemeralRoot": ephemeral_root,
+        }),
+    };
+    let line = serde_json::to_string(&request)?;
+    let response = send_pipe_request(&session.pipe_name, &line)
+        .context("failed to configure lifecycle on the native host")?;
+    let response: RpcResponse = serde_json::from_str(&response)
+        .context("native host returned invalid lifecycle configuration response")?;
+    if !response.ok {
+        let message = response
+            .error
+            .map(|error| format!("{}: {}", error.code, error.message))
+            .unwrap_or_else(|| "unknown host lifecycle error".to_string());
+        bail!("browser_launch_failed: {message}");
+    }
+    serde_json::from_value(
+        response
+            .result
+            .context("native host lifecycle response omitted session metadata")?,
+    )
+    .context("native host lifecycle response had invalid session metadata")
+}
+
+fn validate_runtime_key(label: &str, value: &str) -> Result<()> {
+    if value.is_empty()
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        bail!("invalid_args: {label} must contain only letters, numbers, hyphens, and underscores");
+    }
+    Ok(())
+}
+
+fn runtime_metadata_dir_from_data_dir(root: &Path, namespace: &str, session: &str) -> PathBuf {
+    root.join("runtime")
+        .join(namespace)
+        .join("sessions")
+        .join(session)
+}
+
+pub fn finalize_closed_session_best_effort(session: &SessionInfo) {
+    let Ok(root) = data_dir() else {
+        schedule_session_ephemeral_cleanup(session);
+        return;
+    };
+    let launcher_path = runtime_metadata_dir_from_data_dir(
+        &root,
+        session.effective_namespace(),
+        session.effective_session_name(),
+    )
+    .join("launcher.json");
+    let metadata = read_launcher_metadata(&launcher_path)
+        .ok()
+        .flatten()
+        .filter(|metadata| launcher_metadata_matches_session(metadata, session));
+
+    if let Some(metadata) = metadata {
+        let deadline = Instant::now() + SESSION_CLOSE_GRACE;
+        while Instant::now() < deadline
+            && (process_is_alive(metadata.launcher_pid)
+                || profile_processes_are_alive(&metadata.profile_path))
+        {
+            thread::sleep(Duration::from_millis(50));
+        }
+        if profile_processes_are_alive(&metadata.profile_path) {
+            let _ = terminate_profile_processes_best_effort(&metadata.profile_path);
+        }
+        if process_is_alive(metadata.launcher_pid) {
+            let _ = terminate_process_best_effort(metadata.launcher_pid);
+        }
+        let settle_deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < settle_deadline
+            && profile_processes_are_alive(&metadata.profile_path)
+        {
+            thread::sleep(Duration::from_millis(50));
+        }
+        if metadata.profile_kind == SessionProfileKind::Persistent
+            && !profile_processes_are_alive(&metadata.profile_path)
+        {
+            remove_stale_profile_locks_best_effort(&metadata.profile_path);
+        }
+        let _ = fs::remove_file(&launcher_path);
+    }
+
+    schedule_session_ephemeral_cleanup(session);
+}
+
+fn launcher_metadata_matches_session(metadata: &LauncherMetadata, session: &SessionInfo) -> bool {
+    let identity_matches = metadata.session_id.as_deref() == Some(session.session_id.as_str())
+        || metadata.profile_id.as_deref() == Some(session.profile_id.as_str());
+    let profile_matches = session
+        .profile_path
+        .as_ref()
+        .map(|path| paths_equivalent(path, &metadata.profile_path))
+        .unwrap_or(false);
+    identity_matches
+        && profile_matches
+        && metadata.namespace == session.effective_namespace()
+        && metadata.session_name == session.effective_session_name()
+}
+
+fn schedule_session_ephemeral_cleanup(session: &SessionInfo) {
+    if let Some(ephemeral_root) = &session.ephemeral_root {
+        cleanup_ephemeral_best_effort(ephemeral_root);
+    }
+}
+
+fn remove_stale_profile_locks_best_effort(profile_path: &Path) {
+    for name in ["parent.lock", ".parentlock", "lock"] {
+        let path = profile_path.join(name);
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if metadata.is_file() || metadata.file_type().is_symlink() {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+fn launch_request_matches_metadata(options: &LaunchOptions, metadata: &LauncherMetadata) -> bool {
+    if metadata.namespace != options.namespace || metadata.session_name != options.session_name {
+        return false;
+    }
+    match options.profile.as_deref() {
+        None => metadata.profile_kind == SessionProfileKind::Ephemeral,
+        Some(value) if profile_value_is_path_like(value) => {
+            metadata.profile_kind == SessionProfileKind::Persistent
+                && resolve_persistent_profile_path(value)
+                    .map(|path| paths_equivalent(&path, &metadata.profile_path))
+                    .unwrap_or(false)
+        }
+        Some(value) => {
+            metadata.profile_kind == SessionProfileKind::Snapshot
+                && metadata.profile_name.eq_ignore_ascii_case(value)
+        }
+    }
+}
+
+fn resolve_launch_profile(root: &Path, options: &LaunchOptions) -> Result<ResolvedLaunchProfile> {
+    let ephemeral_root = create_ephemeral_session_root(&options.namespace, &options.session_name)?;
+    let resolved = (|| -> Result<ResolvedLaunchProfile> {
+        let (name, kind, path, profile_owned) = match options.profile.as_deref() {
+            None => {
+                let path = ephemeral_root.join("profile");
+                fs::create_dir_all(&path)
+                    .with_context(|| format!("failed to create {}", path.display()))?;
+                (
+                    "ephemeral".to_string(),
+                    SessionProfileKind::Ephemeral,
+                    path,
+                    true,
+                )
+            }
+            Some(value) if profile_value_is_path_like(value) => {
+                let path = resolve_persistent_profile_path(value)?;
+                fs::create_dir_all(&path)
+                    .with_context(|| format!("failed to create {}", path.display()))?;
+                let path = fs::canonicalize(&path).unwrap_or(path);
+                (
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("persistent")
+                        .to_string(),
+                    SessionProfileKind::Persistent,
+                    path,
+                    false,
+                )
+            }
+            Some(value) => {
+                let (resolved_name, source) = resolve_named_profile_source(root, value)?;
+                ensure_profile_source_is_unlocked(&source)?;
+                let path = ephemeral_root.join("profile");
+                fs::create_dir_all(&path)
+                    .with_context(|| format!("failed to create {}", path.display()))?;
+                let mut copied_files = 0usize;
+                let mut skipped_entries = 0usize;
+                copy_profile_tree(
+                    &source,
+                    &path,
+                    Path::new(""),
+                    &mut copied_files,
+                    &mut skipped_entries,
+                )?;
+                (resolved_name, SessionProfileKind::Snapshot, path, true)
+            }
+        };
+
+        write_ephemeral_marker(
+            &ephemeral_root,
+            EphemeralSessionMarker {
+                schema_version: EPHEMERAL_MARKER_SCHEMA_VERSION,
+                nonce: Uuid::new_v4().to_string(),
+                namespace: options.namespace.clone(),
+                session_name: options.session_name.clone(),
+                created_at: now_ms(),
+                profile_kind: kind,
+                profile_path: path.clone(),
+                profile_owned,
+            },
+        )?;
+
+        Ok(ResolvedLaunchProfile {
+            name,
+            kind,
+            path,
+            ephemeral_root: ephemeral_root.clone(),
+        })
+    })();
+
+    if resolved.is_err() {
+        let _ = fs::remove_dir_all(&ephemeral_root);
+    }
+    resolved
+}
+
+fn resolve_named_profile_source(root: &Path, requested: &str) -> Result<(String, PathBuf)> {
+    let discovered = discover_firefox_profiles()?;
+    if let Some(profile) = discovered.into_iter().find(|profile| {
+        profile.name.eq_ignore_ascii_case(requested)
+            || profile
+                .path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name.eq_ignore_ascii_case(requested))
+                .unwrap_or(false)
+    }) {
+        if !profile.exists {
+            bail!(
+                "profile_not_found: Firefox profile `{}` is listed but its directory is missing",
+                requested
+            );
+        }
+        return Ok((profile.name, profile.path));
+    }
+
+    let managed_root = root.join("firefox-profiles");
+    if managed_root.exists() {
+        for entry in fs::read_dir(&managed_root)
+            .with_context(|| format!("failed to read {}", managed_root.display()))?
+        {
+            let entry = entry?;
+            if entry.file_type()?.is_dir()
+                && entry
+                    .file_name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case(requested)
+            {
+                return Ok((
+                    entry.file_name().to_string_lossy().to_string(),
+                    entry.path(),
+                ));
+            }
+        }
+    }
+
+    bail!(
+        "profile_not_found: no discovered or managed Firefox profile matched `{requested}`; run `pire-browser profiles`"
+    )
+}
+
+fn ensure_profile_source_is_unlocked(source: &Path) -> Result<()> {
+    for lock_name in ["parent.lock", ".parentlock", "lock"] {
+        if source.join(lock_name).exists() {
+            bail!(
+                "profile_locked: Firefox profile {} appears to be in use; close Firefox before taking a snapshot",
+                source.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn profile_value_is_path_like(value: &str) -> bool {
+    value.starts_with('.')
+        || value.starts_with('~')
+        || value.starts_with('/')
+        || value.starts_with('\\')
+        || value.contains('/')
+        || value.contains('\\')
+        || (value.len() >= 2 && value.as_bytes()[1] == b':')
+}
+
+fn resolve_persistent_profile_path(value: &str) -> Result<PathBuf> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        bail!("invalid_args: --profile requires a non-empty value");
+    }
+    let expanded = if trimmed == "~" || trimmed.starts_with("~/") || trimmed.starts_with("~\\") {
+        let home = env::var_os("HOME")
+            .or_else(|| env::var_os("USERPROFILE"))
+            .map(PathBuf::from)
+            .context("could not resolve home directory for --profile")?;
+        if trimmed == "~" {
+            home
+        } else {
+            home.join(&trimmed[2..])
+        }
+    } else {
+        PathBuf::from(trimmed)
+    };
+    let absolute = if expanded.is_absolute() {
+        expanded
+    } else {
+        env::current_dir()?.join(expanded)
+    };
+    if absolute.parent().is_none() {
+        bail!("invalid_args: --profile path cannot be a filesystem root");
+    }
+    Ok(absolute)
+}
+
+fn paths_equivalent(left: &Path, right: &Path) -> bool {
+    let left = fs::canonicalize(left).unwrap_or_else(|_| left.to_path_buf());
+    let right = fs::canonicalize(right).unwrap_or_else(|_| right.to_path_buf());
+    if cfg!(windows) {
+        left.to_string_lossy()
+            .eq_ignore_ascii_case(&right.to_string_lossy())
+    } else {
+        left == right
+    }
+}
+
+fn ephemeral_sessions_root(namespace: &str) -> PathBuf {
+    env::temp_dir()
+        .join("pire-browser")
+        .join(namespace)
+        .join("sessions")
+}
+
+fn create_ephemeral_session_root(namespace: &str, _session_name: &str) -> Result<PathBuf> {
+    let base = ephemeral_sessions_root(namespace);
+    create_ephemeral_session_root_under(&base)
+}
+
+fn create_ephemeral_session_root_under(base: &Path) -> Result<PathBuf> {
+    fs::create_dir_all(&base).with_context(|| format!("failed to create {}", base.display()))?;
+    restrict_current_user_dir_best_effort(&base);
+    let root = base.join(Uuid::new_v4().to_string());
+    fs::create_dir(&root).with_context(|| format!("failed to create {}", root.display()))?;
+    Ok(root)
+}
+
+fn write_ephemeral_marker(root: &Path, marker: EphemeralSessionMarker) -> Result<()> {
+    let final_path = root.join(EPHEMERAL_MARKER_FILE);
+    let temp_path = root.join(format!("{EPHEMERAL_MARKER_FILE}.tmp"));
+    fs::write(&temp_path, serde_json::to_vec_pretty(&marker)?)
+        .with_context(|| format!("failed to write {}", temp_path.display()))?;
+    fs::rename(&temp_path, &final_path)
+        .with_context(|| format!("failed to publish {}", final_path.display()))?;
+    restrict_current_user_file_best_effort(&final_path);
+    Ok(())
+}
+
+fn read_owned_ephemeral_marker(root: &Path) -> Result<EphemeralSessionMarker> {
+    let body = fs::read_to_string(root.join(EPHEMERAL_MARKER_FILE))
+        .with_context(|| format!("missing ephemeral ownership marker in {}", root.display()))?;
+    let marker: EphemeralSessionMarker = serde_json::from_str(&body)
+        .with_context(|| format!("invalid ephemeral ownership marker in {}", root.display()))?;
+    if marker.schema_version != EPHEMERAL_MARKER_SCHEMA_VERSION || marker.nonce.is_empty() {
+        bail!("invalid ephemeral ownership marker in {}", root.display());
+    }
+    if !valid_lifecycle_key(&marker.namespace) || !valid_lifecycle_key(&marker.session_name) {
+        bail!("invalid ephemeral ownership marker in {}", root.display());
+    }
+    let base = ephemeral_sessions_root(&marker.namespace);
+    validate_owned_ephemeral_marker(root, &base, &marker)?;
+    Ok(marker)
+}
+
+fn validate_owned_ephemeral_marker(
+    root: &Path,
+    base: &Path,
+    marker: &EphemeralSessionMarker,
+) -> Result<()> {
+    let canonical_root =
+        fs::canonicalize(root).with_context(|| format!("failed to resolve {}", root.display()))?;
+    let canonical_base =
+        fs::canonicalize(base).with_context(|| "failed to resolve ephemeral sessions root")?;
+    if canonical_root == canonical_base || !canonical_root.starts_with(&canonical_base) {
+        bail!("refusing to clean unowned path {}", root.display());
+    }
+    if marker.profile_owned {
+        let owned_profile_path = if marker.profile_path.exists() {
+            fs::canonicalize(&marker.profile_path)
+                .with_context(|| format!("failed to resolve {}", marker.profile_path.display()))?
+        } else {
+            let existing_ancestor = marker
+                .profile_path
+                .ancestors()
+                .find(|path| path.exists())
+                .context("ephemeral marker profile has no existing ancestor")?;
+            fs::canonicalize(existing_ancestor)
+                .with_context(|| format!("failed to resolve {}", existing_ancestor.display()))?
+        };
+        if !owned_profile_path.starts_with(&canonical_root) {
+            bail!("ephemeral marker points outside its owned root");
+        }
+    }
+    Ok(())
+}
+
+pub fn remove_owned_ephemeral_root(root: &Path) -> Result<()> {
+    let marker = read_owned_ephemeral_marker(root)?;
+    remove_owned_ephemeral_contents(root)?;
+    let marker_path = root.join(EPHEMERAL_MARKER_FILE);
+    fs::remove_file(&marker_path)
+        .with_context(|| format!("failed to remove {}", marker_path.display()))?;
+    if let Err(error) = fs::remove_dir(root) {
+        let _ = write_ephemeral_marker(root, marker);
+        return Err(error).with_context(|| format!("failed to remove {}", root.display()));
+    }
+    Ok(())
+}
+
+fn remove_owned_ephemeral_contents(root: &Path) -> Result<()> {
+    for entry in fs::read_dir(root).with_context(|| format!("failed to read {}", root.display()))? {
+        let entry = entry?;
+        if entry.file_name() == EPHEMERAL_MARKER_FILE {
+            continue;
+        }
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)
+            .with_context(|| format!("failed to inspect {}", path.display()))?;
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            fs::remove_dir_all(&path)
+                .with_context(|| format!("failed to remove {}", path.display()))?;
+        } else {
+            fs::remove_file(&path)
+                .with_context(|| format!("failed to remove {}", path.display()))?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+fn remove_owned_ephemeral_root_with_base(root: &Path, base: &Path) -> Result<()> {
+    let body = fs::read_to_string(root.join(EPHEMERAL_MARKER_FILE))
+        .with_context(|| format!("missing ephemeral ownership marker in {}", root.display()))?;
+    let marker: EphemeralSessionMarker = serde_json::from_str(&body)
+        .with_context(|| format!("invalid ephemeral ownership marker in {}", root.display()))?;
+    if marker.schema_version != EPHEMERAL_MARKER_SCHEMA_VERSION
+        || marker.nonce.is_empty()
+        || !valid_lifecycle_key(&marker.namespace)
+        || !valid_lifecycle_key(&marker.session_name)
+    {
+        bail!("invalid ephemeral ownership marker in {}", root.display());
+    }
+    validate_owned_ephemeral_marker(root, base, &marker)?;
+    remove_owned_ephemeral_contents(root)?;
+    fs::remove_file(root.join(EPHEMERAL_MARKER_FILE))?;
+    fs::remove_dir(root).with_context(|| format!("failed to remove {}", root.display()))
+}
+
+fn valid_lifecycle_key(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+}
+
+fn cleanup_ephemeral_best_effort(root: &Path) {
+    if remove_owned_ephemeral_root(root).is_err() {
+        let _ = spawn_ephemeral_cleanup_worker(root);
+    }
+}
+
+pub fn run_ephemeral_cleanup_worker(root: &Path) -> Result<()> {
+    let marker = read_owned_ephemeral_marker(root)?;
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while Instant::now() < deadline {
+        if !profile_processes_are_alive(&marker.profile_path) {
+            for attempt in 0..8u64 {
+                match remove_owned_ephemeral_root(root) {
+                    Ok(()) => return Ok(()),
+                    Err(_) => thread::sleep(Duration::from_millis(250 * (attempt + 1))),
+                }
+            }
+        }
+        thread::sleep(Duration::from_millis(500));
+    }
+    bail!(
+        "timed out cleaning ephemeral session root {}",
+        root.display()
+    )
+}
+
+pub fn spawn_ephemeral_cleanup_worker(root: &Path) -> Result<()> {
+    let host_exe = sibling_host_path().context("failed to resolve native host executable")?;
+    let mut command = Command::new(host_exe);
+    command
+        .arg("--cleanup-ephemeral")
+        .arg(root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    configure_launcher_process(&mut command);
+    command
+        .spawn()
+        .context("failed to start ephemeral cleanup worker")?;
+    Ok(())
+}
+
+pub fn inspect_ephemeral_profiles(now: u64) -> EphemeralProfileReport {
+    inspect_or_sweep_ephemeral_profiles(false, now)
+}
+
+pub fn sweep_ephemeral_profiles(force: bool, now: u64) -> EphemeralProfileReport {
+    if !force && ephemeral_sweep_is_throttled(now) {
+        return EphemeralProfileReport {
+            root: env::temp_dir().join("pire-browser"),
+            throttled: true,
+            ..EphemeralProfileReport::default()
+        };
+    }
+    let mut report = inspect_or_sweep_ephemeral_profiles(true, now);
+    if !force || report.errors.is_empty() {
+        let _ = write_ephemeral_sweep_timestamp(now);
+    }
+    report.throttled = false;
+    report
+}
+
+fn inspect_or_sweep_ephemeral_profiles(remove: bool, now: u64) -> EphemeralProfileReport {
+    let root = env::temp_dir().join("pire-browser");
+    let mut report = EphemeralProfileReport {
+        root: root.clone(),
+        ..EphemeralProfileReport::default()
+    };
+    if !root.exists() {
+        return report;
+    }
+    let Ok(namespaces) = fs::read_dir(&root) else {
+        report
+            .errors
+            .push(format!("failed to read {}", root.display()));
+        return report;
+    };
+    for namespace in namespaces.flatten() {
+        let sessions = namespace.path().join("sessions");
+        let Ok(entries) = fs::read_dir(&sessions) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            report.inspected += 1;
+            let marker = match read_owned_ephemeral_marker(&path) {
+                Ok(marker) => marker,
+                Err(error) => {
+                    report.errors.push(error.to_string());
+                    continue;
+                }
+            };
+            if profile_processes_are_alive(&marker.profile_path) {
+                report.active += 1;
+                continue;
+            }
+            if now.saturating_sub(marker.created_at) < EPHEMERAL_ORPHAN_GRACE_MS {
+                continue;
+            }
+            report.orphaned += 1;
+            report.bytes = report.bytes.saturating_add(directory_size(&path));
+            if remove {
+                match remove_owned_ephemeral_root(&path) {
+                    Ok(()) => report.removed += 1,
+                    Err(error) => report.errors.push(error.to_string()),
+                }
+            }
+        }
+    }
+    report
+}
+
+fn ephemeral_sweep_state_path() -> Result<PathBuf> {
+    Ok(data_dir()?.join("maintenance").join("ephemeral-sweep.json"))
+}
+
+fn ephemeral_sweep_is_throttled(now: u64) -> bool {
+    let Ok(path) = ephemeral_sweep_state_path() else {
+        return false;
+    };
+    let Some(last) = fs::read_to_string(path)
+        .ok()
+        .and_then(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
+        .and_then(|value| value.get("lastSweepAt").and_then(|value| value.as_u64()))
+    else {
+        return false;
+    };
+    now.saturating_sub(last) < EPHEMERAL_SWEEP_INTERVAL_MS
+}
+
+fn write_ephemeral_sweep_timestamp(now: u64) -> Result<()> {
+    let path = ephemeral_sweep_state_path()?;
+    let parent = path.parent().context("maintenance path has no parent")?;
+    fs::create_dir_all(parent)?;
+    let temp = path.with_extension("json.tmp");
+    fs::write(
+        &temp,
+        serde_json::to_vec_pretty(&serde_json::json!({ "lastSweepAt": now }))?,
+    )?;
+    fs::rename(temp, path)?;
+    Ok(())
+}
+
+fn directory_size(root: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(root) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| match fs::symlink_metadata(entry.path()) {
+            Ok(metadata) if metadata.is_file() => metadata.len(),
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
+                directory_size(&entry.path())
+            }
+            _ => 0,
+        })
+        .sum()
 }
 
 pub fn launch_result_text(result: &LaunchResult) -> String {
@@ -467,6 +1239,211 @@ pub fn list_managed_profiles() -> Result<Vec<ManagedProfileInfo>> {
             })
     });
     Ok(profiles)
+}
+
+pub fn managed_profile_usage(name: &str) -> Result<ManagedProfileUsage> {
+    validate_profile_name(name)?;
+    let root = data_dir()?;
+    let profile_path = managed_profile_dir_from_data_dir(&root, name);
+    let associated_download_path = root.join("downloads").join(name);
+    let active = managed_profile_is_active(&profile_path)?;
+    Ok(ManagedProfileUsage {
+        name: name.to_string(),
+        profile_bytes: directory_size(&profile_path),
+        regenerable_cache_bytes: regenerable_profile_entries(&profile_path)
+            .iter()
+            .map(|path| path_size(path))
+            .sum(),
+        associated_download_bytes: directory_size(&associated_download_path),
+        profile_path,
+        associated_download_path,
+        active,
+    })
+}
+
+pub fn all_managed_profile_usage() -> Result<Vec<ManagedProfileUsage>> {
+    list_managed_profiles()?
+        .into_iter()
+        .filter(|profile| profile.exists)
+        .map(|profile| managed_profile_usage(&profile.name))
+        .collect()
+}
+
+pub fn clean_managed_profile_cache(name: &str, dry_run: bool) -> Result<ManagedProfileCleanResult> {
+    let usage = managed_profile_usage(name)?;
+    if !usage.profile_path.exists() {
+        bail!("profile_not_found: managed profile `{name}` does not exist");
+    }
+    if usage.active {
+        bail!("profile_in_use: managed profile `{name}` must be stopped before cache cleaning");
+    }
+    validate_managed_profile_path(&usage.profile_path, name)?;
+    let entries = regenerable_profile_entries(&usage.profile_path);
+    let removable_bytes = entries.iter().map(|path| path_size(path)).sum();
+    if !dry_run {
+        for path in &entries {
+            let metadata = fs::symlink_metadata(path)
+                .with_context(|| format!("failed to inspect {}", path.display()))?;
+            if metadata.file_type().is_symlink() {
+                bail!(
+                    "refusing to remove symlink from managed profile: {}",
+                    path.display()
+                );
+            }
+            if metadata.is_dir() {
+                fs::remove_dir_all(path)
+                    .with_context(|| format!("failed to remove {}", path.display()))?;
+            } else if metadata.is_file() {
+                fs::remove_file(path)
+                    .with_context(|| format!("failed to remove {}", path.display()))?;
+            }
+        }
+    }
+    Ok(ManagedProfileCleanResult {
+        name: name.to_string(),
+        profile_path: usage.profile_path,
+        dry_run,
+        removable_bytes,
+        removed_bytes: if dry_run { 0 } else { removable_bytes },
+        entries,
+    })
+}
+
+pub fn delete_managed_profile(name: &str) -> Result<ManagedProfileDeleteResult> {
+    let usage = managed_profile_usage(name)?;
+    if !usage.profile_path.exists() {
+        bail!("profile_not_found: managed profile `{name}` does not exist");
+    }
+    if usage.active {
+        bail!("profile_in_use: managed profile `{name}` must be stopped before deletion");
+    }
+    validate_managed_profile_path(&usage.profile_path, name)?;
+    let root = data_dir()?;
+    let metadata_path = profile_metadata_dir_from_data_dir(&root, name);
+    fs::remove_dir_all(&usage.profile_path)
+        .with_context(|| format!("failed to remove {}", usage.profile_path.display()))?;
+    if metadata_path.exists() {
+        validate_managed_metadata_path(&metadata_path, name)?;
+        fs::remove_dir_all(&metadata_path)
+            .with_context(|| format!("failed to remove {}", metadata_path.display()))?;
+    }
+    Ok(ManagedProfileDeleteResult {
+        name: name.to_string(),
+        profile_path: usage.profile_path,
+        metadata_path,
+        removed_profile_bytes: usage.profile_bytes,
+        downloads_preserved: usage.associated_download_path.exists(),
+    })
+}
+
+fn managed_profile_is_active(profile_path: &Path) -> Result<bool> {
+    if profile_processes_are_alive(profile_path) {
+        return Ok(true);
+    }
+    let canonical = profile_path.canonicalize().ok();
+    Ok(list_sessions()?.into_iter().any(|session| {
+        session
+            .profile_path
+            .as_ref()
+            .is_some_and(|path| paths_equivalent(path, profile_path))
+            || canonical.as_ref().is_some_and(|profile| {
+                session
+                    .profile_path
+                    .as_ref()
+                    .and_then(|path| path.canonicalize().ok())
+                    .as_ref()
+                    == Some(profile)
+            })
+    }))
+}
+
+fn validate_managed_profile_path(path: &Path, name: &str) -> Result<()> {
+    let root = data_dir()?.join("firefox-profiles");
+    let expected = root.join(name);
+    if path != expected {
+        bail!("refusing to operate on a non-managed Firefox profile path");
+    }
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect {}", path.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        bail!("refusing to operate on a symlink or non-directory managed profile");
+    }
+    let canonical_root = root
+        .canonicalize()
+        .with_context(|| format!("failed to resolve {}", root.display()))?;
+    let canonical_path = path
+        .canonicalize()
+        .with_context(|| format!("failed to resolve {}", path.display()))?;
+    if canonical_path == canonical_root || !canonical_path.starts_with(canonical_root) {
+        bail!("refusing to operate outside the managed profile root");
+    }
+    Ok(())
+}
+
+fn validate_managed_metadata_path(path: &Path, name: &str) -> Result<()> {
+    let root = data_dir()?.join("profiles");
+    if path != root.join(name) {
+        bail!("refusing to operate on non-managed profile metadata");
+    }
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect {}", path.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        bail!("refusing to remove symlinked profile metadata");
+    }
+    Ok(())
+}
+
+fn regenerable_profile_entries(profile_path: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(profile_path) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path).ok()?;
+            if metadata.file_type().is_symlink() {
+                return None;
+            }
+            is_regenerable_profile_entry(&entry.file_name(), metadata.is_dir()).then_some(path)
+        })
+        .collect()
+}
+
+fn is_regenerable_profile_entry(name: &std::ffi::OsStr, is_dir: bool) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    let lower = name.to_ascii_lowercase();
+    if !is_dir {
+        return matches!(
+            lower.as_str(),
+            "compatibility.ini" | "sessioncheckpoints.json" | "xulstore.json.tmp"
+        );
+    }
+    matches!(
+        lower.as_str(),
+        "cache2"
+            | "startupcache"
+            | "jumplistcache"
+            | "crashes"
+            | "minidumps"
+            | "datareporting"
+            | "saved-telemetry-pings"
+            | "shader-cache"
+            | "thumbnails"
+            | "safebrowsing"
+    )
+}
+
+fn path_size(path: &Path) -> u64 {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => metadata.len(),
+        Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
+            directory_size(path)
+        }
+        _ => 0,
+    }
 }
 
 pub fn discover_firefox_profiles() -> Result<Vec<DiscoveredFirefoxProfileInfo>> {
@@ -1058,7 +2035,7 @@ fn live_session_for_metadata(metadata: &LauncherMetadata) -> Result<Option<Sessi
             .find(|session| session.session_id == session_id)
             .cloned()
         {
-            session.profile_name = Some(metadata.profile_name.clone());
+            apply_launcher_metadata_to_session(&mut session, metadata);
             return Ok(Some(session));
         }
     }
@@ -1068,12 +2045,21 @@ fn live_session_for_metadata(metadata: &LauncherMetadata) -> Result<Option<Sessi
             .into_iter()
             .find(|session| session.profile_id == profile_id)
         {
-            session.profile_name = Some(metadata.profile_name.clone());
+            apply_launcher_metadata_to_session(&mut session, metadata);
             return Ok(Some(session));
         }
     }
 
     Ok(None)
+}
+
+fn apply_launcher_metadata_to_session(session: &mut SessionInfo, metadata: &LauncherMetadata) {
+    session.session_name = Some(metadata.session_name.clone());
+    session.namespace = Some(metadata.namespace.clone());
+    session.profile_name = Some(metadata.profile_name.clone());
+    session.profile_kind = Some(metadata.profile_kind);
+    session.profile_path = Some(metadata.profile_path.clone());
+    session.ephemeral_root = metadata.ephemeral_root.clone();
 }
 
 fn discover_extension_source() -> Result<PathBuf> {
@@ -1700,12 +2686,50 @@ fn restrict_current_user_dir_best_effort(path: &Path) {
     let _ = command.status();
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
+fn restrict_current_user_dir_best_effort(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o700));
+}
+
+#[cfg(not(any(windows, unix)))]
 fn restrict_current_user_dir_best_effort(_path: &Path) {}
+
+#[cfg(unix)]
+fn restrict_current_user_file_best_effort(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+}
+
+#[cfg(not(unix))]
+fn restrict_current_user_file_best_effort(_path: &Path) {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_marker(
+        profile_path: PathBuf,
+        profile_owned: bool,
+        session_name: &str,
+    ) -> EphemeralSessionMarker {
+        EphemeralSessionMarker {
+            schema_version: EPHEMERAL_MARKER_SCHEMA_VERSION,
+            nonce: Uuid::new_v4().to_string(),
+            namespace: "test".to_string(),
+            session_name: session_name.to_string(),
+            created_at: now_ms(),
+            profile_kind: if profile_owned {
+                SessionProfileKind::Ephemeral
+            } else {
+                SessionProfileKind::Persistent
+            },
+            profile_path,
+            profile_owned,
+        }
+    }
 
     #[test]
     fn default_profile_path_is_under_firefox_profiles() {
@@ -1715,6 +2739,144 @@ mod tests {
             path,
             PathBuf::from(r"C:\Users\me\AppData\Local\pire-browser\firefox-profiles\Default")
         );
+    }
+
+    #[test]
+    fn marked_ephemeral_roots_are_removed_without_storage_growth() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path().join("controlled").join("sessions");
+
+        for index in 0..100 {
+            let root = create_ephemeral_session_root_under(&base).unwrap();
+            let profile = root.join("profile");
+            fs::create_dir_all(&profile).unwrap();
+            fs::write(profile.join("payload.bin"), vec![0u8; 1024]).unwrap();
+            write_ephemeral_marker(
+                &root,
+                test_marker(profile, true, &format!("session-{index}")),
+            )
+            .unwrap();
+            remove_owned_ephemeral_root_with_base(&root, &base).unwrap();
+        }
+
+        assert_eq!(fs::read_dir(&base).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn ephemeral_content_cleanup_preserves_ownership_marker_for_retries() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("session");
+        let profile = root.join("profile");
+        fs::create_dir_all(&profile).unwrap();
+        fs::write(profile.join("payload.bin"), b"payload").unwrap();
+        write_ephemeral_marker(&root, test_marker(profile.clone(), true, "retry-test")).unwrap();
+
+        remove_owned_ephemeral_contents(&root).unwrap();
+
+        assert!(root.join(EPHEMERAL_MARKER_FILE).exists());
+        assert!(!profile.exists());
+    }
+
+    #[test]
+    fn ephemeral_cleanup_rejects_paths_outside_the_controlled_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path().join("controlled");
+        let outside = temp.path().join("outside");
+        fs::create_dir_all(&base).unwrap();
+        fs::create_dir_all(outside.join("profile")).unwrap();
+        let marker = test_marker(outside.join("profile"), true, "outside");
+
+        assert!(validate_owned_ephemeral_marker(&outside, &base, &marker).is_err());
+        assert!(outside.exists());
+    }
+
+    #[test]
+    fn ephemeral_cleanup_rejects_owned_profile_traversal() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path().join("controlled");
+        let root = base.join("session");
+        let outside_profile = temp.path().join("persistent-profile");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside_profile).unwrap();
+        let marker = test_marker(outside_profile, true, "traversal");
+
+        assert!(validate_owned_ephemeral_marker(&root, &base, &marker).is_err());
+    }
+
+    #[test]
+    fn cleanup_removes_only_the_wrapper_for_persistent_profiles() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path().join("controlled");
+        let root = create_ephemeral_session_root_under(&base).unwrap();
+        let persistent = temp.path().join("persistent-profile");
+        fs::create_dir_all(&persistent).unwrap();
+        fs::write(persistent.join("cookies.sqlite"), b"keep").unwrap();
+        write_ephemeral_marker(&root, test_marker(persistent.clone(), false, "durable")).unwrap();
+
+        remove_owned_ephemeral_root_with_base(&root, &base).unwrap();
+
+        assert!(!root.exists());
+        assert_eq!(
+            fs::read(persistent.join("cookies.sqlite")).unwrap(),
+            b"keep"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ephemeral_cleanup_rejects_symlinked_roots() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path().join("controlled");
+        let outside = temp.path().join("outside");
+        let link = base.join("linked-session");
+        fs::create_dir_all(&base).unwrap();
+        fs::create_dir_all(outside.join("profile")).unwrap();
+        write_ephemeral_marker(
+            &outside,
+            test_marker(outside.join("profile"), true, "linked"),
+        )
+        .unwrap();
+        symlink(&outside, &link).unwrap();
+
+        assert!(remove_owned_ephemeral_root_with_base(&link, &base).is_err());
+        assert!(outside.exists());
+    }
+
+    #[test]
+    fn profile_cache_allowlist_preserves_durable_browser_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path();
+        for directory in [
+            "cache2",
+            "startupCache",
+            "safebrowsing",
+            "storage",
+            "remote-settings",
+            "extensions",
+        ] {
+            fs::create_dir_all(profile.join(directory)).unwrap();
+            fs::write(profile.join(directory).join("value"), directory).unwrap();
+        }
+        fs::write(profile.join("compatibility.ini"), b"cache").unwrap();
+        fs::write(profile.join("cookies.sqlite"), b"cookies").unwrap();
+
+        let names = regenerable_profile_entries(profile)
+            .into_iter()
+            .filter_map(|path| {
+                path.file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+            })
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"cache2".to_string()));
+        assert!(names.contains(&"startupCache".to_string()));
+        assert!(names.contains(&"safebrowsing".to_string()));
+        assert!(names.contains(&"compatibility.ini".to_string()));
+        for preserved in ["storage", "remote-settings", "extensions", "cookies.sqlite"] {
+            assert!(!names.contains(&preserved.to_string()), "{preserved}");
+        }
     }
 
     #[cfg(windows)]
@@ -1887,6 +3049,7 @@ mod tests {
                 last_heartbeat_at: 2,
                 last_focused_at: 3,
                 active_page: None,
+                ..SessionInfo::default()
             },
             profile_name: "ci".into(),
             profile_path: PathBuf::from("profile"),
@@ -1895,6 +3058,7 @@ mod tests {
             headless: true,
             extra_args: vec!["-private-window".into()],
             user_agent: Some("test-agent/1.0".into()),
+            ..LaunchResult::default()
         };
 
         let text = launch_result_text(&result);
@@ -1994,6 +3158,22 @@ mod tests {
 
         fs::write(source.join("parent.lock"), b"locked").unwrap();
         assert!(source_has_lock_file(&source));
+    }
+
+    #[test]
+    fn closed_persistent_profile_cleanup_removes_only_known_lock_artifacts() {
+        let root = tempfile::tempdir().unwrap();
+        let profile = root.path().join("profile");
+        fs::create_dir_all(&profile).unwrap();
+        fs::write(profile.join("prefs.js"), b"prefs").unwrap();
+        fs::write(profile.join("parent.lock"), b"locked").unwrap();
+        fs::write(profile.join("keep.locked-data"), b"keep").unwrap();
+
+        remove_stale_profile_locks_best_effort(&profile);
+
+        assert!(!profile.join("parent.lock").exists());
+        assert_eq!(fs::read(profile.join("prefs.js")).unwrap(), b"prefs");
+        assert_eq!(fs::read(profile.join("keep.locked-data")).unwrap(), b"keep");
     }
 
     #[test]
@@ -2163,6 +3343,35 @@ Path={}
     }
 
     #[test]
+    fn close_cleanup_matches_only_the_recorded_session_and_profile() {
+        let profile_path = PathBuf::from(r"C:\Temp\pire-profile");
+        let metadata = LauncherMetadata {
+            namespace: "qa".into(),
+            session_name: "work".into(),
+            profile_name: "ephemeral".into(),
+            profile_kind: SessionProfileKind::Ephemeral,
+            profile_path: profile_path.clone(),
+            session_id: Some("session-1".into()),
+            profile_id: Some("profile-1".into()),
+            ..LauncherMetadata::default()
+        };
+        let session = SessionInfo {
+            session_id: "session-1".into(),
+            session_name: Some("work".into()),
+            namespace: Some("qa".into()),
+            profile_path: Some(profile_path),
+            profile_id: "profile-1".into(),
+            ..SessionInfo::default()
+        };
+
+        assert!(launcher_metadata_matches_session(&metadata, &session));
+        let mut other = session.clone();
+        other.session_id = "session-2".into();
+        other.profile_id = "profile-2".into();
+        assert!(!launcher_metadata_matches_session(&metadata, &other));
+    }
+
+    #[test]
     fn annotates_sessions_from_launcher_metadata() {
         let root = tempfile::tempdir().unwrap();
         let alpha_path = launcher_metadata_path_from_data_dir(root.path(), "alpha");
@@ -2180,6 +3389,7 @@ Path={}
                 session_id: Some("s-alpha".into()),
                 profile_id: Some("p-alpha".into()),
                 headless: false,
+                ..LauncherMetadata::default()
             },
         )
         .unwrap();
@@ -2196,6 +3406,7 @@ Path={}
                 session_id: None,
                 profile_id: Some("p-beta".into()),
                 headless: true,
+                ..LauncherMetadata::default()
             },
         )
         .unwrap();
@@ -2212,6 +3423,7 @@ Path={}
                 last_heartbeat_at: 10,
                 last_focused_at: 10,
                 active_page: None,
+                ..SessionInfo::default()
             },
             SessionInfo {
                 session_id: "s-beta".into(),
@@ -2224,6 +3436,7 @@ Path={}
                 last_heartbeat_at: 10,
                 last_focused_at: 10,
                 active_page: None,
+                ..SessionInfo::default()
             },
         ];
 

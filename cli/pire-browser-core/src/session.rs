@@ -10,8 +10,20 @@ use crate::platform;
 
 const SESSION_TTL_MS: u64 = 15_000;
 const DEFAULT_SESSION_AMBIGUITY_WINDOW_MS: u64 = 1_000;
+pub const DEFAULT_SESSION_NAME: &str = "default";
+pub const DEFAULT_NAMESPACE: &str = "default";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SessionProfileKind {
+    #[default]
+    Unknown,
+    Ephemeral,
+    Snapshot,
+    Persistent,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ActivePageInfo {
     pub agent_id: String,
@@ -26,12 +38,24 @@ pub struct ActivePageInfo {
     pub updated_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
     pub session_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_kind: Option<SessionProfileKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_path: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ephemeral_root: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restore_key: Option<String>,
     pub profile_id: String,
     pub pipe_name: String,
     pub extension_id: String,
@@ -54,6 +78,17 @@ pub struct SessionCleanupReport {
 impl SessionInfo {
     pub fn is_stale(&self, now_ms: u64) -> bool {
         now_ms.saturating_sub(self.last_heartbeat_at) > SESSION_TTL_MS
+    }
+
+    pub fn effective_session_name(&self) -> &str {
+        self.session_name
+            .as_deref()
+            .or(self.profile_name.as_deref())
+            .unwrap_or(DEFAULT_SESSION_NAME)
+    }
+
+    pub fn effective_namespace(&self) -> &str {
+        self.namespace.as_deref().unwrap_or(DEFAULT_NAMESPACE)
     }
 }
 
@@ -129,6 +164,13 @@ pub fn list_sessions() -> Result<Vec<SessionInfo>> {
     Ok(sessions)
 }
 
+pub fn list_sessions_in_namespace(namespace: &str) -> Result<Vec<SessionInfo>> {
+    Ok(list_sessions()?
+        .into_iter()
+        .filter(|session| session.effective_namespace() == namespace)
+        .collect())
+}
+
 pub fn cleanup_stale_sessions(now: u64) -> Result<()> {
     cleanup_stale_sessions_with_report(now).map(|_| ())
 }
@@ -198,10 +240,17 @@ pub fn session_attach_text(session: &SessionInfo) -> String {
         "Attached session {}.\nUse: pire-browser --session {} <command>",
         session.session_id, session.session_id
     );
-    if let Some(profile_name) = &session.profile_name {
+    if let Some(session_name) = &session.session_name {
         text.push_str(&format!(
-            "\nReusable profile: pire-browser --session-name {} <command>",
-            command_arg_text(profile_name)
+            "\nNamed target: pire-browser --namespace {} --session {} <command>",
+            command_arg_text(session.effective_namespace()),
+            command_arg_text(session_name)
+        ));
+    }
+    if let Some(restore_key) = &session.restore_key {
+        text.push_str(&format!(
+            "\nRestore key: {} (compact cookies + localStorage state)",
+            command_arg_text(restore_key)
         ));
     }
     text
@@ -212,11 +261,15 @@ pub fn session_attach_value(session: &SessionInfo) -> Value {
         "session": session,
         "commandPrefix": format!("pire-browser --session {}", session.session_id)
     });
-    if let Some(profile_name) = &session.profile_name {
+    if let Some(session_name) = &session.session_name {
         value["namedCommandPrefix"] = json!(format!(
-            "pire-browser --session-name {}",
-            command_arg_text(profile_name)
+            "pire-browser --namespace {} --session {}",
+            command_arg_text(session.effective_namespace()),
+            command_arg_text(session_name)
         ));
+    }
+    if let Some(restore_key) = &session.restore_key {
+        value["restoreKey"] = json!(restore_key);
     }
     value
 }
@@ -401,6 +454,7 @@ mod tests {
             last_heartbeat_at: heartbeat,
             last_focused_at: focused,
             active_page: None,
+            ..SessionInfo::default()
         }
     }
 
@@ -440,6 +494,7 @@ mod tests {
                 window_id: 1,
                 updated_at: 20,
             }),
+            ..SessionInfo::default()
         }];
         let text = session_status_text(&sessions);
         assert!(text.contains("Default target: s1"));
@@ -466,25 +521,25 @@ mod tests {
     }
 
     #[test]
-    fn session_attach_output_gives_reusable_prefix() {
+    fn session_attach_output_distinguishes_live_named_and_restore_targets() {
         let mut session = test_session("s1", "p1", 20, 20);
-        session.profile_name = Some("Default".into());
+        session.session_name = Some("work".into());
+        session.namespace = Some("team".into());
+        session.restore_key = Some("auth".into());
         let text = session_attach_text(&session);
         assert!(text.contains("Attached session s1"));
         assert!(text.contains("pire-browser --session s1 <command>"));
-        assert!(text.contains("pire-browser --session-name Default <command>"));
+        assert!(text.contains("pire-browser --namespace team --session work <command>"));
+        assert!(text.contains("Restore key: auth"));
 
         let value = session_attach_value(&session);
         assert_eq!(value["session"]["sessionId"], "s1");
         assert_eq!(value["commandPrefix"], "pire-browser --session s1");
         assert_eq!(
             value["namedCommandPrefix"],
-            "pire-browser --session-name Default"
+            "pire-browser --namespace team --session work"
         );
-
-        session.profile_name = Some("my session".into());
-        assert!(session_attach_text(&session)
-            .contains("pire-browser --session-name 'my session' <command>"));
+        assert_eq!(value["restoreKey"], "auth");
     }
 
     #[test]
