@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   classifyUpdate,
@@ -12,6 +12,9 @@ import {
   launcherInstallDiagnosticForMissingNative,
   main,
   nativeArgsNeedStdin,
+  updateChannelForVersion,
+  updateInstallCommand,
+  updatePackageSpecForVersion,
 } from "../bin/pire-browser.js";
 
 const originalOffline = process.env.PI_OFFLINE;
@@ -25,6 +28,10 @@ const originalHome = process.env.HOME;
 const originalUserProfile = process.env.USERPROFILE;
 const originalPireBinary = process.env.PIRE_BROWSER_BINARY;
 const originalPireExe = process.env.PIRE_BROWSER_EXE;
+const originalInstallKind = process.env.PIRE_BROWSER_INSTALL_KIND;
+const originalPiInstallRoot = process.env.PIRE_BROWSER_PI_INSTALL_ROOT;
+const originalPiSettingsPath = process.env.PIRE_BROWSER_PI_SETTINGS_PATH;
+const originalPath = process.env.PATH;
 const originalCwd = process.cwd();
 
 afterEach(() => {
@@ -50,6 +57,13 @@ afterEach(() => {
   else process.env.PIRE_BROWSER_BINARY = originalPireBinary;
   if (originalPireExe === undefined) delete process.env.PIRE_BROWSER_EXE;
   else process.env.PIRE_BROWSER_EXE = originalPireExe;
+  if (originalInstallKind === undefined) delete process.env.PIRE_BROWSER_INSTALL_KIND;
+  else process.env.PIRE_BROWSER_INSTALL_KIND = originalInstallKind;
+  if (originalPiInstallRoot === undefined) delete process.env.PIRE_BROWSER_PI_INSTALL_ROOT;
+  else process.env.PIRE_BROWSER_PI_INSTALL_ROOT = originalPiInstallRoot;
+  if (originalPiSettingsPath === undefined) delete process.env.PIRE_BROWSER_PI_SETTINGS_PATH;
+  else process.env.PIRE_BROWSER_PI_SETTINGS_PATH = originalPiSettingsPath;
+  process.env.PATH = originalPath;
   process.chdir(originalCwd);
   vi.restoreAllMocks();
 });
@@ -123,7 +137,9 @@ describe("launcher update UX", () => {
     vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
 
     expect(main(["upgrade", "--help"])).toBe(0);
-    expect(logs.pop()).toContain("pire-browser upgrade [--json]");
+    const upgradeHelp = logs.pop();
+    expect(upgradeHelp).toContain("pire-browser upgrade [--json]");
+    expect(upgradeHelp).toMatch(/beta and rc installs stay on their\s+matching prerelease channel/);
 
     expect(main(["update", "--help"])).toBe(0);
     expect(logs.pop()).toContain("pire-browser update check [--json]");
@@ -794,6 +810,145 @@ describe("launcher update UX", () => {
     expect(classifyUpdate("0.2.2", "0.2.2")).toMatchObject({ available: false, kind: "none" });
   });
 
+  it("follows installed prerelease channels and compares full semver precedence", () => {
+    expect(updateChannelForVersion("0.3.0")).toBe("latest");
+    expect(updateChannelForVersion("0.3.0-beta.1")).toBe("beta");
+    expect(updateChannelForVersion("0.3.0-RC.2")).toBe("rc");
+    expect(updateChannelForVersion("0.3.0-1")).toBe("next");
+    expect(updatePackageSpecForVersion("0.3.0-beta.1")).toBe("pire-browser@beta");
+
+    expect(classifyUpdate("0.3.0-beta.1", "0.3.0-beta.2")).toMatchObject({
+      available: true,
+      kind: "prerelease",
+      targetVersion: "0.3.0-beta.2",
+    });
+    expect(classifyUpdate("0.3.0-beta.2", "0.3.0-beta.10")).toMatchObject({
+      available: true,
+      kind: "prerelease",
+    });
+    expect(classifyUpdate("0.3.0-beta.2", "0.3.0")).toMatchObject({ available: true, kind: "release" });
+    expect(classifyUpdate("0.3.0-beta.2", "0.3.0-beta.1")).toMatchObject({ available: false, kind: "none" });
+    expect(classifyUpdate("0.3.0-beta.2+build.1", "0.3.0-beta.2+build.2")).toMatchObject({
+      available: false,
+      kind: "none",
+    });
+  });
+
+  it("builds exact-version npm and Pi update commands", () => {
+    expect(updateInstallCommand({ kind: "global" }, "0.3.0-beta.2")).toEqual([
+      "npm",
+      ["install", "-g", "pire-browser@0.3.0-beta.2", "--include=optional"],
+    ]);
+    expect(updateInstallCommand({ kind: "pi", installRoot: join("C:", "pi", "agent", "npm") }, "0.3.0-beta.2")).toEqual([
+      "npm",
+      [
+        "install",
+        "pire-browser@0.3.0-beta.2",
+        "--prefix",
+        join("C:", "pi", "agent", "npm"),
+        "--save-exact",
+        "--include=optional",
+        "--no-audit",
+        "--no-fund",
+      ],
+    ]);
+    expect(() => updateInstallCommand({ kind: "pi" }, "0.3.0-beta.2")).toThrow(
+      "Pi update install root is required"
+    );
+  });
+
+  it("applies an exact Pi update through its managed npm prefix and advances an exact settings pin", () => {
+    const root = mkdtempTestRoot();
+    const fakeBin = join(root, "fake-bin");
+    const installRoot = join(root, "pi", "agent", "npm");
+    const settingsPath = join(root, "pi", "agent", "settings.json");
+    const dataHome = join(root, "data");
+    const cacheDir = join(dataHome, "pire-browser", "updates");
+    mkdirSync(fakeBin, { recursive: true });
+    mkdirSync(installRoot, { recursive: true });
+    mkdirSync(cacheDir, { recursive: true });
+    const fakeNpm = join(fakeBin, process.platform === "win32" ? "npm.cmd" : "npm");
+    writeFileSync(fakeNpm, process.platform === "win32" ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n");
+    if (process.platform !== "win32") chmodSync(fakeNpm, 0o755);
+    writeSettings(settingsPath, ["npm:pire-browser@0.3.0-beta.2"]);
+    writeFileSync(join(cacheDir, "cache.json"), JSON.stringify({
+      checkedAt: Date.now(),
+      available: true,
+      kind: "prerelease",
+      channel: "beta",
+      currentVersion: "0.3.0-beta.2",
+      targetVersion: "0.3.0-beta.3",
+      latestVersion: "0.3.0-beta.3",
+    }));
+    process.env.PIRE_BROWSER_INSTALL_KIND = "pi";
+    process.env.PIRE_BROWSER_PI_INSTALL_ROOT = installRoot;
+    process.env.PIRE_BROWSER_PI_SETTINGS_PATH = settingsPath;
+    process.env.LOCALAPPDATA = dataHome;
+    process.env.XDG_DATA_HOME = dataHome;
+    process.env.HOME = root;
+    process.env.PATH = `${fakeBin}${delimiter}${originalPath ?? ""}`;
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+    try {
+      expect(main(["update", "apply", "--json"])).toBe(0);
+      const body = JSON.parse(logs.join("\n"));
+      expect(body).toMatchObject({
+        success: true,
+        data: {
+          status: "applied",
+          install: { kind: "pi", installRoot, settingsPath },
+          piSettings: { ok: true, changed: true, reason: "advanced_exact_pin" },
+        },
+      });
+      expect(body.data.command).toContain(`pire-browser@0.3.0-beta.3 --prefix ${installRoot}`);
+      expect(JSON.parse(readFileSync(settingsPath, "utf8")).packages).toEqual([
+        "npm:pire-browser@0.3.0-beta.3",
+      ]);
+      expect(existsSync(`${settingsPath}.pire-browser-update.bak`)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects update cache entries from another installed version or channel", () => {
+    const root = mkdtempTestRoot();
+    process.env.LOCALAPPDATA = root;
+    process.env.XDG_DATA_HOME = root;
+    process.env.HOME = root;
+    const cacheDir = join(root, "pire-browser", "updates");
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(join(cacheDir, "cache.json"), JSON.stringify({
+      checkedAt: Date.now(),
+      available: true,
+      kind: "patch",
+      channel: "latest",
+      currentVersion: "0.2.35",
+      targetVersion: "0.2.36",
+      latestVersion: "0.2.36",
+    }));
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((line) => logs.push(String(line)));
+
+    try {
+      expect(main(["update", "apply", "--json"])).toBe(0);
+      expect(JSON.parse(logs.join("\n"))).toMatchObject({
+        success: true,
+        data: {
+          status: "current",
+          update: {
+            kind: "stale",
+            channel: "beta",
+            currentVersion: "0.3.0-beta.2",
+            targetVersion: null,
+          },
+        },
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("prints agent-browser-style current and applied upgrade messages", () => {
     expect(
       formatUpdatePlain({
@@ -820,10 +975,10 @@ describe("launcher update UX", () => {
       message: "local project installs are notify-only",
       update: { currentVersion: "0.2.2", latestVersion: "0.3.0", kind: "minor" },
       nextAction:
-        "Run `npm install pire-browser@0.3.0 --include=optional` in the project, or install globally with `npm install -g pire-browser --include=optional`.",
+        "Run `npm install pire-browser@0.3.0 --include=optional` in the project, or install globally with `npm install -g pire-browser@0.3.0 --include=optional`.",
     });
 
-    expect(local).toContain("Latest is 0.3.0; current is 0.2.2.");
+    expect(local).toContain("Target version is 0.3.0; current is 0.2.2.");
     expect(local).toContain("npm install pire-browser@0.3.0 --include=optional");
 
     const check = formatUpdatePlain({
@@ -848,7 +1003,7 @@ describe("launcher update UX", () => {
         update: { available: false, kind: "unknown", currentVersion: "0.2.2", latestVersion: null },
         nextAction: "Check network access or run `pire-browser update check --json` for details.",
       })
-    ).toContain("pire-browser upgrade could not check the latest version. Current version is 0.2.2.");
+    ).toContain("pire-browser upgrade could not check the installed channel. Current version is 0.2.2.");
   });
 
   it("keeps lower-level update wording distinct from foreground upgrade wording", () => {
@@ -878,6 +1033,8 @@ describe("launcher update UX", () => {
         update: {
           kind: "offline",
           offline: true,
+          channel: "beta",
+          targetVersion: null,
         },
       },
     });

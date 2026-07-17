@@ -12,6 +12,23 @@ Firefox loads a WebExtension, the WebExtension talks to a Native Messaging host,
 
 ## Installation
 
+Unqualified installs use npm's stable `latest` channel, currently `0.2.35`.
+The new 0.3 session lifecycle is available on the `beta` channel:
+
+```bash
+npm install -g pire-browser@beta       # direct CLI beta
+pi install npm:pire-browser@beta       # fresh Pi package beta install
+```
+
+If Pi already has the stable package, switch its configured source explicitly:
+
+```bash
+pi remove npm:pire-browser
+pi install npm:pire-browser@beta
+```
+
+Use the unqualified commands below for stable installs.
+
 ### Global Installation (recommended)
 
 Installs the native launcher and matching platform binary package:
@@ -77,7 +94,7 @@ Repeated use should prefer the global or project install above so the package pa
 
 ### Updating
 
-Upgrade to the latest package:
+Upgrade on the installed release channel:
 
 ```bash
 pire-browser upgrade
@@ -92,14 +109,28 @@ pire-browser update apply
 pire-browser update configure --mode off|notify|patch
 ```
 
-`upgrade` is the agent-browser-style foreground update path: it checks npm, then
-updates global npm or Pi-managed installs to the latest package when no managed
-Firefox session is active. Local project installs print the exact `npm install`
-command to run in that project. Background auto-update and lower-level
-`update apply` stay patch-only. Update JSON uses `success: true` when the update
+`upgrade` is the agent-browser-style foreground update path. Stable installs
+follow npm's `latest` tag; beta and RC installs stay on their matching
+prerelease tag. The launcher resolves the tag, then installs that exact version
+for global npm or Pi-managed installs when no managed Firefox session is active.
+Local project installs print the exact `npm install` command to run in that
+project. Background `patch` mode can apply stable patch releases or a newer
+prerelease on the same channel. Update JSON uses `success: true` when the update
 command completed and reports the outcome in `data.status` (`current`,
 `notify`, `deferred`, `offline`, `applied`, or `failed`); invalid arguments use
 `success: false`.
+
+To leave the beta and return to stable:
+
+```bash
+npm install -g pire-browser@latest --include=optional
+
+# Pi-managed install
+pi remove npm:pire-browser
+pi install npm:pire-browser
+```
+
+Restart Pi after changing its package source.
 
 ### Requirements
 
@@ -1676,13 +1707,15 @@ The manual `Agent Workflow Evals` GitHub Actions workflow runs optional live
 Codex or Claude command-proposal cases; it is informative rather than a release
 gate because model output can vary.
 
-For the 0.3 lifecycle release, run `Platform Packages`, then run `Release Smoke`
-with `target=all` and browser smoke enabled. The packed gate installs only the
-generated tarballs and verifies ephemeral cleanup, two-origin compact restore,
-named-source immutability, explicit profile/download retention, orphan recovery,
-and 100 open/close cycles on Windows x64, macOS ARM64, and Linux x64. Publish
-`0.3.0-beta.1` first under npm's `beta` dist-tag; promote `0.3.0` only after all
-three jobs pass.
+For the 0.3 lifecycle release, run `Platform Packages`, then run the packed
+`Release Smoke` with `target=all` and browser smoke enabled. It verifies
+ephemeral cleanup, two-origin compact restore, named-source immutability,
+explicit profile/download retention, orphan recovery, and 100 open/close cycles
+on Windows x64, macOS ARM64, and Linux x64. Publish `0.3.0-beta.2` under npm's
+`beta` tag. The publish workflow must then install that exact public-registry
+version on all three OS families, preserve a seeded `0.2.35` profile/state
+fixture, and pass stable rollback plus beta reinstall. Promote `0.3.0` only
+after both packed and public-registry gates pass.
 
 ## License
 

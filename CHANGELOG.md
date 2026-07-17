@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0-beta.2
+
+- Keeps stable, beta, and RC updates on their installed npm channel, applies the exact resolved package version, and preserves Pi's configured package source.
+- Adds post-publish public-registry browser smoke on Windows, macOS, and Linux, including `0.2.35` profile/state preservation and stable rollback plus beta reinstall.
+- Makes the stable-versus-beta install choice and rollback commands explicit across public and installed guidance.
+
 ## 0.3.0-beta.1
 
 - Makes ordinary and named Firefox sessions ephemeral, with marker-validated cleanup and temporary default downloads.

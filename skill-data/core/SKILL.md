@@ -78,6 +78,11 @@ For a direct npm install, run setup once:
 pire-browser install
 ```
 
+Unqualified installs use the stable npm channel. Use `pire-browser@beta` only
+when the user asks for the 0.3 prerelease. `pire-browser upgrade` stays on the
+installed channel; do not move between stable, beta, and RC implicitly. To
+change a Pi channel, remove `npm:pire-browser` and install the requested source.
+
 For normal page work:
 
 ```bash

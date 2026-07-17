@@ -3,9 +3,14 @@ import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, tabl
 const introBlocks = [
   p("<strong>Firefox automation for AI agents, inspired and compatible with agent-browser.</strong> Reuse familiar commands, config files, environment aliases, skills, plugins, and session workflows while Firefox-specific backend differences stay explicitly documented."),
   p("Compact text output minimizes context usage. Native Rust CLI, local Firefox, and a version-matched agent guidance layer keep common workflows fast and predictable."),
+  p("<strong>Release channels:</strong> unqualified installs use the stable <code>latest</code> channel, currently 0.2.35. Use <code>@beta</code> to test the 0.3 session lifecycle."),
   code(`npm install -g pire-browser        # all supported platforms
 pire-browser install                   # connect Firefox (first time)
 pi install npm:pire-browser            # Pi package
+
+# 0.3 lifecycle beta
+npm install -g pire-browser@beta
+pi install npm:pire-browser@beta       # fresh Pi install
 
 # or try without installing
 npx -y pire-browser@latest open example.com`),

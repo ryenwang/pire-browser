@@ -17,6 +17,7 @@ import {
 } from "./smoke-pi-install.mjs";
 import {
   installCommandArgs,
+  installRegistryArgs,
   installedWebExtBin,
   lifecycleStorageFootprint,
   parseSmokePackedPackageArgs,
@@ -27,6 +28,7 @@ import {
   packedMcpStateSmokeInput,
   sanitizedSmokeEnv,
   samePath,
+  assertInstalledRegistryPackages,
   validatePackedMcpBrowserSmokeOutput,
   validatePackedMcpFilesSmokeOutput,
   validatePackedMcpNetworkSmokeOutput,
@@ -78,6 +80,87 @@ describe("npm artifact metadata", () => {
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("supports exact-version registry smoke with migration validation", () => {
+    const parsed = parseSmokePackedPackageArgs([
+      "--tuple",
+      "win32-x64",
+      "--registry-version",
+      "0.3.0-beta.2",
+      "--migration-from",
+      "0.2.35",
+    ]);
+    expect(parsed).toMatchObject({
+      tuple: "win32-x64",
+      registryVersion: "0.3.0-beta.2",
+      migrationFrom: "0.2.35",
+    });
+    expect(() => parseSmokePackedPackageArgs(["--registry-version", "beta"])).toThrow(/exact semantic version/);
+    expect(() => parseSmokePackedPackageArgs(["--migration-from", "0.2.35"])).toThrow(
+      /requires --registry-version/
+    );
+    expect(() => parseSmokePackedPackageArgs(["--registry-version", "0.3.0", "--build-platform"])).toThrow(
+      /cannot be combined/
+    );
+    expect(installRegistryArgs({ prefix: "C:\\smoke", version: "0.3.0-beta.2" })).toEqual([
+      "install",
+      "-g",
+      "--prefix",
+      "C:\\smoke",
+      "pire-browser@0.3.0-beta.2",
+      "--include=optional",
+      "--omit=dev",
+      "--legacy-peer-deps",
+      "--package-lock=false",
+      "--no-audit",
+      "--no-fund",
+    ]);
+  });
+
+  it("requires registry root and optional sidecar versions to match", () => {
+    const temp = mkdtempSync(join(tmpdir(), "pire-registry-packages-"));
+    const prefix = join(temp, "prefix");
+    const packageRoot = join(prefix, "node_modules", "pire-browser");
+    const sidecarRoot = join(packageRoot, "node_modules", "@ryenw", "pire-browser-win32-x64");
+    mkdirSync(sidecarRoot, { recursive: true });
+    writeFileSync(join(packageRoot, "package.json"), JSON.stringify({ name: "pire-browser", version: "0.3.0-beta.2" }));
+    writeFileSync(join(sidecarRoot, "package.json"), JSON.stringify({
+      name: "@ryenw/pire-browser-win32-x64",
+      version: "0.3.0-beta.2",
+    }));
+    try {
+      expect(assertInstalledRegistryPackages({
+        prefix,
+        packageRoot,
+        tuple: "win32-x64",
+        version: "0.3.0-beta.2",
+        platform: "win32",
+      })).toMatchObject({
+        root: { version: "0.3.0-beta.2" },
+        platform: { name: "@ryenw/pire-browser-win32-x64", version: "0.3.0-beta.2" },
+      });
+      expect(() => assertInstalledRegistryPackages({
+        prefix,
+        packageRoot,
+        tuple: "win32-x64",
+        version: "0.3.0-beta.3",
+        platform: "win32",
+      })).toThrow(/expected 0.3.0-beta.3/);
+      writeFileSync(join(sidecarRoot, "package.json"), JSON.stringify({
+        name: "@ryenw/pire-browser-win32-x64",
+        version: "0.3.0-beta.1",
+      }));
+      expect(() => assertInstalledRegistryPackages({
+        prefix,
+        packageRoot,
+        tuple: "win32-x64",
+        version: "0.3.0-beta.2",
+        platform: "win32",
+      })).toThrow(/pire-browser-win32-x64@0\.3\.0-beta\.1; expected 0\.3\.0-beta\.2/);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
     }
   });
 
@@ -776,7 +859,7 @@ describe("npm artifact metadata", () => {
     expect(packedSmokeScript).not.toContain('const setupArgs = ["setup"]');
   });
 
-  it("requires packed browser smoke before trusted npm publish", () => {
+  it("requires packed and published-registry browser smoke around trusted npm publish", () => {
     const publishWorkflow = readFileSync(join(root, ".github", "workflows", "npm-publish.yml"), "utf8");
     const releaseSmokeWorkflow = readFileSync(join(root, ".github", "workflows", "release-smoke.yml"), "utf8");
 
@@ -784,13 +867,20 @@ describe("npm artifact metadata", () => {
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*target:[\s\S]*default: all/);
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*run_browser_smoke:[\s\S]*default: true/);
     expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*run_signed_xpi:[\s\S]*default: false/);
+    expect(releaseSmokeWorkflow).toMatch(/workflow_call:[\s\S]*package_source:[\s\S]*default: packed/);
+    expect(releaseSmokeWorkflow).toContain("--registry-version");
+    expect(releaseSmokeWorkflow).toContain("--migration-from");
     expect(releaseSmokeWorkflow).toContain("*mcp*.stdout.log");
     expect(releaseSmokeWorkflow).toContain("*mcp*.stderr.log");
-    expect(releaseSmokeWorkflow).toContain('--lifecycle-stress-count", "100"');
+    expect(releaseSmokeWorkflow).toContain('{ "10" } else { "100" }');
     expect(releaseSmokeWorkflow).toContain("--lifecycle-stress-count 100");
+    expect(releaseSmokeWorkflow).toContain("--lifecycle-stress-count 10");
+    expect(releaseSmokeWorkflow).toContain("release-smoke-${{ inputs.package_source }}-${{ matrix.target }}");
     const packedSmokeScript = readFileSync(join(root, "scripts", "smoke-packed-package.mjs"), "utf8");
     expect(packedSmokeScript).toContain("runSessionLifecycleSmoke");
     expect(packedSmokeScript).toContain("originsVerified: 2");
+    expect(packedSmokeScript).toContain('runPire(command, ["state", "show", fixture.statePath, "--json"]');
+    expect(packedSmokeScript).toContain("stateReadable: true");
     expect(packedSmokeScript).toContain("doctorRemovedMarkedOrphan: true");
     expect(packedSmokeScript).toContain("runPackedMcpSmoke");
     expect(packedSmokeScript).toContain("runMcpBrowserSmoke");
@@ -807,5 +897,9 @@ describe("npm artifact metadata", () => {
     expect(publishWorkflow).toMatch(/packed-browser-smoke:[\s\S]*target: all/);
     expect(publishWorkflow).toMatch(/packed-browser-smoke:[\s\S]*run_browser_smoke: true/);
     expect(publishWorkflow).toMatch(/publish:[\s\S]*needs:[\s\S]*packed-browser-smoke/);
+    expect(publishWorkflow).toMatch(
+      /registry-browser-smoke:[\s\S]*needs:[\s\S]*publish[\s\S]*package_source: registry[\s\S]*migration_from: "0\.2\.35"/
+    );
+    expect(publishWorkflow).toMatch(/github-release:[\s\S]*needs:[\s\S]*registry-browser-smoke/);
   });
 });

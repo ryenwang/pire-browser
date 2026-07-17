@@ -1,7 +1,7 @@
 # Setup And Diagnose
 
 Use this when install, launch, native messaging, optional native package resolution, or Firefox discovery is failing.
-For a fresh install with no reported failure, prefer the short happy path first: `pi install npm:pire-browser` for Pi or `npm install -g pire-browser && pire-browser install` for direct CLI use.
+For a fresh install with no reported failure, prefer the short happy path first: `pi install npm:pire-browser` for Pi or `npm install -g pire-browser && pire-browser install` for direct CLI use. Those unqualified commands install stable. Use `npm install -g pire-browser@beta` or `pi install npm:pire-browser@beta` only when the user asks for the 0.3 prerelease.
 
 ## Inputs
 
@@ -28,7 +28,8 @@ For a fresh install with no reported failure, prefer the short happy path first:
 
 - `status` and plain `doctor` must remain observational; `doctor --fix` is the explicit repair path.
 - Browser commands that need auto-launch may run lazy setup when registration is stale.
-- Use `pire-browser upgrade` for a foreground latest-package update; in MCP, use debug-profile `pire_browser_upgrade` only when the user wants package update. Use `update check/apply` only when you need the lower-level status or JSON path.
+- Use `pire-browser upgrade` for a foreground update on the installed npm channel; stable follows `latest`, while beta and RC remain on their matching prerelease tags. The launcher installs the exact resolved version. In MCP, use debug-profile `pire_browser_upgrade` only when the user wants package update. Use `update check/apply` only when you need the lower-level status or JSON path.
+- Do not switch release channels implicitly. To leave beta, use `npm install -g pire-browser@latest --include=optional`; for Pi, run `pi remove npm:pire-browser` and then `pi install npm:pire-browser`. Restart Pi when applicable.
 - On Windows, close managed Firefox sessions before replacing binaries during an update.
 - Do not claim setup is fixed until a verification command succeeds.
 

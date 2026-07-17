@@ -190,12 +190,28 @@ jobs:
           path: target/pi-install-smoke
           if-no-files-found: warn
 
+  registry-browser-smoke:
+    name: Published registry browser smoke
+    needs:
+      - validate-release-ref
+      - publish
+    uses: ./.github/workflows/release-smoke.yml
+    with:
+      target: all
+      run_browser_smoke: true
+      run_signed_xpi: false
+      package_source: registry
+      package_version: ${{ needs.validate-release-ref.outputs.version }}
+      migration_from: "0.2.35"
+    secrets: inherit
+
   github-release:
     name: create GitHub release
     needs:
       - validate-release-ref
       - publish
       - pi-install-smoke
+      - registry-browser-smoke
     runs-on: ubuntu-24.04
     permissions:
       contents: write

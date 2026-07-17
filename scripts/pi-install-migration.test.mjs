@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  advancePiSettingsPireBrowserVersion,
   DEFAULT_DELAY_MS,
   DEFAULT_POLL_MS,
   detectPiInstallContext,
@@ -34,7 +35,86 @@ describe("Pi install migration helper", () => {
 
     expect(context).toMatchObject({
       kind: "global",
+      installRoot: join("C:", "Users", "me", ".pi", "agent", "npm"),
       settingsPath: join("C:", "Users", "me", ".pi", "agent", "settings.json"),
+    });
+  });
+
+  it("detects Pi-managed roots from configured Pi directories", () => {
+    const root = tempDir();
+    const agentDir = join(root, "custom-pi", "agent");
+    const packageRoot = join(agentDir, "npm", "node_modules", "pire-browser");
+
+    expect(detectPiInstallContext(packageRoot, { PI_CODING_AGENT_DIR: agentDir })).toMatchObject({
+      kind: "global",
+      installRoot: join(agentDir, "npm"),
+      settingsPath: join(agentDir, "settings.json"),
+    });
+    expect(detectPiInstallContext(packageRoot, { PI_HOME: join(root, "custom-pi") })).toMatchObject({
+      kind: "global",
+      installRoot: join(agentDir, "npm"),
+      settingsPath: join(agentDir, "settings.json"),
+    });
+  });
+
+  it("advances exact Pi pins atomically while preserving channel and unpinned sources", () => {
+    const root = tempDir();
+    const settingsPath = join(root, "settings.json");
+    writeFileSync(
+      settingsPath,
+      `${JSON.stringify({
+        packages: [
+          "npm:pire-browser@0.3.0-beta.1",
+          { source: "npm:@ryenw/pire-browser@0.3.0-beta.1", enabled: true },
+          "npm:pire-browser@beta",
+          "npm:pire-browser",
+          "npm:other-package@1.0.0",
+        ],
+      }, null, 2)}\n`
+    );
+
+    const result = advancePiSettingsPireBrowserVersion(settingsPath, "0.3.0-beta.2");
+    const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+
+    expect(result).toMatchObject({ ok: true, changed: true, reason: "advanced_exact_pin" });
+    expect(settings.packages).toEqual([
+      "npm:pire-browser@0.3.0-beta.2",
+      { source: "npm:@ryenw/pire-browser@0.3.0-beta.2", enabled: true },
+      "npm:pire-browser@beta",
+      "npm:pire-browser",
+      "npm:other-package@1.0.0",
+    ]);
+    expect(existsSync(result.backupPath)).toBe(true);
+    expect(JSON.parse(readFileSync(result.backupPath, "utf8")).packages[0]).toBe(
+      "npm:pire-browser@0.3.0-beta.1"
+    );
+  });
+
+  it("dry-runs exact Pi pin updates and returns structured settings errors", () => {
+    const root = tempDir();
+    const settingsPath = join(root, "settings.json");
+    writeFileSync(settingsPath, `${JSON.stringify({ packages: ["npm:pire-browser@0.3.0-beta.1"] })}\n`);
+
+    const dryRun = advancePiSettingsPireBrowserVersion(settingsPath, "0.3.0-beta.2", { dryRun: true });
+    expect(dryRun).toMatchObject({
+      ok: true,
+      changed: false,
+      wouldChange: true,
+      reason: "would_advance_exact_pin",
+    });
+    expect(JSON.parse(readFileSync(settingsPath, "utf8")).packages).toEqual([
+      "npm:pire-browser@0.3.0-beta.1",
+    ]);
+    expect(existsSync(dryRun.backupPath)).toBe(false);
+
+    expect(advancePiSettingsPireBrowserVersion(join(root, "missing.json"), "0.3.0-beta.2")).toMatchObject({
+      ok: false,
+      reason: "missing_settings",
+    });
+    writeFileSync(settingsPath, "{");
+    expect(advancePiSettingsPireBrowserVersion(settingsPath, "0.3.0-beta.2")).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("invalid_settings:"),
     });
   });
 

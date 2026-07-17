@@ -1,6 +1,19 @@
 import { code, h2, h3, list, note, ol, p, page, providerBlocks, statusNote, table, unavailable } from "../blocks.mjs";
 
 const installationBlocks = [
+  h2("Release channels", "release-channels"),
+  p("Unqualified installs use npm's stable <code>latest</code> channel, currently 0.2.35. The 0.3 session lifecycle is available as a prerelease on <code>beta</code>."),
+  code(`# Stable
+npm install -g pire-browser
+pi install npm:pire-browser
+
+# 0.3 lifecycle beta
+npm install -g pire-browser@beta
+pi install npm:pire-browser@beta  # fresh Pi install
+
+# Existing stable Pi install: change its configured source
+pi remove npm:pire-browser
+pi install npm:pire-browser@beta`),
   h2("Global installation", "global-installation"),
   code(`npm install -g pire-browser
 pire-browser install  # first-time Firefox setup`),
@@ -53,7 +66,14 @@ cd ..`),
 pire-browser update check --json
 pire-browser update apply
 pire-browser update configure --mode off|notify|patch`),
-  p("<code>upgrade</code> is the agent-browser-style foreground update path: it checks npm, then updates global npm or Pi-managed installs to the latest package when no managed Firefox session is active. Local project installs print the exact project-local <code>npm install</code> command. Background auto-update and lower-level <code>update apply</code> stay patch-only. Update JSON uses <code>success: true</code> when the update command completed and reports the outcome in <code>data.status</code>; invalid arguments use <code>success: false</code>."),
+  p("<code>upgrade</code> is the agent-browser-style foreground update path. Stable installs follow npm's <code>latest</code> tag; beta and RC installs stay on their matching prerelease tag. The launcher resolves the tag and installs the exact version for global npm or Pi-managed installs when no managed Firefox session is active. Local project installs print the exact project-local <code>npm install</code> command. Background <code>patch</code> mode may apply a stable patch or a newer prerelease on the same channel. Update JSON uses <code>success: true</code> when the command completed and reports the outcome in <code>data.status</code>; invalid arguments use <code>success: false</code>."),
+  h3("Return to stable", "return-to-stable"),
+  code(`npm install -g pire-browser@latest --include=optional
+
+# Pi-managed install
+pi remove npm:pire-browser
+pi install npm:pire-browser`),
+  p("These commands leave the beta channel explicitly. Pi stores the package source separately, so changing channels requires remove-then-install rather than <code>pi update</code>. Restart Pi afterward."),
   h2("Doctor", "doctor"),
   code(`pire-browser doctor
 pire-browser doctor --fix

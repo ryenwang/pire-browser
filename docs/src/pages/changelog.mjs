@@ -1,6 +1,12 @@
 import { h2, list, p, page } from "../blocks.mjs";
 
 const changelogBlocks = [
+  h2("0.3.0-beta.2", "0-3-0-beta-2"),
+  list([
+    "Keeps stable, beta, and RC updates on their installed npm channel, applies the exact resolved package version, and preserves Pi's configured package source.",
+    "Adds post-publish public-registry browser smoke on Windows, macOS, and Linux, including 0.2.35 profile/state preservation and stable rollback plus beta reinstall.",
+    "Makes stable-versus-beta installation and rollback explicit across public and installed guidance.",
+  ]),
   h2("0.3.0-beta.1", "0-3-0-beta-1"),
   list([
     "Separates live session identity, compact restore state, and Firefox profile source. Ordinary and named sessions now use marked temporary profiles.",
@@ -170,7 +176,7 @@ const changelogBlocks = [
     "Ships local Firefox automation, Pi extension adapters, installed-agent guidance, public docs, and version-matched optional native packages.",
   ]),
   h2("Current package", "current-package"),
-  p("The repository package version is currently <code>pire-browser@0.3.0-beta.1</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
+  p("The repository package version is currently <code>pire-browser@0.3.0-beta.2</code>. Release details remain authoritative in the repository README, npm package metadata, and GitHub release artifacts."),
 ];
 
 export default page({

@@ -2,6 +2,7 @@
 import { createServer } from "node:net";
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import {
   closeSync,
   cpSync,
@@ -17,7 +18,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, posix, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildPlatform } from "./build-platform.mjs";
 import { stagePlatformPackage } from "./package-platform.mjs";
@@ -46,6 +47,8 @@ export function parseSmokePackedPackageArgs(argv, defaults = {}) {
     workDir: null,
     rootTarball: null,
     platformTarball: null,
+    registryVersion: null,
+    migrationFrom: null,
     firefoxPath: null,
     lifecycleStressCount: defaults.lifecycleStressCount ?? 0,
   };
@@ -74,6 +77,10 @@ export function parseSmokePackedPackageArgs(argv, defaults = {}) {
       options.rootTarball = resolve(requiredValue(argv, ++i, arg));
     } else if (arg === "--platform-tarball") {
       options.platformTarball = resolve(requiredValue(argv, ++i, arg));
+    } else if (arg === "--registry-version") {
+      options.registryVersion = requiredValue(argv, ++i, arg);
+    } else if (arg === "--migration-from") {
+      options.migrationFrom = requiredValue(argv, ++i, arg);
     } else if (arg === "--firefox-path") {
       options.firefoxPath = resolve(requiredValue(argv, ++i, arg));
     } else if (arg === "--lifecycle-stress-count") {
@@ -89,6 +96,17 @@ export function parseSmokePackedPackageArgs(argv, defaults = {}) {
   if (!Number.isInteger(options.lifecycleStressCount) || options.lifecycleStressCount < 0 || options.lifecycleStressCount > 1000) {
     throw new Error("--lifecycle-stress-count must be an integer from 0 to 1000");
   }
+  for (const [flag, version] of [["--registry-version", options.registryVersion], ["--migration-from", options.migrationFrom]]) {
+    if (version && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)) {
+      throw new Error(`${flag} requires an exact semantic version`);
+    }
+  }
+  if (options.registryVersion && (options.rootTarball || options.platformTarball || options.buildPlatform || options.signedXpi)) {
+    throw new Error("--registry-version cannot be combined with tarball, build-platform, or signed-XPI options");
+  }
+  if (options.migrationFrom && !options.registryVersion) {
+    throw new Error("--migration-from requires --registry-version");
+  }
   packageNameForTuple(options.tuple);
   return options;
 }
@@ -101,6 +119,22 @@ export function installTarballArgs({ prefix, rootTarball, platformTarball }) {
     prefix,
     rootTarball,
     platformTarball,
+    "--omit=dev",
+    "--legacy-peer-deps",
+    "--package-lock=false",
+    "--no-audit",
+    "--no-fund",
+  ];
+}
+
+export function installRegistryArgs({ prefix, version }) {
+  return [
+    "install",
+    "-g",
+    "--prefix",
+    prefix,
+    `pire-browser@${version}`,
+    "--include=optional",
     "--omit=dev",
     "--legacy-peer-deps",
     "--package-lock=false",
@@ -777,6 +811,7 @@ async function main(argv) {
   let prefix = null;
   let workRoot = null;
   let command = null;
+  let migrationFixture = null;
   const profiles = [];
   try {
     const options = parseSmokePackedPackageArgs(argv);
@@ -818,10 +853,13 @@ async function main(argv) {
       tuple: options.tuple,
       browser: options.browser,
       signedXpi: options.signedXpi,
+      packageSource: options.registryVersion ? `npm:pire-browser@${options.registryVersion}` : "packed-tarballs",
+      registryVersion: options.registryVersion,
       firefoxPath: options.firefoxPath ?? null,
       rootTarball: null,
       platformTarball: null,
       installedPackageRoot: null,
+      registryPackages: null,
       webExt: null,
       nativeResolution: null,
       mcp: null,
@@ -829,6 +867,7 @@ async function main(argv) {
       mcpFiles: null,
       mcpNetwork: null,
       lifecycle: null,
+      migration: null,
       profiles,
       modes: [],
       steps: recorder.steps,
@@ -837,22 +876,53 @@ async function main(argv) {
     writeSummary(summary, artifactDir, env);
     console.log(`Release smoke artifacts: ${artifactDir}`);
 
-    const artifacts = prepareArtifacts(options, recorder, env);
-    summary.rootTarball = artifacts.rootTarball;
-    summary.platformTarball = artifacts.platformTarball;
-    writeSummary(summary, artifactDir, env);
+    if (options.registryVersion) {
+      if (options.migrationFrom) {
+        installRegistryPackage({
+          prefix,
+          cwd: commandCwd,
+          env,
+          version: options.migrationFrom,
+          recorder,
+          label: `Install migration source pire-browser@${options.migrationFrom}`,
+        });
+        migrationFixture = seedLegacyMigrationFixture({ dataRoot, commandCwd, fromVersion: options.migrationFrom });
+      }
+      installRegistryPackage({
+        prefix,
+        cwd: commandCwd,
+        env,
+        version: options.registryVersion,
+        recorder,
+        label: `Install registry pire-browser@${options.registryVersion}`,
+      });
+    } else {
+      const artifacts = prepareArtifacts(options, recorder, env);
+      summary.rootTarball = artifacts.rootTarball;
+      summary.platformTarball = artifacts.platformTarball;
+      writeSummary(summary, artifactDir, env);
 
-    installPackedTarballs({
-      prefix,
-      cwd: commandCwd,
-      env,
-      rootTarball: artifacts.rootTarball,
-      platformTarball: artifacts.platformTarball,
-      recorder,
-    });
+      installPackedTarballs({
+        prefix,
+        cwd: commandCwd,
+        env,
+        rootTarball: artifacts.rootTarball,
+        platformTarball: artifacts.platformTarball,
+        recorder,
+      });
+    }
 
     const packageRoot = installedPackageRoot(prefix);
     summary.installedPackageRoot = packageRoot;
+    if (options.registryVersion) {
+      summary.registryPackages = assertInstalledRegistryPackages({
+        prefix,
+        packageRoot,
+        tuple: options.tuple,
+        version: options.registryVersion,
+        platform: smokePlatform,
+      });
+    }
     summary.webExt = assertInstalledWebExtDependency({
       packageRoot,
       platform: smokePlatform,
@@ -871,6 +941,17 @@ async function main(argv) {
     }
 
     runInstalledChecks({ command, commandCwd, env, recorder, firefoxPath: options.firefoxPath });
+    if (migrationFixture) {
+      summary.migration = verifyLegacyMigrationFixture({
+        command,
+        commandCwd,
+        env,
+        recorder,
+        fixture: migrationFixture,
+        targetVersion: options.registryVersion,
+      });
+      writeSummary(summary, artifactDir, env);
+    }
     runPackedMcpSmoke({ command, commandCwd, env, recorder, summary });
     if (options.browser) {
       await runBrowserSmoke({
@@ -964,10 +1045,29 @@ async function main(argv) {
       }
     }
 
+    if (migrationFixture) {
+      const rollback = runRegistryRollbackCheck({
+        prefix,
+        packageRoot: summary.installedPackageRoot,
+        tuple: options.tuple,
+        platform: smokePlatform,
+        cwd: commandCwd,
+        env,
+        recorder,
+        fixture: migrationFixture,
+        fromVersion: options.migrationFrom,
+        targetVersion: options.registryVersion,
+      });
+      summary.migration.rollbackPreserved = rollback.rollbackPreserved;
+      summary.migration.rollbackPackages = rollback.rollbackPackages;
+      summary.migration.targetReinstalled = rollback.targetReinstalled;
+      summary.migration.reinstalledPackages = rollback.reinstalledPackages;
+    }
+
     summary.success = true;
     summary.finishedAt = new Date().toISOString();
     writeSummary(summary, artifactDir, env);
-    console.log(`Packed-package smoke passed: ${workRoot}`);
+    console.log(`${options.registryVersion ? "Registry-package" : "Packed-package"} smoke passed: ${workRoot}`);
     console.log(`Release smoke artifacts: ${artifactDir}`);
     return 0;
   } catch (error) {
@@ -1057,6 +1157,191 @@ function installPackedTarballs({ prefix, cwd, env, rootTarball, platformTarball,
     shell: process.platform === "win32",
     recorder,
   });
+}
+
+function installRegistryPackage({ prefix, cwd, env, version, recorder, label }) {
+  let lastError;
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    try {
+      return runChecked(`${label} (attempt ${attempt})`, npmCommand(), installRegistryArgs({ prefix, version }), {
+        cwd,
+        env,
+        shell: process.platform === "win32",
+        timeoutMs: 300_000,
+        recorder,
+      });
+    } catch (error) {
+      lastError = error;
+      if (attempt < 6) sleepSync(5_000);
+    }
+  }
+  throw lastError;
+}
+
+export function assertInstalledRegistryPackages({ prefix, packageRoot, tuple, version, platform = process.platform }) {
+  const rootManifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+  if (rootManifest.version !== version) {
+    throw new Error(`Registry smoke installed pire-browser@${rootManifest.version}; expected ${version}`);
+  }
+  const platformPackage = packageNameForTuple(tuple);
+  const requireFromRoot = createRequire(join(packageRoot, "package.json"));
+  let platformManifestPath;
+  try {
+    platformManifestPath = requireFromRoot.resolve(`${platformPackage}/package.json`);
+  } catch {
+    const sibling = installedPackageRoot(prefix, platformPackage, platform);
+    platformManifestPath = join(sibling, "package.json");
+  }
+  const platformManifest = JSON.parse(readFileSync(platformManifestPath, "utf8"));
+  if (platformManifest.version !== version) {
+    throw new Error(`Registry smoke installed ${platformPackage}@${platformManifest.version}; expected ${version}`);
+  }
+  return {
+    root: { name: rootManifest.name, version: rootManifest.version, path: packageRoot },
+    platform: { name: platformManifest.name, version: platformManifest.version, path: platformManifestPath },
+  };
+}
+
+function seedLegacyMigrationFixture({ dataRoot, commandCwd, fromVersion }) {
+  const name = "LegacyMigration";
+  const profilePath = join(dataRoot, "firefox-profiles", name);
+  const downloadPath = join(dataRoot, "downloads", name, "legacy-download.txt");
+  const statePath = join(commandCwd, ".pire-state", "legacy.json");
+  const files = new Map([
+    [join(profilePath, "cookies.sqlite"), `legacy cookies from ${fromVersion}\n`],
+    [join(profilePath, "storage", "default", "https+++example.com", "legacy-state.txt"), "legacy indexed storage\n"],
+    [join(profilePath, "cache2", "entries", "legacy-cache"), "regenerable cache\n"],
+    [downloadPath, "legacy durable download\n"],
+    [statePath, `${JSON.stringify({
+      schemaVersion: 1,
+      tool: "pire-browser",
+      kind: "active-origin-state",
+      createdAt: 1_700_000_000_000,
+      source: {
+        url: "https://example.com/legacy",
+        origin: "https://example.com",
+        sessionId: "legacy-migration",
+        profileName: name,
+      },
+      cookies: [],
+      localStorage: { legacySourceVersion: fromVersion },
+      sessionStorage: {},
+    }, null, 2)}\n`],
+  ]);
+  for (const [path, content] of files) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, content);
+  }
+  return {
+    name,
+    fromVersion,
+    profilePath,
+    downloadPath,
+    statePath,
+    files: [...files.entries()],
+  };
+}
+
+function assertLegacyMigrationFiles(fixture, phase) {
+  for (const [path, expected] of fixture.files) {
+    if (!existsSync(path)) throw new Error(`${phase} removed legacy migration file: ${path}`);
+    if (readFileSync(path, "utf8") !== expected) throw new Error(`${phase} changed legacy migration file: ${path}`);
+  }
+}
+
+function verifyLegacyMigrationFixture({ command, commandCwd, env, recorder, fixture, targetVersion }) {
+  assertLegacyMigrationFiles(fixture, `upgrade to ${targetVersion}`);
+  const beforeDryRun = directoryFingerprint(fixture.profilePath);
+  const list = parseCliData(
+    runPire(command, ["profiles", "--json"], { cwd: commandCwd, env, recorder }).stdout,
+    "legacy profile list after registry upgrade"
+  );
+  const profile = list.profiles?.find((candidate) => candidate.name === fixture.name);
+  if (!profile || !samePath(profile.path, fixture.profilePath)) {
+    throw new Error("0.2.x legacy profile was not preserved and listed after registry upgrade");
+  }
+  const usage = parseCliData(
+    runPire(command, ["profiles", "usage", fixture.name, "--json"], { cwd: commandCwd, env, recorder }).stdout,
+    "legacy profile usage after registry upgrade"
+  );
+  const measured = usage.profiles?.[0];
+  if (!measured || measured.regenerableCacheBytes <= 0 || measured.associatedDownloadBytes <= 0) {
+    throw new Error("legacy profile usage did not include cache and associated download bytes");
+  }
+  const state = parseCliData(
+    runPire(command, ["state", "show", fixture.statePath, "--json"], {
+      cwd: commandCwd,
+      env,
+      recorder,
+    }).stdout,
+    "legacy state show after registry upgrade"
+  );
+  if (state.schemaVersion !== 1 || state.kind !== "active-origin-state" || state.counts?.localStorageKeys !== 1) {
+    throw new Error("0.2.x schema-v1 state was not readable after registry upgrade");
+  }
+  runPire(command, ["profiles", "clean", fixture.name, "--dry-run", "--json"], {
+    cwd: commandCwd,
+    env,
+    recorder,
+  });
+  assertLegacyMigrationFiles(fixture, "legacy cache dry-run");
+  if (directoryFingerprint(fixture.profilePath) !== beforeDryRun) {
+    throw new Error("profiles clean --dry-run changed the legacy profile");
+  }
+  return {
+    fromVersion: fixture.fromVersion,
+    targetVersion,
+    profileName: fixture.name,
+    profilePath: fixture.profilePath,
+    downloadPath: fixture.downloadPath,
+    statePath: fixture.statePath,
+    profileListed: true,
+    usageMeasured: true,
+    stateReadable: true,
+    dryRunPreserved: true,
+    rollbackPreserved: false,
+    targetReinstalled: false,
+  };
+}
+
+function runRegistryRollbackCheck({
+  prefix,
+  packageRoot,
+  tuple,
+  platform,
+  cwd,
+  env,
+  recorder,
+  fixture,
+  fromVersion,
+  targetVersion,
+}) {
+  installRegistryPackage({
+    prefix,
+    cwd,
+    env,
+    version: fromVersion,
+    recorder,
+    label: `Rollback registry package to pire-browser@${fromVersion}`,
+  });
+  const rollbackPackages = assertInstalledRegistryPackages({ prefix, packageRoot, tuple, version: fromVersion, platform });
+  assertLegacyMigrationFiles(fixture, `rollback to ${fromVersion}`);
+  installRegistryPackage({
+    prefix,
+    cwd,
+    env,
+    version: targetVersion,
+    recorder,
+    label: `Reinstall registry target pire-browser@${targetVersion}`,
+  });
+  const reinstalledPackages = assertInstalledRegistryPackages({ prefix, packageRoot, tuple, version: targetVersion, platform });
+  assertLegacyMigrationFiles(fixture, `reinstall ${targetVersion}`);
+  return {
+    rollbackPreserved: true,
+    rollbackPackages,
+    targetReinstalled: true,
+    reinstalledPackages,
+  };
 }
 
 async function assertInstalledNativeResolution({ packageRoot, commandCwd, env }) {
@@ -1804,6 +2089,10 @@ async function waitForPathGone(path, timeoutMs) {
 
 function delay(ms) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 function walkFiles(rootPath) {

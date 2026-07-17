@@ -4,7 +4,7 @@ const quickStartBlocks = [
   h2("Before first command", "before-first-command"),
   code(`npm install -g pire-browser
 pire-browser install`),
-  p("Run setup once after installing. It is safe to run again. If this fails, use the Installation page's first-run repair section. For Pi, use <code>pi install npm:pire-browser</code> and then ask the agent to use the tool. For a one-off trial without global install, use <code>npx -y pire-browser@latest open https://example.com</code>, then <code>npx -y pire-browser@latest snapshot</code>."),
+  p("Run setup once after installing. It is safe to run again. Unqualified installs use stable 0.2.35; use <code>npm install -g pire-browser@beta</code> or <code>pi install npm:pire-browser@beta</code> only when you want the 0.3 lifecycle prerelease. If setup fails, use the Installation page's first-run repair section. For a one-off stable trial, use <code>npx -y pire-browser@latest open https://example.com</code>, then <code>npx -y pire-browser@latest snapshot</code>."),
   h2("Core workflow", "core-workflow"),
   p("Every browser automation follows this pattern:"),
   code(`# 1. Navigate

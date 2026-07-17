@@ -19,8 +19,18 @@ export const DEFAULT_DELAY_MS = 0;
 export const DEFAULT_POLL_MS = 50;
 const DEFAULT_TIMEOUT_MS = 30000;
 
-export function detectPiInstallContext(packageRoot) {
+export function detectPiInstallContext(packageRoot, env = process.env) {
   const absolute = resolve(packageRoot);
+  for (const agentDir of configuredPiAgentDirs(env)) {
+    const expectedRoot = resolve(join(agentDir, "npm", "node_modules", PACKAGE_NAME));
+    if (!sameFilesystemPath(absolute, expectedRoot)) continue;
+    return {
+      kind: "global",
+      packageRoot: absolute,
+      installRoot: join(agentDir, "npm"),
+      settingsPath: join(agentDir, "settings.json"),
+    };
+  }
   const parts = absolute.split(/[\\/]+/);
   const lower = parts.map((part) => part.toLowerCase());
   const suffixes = [
@@ -36,6 +46,7 @@ export function detectPiInstallContext(packageRoot) {
     return {
       kind: candidate.kind,
       packageRoot: absolute,
+      installRoot: join(settingsRoot, "npm"),
       settingsPath: join(settingsRoot, "settings.json"),
     };
   }
@@ -68,6 +79,86 @@ export function isConflictingPireBrowserSource(source, settingsPath) {
 
 export function inspectPiSettingsForConflicts(settingsPath) {
   return inspectPiSettingsReadResult(settingsPath, readPiSettings(settingsPath));
+}
+
+export function advancePiSettingsPireBrowserVersion(settingsPath, targetVersion, { dryRun = false } = {}) {
+  if (!isExactSemver(targetVersion)) {
+    return { ok: false, changed: false, reason: "invalid_target_version", settingsPath, targetVersion };
+  }
+  const readResult = readPiSettings(settingsPath);
+  if (!readResult.ok) {
+    return { ok: false, changed: false, reason: readResult.reason, settingsPath, targetVersion };
+  }
+  const settings = readResult.settings;
+  if (!Array.isArray(settings?.packages)) {
+    return { ok: false, changed: false, reason: "missing_packages", settingsPath, targetVersion };
+  }
+
+  let found = false;
+  let changed = false;
+  const packages = settings.packages.map((entry) => {
+    const source = packageSource(entry);
+    if (!isPireBrowserNpmSource(source)) return entry;
+    found = true;
+    const nextSource = advanceExactPireBrowserSource(source, targetVersion);
+    if (nextSource === source) return entry;
+    changed = true;
+    return typeof entry === "string" ? nextSource : { ...entry, source: nextSource };
+  });
+  if (!found) {
+    return { ok: false, changed: false, reason: "missing_npm_source", settingsPath, targetVersion };
+  }
+  if (!changed) {
+    return {
+      ok: true,
+      changed: false,
+      reason: "source_channel_preserved",
+      settingsPath,
+      targetVersion,
+    };
+  }
+  let backupPath = null;
+  if (!dryRun) {
+    try {
+      backupPath = nextSettingsUpdateBackupPath(settingsPath);
+      copyFileSync(settingsPath, backupPath);
+      settings.packages = packages;
+      atomicWriteJson(settingsPath, settings);
+    } catch (error) {
+      return {
+        ok: false,
+        changed: false,
+        reason: "settings_write_failed",
+        settingsPath,
+        targetVersion,
+        backupPath,
+        writeError: error.message,
+      };
+    }
+  } else {
+    try {
+      backupPath = nextSettingsUpdateBackupPath(settingsPath);
+    } catch (error) {
+      return {
+        ok: false,
+        changed: false,
+        reason: "settings_write_failed",
+        settingsPath,
+        targetVersion,
+        writeError: error.message,
+      };
+    }
+  }
+  return {
+    ok: true,
+    changed: !dryRun,
+    wouldChange: true,
+    dryRun,
+    reason: dryRun ? "would_advance_exact_pin" : "advanced_exact_pin",
+    settingsPath,
+    targetVersion,
+    backupPath,
+  };
 }
 
 function readPiSettings(settingsPath) {
@@ -247,7 +338,7 @@ export function hasKnownLegacyPiSource(settingsPath) {
 
 export function schedulePiPackageMigration(packageRoot, env = process.env) {
   if (env.PIRE_BROWSER_SKIP_PI_PACKAGE_MIGRATION === "1") return { scheduled: false, reason: "disabled" };
-  const context = detectPiInstallContext(packageRoot);
+  const context = detectPiInstallContext(packageRoot, env);
   if (!context) return { scheduled: false, reason: "not_pi_managed" };
 
   const script = fileURLToPath(import.meta.url);
@@ -287,6 +378,43 @@ function normalizeSource(source) {
   const refIndex = text.indexOf("@", lastPathSeparator + 1);
   if (refIndex !== -1) text = text.slice(0, refIndex);
   return text;
+}
+
+function configuredPiAgentDirs(env) {
+  const dirs = [];
+  if (env.PI_CODING_AGENT_DIR) {
+    const configured = resolve(env.PI_CODING_AGENT_DIR);
+    const last = configured.split(/[\\/]+/).pop()?.toLowerCase();
+    dirs.push(last === "agent" ? configured : join(configured, "agent"));
+  }
+  if (env.PI_HOME) dirs.push(join(resolve(env.PI_HOME), "agent"));
+  return dirs.filter((path, index) => dirs.findIndex((candidate) => sameFilesystemPath(candidate, path)) === index);
+}
+
+function sameFilesystemPath(left, right) {
+  const a = resolve(left);
+  const b = resolve(right);
+  return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+function isExactSemver(value) {
+  return /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(value ?? "");
+}
+
+function advanceExactPireBrowserSource(source, targetVersion) {
+  const match = /^(npm:(?:@ryenw\/)?pire-browser)@(.+)$/i.exec(String(source).trim());
+  if (!match || !isExactSemver(match[2])) return source;
+  return `${match[1]}@${targetVersion}`;
+}
+
+function nextSettingsUpdateBackupPath(settingsPath) {
+  const base = `${settingsPath}.pire-browser-update.bak`;
+  if (!existsSync(base)) return base;
+  for (let index = 1; index < 1000; index += 1) {
+    const candidate = `${base}.${index}`;
+    if (!existsSync(candidate)) return candidate;
+  }
+  throw new Error(`Could not find available settings backup path for ${settingsPath}`);
 }
 
 function legacyRepoSlug(source) {

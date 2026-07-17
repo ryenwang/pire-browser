@@ -16,6 +16,8 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  advancePiSettingsPireBrowserVersion,
+  detectPiInstallContext,
   inspectPiSettingsForConflicts,
   migratePiSettingsForKnownLegacySources,
 } from "../scripts/pi-install-migration.mjs";
@@ -33,7 +35,9 @@ Usage:
 Checks or applies package updates through the npm/Pi JavaScript launcher. Update
 checks are observational; apply mutates only global npm or Pi-managed installs.
 Local project installs are notify-only so lockfiles and node_modules are not
-changed unexpectedly. Background update checks never block browser commands.
+changed unexpectedly. Stable installs follow npm's latest tag; prerelease
+installs follow their matching tag, such as beta or rc. Background update checks
+never block browser commands.
 `;
 
 const LAUNCHER_UPGRADE_HELP = `
@@ -41,9 +45,10 @@ Usage:
   pire-browser upgrade [--json]
 
 Agent-browser-style foreground upgrade path for installed npm/Pi packages. It
-checks the npm registry, then applies the newest available pire-browser release
-when the install is global npm or Pi-managed and no managed Firefox session is
-active. Use lower-level \`pire-browser update check\`, \`update apply\`, and
+checks the npm registry, then applies the newest release on the installed
+channel when the install is global npm or Pi-managed and no managed Firefox
+session is active. Stable follows latest; beta and rc installs stay on their
+matching prerelease channel. Use lower-level \`pire-browser update check\`, \`update apply\`, and
 \`update configure --mode off|notify|patch\` for explicit update management.
 `;
 
@@ -1126,7 +1131,7 @@ function handleUpgrade(upgradeArgs) {
       {
         operation: "upgrade",
         update,
-        nextAction: "Check network access or run `pire-browser update check --json` for details.",
+        nextAction: "Check network access or run `pire-browser update check --json` for channel details.",
       }
     );
   }
@@ -1175,21 +1180,22 @@ function applyUpdate({
   if (isOfflineEnv()) return outputUpdateResult("offline", "offline mode is enabled", json, background, 0, { operation });
   const config = readUpdateConfig();
   if (config.mode === "off") return outputUpdateResult("disabled", "update mode is off", json, background);
-  const cache = update ?? readJson(cachePath()) ?? {};
+  const cache = validatedUpdateRecommendation(update ?? readJson(cachePath()) ?? {});
   if (!cache.available) {
     const message = cache.kind === "none" ? "already current" : "no cached update is available";
     return outputUpdateResult("current", message, json, background, 0, { operation, update: cache });
   }
-  if (cache.kind !== "patch" && !allowAnySemver) {
+  if (!autoApplicableUpdateKind(cache.kind) && !allowAnySemver) {
     return outputUpdateResult(
       "notify",
-      "minor and major updates require an explicit upgrade",
+      "this update requires an explicit upgrade",
       json,
       background,
       0,
-      { operation, update: cache, nextAction: "Run `pire-browser upgrade` to update to the latest version." }
+      { operation, update: cache, nextAction: "Run `pire-browser upgrade` to update on the installed channel." }
     );
   }
+  const targetVersion = cache.targetVersion ?? cache.latestVersion;
   const installKind = detectInstallKind();
   if (!["global", "pi"].includes(installKind.kind)) {
     return outputUpdateResult(
@@ -1198,8 +1204,43 @@ function applyUpdate({
       json,
       background,
       0,
-      { operation, update: cache, install: installKind, nextAction: localInstallUpgradeHint(cache.latestVersion) }
+      { operation, update: cache, install: installKind, nextAction: localInstallUpgradeHint(targetVersion) }
     );
+  }
+  let piInspection = null;
+  if (installKind.kind === "pi") {
+    if (!installKind.installRoot || !installKind.settingsPath) {
+      return outputUpdateResult(
+        "failed",
+        "the Pi-managed install location could not be verified",
+        json,
+        background,
+        1,
+        {
+          operation,
+          update: cache,
+          install: installKind,
+          nextAction: piInstallRecoveryHint(targetVersion),
+        }
+      );
+    }
+    piInspection = inspectPiSettingsForConflicts(installKind.settingsPath);
+    if (piInspection.reason !== "ok" || !piInspection.npmSourcePresent) {
+      return outputUpdateResult(
+        "failed",
+        "the Pi package registration could not be verified",
+        json,
+        background,
+        1,
+        {
+          operation,
+          update: cache,
+          install: installKind,
+          piSettings: piInspection,
+          nextAction: piInstallRecoveryHint(targetVersion),
+        }
+      );
+    }
   }
   if (hasActiveManagedSession()) {
     return outputUpdateResult(
@@ -1230,23 +1271,47 @@ function applyUpdate({
     return 0;
   }
   if (delayMs > 0) sleep(delayMs);
-  const command =
-    installKind.kind === "pi"
-      ? ["pi", ["update", "npm:pire-browser"]]
-      : ["npm", ["install", "-g", `pire-browser@${cache.latestVersion}`, "--include=optional"]];
+  const command = updateInstallCommand(installKind, targetVersion);
   const commandText = formatCommand(command);
   const maxAttempts = backgroundWorker ? 3 : 1;
   let lastStatus = 1;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const result = runInstallCommand(command, background);
     if (result.status === 0) {
+      const piSettings = installKind.kind === "pi"
+        ? advancePiSettingsPireBrowserVersion(installKind.settingsPath, targetVersion)
+        : null;
+      if (piSettings && !piSettings.ok) {
+        return outputUpdateResult(
+          "failed",
+          `installed ${targetVersion}, but could not synchronize the Pi package registration`,
+          json,
+          background,
+          1,
+          {
+            operation,
+            update: cache,
+            install: installKind,
+            command: commandText,
+            piSettings,
+            nextAction: piInstallRecoveryHint(targetVersion),
+          }
+        );
+      }
       return outputUpdateResult(
         "applied",
-        `updated to ${cache.latestVersion}`,
+        `updated to ${targetVersion}`,
         json,
         background,
         0,
-        { operation, update: cache, install: installKind, command: commandText, upgrade }
+        {
+          operation,
+          update: cache,
+          install: installKind,
+          command: commandText,
+          upgrade,
+          ...(piSettings ? { piSettings } : {}),
+        }
       );
     }
     lastStatus = result.status ?? 1;
@@ -1264,7 +1329,7 @@ function applyUpdate({
       update: cache,
       install: installKind,
       command: commandText,
-      nextAction: installFailureHint(installKind, cache.latestVersion),
+      nextAction: installFailureHint(installKind, targetVersion),
     }
   );
 }
@@ -1276,7 +1341,13 @@ function maybeStartBackgroundUpdateCheck(commandArgs) {
   const config = readUpdateConfig();
   if (config.mode === "off") return;
   const cache = readJson(cachePath());
-  if (cache?.checkedAt && Date.now() - cache.checkedAt < 24 * 60 * 60 * 1000) return;
+  const channel = updateChannelForVersion(packageJson.version);
+  if (
+    cache?.checkedAt &&
+    cache.currentVersion === packageJson.version &&
+    cache.channel === channel &&
+    Date.now() - cache.checkedAt < 24 * 60 * 60 * 1000
+  ) return;
   spawnDetached(process.execPath, [fileURLToPath(import.meta.url), "update", "check", "--background", "--json"]);
 }
 
@@ -1286,8 +1357,8 @@ function maybeStartBackgroundPatchApply(commandArgs) {
   if (isObservationalCommand(commandArgs)) return;
   const config = readUpdateConfig();
   if (config.mode !== "patch") return;
-  const cache = readJson(cachePath());
-  if (!cache?.available || cache.kind !== "patch") return;
+  const cache = validatedUpdateRecommendation(readJson(cachePath()) ?? {});
+  if (!cache.available || !autoApplicableUpdateKind(cache.kind)) return;
   spawnDetached(process.execPath, [fileURLToPath(import.meta.url), "update", "apply", "--background", "--json"]);
 }
 
@@ -1296,8 +1367,8 @@ function isObservationalCommand(commandArgs) {
   return ["help", "status", "doctor", "install-status", "skills", "skill", "pi", "update"].includes(rootCommand);
 }
 
-function npmViewLatest(timeout) {
-  const result = spawnSync("npm", ["view", "pire-browser", "version", "--json"], {
+function npmViewVersion(packageSpec, timeout) {
+  const result = spawnSync("npm", ["view", packageSpec, "version", "--json"], {
     encoding: "utf8",
     timeout,
     shell: process.platform === "win32",
@@ -1313,50 +1384,162 @@ function npmViewLatest(timeout) {
 
 function getUpdateRecommendation({ background }) {
   const currentVersion = packageJson.version;
+  const channel = updateChannelForVersion(currentVersion);
   if (isOfflineEnv()) {
     return {
       checkedAt: Date.now(),
       available: false,
       kind: "offline",
+      channel,
       currentVersion,
+      targetVersion: null,
       latestVersion: null,
       offline: true,
     };
   }
-  const latest = npmViewLatest(background ? 3_000 : 15_000);
+  const targetVersion = npmViewVersion(updatePackageSpecForVersion(currentVersion), background ? 3_000 : 15_000);
   const checkedAt = Date.now();
-  const recommendation = latest
-    ? classifyUpdate(currentVersion, latest)
-    : { available: false, kind: "unknown", currentVersion, latestVersion: null };
-  const update = { checkedAt, ...recommendation };
+  const recommendation = targetVersion && updateChannelForVersion(targetVersion) === channel
+    ? classifyUpdate(currentVersion, targetVersion)
+    : targetVersion
+      ? { available: false, kind: "channel_mismatch", currentVersion, targetVersion, latestVersion: targetVersion }
+    : { available: false, kind: "unknown", currentVersion, targetVersion: null, latestVersion: null };
+  const update = { checkedAt, channel, ...recommendation };
   writeJson(cachePath(), update);
   return update;
 }
 
-export function classifyUpdate(currentVersion, latestVersion) {
+export function updateChannelForVersion(version) {
+  const parsed = parseSemver(version);
+  if (!parsed?.prerelease.length) return "latest";
+  const [channel] = parsed.prerelease;
+  return channel.numeric || !/^[a-z][a-z0-9-]*$/i.test(channel.raw) ? "next" : channel.raw.toLowerCase();
+}
+
+export function updatePackageSpecForVersion(version) {
+  return `pire-browser@${updateChannelForVersion(version)}`;
+}
+
+export function classifyUpdate(currentVersion, targetVersion) {
   const current = parseSemver(currentVersion);
-  const latest = parseSemver(latestVersion);
-  if (!current || !latest || compareSemver(latest, current) <= 0) {
-    return { available: false, kind: "none", currentVersion, latestVersion };
+  const target = parseSemver(targetVersion);
+  if (!current || !target || compareSemver(target, current) <= 0) {
+    return { available: false, kind: "none", currentVersion, targetVersion, latestVersion: targetVersion };
   }
-  const kind = latest.major !== current.major ? "major" : latest.minor !== current.minor ? "minor" : "patch";
-  return { available: true, kind, currentVersion, latestVersion };
+  const kind = target.major !== current.major
+    ? "major"
+    : target.minor !== current.minor
+      ? "minor"
+      : target.patch !== current.patch
+        ? "patch"
+        : target.prerelease.length === 0
+          ? "release"
+          : "prerelease";
+  return { available: true, kind, currentVersion, targetVersion, latestVersion: targetVersion };
 }
 
 function parseSemver(value) {
-  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(value ?? "");
-  return match ? { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]) } : null;
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(value ?? "");
+  if (!match) return null;
+  const prerelease = match[4]
+    ? match[4].split(".").map((raw) => ({ raw, numeric: /^\d+$/.test(raw) }))
+    : [];
+  if (prerelease.some((identifier) => identifier.numeric && identifier.raw.length > 1 && identifier.raw.startsWith("0"))) {
+    return null;
+  }
+  return {
+    major: BigInt(match[1]),
+    minor: BigInt(match[2]),
+    patch: BigInt(match[3]),
+    prerelease,
+  };
 }
 
 function compareSemver(left, right) {
-  return left.major - right.major || left.minor - right.minor || left.patch - right.patch;
+  for (const key of ["major", "minor", "patch"]) {
+    if (left[key] > right[key]) return 1;
+    if (left[key] < right[key]) return -1;
+  }
+  if (left.prerelease.length === 0 && right.prerelease.length === 0) return 0;
+  if (left.prerelease.length === 0) return 1;
+  if (right.prerelease.length === 0) return -1;
+  const length = Math.max(left.prerelease.length, right.prerelease.length);
+  for (let index = 0; index < length; index += 1) {
+    const a = left.prerelease[index];
+    const b = right.prerelease[index];
+    if (!a) return -1;
+    if (!b) return 1;
+    if (a.raw === b.raw) continue;
+    if (a.numeric && b.numeric) return BigInt(a.raw) > BigInt(b.raw) ? 1 : -1;
+    if (a.numeric !== b.numeric) return a.numeric ? -1 : 1;
+    return a.raw > b.raw ? 1 : -1;
+  }
+  return 0;
+}
+
+function autoApplicableUpdateKind(kind) {
+  return kind === "patch" || kind === "prerelease";
+}
+
+function validatedUpdateRecommendation(update) {
+  const currentVersion = packageJson.version;
+  const channel = updateChannelForVersion(currentVersion);
+  const targetVersion = update?.targetVersion ?? update?.latestVersion ?? null;
+  const classified = targetVersion ? classifyUpdate(currentVersion, targetVersion) : null;
+  if (
+    update?.currentVersion !== currentVersion ||
+    update?.channel !== channel ||
+    !targetVersion ||
+    updateChannelForVersion(targetVersion) !== channel ||
+    !classified ||
+    Boolean(update.available) !== classified.available
+  ) {
+    return {
+      available: false,
+      kind: "stale",
+      channel,
+      currentVersion,
+      targetVersion: null,
+      latestVersion: null,
+    };
+  }
+  return { ...update, ...classified, channel, targetVersion, latestVersion: targetVersion };
+}
+
+export function updateInstallCommand(installKind, targetVersion) {
+  if (!targetVersion) throw new Error("update target version is required");
+  if (installKind.kind === "pi") {
+    if (!installKind.installRoot) throw new Error("Pi update install root is required");
+    return [
+      "npm",
+      [
+        "install",
+        `pire-browser@${targetVersion}`,
+        "--prefix",
+        installKind.installRoot,
+        "--save-exact",
+        "--include=optional",
+        "--no-audit",
+        "--no-fund",
+      ],
+    ];
+  }
+  return ["npm", ["install", "-g", `pire-browser@${targetVersion}`, "--include=optional"]];
 }
 
 function detectInstallKind() {
-  if (process.env.PIRE_BROWSER_INSTALL_KIND === "pi") return { kind: "pi" };
   if (process.env.PIRE_BROWSER_INSTALL_KIND === "global") return { kind: "global" };
-  const piRoot = process.env.PI_CODING_AGENT_DIR || process.env.PI_HOME;
-  if (piRoot && root.startsWith(piRoot)) return { kind: "pi" };
+  const piContext = detectPiInstallContext(root, process.env);
+  if (process.env.PIRE_BROWSER_INSTALL_KIND === "pi") {
+    return {
+      kind: "pi",
+      scope: piContext?.kind ?? "unknown",
+      packageRoot: piContext?.packageRoot ?? root,
+      installRoot: process.env.PIRE_BROWSER_PI_INSTALL_ROOT || piContext?.installRoot || null,
+      settingsPath: process.env.PIRE_BROWSER_PI_SETTINGS_PATH || piContext?.settingsPath || null,
+    };
+  }
+  if (piContext) return { ...piContext, scope: piContext.kind, kind: "pi" };
   const globalRoot = spawnSync("npm", ["root", "-g"], { encoding: "utf8", shell: process.platform === "win32" });
   if (globalRoot.status === 0 && root.startsWith(globalRoot.stdout.trim())) return { kind: "global" };
   if (root.includes(`${separator()}node_modules${separator()}`)) return { kind: "local" };
@@ -1476,7 +1659,7 @@ export function formatUpdatePlain(data) {
   const operation = data.operation === "upgrade" ? "upgrade" : "update";
   const update = data.update ?? {};
   const current = update.currentVersion ?? packageJson.version;
-  const latest = update.latestVersion;
+  const latest = update.targetVersion ?? update.latestVersion;
   if (data.status === "applied") {
     return latest && current
       ? `pire-browser ${operation === "upgrade" ? "upgraded" : "updated"} ${current} -> ${latest}.`
@@ -1489,7 +1672,7 @@ export function formatUpdatePlain(data) {
   }
   if (data.status === "notify") {
     const next = data.nextAction ? `\nNext: ${data.nextAction}` : "";
-    const suffix = latest ? ` Latest is ${latest}; current is ${current}.` : "";
+    const suffix = latest ? ` Target version is ${latest}; current is ${current}.` : "";
     return `pire-browser ${operation} not applied: ${data.message}.${suffix}${next}`;
   }
   if (data.status === "deferred") {
@@ -1501,7 +1684,7 @@ export function formatUpdatePlain(data) {
   }
   if (data.status === "unknown") {
     const next = data.nextAction ? `\nNext: ${data.nextAction}` : "";
-    return `pire-browser ${operation} could not check the latest version. Current version is ${current}.${next}`;
+    return `pire-browser ${operation} could not check the installed channel. Current version is ${current}.${next}`;
   }
   if (data.status === "disabled") {
     return `pire-browser update mode is off. Run \`pire-browser update configure --mode patch\` to re-enable checks.`;
@@ -1515,24 +1698,33 @@ export function formatUpdatePlain(data) {
 
 function formatUpdateCheckPlain(update) {
   const current = update.currentVersion ?? packageJson.version;
+  const channel = update.channel ?? updateChannelForVersion(current);
+  const channelText = channel === "latest" ? "stable channel" : `${channel} channel`;
   if (update.kind === "offline") return `pire-browser update check skipped: offline mode is enabled. Current version is ${current}.`;
   if (update.kind === "unknown") return `pire-browser update check could not reach the npm registry. Current version is ${current}.`;
-  if (!update.available) return `pire-browser ${current} is already current.`;
-  return `pire-browser ${update.latestVersion} is available (${update.kind}); current is ${current}.\nRun \`pire-browser upgrade\` to update.`;
+  if (update.kind === "channel_mismatch") return `pire-browser update check refused a registry target outside the ${channelText}. Current version is ${current}.`;
+  if (!update.available) return `pire-browser ${current} is already current on the ${channelText}.`;
+  const target = update.targetVersion ?? update.latestVersion;
+  return `pire-browser ${target} is available (${update.kind}) on the ${channelText}; current is ${current}.\nRun \`pire-browser upgrade\` to update.`;
 }
 
 function localInstallUpgradeHint(latestVersion) {
   const suffix = latestVersion ? `@${latestVersion}` : "@latest";
-  return `Run \`npm install pire-browser${suffix} --include=optional\` in the project, or install globally with \`npm install -g pire-browser --include=optional\`.`;
+  return `Run \`npm install pire-browser${suffix} --include=optional\` in the project, or install globally with \`npm install -g pire-browser${suffix} --include=optional\`.`;
 }
 
 function installFailureHint(installKind, latestVersion) {
-  if (installKind.kind === "pi") return "Run `pi update npm:pire-browser`, then restart Pi.";
+  if (installKind.kind === "pi") return piInstallRecoveryHint(latestVersion);
   if (installKind.kind === "global") {
     const suffix = latestVersion ? `@${latestVersion}` : "@latest";
     return `Run \`npm install -g pire-browser${suffix} --include=optional\`.`;
   }
   return localInstallUpgradeHint(latestVersion);
+}
+
+function piInstallRecoveryHint(version) {
+  const suffix = version ? `@${version}` : "";
+  return `Run \`pi remove npm:pire-browser\`, then \`pi install npm:pire-browser${suffix}\`, and restart Pi.`;
 }
 
 function formatCommand(command) {

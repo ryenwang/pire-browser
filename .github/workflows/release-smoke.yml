@@ -14,7 +14,7 @@ on:
           - macos-arm64
           - linux-x64
       run_browser_smoke:
-        description: "Run browser smoke against installed packed artifacts"
+        description: "Run browser smoke against the installed package"
         required: false
         type: boolean
         default: true
@@ -23,6 +23,24 @@ on:
         required: false
         type: boolean
         default: false
+      package_source:
+        description: "Install source for the smoke"
+        required: false
+        type: choice
+        default: packed
+        options:
+          - packed
+          - registry
+      package_version:
+        description: "Exact npm version when package_source=registry"
+        required: false
+        type: string
+        default: ""
+      migration_from:
+        description: "Existing stable version used for registry upgrade/rollback validation"
+        required: false
+        type: string
+        default: "0.2.35"
   workflow_call:
     inputs:
       target:
@@ -31,7 +49,7 @@ on:
         type: string
         default: all
       run_browser_smoke:
-        description: "Run browser smoke against installed packed artifacts"
+        description: "Run browser smoke against the installed package"
         required: false
         type: boolean
         default: true
@@ -40,14 +58,29 @@ on:
         required: false
         type: boolean
         default: false
+      package_source:
+        description: "Install source for the smoke"
+        required: false
+        type: string
+        default: packed
+      package_version:
+        description: "Exact npm version when package_source=registry"
+        required: false
+        type: string
+        default: ""
+      migration_from:
+        description: "Existing stable version used for registry upgrade/rollback validation"
+        required: false
+        type: string
+        default: "0.2.35"
 
 jobs:
   packed-package:
-    name: ${{ matrix.label }}
+    name: ${{ matrix.label }} (${{ inputs.package_source }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(inputs.target == 'windows-x64' && '{"include":[{"target":"windows-x64","label":"Windows x64 packed package","tuple":"win32-x64","runner":"windows-2022","os":"windows"}]}' || inputs.target == 'macos-arm64' && '{"include":[{"target":"macos-arm64","label":"macOS ARM64 packed package","tuple":"darwin-arm64","runner":"macos-15","os":"macos"}]}' || inputs.target == 'linux-x64' && '{"include":[{"target":"linux-x64","label":"Linux x64 packed package","tuple":"linux-x64","runner":"ubuntu-24.04","os":"linux"}]}' || '{"include":[{"target":"windows-x64","label":"Windows x64 packed package","tuple":"win32-x64","runner":"windows-2022","os":"windows"},{"target":"macos-arm64","label":"macOS ARM64 packed package","tuple":"darwin-arm64","runner":"macos-15","os":"macos"},{"target":"linux-x64","label":"Linux x64 packed package","tuple":"linux-x64","runner":"ubuntu-24.04","os":"linux"}]}') }}
+      matrix: ${{ fromJSON(inputs.target == 'windows-x64' && '{"include":[{"target":"windows-x64","label":"Windows x64 release smoke","tuple":"win32-x64","runner":"windows-2022","os":"windows"}]}' || inputs.target == 'macos-arm64' && '{"include":[{"target":"macos-arm64","label":"macOS ARM64 release smoke","tuple":"darwin-arm64","runner":"macos-15","os":"macos"}]}' || inputs.target == 'linux-x64' && '{"include":[{"target":"linux-x64","label":"Linux x64 release smoke","tuple":"linux-x64","runner":"ubuntu-24.04","os":"linux"}]}' || '{"include":[{"target":"windows-x64","label":"Windows x64 release smoke","tuple":"win32-x64","runner":"windows-2022","os":"windows"},{"target":"macos-arm64","label":"macOS ARM64 release smoke","tuple":"darwin-arm64","runner":"macos-15","os":"macos"},{"target":"linux-x64","label":"Linux x64 release smoke","tuple":"linux-x64","runner":"ubuntu-24.04","os":"linux"}]}') }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -56,6 +89,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm install
       - run: npm --prefix extension install
+        if: ${{ inputs.package_source == 'packed' }}
+
+      - name: Validate smoke package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.package_source }}" = "registry" ] && [ -z "${{ inputs.package_version }}" ]; then
+            echo "package_version is required when package_source=registry" >&2
+            exit 1
+          fi
+          if [ "${{ inputs.package_source }}" = "registry" ] && [ "${{ inputs.run_signed_xpi }}" = "true" ]; then
+            echo "signed-XPI smoke is available only for packed artifacts" >&2
+            exit 1
+          fi
 
       - name: Ensure Firefox (Windows)
         if: ${{ inputs.run_browser_smoke && matrix.os == 'windows' }}
@@ -122,11 +169,20 @@ jobs:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
         run: |
-          $smokeArgs = @("--build-platform", "--tuple", "${{ matrix.tuple }}")
+          $smokeArgs = @("--tuple", "${{ matrix.tuple }}")
+          if ("${{ inputs.package_source }}" -eq "registry") {
+            $smokeArgs += @("--registry-version", "${{ inputs.package_version }}")
+            if ("${{ inputs.migration_from }}") {
+              $smokeArgs += @("--migration-from", "${{ inputs.migration_from }}")
+            }
+          } else {
+            $smokeArgs += "--build-platform"
+          }
           if ("${{ inputs.run_browser_smoke }}" -ne "true") {
             $smokeArgs += "--no-browser"
           } else {
-            $smokeArgs += @("--lifecycle-stress-count", "100")
+            $stressCount = if ("${{ inputs.package_source }}" -eq "registry") { "10" } else { "100" }
+            $smokeArgs += @("--lifecycle-stress-count", $stressCount)
           }
           if ("${{ inputs.run_signed_xpi }}" -eq "true") {
             $smokeArgs += "--signed-xpi"
@@ -142,11 +198,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          smoke_args=(--build-platform --tuple "${{ matrix.tuple }}")
+          smoke_args=(--tuple "${{ matrix.tuple }}")
+          if [ "${{ inputs.package_source }}" = "registry" ]; then
+            smoke_args+=(--registry-version "${{ inputs.package_version }}")
+            if [ -n "${{ inputs.migration_from }}" ]; then
+              smoke_args+=(--migration-from "${{ inputs.migration_from }}")
+            fi
+          else
+            smoke_args+=(--build-platform)
+          fi
           if [ "${{ inputs.run_browser_smoke }}" != "true" ]; then
             smoke_args+=(--no-browser)
           else
-            smoke_args+=(--lifecycle-stress-count 100)
+            if [ "${{ inputs.package_source }}" = "registry" ]; then
+              smoke_args+=(--lifecycle-stress-count 10)
+            else
+              smoke_args+=(--lifecycle-stress-count 100)
+            fi
           fi
           if [ -n "${PIRE_BROWSER_FIREFOX_PATH:-}" ]; then
             smoke_args+=(--firefox-path "$PIRE_BROWSER_FIREFOX_PATH")
@@ -159,11 +227,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          smoke_args=(--build-platform --tuple "${{ matrix.tuple }}")
+          smoke_args=(--tuple "${{ matrix.tuple }}")
+          if [ "${{ inputs.package_source }}" = "registry" ]; then
+            smoke_args+=(--registry-version "${{ inputs.package_version }}")
+            if [ -n "${{ inputs.migration_from }}" ]; then
+              smoke_args+=(--migration-from "${{ inputs.migration_from }}")
+            fi
+          else
+            smoke_args+=(--build-platform)
+          fi
           if [ "${{ inputs.run_browser_smoke }}" != "true" ]; then
             smoke_args+=(--no-browser)
           else
-            smoke_args+=(--lifecycle-stress-count 100)
+            if [ "${{ inputs.package_source }}" = "registry" ]; then
+              smoke_args+=(--lifecycle-stress-count 10)
+            else
+              smoke_args+=(--lifecycle-stress-count 100)
+            fi
           fi
           if [ -n "${PIRE_BROWSER_FIREFOX_PATH:-}" ]; then
             smoke_args+=(--firefox-path "$PIRE_BROWSER_FIREFOX_PATH")
@@ -220,6 +300,6 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: release-smoke-${{ matrix.target }}
+          name: release-smoke-${{ inputs.package_source }}-${{ matrix.target }}
           path: target/release-smoke-artifacts
           if-no-files-found: warn

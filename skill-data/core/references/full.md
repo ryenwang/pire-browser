@@ -75,13 +75,20 @@ retrying the original ref.
 
 ## Common Recipes
 
-Fresh direct CLI install:
+Fresh stable direct CLI install:
 
 ```bash
 npm install -g pire-browser
 pire-browser install
 pire-browser open https://example.com
 pire-browser snapshot
+```
+
+The 0.3 lifecycle prerelease is an explicit opt-in:
+
+```bash
+npm install -g pire-browser@beta
+pi install npm:pire-browser@beta
 ```
 
 One-off trial without global install:
@@ -1008,13 +1015,13 @@ After `frame @e2`, snapshots and selector-based actions are scoped to that ifram
 
 ## Setup And Diagnostics
 
-- For a fresh direct CLI install, use `npm install -g pire-browser`, optionally verify the package with `pire-browser --version`, then run `pire-browser install`. For a one-off trial without global install, use `npx -y pire-browser@latest open <url>` and then `npx -y pire-browser@latest snapshot`. For Pi, use `pi install npm:pire-browser`. Do not start by inspecting package source or running broad diagnostics unless an install or browser command fails.
+- For a fresh stable direct CLI install, use `npm install -g pire-browser`, optionally verify the package with `pire-browser --version`, then run `pire-browser install`. For a one-off stable trial without global install, use `npx -y pire-browser@latest open <url>` and then `npx -y pire-browser@latest snapshot`. For stable Pi, use `pi install npm:pire-browser`. Use `npm install -g pire-browser@beta` or `pi install npm:pire-browser@beta` only when the user requests the 0.3 lifecycle prerelease. Do not start by inspecting package source or running broad diagnostics unless an install or browser command fails.
 - `pire-browser install` registers the platform native messaging host.
 - `pire-browser install --with-deps` is the agent-browser-style first-run helper: it uses installed Firefox when available, can install Firefox through winget/Chocolatey on Windows or Homebrew on macOS when Firefox is missing, and gives non-Snap/non-Flatpak guidance on Linux.
 - If npm reports skipped lifecycle scripts, `--ignore-scripts`, or an `allow-scripts` policy warning, run `pire-browser install` explicitly after npm finishes.
 - `pire-browser setup` is the lower-level setup command.
 - `--firefox-path` and `PIRE_BROWSER_FIREFOX_PATH` may point to the Firefox executable, a directory containing it, or `/Applications/Firefox.app` on macOS. If discovery fails, follow the platform repair command in the error output.
-- `pire-browser upgrade` checks npm and updates global npm or Pi-managed installs to the latest package when no managed Firefox session is active. Local project installs print the exact project-local `npm install` command. Background auto-update and lower-level `update apply` stay patch-only.
+- `pire-browser upgrade` checks npm on the installed channel: stable follows `latest`, while beta and RC stay on their matching prerelease tags. It applies the exact resolved version to global npm or Pi-managed installs when no managed Firefox session is active. Local project installs print the exact project-local `npm install` command. Background `patch` mode may apply a stable patch or a newer prerelease on the same channel. Do not switch channels unless the user asks. Return a direct npm install to stable with `npm install -g pire-browser@latest --include=optional`; for Pi, run `pi remove npm:pire-browser`, then `pi install npm:pire-browser`, and restart Pi.
 - `pire-browser status` reports live session and policy state without fixing anything.
 - `pire-browser doctor` and `pire-browser install-status` give read-only install diagnostics.
 - `pire-browser doctor --json` and `pire-browser install-status --json` include `nextActions`; follow those concrete repair commands before guessing. Missing or mismatched Native Messaging should point to `pire-browser install`, the same public setup verb used in the happy path. If the platform-native optional package is missing, top-level help, `install --help`, `setup --help`, `doctor --help`, `mcp --help`, `install`, `setup`, and these diagnostic commands are still served by the JavaScript launcher and report the reinstall command with `--include=optional`.

@@ -116,6 +116,13 @@ frames are not Chrome DevTools screencast output.
 
 - Direct install: `npm install -g pire-browser`, then `pire-browser install`.
 - Pi install: `pi install npm:pire-browser`.
+- Unqualified installs use npm's stable `latest` channel. Use
+  `pire-browser@beta` or `npm:pire-browser@beta` only when the user asks for the
+  0.3 prerelease. For an existing Pi install, change channels with
+  `pi remove npm:pire-browser` followed by the requested `pi install` source;
+  do not use `pi update` to select a channel.
+- `pire-browser upgrade` follows the installed npm channel and applies the exact
+  resolved version. Do not switch stable, beta, or RC channels implicitly.
 - Diagnose only after setup or the first browser command fails:
   `pire-browser doctor --json`.
 - Follow `data.nextActions`; use `doctor --fix` only for explicit repair.
