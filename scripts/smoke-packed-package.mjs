@@ -252,14 +252,10 @@ export function smokeDataRoot(env = process.env, platform = process.platform) {
   return join(xdgDataHome, "pire-browser");
 }
 
-export function fixturePythonCommand(env = process.env, platform = process.platform) {
-  return env.PYTHON || (platform === "win32" ? "python" : "python3");
-}
-
-export function fixtureServerCommand({ port, fixtureDir, python = fixturePythonCommand() }) {
+export function fixtureServerCommand({ port, fixtureDir, node = process.execPath }) {
   return {
-    command: python,
-    args: ["-m", "http.server", String(port), "--bind", "127.0.0.1", "--directory", fixtureDir],
+    command: node,
+    args: [join(root, "scripts", "fixture-http-server.mjs"), String(port), fixtureDir],
   };
 }
 

@@ -135,10 +135,7 @@ jobs:
             echo "Firefox was not found after Homebrew install" >&2
             exit 1
           fi
-          {
-            echo "PIRE_BROWSER_FIREFOX_PATH=$firefox"
-            echo "PYTHON=python3"
-          } >> "$GITHUB_ENV"
+          echo "PIRE_BROWSER_FIREFOX_PATH=$firefox" >> "$GITHUB_ENV"
 
       - name: Ensure Firefox and Xvfb (Linux)
         if: ${{ inputs.run_browser_smoke && matrix.os == 'linux' }}
@@ -157,10 +154,7 @@ jobs:
             echo "Firefox was not found after Mozilla tarball extract" >&2
             exit 1
           fi
-          {
-            echo "PIRE_BROWSER_FIREFOX_PATH=$firefox"
-            echo "PYTHON=python3"
-          } >> "$GITHUB_ENV"
+          echo "PIRE_BROWSER_FIREFOX_PATH=$firefox" >> "$GITHUB_ENV"
 
       - name: Run packed release smoke (Windows)
         if: ${{ matrix.os == 'windows' }}

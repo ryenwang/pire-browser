@@ -19,6 +19,7 @@ import {
   installCommandArgs,
   installRegistryArgs,
   installedWebExtBin,
+  fixtureServerCommand,
   lifecycleStorageFootprint,
   parseSmokePackedPackageArgs,
   packedMcpBrowserSmokeInput,
@@ -117,6 +118,17 @@ describe("npm artifact metadata", () => {
       "--no-audit",
       "--no-fund",
     ]);
+  });
+
+  it("uses a dedicated external Node process for packed-smoke fixtures", () => {
+    const fixtureDir = join(root, "tests", "fixtures");
+    expect(fixtureServerCommand({ port: 43123, fixtureDir })).toEqual({
+      command: process.execPath,
+      args: [join(root, "scripts", "fixture-http-server.mjs"), "43123", fixtureDir],
+    });
+    expect(readFileSync(join(root, "scripts", "fixture-http-server.mjs"), "utf8")).toContain(
+      'server.listen(port, "127.0.0.1"'
+    );
   });
 
   it("requires registry root and optional sidecar versions to match", () => {
@@ -881,6 +893,7 @@ describe("npm artifact metadata", () => {
     expect(packedSmokeScript).toContain("originsVerified: 2");
     expect(packedSmokeScript).toContain('runPire(command, ["state", "show", fixture.statePath, "--json"]');
     expect(packedSmokeScript).toContain("stateReadable: true");
+    expect(packedSmokeScript).toContain('join(root, "scripts", "fixture-http-server.mjs")');
     expect(packedSmokeScript).toContain("doctorRemovedMarkedOrphan: true");
     expect(packedSmokeScript).toContain("runPackedMcpSmoke");
     expect(packedSmokeScript).toContain("runMcpBrowserSmoke");
